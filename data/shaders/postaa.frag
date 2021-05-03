@@ -1,0 +1,340 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_KHR_shader_subgroup_quad: enable
+
+#include "screendimensions.glsl"
+
+#define subgroup_quad_enabled
+#define fragment_shader
+#include "common.glsl"
+
+layout(location = 0) out vec4 outColor;
+
+layout(location = 0) in streamIn
+{
+	vec2		uv;
+#if defined (SMAA_PASS_2)
+	flat float	jitter;
+	flat uint	odd_frame;
+#endif
+
+#ifdef OVERLAY
+	flat float time_delta;
+	flat float time;
+	flat uint  odd_frame;
+#endif
+} In;
+#define texcoord uv // alias
+
+layout (binding = 1) uniform sampler2D colorMap;
+layout (binding = 2) uniform sampler2D noiseMap;
+
+layout (binding = 3, rgba8) writeonly restrict uniform image2D outTemporal;
+layout (binding = 4) uniform sampler2D temporalColorMap;
+
+layout (binding = 5, rgba8) writeonly restrict uniform image2D outLastColor;
+layout (binding = 6) uniform sampler2D lastColorMap;
+
+layout (binding = 7) uniform sampler2D blurMap[2];
+layout (binding = 8, rgba8) writeonly restrict uniform image2D outBlur[2];
+
+layout (binding = 9) uniform sampler2D anamorphicMap[2];
+layout (binding = 10, r8) writeonly restrict uniform image2D outAnamorphic[2];
+
+layout (binding = 11) uniform sampler3D lutMap;
+layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI0;
+layout (input_attachment_index = 1, set = 0, binding = 13) uniform subpassInput inputGUI1;
+
+#if defined(TMP_PASS)
+// Shadertoy - https://www.shadertoy.com/view/lt3SWj
+// Temporal AA based on Epic Games' implementation:
+// https://de45xmedrsdbp.cloudfront.net/Resources/files/TemporalAA_small-59732822.pdf
+// 
+// Originally written by yvt for https://www.shadertoy.com/view/4tcXD2
+// Feel free to use this in your shader!
+//
+// colorMap: input image
+// iChannel1: output image from the last frame
+//
+// Version history:
+//   12/13/2016: first version
+//   12/14/2016: removed unnecessary gamma correction inside
+//               encodePalYuv and decodePalYuv
+
+// YUV-RGB conversion routine from Hyper3D
+#define off InvScreenResDimensions
+
+vec4 temporal_aa(in const vec2 uv)
+{
+	const vec4 lastColor = textureLod(lastColorMap, uv, 0);
+    
+    vec3 antialiased = lastColor.xyz;
+    float mixRate = min(lastColor.w, 0.5);
+    
+    vec3 in0 = textureLod(colorMap, uv, 0).xyz;
+
+    antialiased = mix(antialiased * antialiased, in0 * in0, mixRate);
+    antialiased = sqrt(antialiased);
+    
+	// interleave for hiding latency
+	vec3 in1 = textureLod(colorMap, uv + vec2(+off.x, 0.0), 0).xyz;
+	antialiased = encodePalYuv(antialiased);
+	in0 = encodePalYuv(in0);
+    vec3 in2 = textureLod(colorMap, uv + vec2(-off.x, 0.0), 0).xyz;
+	in1 = encodePalYuv(in1);
+    vec3 in3 = textureLod(colorMap, uv + vec2(0.0, +off.y), 0).xyz;
+	in2 = encodePalYuv(in2);
+    vec3 in4 = textureLod(colorMap, uv + vec2(0.0, -off.y), 0).xyz;
+	in3 = encodePalYuv(in3);
+    vec3 in5 = textureLod(colorMap, uv + vec2(+off.x, +off.y), 0).xyz;
+	in4 = encodePalYuv(in4);
+    vec3 in6 = textureLod(colorMap, uv + vec2(-off.x, +off.y), 0).xyz;
+	in5 = encodePalYuv(in5);
+    vec3 in7 = textureLod(colorMap, uv + vec2(+off.x, -off.y), 0).xyz;
+	in6 = encodePalYuv(in6);
+    vec3 in8 = textureLod(colorMap, uv + vec2(-off.x, -off.y), 0).xyz;
+    in7 = encodePalYuv(in7);
+    in8 = encodePalYuv(in8);
+
+    vec3 minColor = min(min(min(in0, in1), min(in2, in3)), in4);
+    vec3 maxColor = max(max(max(in0, in1), max(in2, in3)), in4);
+    minColor = mix(minColor,
+       min(min(min(in5, in6), min(in7, in8)), minColor), 0.5f);
+    maxColor = mix(maxColor,
+       max(max(max(in5, in6), max(in7, in8)), maxColor), 0.5f);
+    
+   	const vec3 preclamping = antialiased;
+    antialiased = clamp(antialiased, minColor, maxColor);
+    
+    mixRate = 1.0 / (1.0 / mixRate + 1.0);
+    
+    const vec3 diff = antialiased - preclamping;
+    const float clampAmount = dot(diff, diff);
+    
+    mixRate += clampAmount * 4.0;
+    mixRate = clamp(mixRate, 0.05, 0.5);
+    
+    antialiased = decodePalYuv(antialiased);
+        
+    return vec4(antialiased, mixRate);
+}
+#endif
+
+void anamorphicMask(in const vec3 color)
+{
+	const float luminance = dot(color, LUMA);
+
+	float mask = 1.5f * luminance*luminance*color.g;
+	
+	mask = smoothstep(0.0f, 1.0f, mask);
+
+	mask = pow(mask, 3.0);
+	mask = pow(mask, 24.0) * 14.0;
+
+	imageStore(outAnamorphic[0], ivec2(In.uv * ScreenResDimensions), mask.xxxx);
+}
+
+void anamorphicReduction(in const vec2 uv)
+{
+	float color = 0;
+	const float s = ScreenResDimensions.y / 450.0;
+
+	// Horizontal reduction for anamorphic flare.
+    for (int x = 0; x < 8; x++)
+    {
+        color += 0.25 * textureLod(anamorphicMap[0],
+            vec2(128.0, 1.0) * uv + (0.5 * s * vec2(float(x) - 3.5f, 0)) * InvScreenResDimensions, 0).r;
+    }
+
+	imageStore(outAnamorphic[1], ivec2(In.uv * ScreenResDimensions), color.xxxx);
+}
+
+vec3 anamorphicFlare(in const vec2 uv)
+{
+	const float flare = textureLod(anamorphicMap[1], uv / vec2(128, 1), 0).r;
+
+	vec3 color = flare * vec3(0.005, 0.0, 6.0) * 8e-3;
+
+	// Compress dynamic range.
+    color.rgb *= 6.0;
+	color.rgb = 1.5 * color.rgb / (1.0 + color.rgb);
+
+   return color;
+}
+
+#ifdef OVERLAY
+//const vec3 gui_punk = vec3( 937.254e-3f, 23.594e-3f, 411.764e-3f );
+//const vec3 gui_bleed = vec3( 349.019e-3f, 200e-3f, 635.294e-3f );
+
+const vec3 gui_green = vec3(266.666e-3f, 913.725e-3f, 537.254e-3f);
+const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
+	
+//const vec3 gui_bleed = vec3(1.0f, 545.098e-3f, 152.941e-3f);
+//const vec3 gui_nixie = vec3(960.784e-3f, 1.0f, 94.1176e-3f);
+#endif
+
+#define LUT_SIZE_STANDARD 33
+const float LUT_SCALE = (LUT_SIZE_STANDARD - 1.0f) / LUT_SIZE_STANDARD;
+const float LUT_OFFSET = 1.0f / (2.0f * LUT_SIZE_STANDARD);
+
+void main() {
+
+#if defined(TMP_PASS)  // temporal resolve subpass + anamorphic mask downsample + blur mask downsample
+
+	{
+		const vec4 color = temporal_aa(In.uv);
+		imageStore(outTemporal, ivec2(In.uv * ScreenResDimensions), color);
+
+		anamorphicMask(color.rgb);
+	}
+	{ // mask for bloom - bugfix: use the msaa sampler instead of temporal ssaa color provides stability when moving camera, otherwise a pulsing intensity for bloom can be seen - very distractinbg
+		vec3 color = textureLod(colorMap, In.uv, 0).rgb;
+		color = color * smoothstep(0.25f, 1.0f, max(color.r, max(color.g, color.b)));
+		imageStore(outBlur[0], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));		
+	}
+	
+	return; // output of pixel shader not used
+#elif defined(SMAA_PASS_0)  // blur downsampled horizontally + anamorphic reduction													
+	vec3 color = textureLod(blurMap[0], In.uv, 0).rgb;
+	expandAA(blurMap[0], color, In.uv);
+	imageStore(outBlur[1], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));
+
+	anamorphicReduction(In.uv);
+	return; // output of pixel shader not used
+#elif defined (SMAA_PASS_1)   // blur downsampled vertically	           
+	vec3 color = textureLod(blurMap[1], In.uv, 0).rgb;
+	expandAA(blurMap[1], color, In.uv);
+	imageStore(outBlur[0], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));
+
+	return; // output of pixel shader not used
+#elif defined (SMAA_PASS_2)	// final pass aa + blur upsample + dithering + anamorphic flare	
+
+	vec3 color = textureLod(colorMap, In.uv, 0).rgb;
+	const vec4 temporal_color = textureLod(temporalColorMap, In.uv, 0);
+
+	color = mix(color, temporal_color.rgb, 0.5f);  // 1st: average TAA result with MSAA result (provides best looking result - SMAA removed as it wasn't as sharp)
+
+//	const vec4 last_color = textureLod(lastColorMap, In.uv, 0); 
+	
+	// 2nd: average 2 temporal resolves. The remainder(mix_rate) of last color with current color
+	//									 The mix_rate from current temporal of last color with current color
+//	color = mix( mix(last_color.rgb, color, 1.0f - last_color.a).rgb, mix(last_color.rgb, color, temporal_color.a).rgb, 0.5f ); // not over-sharp like b4 and produces motion blur when there is significant velocity
+
+	// 3rd: blur the color so far using the temporal map, based on how dark it is
+	// using that result, subtract it from the color using absolute differences
+	// this results in very smooth antialiasing
+	// scale the luminance back by how much it has changed
+	// its so bright it bleeds
+	{
+		const float luminance = dot(color, LUMA);
+		const vec3 reference_color = color;
+		
+		expandBlurAA(temporalColorMap, color, In.uv, (1.0f - luminance));
+		color = clamp(reference_color - abs(reference_color - color), 0.0f, 1.0f); // bugfix - fixes random colors in dark screen locations (negative values)
+		color = color * luminance / dot(color, LUMA);
+	}
+	// AA at this point is nearly perfect, the image has an extremely wide range in contrast and just pops out
+	// very happy, backup!
+	// save last color for temporal usuage - do not want dithering to add random aliasing
+	imageStore(outLastColor, ivec2(In.uv * ScreenResDimensions), vec4(color, temporal_color.a));	// must preserve temporal alpha channel in output
+
+	// add in the finalized bloom
+	{
+		const vec3 blur = textureLod(blurMap[0], In.uv, 0).rgb * 0.5f;
+
+		// ############# Final Post Processing Pass ###################### //
+		// *** 3D LUT *** - apply before dithering and anamorphic flares //
+		color = textureLod(lutMap, color.rgb * LUT_SCALE + LUT_OFFSET, 0).rgb;
+	
+		color += blur * (1.0f - color.r*color.g*color.b); // *BEST APPLIED ONLY HERE* apply factor (dependent on existing color whiteness) of the bloom before the 3D lut is applied (expanding output range)
+	}
+	// *** DITHERING - do not change, validated fft and with highpass to be of extreme quality
+	{
+	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
+		// *bluenoise RED-GREEN channel used* //
+		const vec2 noise_dual_dither = textureLod(noiseMap, (In.uv * ScreenResDimensions + vec2(In.jitter, -In.jitter)) * BLUE_NOISE_UV_SCALER, 0).rg * BLUE_NOISE_DITHER_SCALAR;
+		// this actually doesn't ruin the blue noise, mixing by luminance two different blue noises seems to isolate quite well, being
+		// one blue noise to "darker" colors and the othe blue noise to "brighter" colors isoloating very well 
+		const uint frame = In.odd_frame;
+		const float luminance = dot(color, LUMA);
+		color = mix(color - noise_dual_dither[frame], color + noise_dual_dither[1U - frame], luminance); // shade dithering by luminance
+
+		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
+		color += clamp(anamorphicFlare(In.uv) - noise_dual_dither[1U - frame], 0.0f, 1.0f);
+	}
+	
+	// ************* //	
+	outColor = vec4(color, 1.0f);
+
+
+	//*** GUI Overlay ***//
+#elif defined (OVERLAY)	// overlay final (actual) subpass (gui overlay)
+#define SCANLINE_INTERLEAVE 2.0f
+#define FILL 0.5f
+#define BURNINTIME 58.0f	// *** note 57 is absolute minimum - black starts looking green if lower
+#define shade r
+#define alpha g
+#define shadealpha rg
+
+	// finally blend in GUI
+	// current frame = In.odd_frame
+	// prev frame = 1u - In.odd_frame
+	vec2 gui, gui_prev;
+
+	{ // cannot dynamically index input attachment array, so workaround the limitation
+		const vec2 gui_array[2] = vec2[2](subpassLoad(inputGUI0).rg, subpassLoad(inputGUI1).rg);	// only need input of shade and alpha from input (.rg)
+
+		gui      = gui_array[In.odd_frame];
+		gui_prev = gui_array[1U - In.odd_frame];
+	}
+
+	
+	// this starts with a fine interlace on purposes to leverage the blending with diagonal neighbour pixels (subgroupQuadSwapDiagonal)
+	// then the interlace is doubled below for special effect
+	float interlace = aaStep( SCANLINE_INTERLEAVE * 0.5f, mod(In.uv.y * ScreenResDimensions.y, SCANLINE_INTERLEAVE - (InvScreenResDimensions.y) * 0.5f) );
+
+	vec2 grey = gui;
+
+	// save shade (luminance)
+	float luminance = grey.shade;	
+    grey.shade = grey.shade * interlace;
+	grey.alpha *= 0.5f; // alpha is halved for better gradient
+   
+    grey.shade += subgroupQuadSwapDiagonal(grey.shade);  // this trick here blends the interlaced color
+	grey.shade = grey.shade * (1.0f - (luminance / grey.shade));
+    
+    const float diff = abs(grey.shade - luminance) * FILL;
+    
+    const float highlight = aaStep(0.01f + luminance, diff);
+
+	interlace = aaStep( SCANLINE_INTERLEAVE, mod(In.uv.y * ScreenResDimensions.y, SCANLINE_INTERLEAVE * 2.0f - (InvScreenResDimensions.y) * 0.5f) );
+																		  // grey.shade aka luminance
+	const vec2 random = textureLod(noiseMap, In.uv.y + In.time.xx * 0.125f * grey.shade, 0).rg * interlace;
+	
+	// *** color is added to shade beginning here :
+	// magic cyberpunk gui animation																																	 // grey.shade aka luminance
+	vec3 gui_color = mix(gui_green * gui.shade, 1.5f * gui_bleed * gui.shade, highlight) + gui_green * gui.shade * random.r * pow(fract(In.uv.x - random.g - In.time * grey.shade), 3.0f) * 3.0f;
+	
+	// subpixel grille
+	vec2 subpixel;
+	subpixel.x = gui_color.r + subgroupQuadSwapHorizontal(gui_color).r;
+	subpixel.y = gui_color.b + subgroupQuadSwapVertical(gui_color).b;
+	subpixel *= 0.5f;
+
+	vec2 grille = aaStep( vec2(SCANLINE_INTERLEAVE * 0.75f), mod(In.uv.xy * ScreenResDimensions.xy, SCANLINE_INTERLEAVE * 1.5f - (InvScreenResDimensions.xy) * 0.5f) );
+	
+	gui_color = mix(gui_color * grille.x, gui_color, abs(gui_color.r - subpixel.x));
+	gui_color = mix(gui_color * grille.y, gui_color, abs(gui_color.b - subpixel.y));
+
+	// phosphor delay blur effect
+	float blurDecay = clamp(In.time_delta * BURNINTIME, 0.0f, 1.0f);
+	blurDecay = max(0.0f, blurDecay - gui_prev.shade);
+    
+	outColor.rgb = mix(gui_bleed - blurDecay, gui_color, blurDecay);
+	outColor.a = max(gui_prev.alpha, grey.alpha);
+#endif
+}
+
+
+
+

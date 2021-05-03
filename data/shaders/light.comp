@@ -1,0 +1,510 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_KHR_shader_subgroup_vote: enable
+#extension GL_EXT_control_flow_attributes : enable
+
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
+
+#include "common.glsl"
+#include "transform.glsl"
+
+#define GROUP_SIZE 8
+layout (local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE, local_size_z = GROUP_SIZE) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
+
+// SEED uses PING output, hardcoded, push constants not required for seed stage
+#ifndef SEED
+layout (push_constant) restrict readonly uniform PushConstant {
+	layout(offset=0) int		current_step;		//  JFA
+	layout(offset=4) uint		index_output;		// __|_____________________________________________________________________
+	layout(offset=8) uint		index_input;        // index_input                    overlaps / included in both JFA & Filter
+	layout(offset=12) uint      index_filter;		//   |
+	layout(offset=16) mat4		view;				//   |
+													// Filter
+} pc;
+#endif
+
+#define LIGHT 0
+#define OPACITY 1
+
+layout (binding = 0) uniform sampler3D seedMap;	// lightprobe map
+layout (binding = 1) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
+layout (binding = 2, rgba32f) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
+//////////////////////////////////////////////////////////////////////////////////
+layout (binding = 3) uniform sampler3D inTemporalDD[2];	// (distance & direction) lightmap history // only signed normalized values
+layout (binding = 4, rg16_snorm) writeonly restrict uniform image3D outTemporalDD[3]; // (distance & direction) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly) // only signed normalized values
+layout (binding = 5) uniform sampler3D inTemporalC[2];	// (color) lightmap history
+layout (binding = 6, rgba8) writeonly restrict uniform image3D outTemporalC[3]; // (color) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly)
+layout (binding = 7) uniform sampler3D inTemporalR[2];	// (reflection color) lightmap history
+layout (binding = 8, rgba8) writeonly restrict uniform image3D outTemporalR[3]; // (reflection color) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly)
+
+// "World Visible Volume"
+layout (constant_id = 0) const float WorldDimensions_Width = 0.0f;
+layout (constant_id = 1) const float WorldDimensions_Depth = 0.0f;
+layout (constant_id = 2) const float WorldDimensions_Height = 0.0f;
+#define WorldDimensions vec3(WorldDimensions_Width, WorldDimensions_Depth, WorldDimensions_Height)
+
+// "Light Volume" mod n of World Visible Volume
+layout (constant_id = 3) const float VolumeDimensions_Width = 0.0f;
+layout (constant_id = 4) const float VolumeDimensions_Depth = 0.0f;
+layout (constant_id = 5) const float VolumeDimensions_Height = 0.0f;
+layout (constant_id = 6) const float InvVolumeDimensions_Width = 0.0f;
+layout (constant_id = 7) const float InvVolumeDimensions_Depth = 0.0f;
+layout (constant_id = 8) const float InvVolumeDimensions_Height = 0.0f;
+#define VolumeDimensions vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
+#define InvVolumeDimensions vec3(InvVolumeDimensions_Width, InvVolumeDimensions_Depth, InvVolumeDimensions_Height)
+
+#define emitter_location xyz
+#define packed_color a
+#define warp_local vec4
+
+bool isLit( in const float sampled_packed_color )
+{
+	return( 0.0f != sampled_packed_color );
+}
+
+//void fetch( inout vec3 light_position, inout vec3 light_color, in const float area, in const vec3 voxel) { // interpolates light position
+//	
+//	light_position = fma(textureLod(volumeMap[LIGHT], (voxel + 0.5f) * InvLightVolumeDimensions, 0).xyz, area.xxx, light_position);
+//	light_color = fma(unpackColor(texelFetch(volumeMap[LIGHT], ivec3(voxel + 0.5f), 0).a), area.xxx, light_color); 
+//}
+#ifdef SEED
+vec4 sampleInputVolume( in const ivec3 Location )
+{
+	return(texelFetch(seedMap, Location, 0)); // best jfa result with texelFetch
+}
+#else
+vec4 sampleInputVolume( in const ivec3 Location )
+{
+	// input image is dynamically set with push constant
+	return( texelFetch(pingpongTexture[pc.index_input], Location, 0) );	// best jfa result with texelFetch
+}
+#endif
+
+// ###################################################################################################################################
+#if !defined(MIP)
+
+ //SoA - Structure of Arrays better for cache, must break up components in order (this avoids bank conflicts)
+//const int direction_count = 24;
+//const float kDirection_x[direction_count] = { -1,  0,  1, -1,  1, -1,  0,  1,		-1,  0,  1, -1,  1, -1,  0,  1,		-1,  0,  1, -1,  1, -1,  0,  1 };
+//const float kDirection_y[direction_count] = { -1, -1, -1,  0,  0,  1,  1,  1,		-1, -1, -1,  0,  0,  1,  1,  1,		-1, -1, -1,  0,  0,  1,  1,  1 };
+//const float kDirection_z[direction_count] = { -1, -1, -1, -1, -1, -1, -1, -1,		 0,  0,  0,  0,  0,  0,  0,  0,		 1,  1,  1,  1,  1,  1,  1,  1 };
+	// In comparison to AoS - Array of structures:
+	/*
+								{ { - 1 , - 1,  - 1 } ,
+                                  {   0 , - 1,  - 1 } ,
+                                  {   1 , - 1,  - 1 } ,
+                                  { - 1 ,   0,  - 1 } ,
+                                  {   1 ,   0,  - 1 } ,
+                                  { - 1 ,   1,  - 1 } ,
+                                  {   0 ,   1,  - 1 } ,
+                                  {   1 ,   1,  - 1 },
+								  
+								  { - 1 , - 1,   0 } ,
+                                  {   0 , - 1,   0 } ,
+                                  {   1 , - 1,   0 } ,
+                                  { - 1 ,   0,   0 } ,
+                                  {   1 ,   0,   0 } ,
+                                  { - 1 ,   1,   0 } ,
+                                  {   0 ,   1,   0 } ,
+                                  {   1 ,   1,   0 },
+								  
+								  { - 1 , - 1,   1 } ,
+                                  {   0 , - 1,   1 } ,
+                                  {   1 , - 1,   1 } ,
+                                  { - 1 ,   0,   1 } ,
+                                  {   1 ,   0,   1 } ,
+                                  { - 1 ,   1,   1 } ,
+                                  {   0 ,   1,   1 } ,
+                                  {   1 ,   1,   1 }
+								  
+								  } ;
+ */
+//#define const_direction(index) vec3(kDirection_x[index], kDirection_y[index], kDirection_z[index])
+
+// (inverse square law for light distance weighting)
+
+shared vec4 warp_lds[GROUP_SIZE][GROUP_SIZE][GROUP_SIZE];
+
+#define localToGlobal(local) (gl_WorkGroupID.xyz * GROUP_SIZE + local)
+#define ilocalToGlobal(local) (ivec3(gl_WorkGroupID.xyz * GROUP_SIZE) + local)
+
+void populateLDS(in const ivec3 local) {
+
+	warp_lds[local.x][local.y][local.z] = sampleInputVolume(ilocalToGlobal(local));
+	//sync
+	groupMemoryBarrier();
+	barrier();
+}
+
+vec4 group_load(in const ivec3 location) {
+
+	return(
+	subgroupAll(all(greaterThanEqual(location, ivec3(0))) && all(lessThan(location, ivec3(GROUP_SIZE)))) ?
+		warp_lds[location.x][location.y][location.z]
+		:
+		sampleInputVolume(ilocalToGlobal(location))
+	);
+}
+
+void propogateBlocks(out warp_local warp)
+{
+	// find closest light while accumulating light color weighted by distance
+	const uint offset_count = 27;
+	const ivec3 offset[offset_count] = ivec3[](
+			ivec3(-1, -1, -1),
+			ivec3(-1, -1, 0),
+			ivec3(-1, -1, 1),
+			ivec3(-1, 0, -1),
+			ivec3(-1, 0, 0),
+			ivec3(-1, 0, 1),
+			ivec3(-1, 1, -1),
+			ivec3(-1, 1, 0),
+			ivec3(-1, 1, 1),
+			ivec3(0, -1, -1),
+			ivec3(0, -1, 0),
+			ivec3(0, -1, 1),
+			ivec3(0, 0, -1),
+			ivec3(0, 0, 0),
+			ivec3(0, 0, 1),
+			ivec3(0, 1, -1),
+			ivec3(0, 1, 0),
+			ivec3(0, 1, 1),
+			ivec3(1, -1, -1),
+			ivec3(1, -1, 0),
+			ivec3(1, -1, 1),
+			ivec3(1, 0, -1),
+			ivec3(1, 0, 0),
+			ivec3(1, 0, 1),
+			ivec3(1, 1, -1),
+			ivec3(1, 1, 0),
+			ivec3(1, 1, 1));
+
+	const vec3 current_location = localToGlobal(gl_LocalInvocationID.xyz) * InvVolumeDimensions * WorldDimensions;
+
+	float current_distance = 99999999999.9f;
+
+	for (uint i = 0; i < offset_count; ++i) {
+#ifdef SEED
+		const warp_local read_warp = group_load(ivec3(gl_LocalInvocationID.xyz) + offset[i]);
+#else
+		const warp_local read_warp = group_load(ivec3(gl_LocalInvocationID.xyz) + offset[i] * pc.current_step);
+#endif
+
+		if ( isLit(read_warp.packed_color) ) {	// new
+			
+			const float read_distance = distance(read_warp.emitter_location, current_location);
+
+			if ( read_distance < current_distance ) {
+			
+				current_distance = read_distance;
+				warp = read_warp;
+			}
+		}
+
+	} // for;for;for
+}
+
+void main() 
+{
+/* // this is allowable 96x96x64 divided by local size is ok, no remainder so bounds are respected inherently
+	{ // #### Required Bounds Check //
+		if ( any(greaterThanEqual(gl_GlobalInvocationID.xyz - VolumeDimensions, vec3(0))) )
+			return;
+	}
+*/
+
+	populateLDS(ivec3(gl_LocalInvocationID.xyz));
+
+	warp_local warp;
+	propogateBlocks(warp);
+
+#ifdef SEED
+	
+	// Incremental Averaging https://blog.demofox.org/2016/08/23/incremental-averaging/
+	// Average = mix(Average, NewValue, 1.0 / NewSampleCount);
+	//const vec4 Average = texelFetch(pingpongTexture[pc.index_output], ivec3(gl_GlobalInvocationID.xyz), 0);
+
+	// causes flicked warp.emitter_location = mix( Average.emitter_location, warp.emitter_location, 0.5f );
+	//warp.packed_color = packColor( mix( unpackColor(Average.packed_color), unpackColor(warp.packed_color), 0.5f) );
+	
+#endif
+
+#ifdef SEED
+	imageStore(pingpongImage[0], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp);
+#else
+	imageStore(pingpongImage[pc.index_output], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp);
+#endif
+}
+
+#endif // not MIP
+
+
+// ###################################################################################################################################
+#if defined(MIP) // FILTER STEP
+
+void sampleLight( in const restrict sampler3D inputTemporalC, in const restrict sampler3D inputTemporalDD, inout vec3 color, in const vec3 location, in const float Distance )
+{
+	// this is the correct physical way of blending colors of light, additive blending of adjacent light colors (no mixing)
+	// with additive blending light will accumulate to white in area's of bright mixed colors as it correctly should intensify with nearby lighting
+
+	float sampled_distance;
+		
+	sampled_distance = Distance * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color = color * sampled_distance;
+
+	sampled_distance = textureLodOffset(inputTemporalDD, location, 0, ivec3(-1,0,0)).a * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color += unpackColor(textureLodOffset(pingpongTexture[pc.index_input], location, 0, ivec3(-1,0,0)).packed_color) * sampled_distance;
+
+	sampled_distance = textureLodOffset(inputTemporalDD, location, 0, ivec3(1,0,0)).a * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color += unpackColor(textureLodOffset(pingpongTexture[pc.index_input], location, 0, ivec3(1,0,0)).packed_color) * sampled_distance;
+
+	sampled_distance = textureLodOffset(inputTemporalDD, location, 0, ivec3(0,-1,0)).a * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color += unpackColor(textureLodOffset(pingpongTexture[pc.index_input], location, 0, ivec3(0,-1,0)).packed_color) * sampled_distance;
+
+	sampled_distance = textureLodOffset(inputTemporalDD, location, 0, ivec3(0,1,0)).a * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color += unpackColor(textureLodOffset(pingpongTexture[pc.index_input], location, 0, ivec3(0,1,0)).packed_color) * sampled_distance;
+
+	sampled_distance = textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,-1)).a * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color += unpackColor(textureLodOffset(pingpongTexture[pc.index_input], location, 0, ivec3(0,0,-1)).packed_color) * sampled_distance;
+
+	sampled_distance = textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,1)).a * 0.5f + 0.5f;
+	sampled_distance = 1.0f - sampled_distance;
+	color += unpackColor(textureLodOffset(pingpongTexture[pc.index_input], location, 0, ivec3(0,0,1)).packed_color) * sampled_distance;
+}
+
+// smin removes discontuities (voronoi edges) by blending distance field data correctly
+void temporalBlendDD( in const restrict sampler3D inputTemporalDD, inout vec3 normal, inout float Distance, in const vec3 location )
+{
+	// input Distance, normal, are initialized to the locations first sample
+
+	// distance can leverage hw trilinear filtering safetly and accurately unlike direction
+	Distance = mix(Distance, textureLod(inputTemporalDD, location, 0).a, 0.5f);  // trilinear sample!
+
+	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(-1,0,0)).xyz);
+	normal = normalize(normal);
+
+	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(1,0,0)).xyz);
+	normal = normalize(normal);
+
+	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,-1,0)).xyz);
+	normal = normalize(normal);
+
+	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,1,0)).xyz);
+	normal = normalize(normal);
+
+	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,-1)).xyz);
+	normal = normalize(normal);
+
+	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,1)).xyz);
+	normal = normalize(normal);
+}		
+
+void temporalBlendR( in const restrict sampler3D inputTemporalR, inout vec3 color, in const vec3 location )
+{
+	// input color is initialized to the locations first sample
+
+	// color can leverage hw trilinear filtering safetly and accurately unlike direction
+	color = mix(color, textureLod(inputTemporalR, location, 0).rgb, 0.5f);  // trilinear sample!
+}
+
+void main() 
+{
+/* // this is allowable 64x64x128 divided by local size 8,8,8 is ok, no remainder so bounds are respected inherently
+	{ // #### Required Bounds Check //
+		if ( any(greaterThanEqual(gl_GlobalInvocationID.xyz - VolumeDimensions, vec3(0))) )
+			return;
+	}
+*/
+
+	ivec3 iLocation = ivec3(gl_GlobalInvocationID.xyz);
+	
+	// sample new, add to result, then new moves to 0. note: this volume gets pushed to front of "queue"
+	const warp_local warp = textureLod(pingpongTexture[pc.index_input], gl_GlobalInvocationID.xyz * InvVolumeDimensions, 0);
+
+	const vec3 current_location = gl_GlobalInvocationID.xyz * InvVolumeDimensions * WorldDimensions;
+
+	float t0, d0;
+	// #################################################################################################################
+	{	// distance & direction ###
+		
+		vec4 current_direction_distance;
+		current_direction_distance.xyz = warp.emitter_location - current_location;
+		current_direction_distance.w = length(current_direction_distance.xyz);
+		current_direction_distance.xyz = current_direction_distance.xyz / current_direction_distance.w; // normalized
+		const float inv_max_distance = 1.0f/length(WorldDimensions);
+		current_direction_distance.w = current_direction_distance.w * inv_max_distance * 2.0f - 1.0f; // normalized distance, expanded to [-1.0f...1.0f] to leverage full range of 16bit signed texture
+		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;
+
+		const vec4 original_direction_distance = current_direction_distance;
+
+		temporalBlendDD(inTemporalDD[pc.index_filter], current_direction_distance.xyz, current_direction_distance.w, gl_GlobalInvocationID.xyz * InvVolumeDimensions);
+
+		imageStore(outTemporalDD[1 - pc.index_filter], iLocation, current_direction_distance);
+
+		// ### temporal supersampled output - result moves to output
+
+		// // get absolute difference (for vectors, the data, does not require usuage of abs)
+		// see: https://homepages.inf.ed.ac.uk/rbf/HIPR2/pixsub.htm
+		{
+			//const vec3 diff_direction = abs(current_direction_distance.xyz - original_direction_distance.xyz);
+			//current_direction_distance.xyz = normalize(current_direction_distance.xyz - diff_direction);
+
+			const float diff_distance = current_direction_distance.w - original_direction_distance.w; // no abs is important
+			current_direction_distance.w = current_direction_distance.w - diff_distance;
+			d0 = current_direction_distance.w * 0.5f + 0.5f;
+			t0 = d0 / (original_direction_distance.w * 0.5f + 0.5f); // this parameter is only for *color*
+		}
+
+		imageStore(outTemporalDD[2], iLocation, current_direction_distance);
+	}
+
+	{   // color ###
+		vec3 current_reflect_color;
+		{ // reflection
+			current_reflect_color = unpackColor(warp.packed_color);
+			temporalBlendR(inTemporalR[pc.index_filter], current_reflect_color, gl_GlobalInvocationID.xyz * InvVolumeDimensions);
+			imageStore(outTemporalR[1 - pc.index_filter], iLocation, current_reflect_color.rgbb);
+
+			// ### temporal supersampled output - result moves to output
+
+			// this auto corrects too much temporal feedback from history frames (trails bug)
+			// its not introducing jitter (shaky light)
+			// has still a little temporal feedback but is limited unlike before
+			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
+			current_reflect_color = mix(unpackColor(warp.packed_color), current_reflect_color, t0);
+
+			imageStore(outTemporalR[2], iLocation, vec4(current_reflect_color.rgb, 1.0f));
+		}
+
+		{ // light
+			vec3 current_color = unpackColor(warp.packed_color);
+			sampleLight(inTemporalC[pc.index_filter], inTemporalDD[pc.index_filter], current_color, gl_GlobalInvocationID.xyz * InvVolumeDimensions, d0);;
+			
+			// luminance preserving blend - keeps the light still colored correctly. works well - 
+			const float luma0 = dot(current_color.rgb, LUMA);
+			current_color = current_reflect_color * current_color;
+			const float luma1 = dot(current_color.rgb, LUMA);
+			current_color = current_color * luma0 / luma1;
+
+			imageStore(outTemporalC[1 - pc.index_filter], iLocation, current_color.rgbb);
+
+			// ### temporal supersampled output - result moves to output
+
+			// this auto corrects too much temporal feedback from history frames (trails bug)
+			// its not introducing jitter (shaky light)
+			// has still a little temporal feedback but is limited unlike before
+			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
+			current_color = mix(unpackColor(warp.packed_color) * (1.0f - d0), current_color, t0);
+			
+			imageStore(outTemporalC[2], iLocation, vec4(current_color.rgb, 1.0f));
+		}
+	}
+
+
+
+/*
+	
+	vec4 temporal_volume_sum_direction_distance;
+	vec3 temporal_volume_sum_color;
+	
+	const ivec3 iLocation = ivec3(gl_GlobalInvocationID.xyz);
+	
+	{ // input index is off by one for final accumulated output is no included. Only the raw current values propogate thru the temporal history
+
+		// ### sample oldest (1), begin result. note: this volume gets popped off the "queue"
+		temporal_volume_sum_direction_distance = texelFetch(inTemporalDD[1], iLocation, 0);								// read 2
+		temporal_volume_sum_color = texelFetch(inTemporalC[1], iLocation, 0).rgb;										// read 2
+
+		{ // ### sample old, add to result, then old moves to 1. note: this volume gets popped to back of "queue"
+			{
+				const vec4 temporal_volume = texelFetch(inTemporalDD[0], iLocation, 0);									// read 1
+				temporal_volume_sum_direction_distance += temporal_volume;					
+				imageStore(outTemporalDD[2], iLocation, temporal_volume);												// overwrite 2 with 1
+			}
+			{
+				const vec3 temporal_volume = texelFetch(inTemporalC[0], iLocation, 0).rgb;								// read 1
+				temporal_volume_sum_color += temporal_volume;
+				imageStore(outTemporalC[2], iLocation, temporal_volume.rgbb);											// overwrite 2 with 1
+			}	
+		}
+	}
+	
+	#define _direction xyz
+	#define _distance a
+
+	// sample new, add to result, then new moves to 0. note: this volume gets pushed to front of "queue"
+
+	{   // sampling ###
+		vec3 source_location;
+		{
+			vec3 source_color;
+			sampleInputVolumeAA(source_location, source_color, iLocation);
+
+			// color ###
+			temporalBlendC(source_color);
+
+			imageStore(outTemporalC[1], iLocation, source_color.rgbb);													// overwrite 1 with current
+			temporal_volume_sum_color += source_color;
+
+			// ### temporal supersampled output - result moves to output
+			temporal_volume_sum_color = temporal_volume_sum_color * pc.inv_temporal_size;
+			imageStore(outTemporalC[0], iLocation, temporal_volume_sum_color.rgbb);										// overwrite 0 with accumulated (final output)
+		}
+
+		// distance & direction ###
+		const vec3 current_location = gl_GlobalInvocationID.xyz * InvVolumeDimensions * WorldDimensions;
+		const vec3 direction = source_location - current_location;
+
+		// normalization
+		vec4 source;
+		source._distance = length(direction) * pc.inv_max_distance * 2.0f - 1.0f;  // normalized distance, expanded to [-1.0f...1.0f] to leverage full range of 16bit signed texture
+		// transforms world space position of light to view space
+		// mat3 of view only required to transform a normal / direction vector		// this is a bug fix weird but works well enough 
+																					// this is the half angle between light direction and view'ish vector
+																					// eliminates most of the "bright building" in top left corner problem
+																					// other option is to completely rip out direction which won't look as good
+																					// its a hack but - its satisfactory visually (hard problem to solve this late with lighting being "done")
+
+		source._direction = transformNormalToViewSpace(mat3(pc.view), normalize(direction).xzy).xzy;  // direction is natively width,depth,height
+																					// view is width, height, depth
+																					// so the mul, direction is swizzled to be compatible with view
+																					// then finally swizzled back to width,depth,height
+																					// which is the final form we want for fragment shaders
+		const float saved_raw_distance = source._distance;
+
+		temporalBlendDD(source._direction, source._distance, iLocation);
+
+		imageStore(outTemporalDD[1], iLocation, source);	
+		temporal_volume_sum_direction_distance += source;
+
+		// ### temporal supersampled output - result moves to output
+
+		// // get absolute difference (for vectors, the data, does not require usuage of abs)
+		// see: https://homepages.inf.ed.ac.uk/rbf/HIPR2/pixsub.htm
+		temporal_volume_sum_direction_distance = temporal_volume_sum_direction_distance * pc.inv_temporal_size;
+		const float distance_diff = (temporal_volume_sum_direction_distance._distance - saved_raw_distance); // no abs is important
+		temporal_volume_sum_direction_distance._distance = temporal_volume_sum_direction_distance._distance - distance_diff; // remove difference - removes ghosting
+													// only distance needs this correction
+													// direction alone has no ghosting effect, and is supersampled without correction
+	
+		imageStore(outTemporalDD[0], iLocation, temporal_volume_sum_direction_distance);
+	}
+*/
+}
+#endif
+
+

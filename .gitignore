@@ -1,0 +1,46 @@
+# Other project files
+*.d
+*.db
+*.pdb
+*.suo
+*.log
+*.tlog
+*.lastbuildstate
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+*.ipch
+
+# Compiled Static libraries
+*.lib
+
+# Compiled
+*.exe
+*.dll
+
+# CMake files
+Makefile
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+CMakeLists.txt
+cmake_install.cmake
+cmake_uninstall.cmake
+
+# Specific Directories/Files
+.vs
+Rubbish
+vulkancapsviewer
+desktop.ini
+*.v1x
+*.fsb
+*.bin
+*.TMP
+*.bak

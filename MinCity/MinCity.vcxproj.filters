@@ -1,0 +1,560 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{77a90b06-157a-4c03-b3f8-1ed169c1c6c3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay">
+      <UniqueIdentifier>{03ec0617-7435-4ffd-b47d-e4401dc03ea6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Gameplay">
+      <UniqueIdentifier>{ffd70f43-c022-4fc1-9367-1594460606c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\VulkanCore">
+      <UniqueIdentifier>{a002c1b6-dd23-41fa-a38d-b341c02ec9e2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\VulkanCore">
+      <UniqueIdentifier>{a742b849-e3bd-416c-82c0-614ba250192a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Shaders\voxel effects">
+      <UniqueIdentifier>{760e58cb-69df-4be0-8995-966a53049f53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\voxel effects">
+      <UniqueIdentifier>{53c37bfd-60ba-4421-ace5-546e4616e797}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\voxel effects">
+      <UniqueIdentifier>{14c847f4-1673-4e07-b62f-f291d8485b84}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Gameplay\Copter">
+      <UniqueIdentifier>{f8371f77-371b-43c7-89db-c9ec9fe6b13b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay\Copter">
+      <UniqueIdentifier>{6f7891bb-9405-4186-a435-873de6daeecb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay\AI">
+      <UniqueIdentifier>{346740cc-addc-4ebf-9c08-e69d516cf277}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Gameplay\AI">
+      <UniqueIdentifier>{0f1ea8e7-de0c-49bf-bddb-92849217d52c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay\Cars">
+      <UniqueIdentifier>{9115bfd5-2160-4bbe-9882-efdab6c0619b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Gameplay\Cars">
+      <UniqueIdentifier>{7ad9fd4f-a249-45ad-b39f-a4248e0bf4f8}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="globals.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RedirectIO.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MinCity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cVoxelWorld.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Declarations.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IsoVoxel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cProcedural.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cNuklear.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tTime.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="betterenums.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelAlloc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxBinary.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="eVoxelModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cTextureBoy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderInfo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelAnim.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="eStateGroups.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="volumetricOpacity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="writeOnlyBuffer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="volumetricVisibility.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelModelInstance.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="IsoCamera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="optimized.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="debug.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="performance.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cToolProvider.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cZoningTool.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cAbstractToolMethods.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_framework.hpp">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku.hpp">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_addon.hpp">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
+    <ClInclude Include="cVulkan.h">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
+    <ClInclude Include="liveshader.hpp">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelKonstants.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cUpdateableGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cTestGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="nk_style.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cPostProcess.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cBlueNoise.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vkNames.h">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
+    <ClInclude Include="tbb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxel_range2d.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sBatched.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="volumetricradialgrid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cUserInterface.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cAudio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cNonUpdateableGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cBuildingGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="voxLink.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lightBuffer3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ComputeLightConstants.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="voxelScreen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ImageAnimation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Adjacency.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cCity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nk_include.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="nk_custom.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CityInfo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Documents\Visual Studio 2017\Projects\Utility\async_long_task.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="shockwave.h">
+      <Filter>Header Files\voxel effects</Filter>
+    </ClInclude>
+    <ClInclude Include="tornado.h">
+      <Filter>Header Files\voxel effects</Filter>
+    </ClInclude>
+    <ClInclude Include="rain.h">
+      <Filter>Header Files\voxel effects</Filter>
+    </ClInclude>
+    <ClInclude Include="explosion.h">
+      <Filter>Header Files\voxel effects</Filter>
+    </ClInclude>
+    <ClInclude Include="cCopterBodyGameObject.h">
+      <Filter>Header Files\Gameplay\Copter</Filter>
+    </ClInclude>
+    <ClInclude Include="cCopterGameObject.h">
+      <Filter>Header Files\Gameplay\Copter</Filter>
+    </ClInclude>
+    <ClInclude Include="cCopterPropGameObject.h">
+      <Filter>Header Files\Gameplay\Copter</Filter>
+    </ClInclude>
+    <ClInclude Include="cAIMover.h">
+      <Filter>Header Files\Gameplay\AI</Filter>
+    </ClInclude>
+    <ClInclude Include="cAISkyMover.h">
+      <Filter>Header Files\Gameplay\AI</Filter>
+    </ClInclude>
+    <ClInclude Include="UndoVoxel.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="eDirection.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cCarGameObject.h">
+      <Filter>Header Files\Gameplay\Cars</Filter>
+    </ClInclude>
+    <ClInclude Include="cTrafficSignGameObject.h">
+      <Filter>Header Files\Gameplay\Cars</Filter>
+    </ClInclude>
+    <ClInclude Include="cRoadTool.h">
+      <Filter>Header Files\Gameplay\Cars</Filter>
+    </ClInclude>
+    <ClInclude Include="cTrafficControlGameObject.h">
+      <Filter>Header Files\Gameplay\Cars</Filter>
+    </ClInclude>
+    <ClInclude Include="cSignageGameObject.h">
+      <Filter>Header Files\Gameplay\Cars</Filter>
+    </ClInclude>
+    <ClInclude Include="world.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cPoliceCarGameObject.h">
+      <Filter>Header Files\Gameplay\Cars</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MinCity.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RedirectIO.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cVoxelWorld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cProcedural.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cNuklear.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="voxBinary.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="eVoxelModels.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="private_implementations.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cTextureBoy.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="volumetricVisibility.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="optimized.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Debug.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="voxelModelInstance.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="performance.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cToolProvider.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cZoningTool.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cVulkan.cpp">
+      <Filter>Source Files\VulkanCore</Filter>
+    </ClCompile>
+    <ClCompile Include="cUpdateableGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cTestGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="liveshader.cpp">
+      <Filter>Source Files\VulkanCore</Filter>
+    </ClCompile>
+    <ClCompile Include="cPostProcess.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="X:\Vulkan\Vookoo\include\vku\volk\volk.c">
+      <Filter>Source Files\VulkanCore</Filter>
+    </ClCompile>
+    <ClCompile Include="cBlueNoise.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="tbb_fp_env.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="volumetricradialgrid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cUserInterface.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cAudio.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cBuildingGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="ImageAnimation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="saveworld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="loadworld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cCity.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="shockwave.cpp">
+      <Filter>Source Files\voxel effects</Filter>
+    </ClCompile>
+    <ClCompile Include="rain.cpp">
+      <Filter>Source Files\voxel effects</Filter>
+    </ClCompile>
+    <ClCompile Include="tornado.cpp">
+      <Filter>Source Files\voxel effects</Filter>
+    </ClCompile>
+    <ClCompile Include="explosion.cpp">
+      <Filter>Source Files\voxel effects</Filter>
+    </ClCompile>
+    <ClCompile Include="cCopterBodyGameObject.cpp">
+      <Filter>Source Files\Gameplay\Copter</Filter>
+    </ClCompile>
+    <ClCompile Include="cCopterGameObject.cpp">
+      <Filter>Source Files\Gameplay\Copter</Filter>
+    </ClCompile>
+    <ClCompile Include="cCopterPropGameObject.cpp">
+      <Filter>Source Files\Gameplay\Copter</Filter>
+    </ClCompile>
+    <ClCompile Include="cAIMover.cpp">
+      <Filter>Source Files\Gameplay\AI</Filter>
+    </ClCompile>
+    <ClCompile Include="cAISkyMover.cpp">
+      <Filter>Source Files\Gameplay\AI</Filter>
+    </ClCompile>
+    <ClCompile Include="cCarGameObject.cpp">
+      <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+    <ClCompile Include="cSignageGameObject.cpp">
+      <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+    <ClCompile Include="cTrafficSignGameObject.cpp">
+      <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+    <ClCompile Include="cTrafficControlGameObject.cpp">
+      <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+    <ClCompile Include="cRoadTool.cpp">
+      <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+    <ClCompile Include="cPoliceCarGameObject.cpp">
+      <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\uniforms.vert">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\uniforms.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\uniforms.geom">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\nuklear.vert">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\nuklear.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\light.comp">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\volumetric.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\volumetric.vert">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\postquad.vert">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\upsample.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\postaa.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\voxel_clear.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\depthresolve.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\stencilcheckerboard.frag">
+      <Filter>Shaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\voxel_rain.frag">
+      <Filter>Shaders\voxel effects</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\voxel_shockwave.frag">
+      <Filter>Shaders\voxel effects</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\data\shaders\voxel_explosion.frag">
+      <Filter>Shaders\voxel effects</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\data\shaders\voxel_tornado.frag">
+      <Filter>Shaders\voxel effects</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="MinCity.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Data\Shaders\random.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\common.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\screendimensions.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\text.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\lighting.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\shareduniform.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\MinCity.ini">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\Data\Shaders\texturearray.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\voxel_fragment.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\Data\Shaders\sharedbuffer.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\data\shaders\lightmap.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\data\shaders\transform.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="MinCity.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+</Project>

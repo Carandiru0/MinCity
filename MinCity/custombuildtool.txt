@@ -1,0 +1,6 @@
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -V "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+Compiling %(Identity) to spirv
+
+%(FullPath)\..\Binary\%(Filename)%(Extension).bin

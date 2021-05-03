@@ -1,0 +1,154 @@
+#version 450
+
+//#extension GL_KHR_shader_subgroup_ballot: enable
+#extension GL_KHR_shader_subgroup_vote: enable
+//#extension GL_KHR_shader_subgroup_quad: enable
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;	
+#define select(iffalse, iftrue, condition) mix(iffalse, iftrue, condition)
+
+layout (push_constant) restrict readonly uniform PushConstant {
+	uint	slice_index;
+} pc;
+
+// "Light Volume" mod n of World Visible Volume
+layout (constant_id = 0) const float VolumeDimensions_Width = 0.0f;
+layout (constant_id = 1) const float VolumeDimensions_Depth = 0.0f;
+#define VolumeDimensions vec2(VolumeDimensions_Width, VolumeDimensions_Depth)
+#define InvVolumeDimensions vec2(1.0f / VolumeDimensions_Width, 1.0f / VolumeDimensions_Depth)
+
+#if defined(MINMAX)
+layout(binding=0) buffer Uniform {
+  vec3 _min;
+  float pad0;
+  vec3 _max;
+  float pad1;
+};
+#else
+layout(binding=0) readonly buffer Uniform {
+  vec3 _min;
+  float pad0;
+  vec3 _max;
+  float pad1;
+};
+#endif
+
+layout (binding = 1) uniform sampler3D volumeMap[2];
+layout (binding = 2, rgba8) writeonly restrict uniform image2D sliceImage;
+#define LIGHT_SEED 0
+#define LIGHT_MAP 1
+
+const float MAX_BYTE = 255.0f;
+const float INV_MAX_BYTE = 1.0f / MAX_BYTE;
+
+vec3 unpackColor(in const float fetched) {
+	
+	const uint color_in = uint(fetched);
+
+	uvec3 color_out;
+	// SHADER sees     A B G R			(RGBA in reverse) 
+	color_out.b = (color_in >> 16) & 0xFF;
+	color_out.g = (color_in >> 8) & 0xFF;
+	color_out.r = color_in & 0xFF;
+	
+	return(vec3(color_out) * INV_MAX_BYTE);
+}
+float packColor(in const vec3 pushed) {
+	
+	const uvec3 color_in = uvec3(pushed * MAX_BYTE);
+
+	// SHADER sees     A B G R			(RGBA in reverse) 
+	const uint color_out = (color_in.b << 16) | (color_in.g << 8) | color_in.r;
+	
+	return(float(color_out));
+}
+
+vec3 decompressNormal(in const vec2 compressed_normal)
+{
+	// compress direction storing:  convert normalized (-1 ... 1) to (0 ... 1)
+	//								only x(width) and y(depth), when decompressing z is calculated:
+	//																								1.0f = x + y + z
+	//																								convert (0 ... 1) to (-1 ... 1)
+	//																								normalize()
+	// solve for z, 1=x+y+z : z=1-x-y
+	vec3 decompressed_normal;
+	decompressed_normal.z = 1.0f - compressed_normal.x - compressed_normal.y;
+	decompressed_normal.xy = compressed_normal.xy;
+
+	decompressed_normal = decompressed_normal * 2.0f - 1.0f;
+	
+	return(normalize(decompressed_normal));
+}
+
+#define MODE_DISTANCE 0
+#define MODE_DIRECTION 1
+#define MODE_COLOR 2
+#define MODE_SEED 3
+#define MODE_COMBINED 4
+
+#define CURRENT_MODE MODE_DISTANCE
+
+vec3 sampleInputVolume( in const vec2 Location )
+{
+#if (MODE_DISTANCE == CURRENT_MODE)
+	return( texelFetch(volumeMap[LIGHT_MAP], ivec3(Location, pc.slice_index), 0).rrr );
+#elif (MODE_DIRECTION == CURRENT_MODE)
+	return( decompressNormal(texelFetch(volumeMap[LIGHT_MAP], ivec3(Location, pc.slice_index), 0).gb) );
+#elif (MODE_COLOR == CURRENT_MODE)
+	return( unpackColor(texelFetch(volumeMap[LIGHT_MAP], ivec3(Location, pc.slice_index), 0).a) );
+#elif (MODE_SEED == CURRENT_MODE) // LIGHT PROBE (SEED) input volume
+	return( unpackColor(texelFetch(volumeMap[LIGHT_SEED], ivec3(Location, pc.slice_index), 0).a) );
+#else // MODE_COMBINED
+	const vec2 sampling = texelFetch(volumeMap[LIGHT_MAP], ivec3(Location, pc.slice_index), 0).ra;
+	vec3 color = unpackColor(sampling.g);
+
+	color = mix(color, (sampling.r) * color, 0.911f);
+	color += (1.0f - sampling.r) * 0.333f * unpackColor(texelFetch(volumeMap[LIGHT_SEED], ivec3(Location, pc.slice_index), 0).a);
+	return(color);
+#endif
+}
+
+
+#if defined(MINMAX)
+void main() 
+{
+	{ // #### Required Bounds Check //
+		if ( any(greaterThanEqual(gl_GlobalInvocationID.xy - VolumeDimensions, vec2(0))) )
+			return;
+	}
+
+	const vec3 sampled = sampleInputVolume(gl_GlobalInvocationID.xy);
+
+	const vec3 min_sampled = subgroupMin(sampled);
+	const vec3 max_sampled = subgroupMax(sampled);
+
+	if ( subgroupElect() ) { // this is safe as only one subgroup invocation does the job
+		_min = min(_min, min_sampled);
+		_max = max(_max, max_sampled);
+	}
+	memoryBarrierBuffer();
+}
+#endif
+
+#if defined(BLIT)
+
+//function scaleBetween(in, minAllowed, maxAllowed, min, max) {
+//  return (maxAllowed - minAllowed) * (in - min) / (max - min) + minAllowed;
+//}
+// ie. scale to range 0.0f ... 1.0f
+//			out = (1.0f - 0.0f) * (in - min) / (max - min) + 0.0f
+//			out = (in - min) / (max - min) 
+void main() 
+{
+	{ // #### Required Bounds Check //
+		if ( any(greaterThanEqual(gl_GlobalInvocationID.xy - VolumeDimensions, vec2(0))) )
+			return;
+	}
+
+	const vec3 sampled = sampleInputVolume(gl_GlobalInvocationID.xy);
+
+	imageStore(sliceImage, ivec2(gl_GlobalInvocationID.xy), vec4(/*((sampled - _min) / (_max - _min)) */ sampled / _max, 1.0f)); // normalize
+}
+#endif
+

@@ -1,0 +1,912 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{D608896E-F7D2-494C-889A-B55F6993A290}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>MinCity</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseIntelTBB>true</UseIntelTBB>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseIntelTBB>true</UseIntelTBB>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;$(LibraryPath)</LibraryPath>
+    <IncludePath>X:\tbb\include;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
+    <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <IncludePath>X:\tbb\include;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;$(LibraryPath)</LibraryPath>
+    <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
+    <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
+    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__AVX2__;__AVX__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_HAS_EXCEPTIONS=0;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>X:\nuklear-master;X:\Vulkan\glfw\include;$(VULKAN_SDK)\Include;X:\Vulkan\Vookoo\include;X:\fmt;X:\FMOD\api\core\inc;C:\Documents\Visual Studio 2017\Projects;X:\density-master\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <BrowseInformation>false</BrowseInformation>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <CallingConvention>Cdecl</CallingConvention>
+      <AdditionalOptions>/D_WIN32_WINNT=0x0A00 %(AdditionalOptions)</AdditionalOptions>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <MinimalRebuild>false</MinimalRebuild>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <StringPooling>true</StringPooling>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib</AdditionalDependencies>
+      <LinkTimeCodeGeneration>
+      </LinkTimeCodeGeneration>
+      <OptimizeReferences>true</OptimizeReferences>
+      <IgnoreSpecificDefaultLibraries>
+      </IgnoreSpecificDefaultLibraries>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
+      <LargeAddressAware>true</LargeAddressAware>
+      <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
+      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
+      <ForceSymbolReferences>
+      </ForceSymbolReferences>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+    <CustomBuildStep>
+      <Command>
+      </Command>
+      <Message>DEBUG BUILD - Still Optimizing SPIRV Binaries...</Message>
+      <Outputs>%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(Outputs)</Outputs>
+    </CustomBuildStep>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <Profile>true</Profile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>
+      </SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__x86_64__;__AVX2__;__AVX__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_HAS_EXCEPTIONS=0;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>X:\nuklear-master;X:\Vulkan\glfw\include;$(VULKAN_SDK)\Include;X:\Vulkan\Vookoo\include;X:\fmt;X:\FMOD\api\core\inc;C:\Documents\Visual Studio 2017\Projects;X:\density-master\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <OmitFramePointers>true</OmitFramePointers>
+      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <ControlFlowGuard>false</ControlFlowGuard>
+      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw %(AdditionalOptions)</AdditionalOptions>
+      <DisableSpecificWarnings>
+      </DisableSpecificWarnings>
+      <CallingConvention>Cdecl</CallingConvention>
+      <BrowseInformation />
+      <ExceptionHandling>false</ExceptionHandling>
+      <OpenMPSupport>
+      </OpenMPSupport>
+      <IntelJCCErratum>
+      </IntelJCCErratum>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <UseStandardPreprocessor>
+      </UseStandardPreprocessor>
+      <StringPooling>true</StringPooling>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib</AdditionalDependencies>
+      <IgnoreSpecificDefaultLibraries>
+      </IgnoreSpecificDefaultLibraries>
+      <Profile>false</Profile>
+      <LargeAddressAware>true</LargeAddressAware>
+      <PreventDllBinding>false</PreventDllBinding>
+      <DelayLoadDLLs>
+      </DelayLoadDLLs>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
+      <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
+      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <SetChecksum>true</SetChecksum>
+      <MergeSections>/merge:_RDATA=.rdata</MergeSections>
+      <SupportNobindOfDelayLoadedDLL>true</SupportNobindOfDelayLoadedDLL>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+    <CustomBuildStep>
+      <Command>C:\MinCity\Data\Shaders\BATCH_optimize.bat</Command>
+    </CustomBuildStep>
+    <CustomBuildStep>
+      <Message>Optimizing SPIRV Binaries...</Message>
+      <Outputs>%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(Outputs)</Outputs>
+    </CustomBuildStep>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\Documents\Visual Studio 2017\Projects\Utility\async_long_task.h" />
+    <ClInclude Include="Adjacency.h" />
+    <ClInclude Include="cAIMover.h" />
+    <ClInclude Include="betterenums.h" />
+    <ClInclude Include="cAbstractToolMethods.h" />
+    <ClInclude Include="cAISkyMover.h" />
+    <ClInclude Include="cAudio.h" />
+    <ClInclude Include="cBlueNoise.h" />
+    <ClInclude Include="cBuildingGameObject.h" />
+    <ClInclude Include="cCarGameObject.h" />
+    <ClInclude Include="cCity.h" />
+    <ClInclude Include="cCopterBodyGameObject.h" />
+    <ClInclude Include="cCopterGameObject.h" />
+    <ClInclude Include="cCopterPropGameObject.h" />
+    <ClInclude Include="CityInfo.h" />
+    <ClInclude Include="cNonUpdateableGameObject.h" />
+    <ClInclude Include="cNuklear.h" />
+    <ClInclude Include="ComputeLightConstants.h" />
+    <ClInclude Include="cPoliceCarGameObject.h" />
+    <ClInclude Include="cPostProcess.h" />
+    <ClInclude Include="cProcedural.h" />
+    <ClInclude Include="cRoadTool.h" />
+    <ClInclude Include="cSignageGameObject.h" />
+    <ClInclude Include="cTestGameObject.h" />
+    <ClInclude Include="cTextureBoy.h" />
+    <ClInclude Include="cToolProvider.h" />
+    <ClInclude Include="cTrafficControlGameObject.h" />
+    <ClInclude Include="cTrafficSignGameObject.h" />
+    <ClInclude Include="cUpdateableGameObject.h" />
+    <ClInclude Include="cUserInterface.h" />
+    <ClInclude Include="cVoxelWorld.h" />
+    <ClInclude Include="cVulkan.h" />
+    <ClInclude Include="cZoningTool.h" />
+    <ClInclude Include="data.h" />
+    <ClInclude Include="debug.h" />
+    <ClInclude Include="Declarations.h" />
+    <ClInclude Include="eDirection.h" />
+    <ClInclude Include="eStateGroups.h" />
+    <ClInclude Include="eVoxelModels.h" />
+    <ClInclude Include="explosion.h" />
+    <ClInclude Include="globals.h" />
+    <ClInclude Include="ImageAnimation.h" />
+    <ClInclude Include="lightBuffer3D.h" />
+    <ClInclude Include="IsoCamera.h" />
+    <ClInclude Include="IsoVoxel.h" />
+    <ClInclude Include="liveshader.hpp" />
+    <ClInclude Include="MinCity.h" />
+    <ClInclude Include="nk_custom.h" />
+    <ClInclude Include="nk_include.h" />
+    <ClInclude Include="nk_style.h" />
+    <ClInclude Include="optimized.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="performance.h" />
+    <ClInclude Include="rain.h" />
+    <ClInclude Include="RedirectIO.h" />
+    <ClInclude Include="RenderInfo.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="sBatched.h" />
+    <ClInclude Include="shockwave.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="tbb.h" />
+    <ClInclude Include="tornado.h" />
+    <ClInclude Include="tTime.h" />
+    <ClInclude Include="UndoVoxel.h" />
+    <ClInclude Include="volumetricOpacity.h" />
+    <ClInclude Include="volumetricradialgrid.h" />
+    <ClInclude Include="volumetricVisibility.h" />
+    <ClInclude Include="voxBinary.h" />
+    <ClInclude Include="voxelAlloc.h" />
+    <ClInclude Include="voxelAnim.h" />
+    <ClInclude Include="voxelKonstants.h" />
+    <ClInclude Include="voxelModel.h" />
+    <ClInclude Include="voxelModelInstance.h" />
+    <ClInclude Include="voxelState.h" />
+    <ClInclude Include="voxel_range2d.h" />
+    <ClInclude Include="voxLink.h" />
+    <ClInclude Include="voxelScreen.h" />
+    <ClInclude Include="world.h" />
+    <ClInclude Include="writeOnlyBuffer.h" />
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vkNames.h" />
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku.hpp" />
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_addon.hpp" />
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_framework.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="cAIMover.cpp" />
+    <ClCompile Include="cAISkyMover.cpp" />
+    <ClCompile Include="cAudio.cpp" />
+    <ClCompile Include="cBlueNoise.cpp" />
+    <ClCompile Include="cBuildingGameObject.cpp" />
+    <ClCompile Include="cCarGameObject.cpp" />
+    <ClCompile Include="cCity.cpp" />
+    <ClCompile Include="cCopterBodyGameObject.cpp" />
+    <ClCompile Include="cCopterGameObject.cpp" />
+    <ClCompile Include="cCopterPropGameObject.cpp" />
+    <ClCompile Include="cNuklear.cpp" />
+    <ClCompile Include="cPoliceCarGameObject.cpp" />
+    <ClCompile Include="cPostProcess.cpp" />
+    <ClCompile Include="cProcedural.cpp" />
+    <ClCompile Include="cRoadTool.cpp" />
+    <ClCompile Include="cSignageGameObject.cpp" />
+    <ClCompile Include="cTestGameObject.cpp" />
+    <ClCompile Include="cTextureBoy.cpp" />
+    <ClCompile Include="cToolProvider.cpp" />
+    <ClCompile Include="cTrafficControlGameObject.cpp" />
+    <ClCompile Include="cTrafficSignGameObject.cpp" />
+    <ClCompile Include="cUpdateableGameObject.cpp" />
+    <ClCompile Include="cUserInterface.cpp" />
+    <ClCompile Include="cVoxelWorld.cpp" />
+    <ClCompile Include="cVulkan.cpp" />
+    <ClCompile Include="cZoningTool.cpp" />
+    <ClCompile Include="Debug.cpp" />
+    <ClCompile Include="eVoxelModels.cpp" />
+    <ClCompile Include="explosion.cpp" />
+    <ClCompile Include="ImageAnimation.cpp" />
+    <ClCompile Include="liveshader.cpp" />
+    <ClCompile Include="loadworld.cpp" />
+    <ClCompile Include="MinCity.cpp" />
+    <ClCompile Include="optimized.cpp">
+      <DebugInformationFormat Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">ProgramDatabase</DebugInformationFormat>
+      <SDLCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </SDLCheck>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
+      <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Disabled</InlineFunctionExpansion>
+      <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Speed</FavorSizeOrSpeed>
+      <OmitFramePointers Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</OmitFramePointers>
+      <EnableFiberSafeOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableFiberSafeOptimizations>
+      <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </BasicRuntimeChecks>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</BufferSecurityCheck>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <ControlFlowGuard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ControlFlowGuard>
+      <RuntimeTypeInfo Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</RuntimeTypeInfo>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/Ob3 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="performance.cpp" />
+    <ClCompile Include="private_implementations.cpp" />
+    <ClCompile Include="rain.cpp" />
+    <ClCompile Include="RedirectIO.cpp" />
+    <ClCompile Include="saveworld.cpp" />
+    <ClCompile Include="shockwave.cpp" />
+    <ClCompile Include="tbb_fp_env.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <FloatingPointModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Fast</FloatingPointModel>
+      <FloatingPointModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Precise</FloatingPointModel>
+    </ClCompile>
+    <ClCompile Include="tornado.cpp" />
+    <ClCompile Include="volumetricradialgrid.cpp" />
+    <ClCompile Include="volumetricVisibility.cpp" />
+    <ClCompile Include="voxBinary.cpp" />
+    <ClCompile Include="voxelModelInstance.cpp" />
+    <ClCompile Include="X:\Vulkan\Vookoo\include\vku\volk\volk.c">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsC</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">CompileAsC</CompileAs>
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
+      <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Speed</FavorSizeOrSpeed>
+      <OmitFramePointers Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</OmitFramePointers>
+      <EnableFiberSafeOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableFiberSafeOptimizations>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</BufferSecurityCheck>
+      <ControlFlowGuard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ControlFlowGuard>
+      <FunctionLevelLinking Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</FunctionLevelLinking>
+      <RuntimeTypeInfo Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</RuntimeTypeInfo>
+      <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </BasicRuntimeChecks>
+      <SDLCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </SDLCheck>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\uniforms.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC   --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC   --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\uniforms.vert">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"   --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"</Command>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DDYNAMIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"   --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\uniforms.geom">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin"
+
+
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
+
+
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
+
+</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin</Outputs>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHEIGHT  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin"
+
+
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
+
+
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"
+
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
+
+</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\nuklear.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\nuklear.vert">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\light.comp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSEED  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_seed%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DJFA  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_jfa%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DMIP  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_mip%(Extension).bin"</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_seed%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_jfa%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_mip%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSEED  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_seed%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DJFA  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_jfa%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DMIP  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_mip%(Extension).bin"</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_seed%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_jfa%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_mip%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\volumetric.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\volumetric.vert">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="MinCity.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\Data\Shaders\postquad.vert">
+      <FileType>Document</FileType>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DRESOLVE  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_0  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_1  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_2  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DOVERLAY  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_overlay%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DRESOLVE  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_0  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_1  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_2  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DOVERLAY  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_overlay%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_overlay%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_overlay%(Extension).bin</Outputs>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\upsample.frag">
+      <FileType>Document</FileType>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBLEND  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_blend%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DRESOLVE  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBLEND  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_blend%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DRESOLVE  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin"</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_blend%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_blend%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_resolve%(Extension).bin</Outputs>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Data\Shaders\common.glsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </ExcludedFromBuild>
+    </None>
+    <CustomBuild Include="..\Data\Shaders\postaa.frag">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTMP_PASS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_0  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_1  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_2  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DOVERLAY  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTMP_PASS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_0  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_1  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_2  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DOVERLAY  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\depthresolve.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <None Include="..\Data\Shaders\lighting.glsl" />
+    <None Include="..\data\shaders\lightmap.glsl" />
+    <None Include="..\Data\Shaders\random.glsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </ExcludedFromBuild>
+    </None>
+    <None Include="..\Data\Shaders\screendimensions.glsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </ExcludedFromBuild>
+    </None>
+    <None Include="..\Data\Shaders\sharedbuffer.glsl" />
+    <None Include="..\Data\Shaders\shareduniform.glsl" />
+    <CustomBuild Include="..\Data\Shaders\stencilcheckerboard.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DEVEN  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_even%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DODD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_odd%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DEVEN  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_even%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DODD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_odd%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_even%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_odd%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_even%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_odd%(Extension).bin;%(Outputs)</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+    <None Include="..\Data\Shaders\text.glsl" />
+    <CustomBuild Include="..\Data\Shaders\voxel_rain.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\voxel_shockwave.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</BuildInParallel>
+    </CustomBuild>
+    <CustomBuild Include="..\Data\Shaders\voxel_clear.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
+      <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
+    </CustomBuild>
+    <None Include="..\Data\Shaders\texturearray.glsl" />
+    <CustomBuild Include="..\data\shaders\voxel_explosion.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+    <None Include="..\data\shaders\transform.glsl" />
+    <None Include="..\Data\Shaders\voxel_fragment.glsl" />
+    <CustomBuild Include="..\data\shaders\voxel_tornado.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+    <None Include="..\MinCity.ini" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="MinCity.ico" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
+</Project>
