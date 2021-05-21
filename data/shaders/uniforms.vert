@@ -51,16 +51,17 @@ layout (constant_id = 1) const float VolumeDimensions_Y = 0.0f;
 #if defined(HEIGHT) // terrain
 layout(location = 0) out streamOut
 {
-	flat vec3	right, forward, up;
-	flat vec2	local_uv;
+	writeonly flat vec3	right, forward;
+	flat vec3 up;
+	writeonly flat vec2	local_uv;
 #ifndef BASIC
-	flat vec3    ambient;
-	flat float   occlusion;
-	flat float   emission;
+	writeonly flat vec3    ambient;
+	writeonly flat float   occlusion;
+	writeonly flat float   emission;
 #endif
 } Out;
 #elif defined(ROAD) // road
-layout(location = 0) out streamOut
+writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat vec4   corners;
@@ -73,7 +74,7 @@ layout(location = 0) out streamOut
 #endif
 } Out;
 #else  // voxels only
-layout(location = 0) out streamOut
+writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat uint	adjacency;

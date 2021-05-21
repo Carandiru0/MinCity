@@ -143,6 +143,32 @@ Volumetric::voxB::voxelState const cCarGameObject::OnVoxel(Volumetric::voxB::vox
 
 namespace world
 {
+	bool const hasStoppedCar(Iso::Voxel const& oVoxel, uint32_t const excludeHash)
+	{
+		for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
+
+			uint32_t const hash = Iso::getHash(oVoxel, i);
+			if (0 != hash && excludeHash != hash) {
+
+				auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
+
+				if (FoundModelInstance) {
+
+					if (Volumetric::eVoxelModels_Dynamic::CARS == FoundModelInstance->getModel().identity()._modelGroup) {
+
+						// car exists, is it moving ?
+						cCarGameObject const* const pGameObject = FoundModelInstance->getOwnerGameObject<cCarGameObject>();
+						if (pGameObject) {
+
+							return(pGameObject->isStopped());  // this function only returns true when a car exists and it is not moving
+						}
+					}
+				}
+			}
+		}
+
+		return(false);
+	}
 	bool const hasCar(Iso::Voxel const& oVoxel, uint32_t const excludeHash)
 	{
 		for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
@@ -330,7 +356,7 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 
 			
 			point2D_t voxelRoadTarget(voxelRoadCenterNode);
-			uint32_t targetDirection(0);
+			uint32_t targetDirection(currentState.direction);
 
 			if (bTurningLeft) {
 				
@@ -352,6 +378,7 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 					voxelRoadTarget.y -= CENTER_NODE_OFFSET;
 					break;
 				}
+				targetState = state(eStateType::XING, targetDirection, voxelRoadTarget, true);
 			}
 			else if (bTurningRight) {
 
@@ -373,15 +400,27 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 					voxelRoadTarget.y += CENTER_NODE_OFFSET;
 					break;
 				}
+				targetState = state(eStateType::XING, targetDirection, voxelRoadTarget, true);
 			}
-			
+			else { // straight
+				voxelRoadTarget = p2D_add(voxelRoadTarget, p2D_muls(currentState.voxelDirection, CENTER_NODE_OFFSET + 1));
+				targetState = state(eStateType::XING, currentState.direction, voxelRoadTarget, false);
+			}
+
+			{ // check target space for car, don't enter intersection if space is not clear for target
+				int32_t const car_half_length(SFM::round_to_i32(_this.half_length));
+				point2D_t const targetOffset(p2D_add(targetState.voxelIndex, p2D_muls(targetState.voxelDirection, car_half_length)));
+				// target offset is the origin of the car offset by half its length in the target direction
+				if (!checkSpace(targetOffset, targetState.voxelDirection, car_half_length, evaluate_car_space)) {
+					return(false);
+				}
+			}
+
 			// common
 			if (bTurningLeft || bTurningRight) {
 
 				// setup for new target
 				ZeroMemory(_arcs, sizeof(_arcs));
-
-				targetState = state(eStateType::XING, targetDirection, voxelRoadTarget, true);
 
 				// calculate biarcs
 				biarc_computeArcs(_arcs[0], _arcs[1],
@@ -390,17 +429,12 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 
 				targetState.distance = _arcs[0].length + _arcs[1].length;
 				return(true);
-
 			}
 
 			// straight thru intersection
-			point2D_t voxelAhead = p2D_add(voxelRoadCenterNode, p2D_muls(currentState.voxelDirection, CENTER_NODE_OFFSET + 1));
-
-			targetState = state(eStateType::XING, currentState.direction, voxelAhead, false);
-			targetState.distance = XMVectorGetX(XMVector2Length(p2D_to_v2(p2D_sub(voxelAhead, _this.currentState.voxelIndex))));
+			targetState.distance = XMVectorGetX(XMVector2Length(p2D_to_v2(p2D_sub(voxelRoadTarget, _this.currentState.voxelIndex))));
 
 			return(true);
-
 		}
 	}
 
@@ -716,6 +750,12 @@ bool const __vectorcall cCarGameObject::ccd(FXMVECTOR const xmLocation, FXMVECTO
 	return(!world::hasCar(voxelIndexAhead, (*Instance)->getHash()));
 } // returns true on no collision, false on collision
 
+#ifndef NDEBUG
+#ifdef DEBUG_TRAFFIC
+static uint32_t g_cars_errored_out(0);
+#endif
+#endif
+
 void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	if (!_this.moving) {
@@ -809,8 +849,14 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 			else { 
 				// too long idle (ccd failure state)
 				if (tNow - _this.tIdleStart > CAR_IDLE_MAX) {
-					(*Instance)->destroy(); // car gets destroyed
-					_this.tIdleStart = zero_time_point;
+#ifndef NDEBUG
+#ifdef DEBUG_TRAFFIC
+					if (!(*Instance)->destroyPending()) {
+						++g_cars_errored_out;
+					}
+#endif
+#endif	
+					(*Instance)->destroy(); // car gets destroyed		
 				}
 			}
 			// nothing else changes, want _this.moving to equal true so that this state that isn't finished
@@ -829,9 +875,15 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 	}
 	else {
 		// too long idle
-		if (tNow - _this.tIdleStart > CAR_IDLE_MAX) {
+		if (tNow - _this.tIdleStart > (CAR_IDLE_MAX * 2)) { // double the time to error out *only* here
+#ifndef NDEBUG
+#ifdef DEBUG_TRAFFIC
+			if (!(*Instance)->destroyPending()) {
+				++g_cars_errored_out;
+			}
+#endif
+#endif	
 			(*Instance)->destroy(); // car gets destroyed
-			_this.tIdleStart = zero_time_point;
 		}
 	}
 }
@@ -911,6 +963,13 @@ void cCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& _
 		it->OnUpdate(tNow, tDelta);
 		++it;
 	}
+
+#ifndef NDEBUG
+#ifdef DEBUG_TRAFFIC
+	FMT_NUKLEAR_DEBUG(false, "cars active: {:n}  cars errored out: {:n}", size(), g_cars_errored_out);
+#endif
+#endif	
+
 }
 
 cCarGameObject::~cCarGameObject()

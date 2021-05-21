@@ -52,8 +52,9 @@ namespace Volumetric
 			eOnRelease = eventHandler;
 		}
 
+		bool const destroyPending() const { return(zero_time_point != tDestruction); }
 		void destroy() { if (zero_time_point == tDestruction) tDestruction = now(); } // instance scheduled for destruction
-
+		
 	protected:
 		void destroyInstance() const;
 		

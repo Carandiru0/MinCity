@@ -10,7 +10,7 @@
 
 layout(location = 0) out vec4 outColor;
 
-layout(location = 0) in streamIn
+readonly layout(location = 0) in streamIn
 {
 	vec2		uv;
 #if defined (SMAA_PASS_2)

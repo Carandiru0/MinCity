@@ -109,7 +109,7 @@ void __vectorcall cPoliceCarGameObject::OnUpdate(tTime const& __restrict tNow, f
 
 		bool const next_pursuit = PsuedoRandomNumber(0, 100) < PURSUIT_CHANCE;
 
-		if (isMoving() && next_pursuit) { // only start new pursuit if car is moving
+		if (!isStopped() && next_pursuit) { // only start new pursuit if car is moving
 			_speed = PURSUIT_SPEED;
 			_this.bLightsOn = true;
 		}

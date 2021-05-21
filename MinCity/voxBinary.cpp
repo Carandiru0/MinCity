@@ -619,7 +619,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 
 			if (CompareTag(_countof(TAG_V1X), pReadPointer, TAG_V1X)) {
 
-				voxelModelDescHeader const headerChunk;
+				voxelModelDescHeader const headerChunk{};
 				
 				ReadData((void* const __restrict)&headerChunk, pReadPointer, sizeof(headerChunk));
 
@@ -1091,7 +1091,7 @@ voxelModelBase::~voxelModelBase()
 	}
 
 	if (_State) {
-		scalable_free(_State); _State = nullptr;
+		scalable_aligned_free(_State); _State = nullptr;
 	}
 }
 

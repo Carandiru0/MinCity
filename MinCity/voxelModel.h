@@ -278,8 +278,8 @@ namespace voxB
 
 		void createState() {			// State is option and only created on models that request it
 			if (nullptr == _State) {
-				_State = (voxelState* __restrict)scalable_malloc(_numVoxels * sizeof(voxelState));
-				memset(&_State[0], 0, _numVoxels * sizeof(voxelState));
+				_State = (voxelState* __restrict)scalable_aligned_malloc(_numVoxels * sizeof(voxelState), 16);
+				memset(&_State[0], 0, _numVoxels * sizeof(voxelState)); // cant use __memclr_aligned_16, bugfix.
 			}
 		}
 
@@ -545,7 +545,7 @@ namespace voxB
 								// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
 								// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
 								// and is in the fragment shaderrecieved swizzled in xzy form
-								VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, voxel.getColor()); // swizzled to xzy for fragment shader usuage(texture uvw)
+								VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, SFM::srgb_to_linear_rgba(voxel.getColor()));
 								
 							}
 						}

@@ -31,7 +31,7 @@ void cTextureBoy::Initialize()
 	// Generate Image
 	ImagingMemoryInstance* imageNoise = MinCity::Procedural.GenerateNoiseImageMixed(NOISE_TEXTURE_SIZE, supernoise::interpolator::SmoothStep());
 
-	MinCity::TextureBoy.ImagingToTexture(imageNoise, _noiseTexture);
+	MinCity::TextureBoy.ImagingToTexture<false>(imageNoise, _noiseTexture);
 
 #ifndef NDEBUG
 	ImagingSaveToKTX(imageNoise, DATA_DIR "noise_mix.ktx");

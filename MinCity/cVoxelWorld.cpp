@@ -301,7 +301,7 @@ void cVoxelWorld::GenerateGround()
 #ifndef DEBUG_LOADTIME_BC7_COMPRESSION_DISABLED
 		Imaging imgCompressedBC7 = ImagingCompressBGRAToBC7(resampledImg);
 		
-		MinCity::TextureBoy.ImagingToTexture_BC7(imgCompressedBC7, _terrainTexture);
+		MinCity::TextureBoy.ImagingToTexture_BC7<true>(imgCompressedBC7, _terrainTexture);
 		
 		ImagingDelete(imgCompressedBC7);
 #else
@@ -2224,7 +2224,7 @@ namespace world
 		MinCity::TextureBoy.AddTextureToTextureArray(_roadTexture, TEX_ROAD);
 
 		Imaging const blackbodyImage(ImagingLoadRawBGRA(TEXTURE_DIR "blackbody_real.data", BLACKBODY_IMAGE_WIDTH, 1));
-		MinCity::TextureBoy.ImagingToTexture(blackbodyImage, _blackbodyTexture);
+		MinCity::TextureBoy.ImagingToTexture<false>(blackbodyImage, _blackbodyTexture);
 		MinCity::TextureBoy.AddTextureToTextureArray(_blackbodyTexture, TEX_BLACKBODY);
 
 		_blackbodyImage = blackbodyImage; // save image to be used for blackbody radiation light color lookup
@@ -3511,9 +3511,9 @@ namespace world
 		}
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const stage)
+	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		_OpacityMap.SetSpecializationConstants_ComputeLight(constants, stage);
+		_OpacityMap.SetSpecializationConstants_ComputeLight(constants);
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_DepthResolve_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -3761,9 +3761,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getHeight())); // should be inv height
 	}
 
-	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT, uint32_t const stage)
+	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT)
 	{
-		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearClamp, samplerLinearRepeat, stage);
+		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearClamp);
 	}
 
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
@@ -3830,9 +3830,8 @@ namespace world
 		dsu.image(samplerLinearClamp, colorImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 		// 2 - bluenoise
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // blue noise!	
+		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		// continue wih rest of descriptor set ...
 		MinCity::PostProcess.UpdateDescriptorSet_PostAA(dsu, guiImageView0, guiImageView1, samplerLinearClamp);
 	}
 

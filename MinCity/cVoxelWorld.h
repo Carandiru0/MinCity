@@ -129,7 +129,7 @@ namespace world
 		void OnMouseScroll(float const delta);
 		void OnMouseInactive();
 
-		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const stage);
+		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants);
 
 		void SetSpecializationConstants_DepthResolve_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
@@ -171,7 +171,7 @@ namespace world
 #define SAMPLER_SET_STANDARD_POINT vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat
 #define SAMPLER_SET_STANDARD_POINT_ANISO vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT, uint32_t const stage);
+		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT);
 
 		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);

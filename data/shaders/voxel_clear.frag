@@ -32,7 +32,7 @@ layout(std430, set=0, binding=2) restrict buffer subgroupMaximum { // reset ever
 // voxels, accumulating to alpha only
 void main() {
   
-    outColor.a = 1.0f / 255.0f;//mix(0.0f / 255.0f, 1.0f, ((gl_FragCoord.z * 0.5f + 0.5f))); // reset
+    outColor.a = 1.0f / 255.0f;
 
     // read last completed maximum transparency layer "depth" and output to color attachment
     // the current blend state causes this is add to the current value in the alpha channel of the destination color attachment

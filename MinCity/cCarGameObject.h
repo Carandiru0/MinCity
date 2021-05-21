@@ -19,6 +19,7 @@ namespace Volumetric
 
 namespace world
 {
+	bool const hasStoppedCar(Iso::Voxel const& oVoxel, uint32_t const excludeHash = 0);
 	bool const hasCar(Iso::Voxel const& oVoxel, uint32_t const excludeHash = 0);
 	bool const __vectorcall hasCar(point2D_t const voxelIndex, uint32_t const excludeHash = 0);
 }
@@ -40,10 +41,10 @@ class cCarGameObject : public world::tUpdateableGameObject<Volumetric::voxelMode
 {
 	static constexpr milliseconds const
 		CAR_CREATE_INTERVAL = milliseconds(333),
-		CAR_IDLE_MAX = seconds(60); // close to 2 full intersection sequences
+		CAR_IDLE_MAX = seconds(30); // close to 2 full intersection sequences
 
 	static constexpr uint32_t const
-		MAX_CARS = 10;
+		MAX_CARS = 100;
 
 	static constexpr float const
 		MIN_SPEED = 20.0f;
@@ -81,7 +82,7 @@ public:
 	// every child of this class should override to_string with approprate string
 	virtual std::string_view const to_string() const override { return("cCarGameObject"); }
 #endif
-	bool const isMoving() const { return(_this.moving); }
+	bool const isStopped() const { return(_this.brakes_on); } // bug fix, can't use _this.moving for ccd leaves it as true when the ccd test fails - however brakes on is reliable and consistent
 
 	void __vectorcall OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
@@ -101,6 +102,14 @@ private:
 	bool const forward(state const& __restrict currentState, state& __restrict targetState, int32_t const distance);
 	void __vectorcall gravity(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth);	// makes car "hug" road
 	bool const __vectorcall ccd(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth) const; // continous collision detection (only against other dynamics (cars))
+	
+	// special 
+	STATIC_INLINE_PURE bool const evaluate_spawn_space(Iso::Voxel const& __restrict oVoxel);
+	STATIC_INLINE_PURE bool const evaluate_car_space(Iso::Voxel const& __restrict oVoxel);
+
+	template<typename condition_function>
+	STATIC_INLINE_PURE bool const __vectorcall checkSpace(point2D_t const voxelIndex, point2D_t const voxelDirection, int32_t const car_half_length, condition_function const func);
+
 public:
 	cCarGameObject(cCarGameObject&& src) noexcept;
 	cCarGameObject& operator=(cCarGameObject&& src) noexcept;
@@ -144,6 +153,64 @@ STATIC_INLINE_PURE void swap(cCarGameObject& __restrict left, cCarGameObject& __
 	right.revert_free_ownership();
 }
 
+bool const cCarGameObject::evaluate_spawn_space(Iso::Voxel const& __restrict oVoxel)
+{
+	if (Iso::isPending(oVoxel)) {
+		return(false); // silently fail if the voxel is marked temporary / pending / constructing
+	}
+	// silently fail if road is a node (xing or corner)
+	if (Iso::isRoadNode(oVoxel)) {
+		return(false);
+	}
+	// silently fail if voxel is occupied by a car already
+	if (world::hasCar(oVoxel))
+		return(false);
+
+	return(true);
+}
+bool const cCarGameObject::evaluate_car_space(Iso::Voxel const& __restrict oVoxel)
+{
+	// silently fail if voxel is occupied by a *stopped* car already
+	return(!world::hasStoppedCar(oVoxel));
+}
+
+template<typename condition_function>
+STATIC_INLINE_PURE bool const __vectorcall cCarGameObject::checkSpace(point2D_t const voxelIndex, point2D_t const voxelDirection, int32_t const car_half_length, condition_function const func)
+{
+	// voxels to check (forms a straight line)
+	point2D_t const voxelAhead(p2D_add(voxelIndex, p2D_muls(voxelDirection, car_half_length))),
+					voxelBehind(p2D_sub(voxelIndex, p2D_muls(voxelDirection, car_half_length)));
+
+	// depending on direction, y or x will only iterate once because they are equal (straight line with a width of 1)
+	// the opposite of the y or x index will iterate for the car length +- 1
+
+	// traverse voxels in order correctly for the loop
+	point2D_t const voxelBegin(p2D_min(voxelAhead, voxelBehind)),
+					voxelEnd(p2D_max(voxelAhead, voxelBehind));
+
+	point2D_t voxelSpace;
+	for (voxelSpace.y = voxelBegin.y; voxelSpace.y <= voxelEnd.y; ++voxelSpace.y) {
+
+		for (voxelSpace.x = voxelBegin.x; voxelSpace.x <= voxelEnd.x; ++voxelSpace.x) {
+
+			Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelSpace));
+			if (pVoxel) {
+
+				Iso::Voxel const oVoxel(*pVoxel);
+
+				if (!func(oVoxel)) {
+					return(false);
+				}
+			}
+			else {
+				return(false);
+			}
+		}
+	}
+
+	return(true);
+}
+
 template<typename T>
 STATIC_INLINE void cCarGameObject::CreateCar(int32_t carModelIndex)
 {
@@ -162,6 +229,9 @@ STATIC_INLINE void cCarGameObject::CreateCar(int32_t carModelIndex)
 			if (Iso::isPending(oVoxel)) {
 				return; // silently fail if the voxel is marked temporary / pending / constructing
 			}
+			// silently fail if voxel is occupied by a car already
+			if (world::hasCar(oVoxel))
+				return;
 
 			uint32_t carDirection(0);
 
@@ -193,40 +263,20 @@ STATIC_INLINE void cCarGameObject::CreateCar(int32_t carModelIndex)
 			float const half_length(float(SFM::max(localArea.width(), localArea.height())) * 0.5f);
 			int32_t const car_half_length(SFM::round_to_i32(half_length) + 1); // rounding so length of car is never short, +1 so its one voxel ahead or behind (below)
 			
-			// voxels to check (forms a straight line)
-			point2D_t const voxelAhead(p2D_add(initialState.voxelIndex, p2D_muls(initialState.voxelDirection, car_half_length))),
-						    voxelBehind(p2D_sub(initialState.voxelIndex, p2D_muls(initialState.voxelDirection, car_half_length)));
-			
-			// depending on direction, y or x will only iterate once because they are equal (straight line)
-			// the opposite of the y or x index will iterate for the car length +- 1
-			
-			// traverse voxels in order correctly for the loop
-			point2D_t const voxelBegin(p2D_min(voxelAhead, voxelBehind)),
-							voxelEnd(p2D_max(voxelAhead, voxelBehind));
+			if (checkSpace(initialState.voxelIndex, initialState.voxelDirection, car_half_length, evaluate_spawn_space)) {
 
-			point2D_t voxelIndex;
-			for (voxelIndex.y = voxelBegin.y; voxelIndex.y <= voxelEnd.y; ++voxelIndex.y) {
+				// finally attempt creating instance of model previousky selected at random
+				using flags = Volumetric::eVoxelModelInstanceFlags;
 
-				for (voxelIndex.x = voxelBegin.x; voxelIndex.x <= voxelEnd.x; ++voxelIndex.x) {
+				T* const pGameObj = MinCity::VoxelWorld.placeUpdateableInstanceAt<T, Volumetric::eVoxelModels_Dynamic::CARS>(
+					initialState.voxelIndex, carModelIndex,
+					flags::INSTANT_CREATION);  // instant creation must be used, as any delay would invalidate the current collision test above
 
-					// silently fail if voxel is occupied by a car already
-					if (world::hasCar(voxelIndex))
-						return;
+				if (pGameObj) {
+					(*(pGameObj->Instance))->setTransparency(Volumetric::eVoxelTransparency::ALPHA_100); // change transparency on cars, not so see-thru
+					pGameObj->setInitialState(std::forward<state&&>(initialState));
 				}
 			}
-
-			// finally attempt creating instance of model previousky selected at random
-			using flags = Volumetric::eVoxelModelInstanceFlags;
-
-			T* const pGameObj = MinCity::VoxelWorld.placeUpdateableInstanceAt<T, Volumetric::eVoxelModels_Dynamic::CARS>(
-				initialState.voxelIndex, carModelIndex,
-				flags::INSTANT_CREATION);  // instant creation must be used, as any delay would invalidate the current collision test above
-
-			if (pGameObj) {
-				(*(pGameObj->Instance))->setTransparency(Volumetric::eVoxelTransparency::ALPHA_100); // change transparency on cars, not so see-thru
-				pGameObj->setInitialState(std::forward<state&&>(initialState));
-			}
-
 		}
 
 	} // silently fails if no road edge exists

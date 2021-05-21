@@ -23,7 +23,7 @@ layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far s
 #include "voxel_fragment.glsl"
 
 #if defined(HEIGHT) // terrain
-layout(location = 0) in streamIn
+readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
 	flat vec2	local_uv;
@@ -34,7 +34,7 @@ layout(location = 0) in streamIn
 #endif
 } In[];
 #elif defined(ROAD) // road
-layout(location = 0) in streamIn
+readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
 	flat vec4   corners;
@@ -47,7 +47,7 @@ layout(location = 0) in streamIn
 #endif
 } In[];
 #else  // voxels only
-layout(location = 0) in streamIn
+readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
 	flat uint	adjacency;

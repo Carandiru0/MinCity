@@ -20,12 +20,12 @@ namespace supernoise
 
 		if (imgBlueNoise) {
 
-			MinCity::TextureBoy.ImagingToTexture_RG(imgBlueNoise, _blueNoiseTexture);
+			MinCity::TextureBoy.ImagingToTexture_RG<false>(imgBlueNoise, _blueNoiseTexture);
 #ifndef NDEBUG
 			ImagingSaveToKTX(imgBlueNoise, DATA_DIR "bluenoise_dual_channel.ktx");
 #endif
 			// capture first channel for usage outside of gpu texture scope (cpu only)
-			_blueNoise1D = new float[BLUENOISE_DIMENSION_SZ * BLUENOISE_DIMENSION_SZ];
+			_blueNoise1D = (float* const)scalable_aligned_malloc(BLUENOISE_DIMENSION_SZ * BLUENOISE_DIMENSION_SZ * sizeof(float), 16);
 
 			__memclr_aligned_16<BLUENOISE_DIMENSION_SZ* BLUENOISE_DIMENSION_SZ>(_blueNoise1D);
 
@@ -55,7 +55,9 @@ namespace supernoise
 
 	void cBlueNoise::Release()
 	{
-		SAFE_DELETE_ARRAY(_blueNoise1D);
+		if (nullptr != _blueNoise1D) {
+			scalable_aligned_free(_blueNoise1D); _blueNoise1D = nullptr;
+		}
 		SAFE_RELEASE_DELETE(_blueNoiseTexture);
 	}
 

@@ -106,7 +106,7 @@ vec3 reflection(in const float luminance)
 
 	// pre-multiply for bilateral alpha - this also fades the reflection as distance grows greater
 	// the current luminance of the "area" affects the brightness of the reflection, with an inverse relationship (brightness of "area" lighting dominates, causing reflection to be less visible and blend in with lighting)
-	return( ambient_reflection.rgb * ambient_reflection.a * (1.0f - luminance) ); 
+	return( ambient_reflection.rgb * ambient_reflection.a * (1.0f - luminance * 0.5f) ); // bugfix: reflections not showing in very luminant areas - luminance must be multiplied by 0.5f
 }
 
 //NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
@@ -169,7 +169,7 @@ vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float o
 { 
 	const float NdotL = max(0.0f, dot(N, L));
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
-	const float luminance = dot(attenuation * light_color, LUMA);
+	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 
 #ifndef OUT_REFLECTION
 	const vec3 ambient_reflection = reflection(luminance);

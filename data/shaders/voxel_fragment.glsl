@@ -4,7 +4,7 @@
 //#ifndef BASIC
 
 #ifdef FRAGMENT_OUT
-layout(location = 0) out streamOut   // in/out to pixel shader (all members must be vec4)
+writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all members must be vec4)
 {
 	vec4 uv;			// uv:  xyz always reserved for light volume uv relative coords
 	vec4 N;
@@ -18,7 +18,7 @@ layout(location = 0) out streamOut   // in/out to pixel shader (all members must
 
 } Out;
 #else
-layout(location = 0) in streamIn   // in/out to pixel shader (all members must be vec4)
+readonly layout(location = 0) in streamIn   // in/out to pixel shader (all members must be vec4)
 {
 	vec4 uv;			// uv:  xyz always reserved for light volume uv relative coords
 	vec4 N;

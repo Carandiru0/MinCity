@@ -271,11 +271,12 @@ void cVulkan::CreateComputeResources()
 		/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (distance & direction)
 		dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (distance & direction)
-		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
-		dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (color)
-		dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
-		dslm.image(8U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
-
+		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
+		dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
+		dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
+		dslm.image(8U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // temporal history volumes (color)
+		dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output
+		
 		_comData.descLayout = dslm.createUnique(_device);
 	}
 
@@ -287,7 +288,8 @@ void cVulkan::CreateComputeResources()
 	_comData.sets = dsm.create(_device, _fw.descriptorPool());
 
 	std::vector< vku::SpecializationConstant > constants_jfa;
-	MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants_jfa, eComputeLightPipeline::JFA);
+	MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants_jfa);
+
 	// SEED & JFA  //
 	
 	vku::PipelineLayoutMaker		plm;
@@ -804,7 +806,7 @@ void cVulkan::CreatePostAAResources()
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
-		pm.rasterizationSamples(vku::DefaultSampleCount);
+		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[0] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
@@ -823,7 +825,7 @@ void cVulkan::CreatePostAAResources()
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
-		pm.rasterizationSamples(vku::DefaultSampleCount);
+		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[1] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
@@ -842,7 +844,7 @@ void cVulkan::CreatePostAAResources()
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
-		pm.rasterizationSamples(vku::DefaultSampleCount);
+		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[2] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
@@ -862,7 +864,7 @@ void cVulkan::CreatePostAAResources()
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
-		pm.rasterizationSamples(vku::DefaultSampleCount);
+		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[3] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
@@ -1395,7 +1397,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 // Update the descriptor sets for the shader uniforms.
 	{ // ###### Compute
 		_dsu.beginDescriptorSet(_comData.sets[0]);
-		MinCity::VoxelWorld.UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD_POINT, eComputeLightPipeline::JFA);
+		MinCity::VoxelWorld.UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD_POINT);
 #ifdef DEBUG_LIGHT_PROPAGATION
 		_dsu.beginDescriptorSet(_comData.debugLightData.sets[0]);
 		MinCity::VoxelWorld.UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD, eComputeDebugLightPipeline::MINMAX);

@@ -358,12 +358,18 @@ namespace world
 
 						_blink_accumulator -= BLINK_INTERVAL;
 
-						if (cTrafficSignGameObject::COLOR_GREEN != _signs[i]->getColorSignalTurn()) {
-							_signs[i]->setColorSignalTurn(cTrafficSignGameObject::COLOR_GREEN);
+						// bugfix: yellow at the end of the turning state, prevents last minute collisions (only required on 4way xing, as 3way xing just switches to full yellow)
+						uint32_t blinkColor(cTrafficSignGameObject::COLOR_GREEN);
+						if (4 == _sign_count && ((_interval - _accumulator) < (5 * BLINK_INTERVAL))) {
+							blinkColor = cTrafficSignGameObject::COLOR_YELLOW;
+						}
+						
+						if (blinkColor != _signs[i]->getColorSignalTurn()) {
+							_signs[i]->setColorSignalTurn(blinkColor);
 							break; 
 						}
 						else {
-							_signs[i]->setColorSignalTurn(cTrafficSignGameObject::COLOR_BLACK);
+							_signs[i]->setColorSignalTurn(cTrafficSignGameObject::COLOR_BLACK + 1); // bugfix: +1 to avoid disabling turning on blink
 							break;
 						}
 					}

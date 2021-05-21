@@ -190,23 +190,6 @@ private:
 public:
 	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const resolvedColor) const	// 3D emplace
 	{
-		// filter out low level blacks from emission - this provides more vibrant lighting, deeper blacks & higher contrast
-		//uvec4_t rgba;  
-		//SFM::unpack_rgba(resolvedColor, rgba);
-		//if (!SFM::rgb_le(uvec4_v(rgba), Globals::MIN_BLACK_LVL_EMISSIVE)) { // **bugged artifacts in videoscreens dont exclude any emissive voxel based on black level
-
-		/*
-			uvec4_v const xmShift( 
-				Volumetric::ComputeLightConstants::LIGHT_MOD_WIDTH_BITS, 
-				Volumetric::ComputeLightConstants::LIGHT_MOD_HEIGHT_BITS,
-				Volumetric::ComputeLightConstants::LIGHT_MOD_DEPTH_BITS,
-				0 );
-
-			ivec4_v const xmIndex(_mm_srlv_epi32(SFM::floor_to_i32(xmPosition).v, xmShift.v) );			
-			ivec4_t iIndex;			
-			xmIndex.xyzw(iIndex);
-		*/
-
 		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Width, Height, Depth>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]

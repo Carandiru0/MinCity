@@ -267,7 +267,7 @@ namespace Volumetric
 			LightMap.DistanceDirection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 				LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR16G16B16A16Snorm, false, true); // only signed normalized values
 			LightMap.Color = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-				LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, true);
+				LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR16G16B16A16Sfloat, false, true);
 			LightMap.Reflection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 				LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, true);
 			VolumeSet.LightMap = &LightMap;
@@ -324,98 +324,78 @@ namespace Volumetric
 				});
 		}
 
-		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const stage)
+		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 		{
-			if (eComputeLightPipeline::JFA == stage) {
-				// full volume dimensions //
-				constants.emplace_back(vku::SpecializationConstant(0, (float)Width)); // should be width
-				constants.emplace_back(vku::SpecializationConstant(1, (float)Depth)); // should be depth
-				constants.emplace_back(vku::SpecializationConstant(2, (float)Height)); // should be height
+			// full volume dimensions //
+			constants.emplace_back(vku::SpecializationConstant(0, (float)Width)); // should be width
+			constants.emplace_back(vku::SpecializationConstant(1, (float)Depth)); // should be depth
+			constants.emplace_back(vku::SpecializationConstant(2, (float)Height)); // should be height
 
-				// light volume dimensions //
-				constants.emplace_back(vku::SpecializationConstant(3, (float)LightWidth)); // should be width
-				constants.emplace_back(vku::SpecializationConstant(4, (float)LightDepth)); // should be depth
-				constants.emplace_back(vku::SpecializationConstant(5, (float)LightHeight)); // should be height
-				constants.emplace_back(vku::SpecializationConstant(6, 1.0f / (float)LightWidth)); // should be inv width
-				constants.emplace_back(vku::SpecializationConstant(7, 1.0f / (float)LightDepth)); // should be inv depth
-				constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)LightHeight)); // should be inv height
-			}
+			// light volume dimensions //
+			constants.emplace_back(vku::SpecializationConstant(3, (float)LightWidth)); // should be width
+			constants.emplace_back(vku::SpecializationConstant(4, (float)LightDepth)); // should be depth
+			constants.emplace_back(vku::SpecializationConstant(5, (float)LightHeight)); // should be height
+			constants.emplace_back(vku::SpecializationConstant(6, 1.0f / (float)LightWidth)); // should be inv width
+			constants.emplace_back(vku::SpecializationConstant(7, 1.0f / (float)LightDepth)); // should be inv depth
+			constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)LightHeight)); // should be inv height
+
 		}
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearWrap, uint32_t const stage) const
+		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const
 		{
-			if (eComputeLightPipeline::JFA == stage) {
+			dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-				dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, PingPongMap[ePingPongMap::PING]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, PingPongMap[ePingPongMap::PONG]->imageView(), vk::ImageLayout::eGeneral);
 
-				dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, PingPongMap[ePingPongMap::PING]->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, PingPongMap[ePingPongMap::PONG]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, PingPongMap[ePingPongMap::PING]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(2U, 1, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, PingPongMap[ePingPongMap::PONG]->imageView(), vk::ImageLayout::eGeneral);
 
-				dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, PingPongMap[ePingPongMap::PING]->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(2U, 1, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, PingPongMap[ePingPongMap::PONG]->imageView(), vk::ImageLayout::eGeneral);
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-				/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
-				dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-
-				dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(4U, 1, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(4U, 2, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(4U, 1, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(4U, 2, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
 
-				dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
 
-				dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(6U, 1, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(6U, 2, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(6U, 1, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(6U, 2, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
 
 
-				dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(7U, 1, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(samplerLinearClamp, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(7U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
 
-				dsu.beginImages(8U, 0, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(8U, 1, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
-				dsu.beginImages(8U, 2, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
-
-			}
-#ifdef DEBUG_LIGHT_PROPAGATION
-			else if (eComputeDebugLightPipeline::MINMAX == stage) {
-
-				dsu.beginBuffers(0U, 0, vk::DescriptorType::eStorageBuffer);
-				dsu.buffer(DebugMinMaxBuffer->buffer(), 0, sizeof(debugLightMinMax));
-
-				dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(*samplerLinearClamp, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-
-				dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
-				dsu.image(*samplerLinearClamp, LightMap[eLightmap::FINAL_OUTPUT]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-
-				dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
-				dsu.image(nullptr, DebugTexture->imageView(), vk::ImageLayout::eGeneral);
-			}
-#endif
+			dsu.beginImages(8U, 0, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(8U, 1, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
+			
+			dsu.beginImages(9U, 0, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
 		}
 
 		__inline bool const renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
@@ -681,8 +661,8 @@ namespace Volumetric
 				c.cb_render.end();
 
 				// for next compute iteration
-				if (++temporal_size > (50 + TEMPORAL_VOLUMES)) {
-					bComputeRecorded = !isGraduallyStartingUp();
+				if (++temporal_size > TEMPORAL_VOLUMES) {
+					bComputeRecorded = true;
 				}
 			}
 			else {
@@ -823,7 +803,7 @@ namespace Volumetric
 					// slices ordered by Y: <---- USING Y
 					// (y * xMax * zMax) + (z * xMax) + x;
 					region.bufferOffset = ((extents_min.y * LightWidth * LightDepth) + (extents_min.z * LightWidth) + extents_min.x) * MappedVoxelLights.element_size();
-					region.bufferOffset = SFM::roundToMultipleOf<false>(region.bufferOffset, 8);
+					region.bufferOffset = SFM::roundToMultipleOf<false>((int32_t)region.bufferOffset, 8);
 					region.bufferRowLength = LightWidth;
 					region.bufferImageHeight = LightDepth;
 

@@ -32,7 +32,7 @@ const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 
 #define EPSILON 0.000000001f
-#define FOG_STRENGTH -0.016f // must be negative
+#define FOG_STRENGTH -0.008f // must be negative
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
 //#define DEBUG_VOLUMETRIC
@@ -50,7 +50,7 @@ layout (binding = 10) restrict buffer DebugStorageBuffer {
 
 #endif
 
-layout(location = 0) in streamIn
+readonly layout(location = 0) in streamIn
 {   // must all be xzy
 	noperspective vec3	ray_dir;  // do not want perspective correction. interpolation of ray_dir is simple.
 	flat vec3			eyePos;
@@ -294,7 +294,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
 	float fogAmount = (1.0f - exp2((voxel.tran + transparency + emission) * FOG_STRENGTH));
-	float lightAmount = attenuation * 0.125f;  // or 0.1f works well - too much and light bleeds into geometry
+	float lightAmount = attenuation * 0.25f + emission;  // this is what brings out a volumetric glow *do not change*
 
 	const float sigmaS = fogAmount + lightAmount * (1.0f - opacity) + intensity;
 	const float inv_sigmaE = 1.0f / max(EPSILON, sigmaS); // to avoid division by zero extinction

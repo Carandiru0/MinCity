@@ -4,7 +4,7 @@
 
 layout(location = 0) in vec4 inPos;
 
-layout(location = 0) out streamOut
+writeonly layout(location = 0) out streamOut
 {
 	noperspective vec3	ray_dir;	// do not want perspective correction. interpolation of ray_dir is simple.
 	flat vec3			eyePos;

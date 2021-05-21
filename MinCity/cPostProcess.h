@@ -69,6 +69,7 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 
 
 
+
 	// ------ 1st smaa edge detecion "psuedo-pass"
 	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[1]);
 	// Post-process quad simple generation - fullscreen triangle optimized!

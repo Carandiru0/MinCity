@@ -69,18 +69,14 @@ namespace world
 				if (cTrafficSignGameObject::COLOR_GREEN == color_signal_turn_) {
 					_state = eTrafficLightState::GREEN_TURNING_ENABLED;
 				}
+				// this indicates turning is off on 2 consecutive BLACKS, only after turning signal enabled alreadyy. Compatible with fade out to black on blinking
+				else if ((cTrafficSignGameObject::COLOR_YELLOW == color_signal_turn_ || cTrafficSignGameObject::COLOR_BLACK == color_signal_turn_) && eTrafficLightState::GREEN_TURNING_ENABLED == _state) {
+					_state = eTrafficLightState::GREEN_TURNING_DISABLED; // safe to set will ease lock on turning state below setColorSignal
+				}
 
 				_next_color_signal[TURN] = color_signal_turn_;
 				_last_color_signal[TURN] = _color_signal[TURN];
 				_accumulator[TURN] = zero_time_duration;
-			}
-			else { // same color
-
-				// this indicates turning is off on 2 consecutive BLACKS, only after turning signal enabled alreadyy. Compatible with fade out to black on blinking
-				if (cTrafficSignGameObject::COLOR_BLACK == color_signal_turn_ && eTrafficLightState::GREEN_TURNING_ENABLED == _state) {
-					_state = eTrafficLightState::GREEN_TURNING_DISABLED; // safe to set will ease lock on turning state below setColorSignal
-				}
-
 			}
 		}
 		void setColorSignal(uint32_t const color_signal_) { 
