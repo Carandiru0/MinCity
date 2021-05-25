@@ -35,9 +35,9 @@ namespace world
 			TURN = 1;
 
 	public:
-		static constexpr uint32_t const
+		static constexpr uint32_t const // bgra
 			COLOR_GREEN = 0x00ff00,
-			COLOR_YELLOW = MASK_COLOR_SIGNAL_TURN,
+			COLOR_YELLOW = 0x33caff,
 			COLOR_RED = 0x0000ff,
 			COLOR_BLACK = 0x000001; // required since "0" is recognized as no pending color
 

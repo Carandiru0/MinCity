@@ -602,7 +602,7 @@ private:
 	STATIC_INLINE void bindVoxelDescriptorSet(vk::CommandBuffer& __restrict cb);
 
 	template<uint32_t const voxel_pipeline_index, uint32_t const numChildMasks = 0, bool const front_to_back = true>
-	STATIC_INLINE constexpr uint32_t const renderAllVoxels(vku::static_renderpass const& s, sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks = nullptr);
+	STATIC_INLINE uint32_t const renderAllVoxels(vku::static_renderpass const& s, sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks = nullptr);
 
 	static void renderOffscreenVoxels(vku::static_renderpass const& s);
 };
@@ -815,7 +815,7 @@ STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(vk::CommandBuffer& __restrict
 }
 
 template<uint32_t const voxel_pipeline_index, uint32_t const numChildMasks, bool const front_to_back>
-STATIC_INLINE constexpr uint32_t const cVulkan::renderAllVoxels(vku::static_renderpass const& s, [[maybe_unused]] sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks)
+STATIC_INLINE uint32_t const cVulkan::renderAllVoxels(vku::static_renderpass const& s, [[maybe_unused]] sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks)
 {
 	// ***** descriptor set must be set outside of this function ***** //
 

@@ -240,13 +240,13 @@ void main() {
 
 	// add in the finalized bloom
 	{
-		const vec3 blur = textureLod(blurMap[0], In.uv, 0).rgb * 0.5f;
+		vec3 blur = textureLod(blurMap[0], In.uv, 0).rgb;
 
 		// ############# Final Post Processing Pass ###################### //
 		// *** 3D LUT *** - apply before dithering and anamorphic flares //
 		color = textureLod(lutMap, color.rgb * LUT_SCALE + LUT_OFFSET, 0).rgb;
 	
-		color += blur * (1.0f - color.r*color.g*color.b); // *BEST APPLIED ONLY HERE* apply factor (dependent on existing color whiteness) of the bloom before the 3D lut is applied (expanding output range)
+		color += 0.5f * blur * (1.0f - color.r*color.g*color.b); // *BEST APPLIED ONLY HERE* apply factor (dependent on existing color whiteness) of the bloom before the 3D lut is applied (expanding output range)
 	}
 	// *** DITHERING - do not change, validated fft and with highpass to be of extreme quality
 	{

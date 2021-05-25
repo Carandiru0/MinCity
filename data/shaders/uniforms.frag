@@ -166,15 +166,20 @@ void main() {
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz); 
 
-	const float decal_luminance = min(1.0f, road_segment.a * attenuation * attenuation * 2.0f);
+	const float decal_luminance = min(1.0f, road_segment.g * attenuation * attenuation * 2.0f);
 	vec3 reflection;
 	vec3 color = lit( road_segment.rgb, light_color,
 					  1.0f, attenuation,
-	                  decal_luminance, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.a)),
+	                  decal_luminance, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g)),
 					  L, N, V, reflection, fresnelTerm );
 
-	//outColor.rgb = color;
-	outColor.rgb = mix(color, In.ambient + color * road_segment.a + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
+	color = mix(color, In.ambient + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
+
+	const vec3 shineCol = 0.333333f * vec3(0.5f, 0.05f, 1.0f);
+
+	color += road_segment.a * road_segment.b * shineCol * (1.0f - exp2(-1000.0f*road_segment.b*fresnelTerm));
+
+	outColor.rgb = color;
 
 #else  // roads, "transparent selection"
 
@@ -213,7 +218,7 @@ void main() {
 						    
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, V, decal_luminance);
-	color.rgb = mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * (1.0f - road_segment.a), fresnelTerm);
+	color.rgb = mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
 
 	outColor = applyTransparency(color, road_segment.a, weight);
 	// outColor = vec4(weight.xxx, 1.0f); 

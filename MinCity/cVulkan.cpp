@@ -1891,7 +1891,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(s.cb);
 
 	{
-		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];
+		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];			 // front-to-back must be false for proper selection of mousebuffer (roads / zoning) - makes selection behind buildings or other voxels except terrain 
 		uint32_t const ActiveMaskCount = renderAllVoxels<0, NUM_CHILD_MASKS, false>(s, deferredChildMasks);
 		renderClearMasks(std::forward<vku::static_renderpass&&>(s), deferredChildMasks, ActiveMaskCount);
 	}

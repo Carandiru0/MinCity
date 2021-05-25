@@ -499,6 +499,70 @@ static inline bool const __vectorcall isRoadNodeType(point2D_t const origin, int
 	return(Iso::ROAD_NODE_TYPE::INVALID != getRoadNodeType(origin, self_direction));
 }
 
+// snaps to end of road if passed in origin is a road and not of a node road type (straight segment)
+static point2D_t const __vectorcall snap_to_nearest_end(point2D_t const origin, uint32_t const segment_distance = 0 )
+{
+	Iso::Voxel const* const pVoxel = world::getVoxelAt(origin);
+	if (nullptr != pVoxel) {
+
+		Iso::Voxel const oVoxel(*pVoxel);
+
+		// ### Only if Not Already center of node road block && Is a road block (STRAIGHT SECTION)
+		if (!Iso::isRoadNode(oVoxel) && Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))) {
+
+			// adjacent in "inline" direction?
+			uint32_t const encoded_direction(Iso::getRoadDirection(oVoxel));
+
+			// search adjacent sides
+			int32_t const search_width(Iso::ROAD_SEGMENT_WIDTH + segment_distance);
+
+			point2D_t lastRoadPoint[2]{origin, origin}; // last known road segment
+			for (int32_t offset = 1; offset < search_width; ++offset) {
+
+				point2D_t sidePoint[2]{};
+				Iso::Voxel const* pSideVoxel[2]{ nullptr };
+
+				getAdjacentSides<false>(origin, encoded_direction, offset, sidePoint, pSideVoxel); // inline
+
+				for (uint32_t side = 0; side < 2; ++side) { // both directions inline with road
+
+					if (pSideVoxel[side]) {
+						Iso::Voxel const oSideVoxel(*pSideVoxel[side]);
+
+						// looking for absence of road start
+						if (!(Iso::isExtended(oSideVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)))) {
+
+							// needs to ensure that within Iso::SEGMENT_SIDE_WIDTH that there are no nodes in the current direction inline (there could be a gap in space between a straight segment and road corner equal to half the Iso::ROAD_SEGMENT_WIDTH before the road node is there, due to the way its laid out)
+							point2D_t const current_direction(p2D_sub(sidePoint[side],lastRoadPoint[side])); // maximum [-1...1] on one axis difference possible here
+
+							point2D_t const possible_node_point(p2D_add(sidePoint[side], p2D_muls(current_direction, Iso::SEGMENT_SIDE_WIDTH)));
+
+							Iso::Voxel const* const pVoxelNode = world::getVoxelAt(possible_node_point);
+							if (nullptr != pVoxelNode) {
+
+								Iso::Voxel const oVoxelNode(*pVoxelNode);
+								if (Iso::isExtended(oVoxelNode) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxelNode)) && Iso::isRoadNode(oVoxelNode)) {
+									// found the node - return unchanged origin point
+									return(origin);
+								}
+							}
+							// current point is not road, since last point recorded for this direction (including origin)
+							// return the last known road point - the end....
+							return(lastRoadPoint[side]);
+						}
+						else {
+							lastRoadPoint[side] = sidePoint[side];
+						}
+					}
+				} // for side
+			}//for offset
+		}
+	}
+
+	// return unmodified point, no node found
+	return(origin);
+}
+
 // snaps to nearest node if it exists, assumes origin passed in is already some kind of road, returns modified origin thats is snapped to node middle if found
 // this search is special in that it is not dependent on the origin voxels road direction
 static point2D_t const __vectorcall snap_to_nearest_node(point2D_t const origin, uint32_t const segment_distance = 0, uint32_t* const pNodeType = nullptr) // addional distance offset
@@ -707,7 +771,8 @@ void __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const orig
 
 	if (!closest_intersect.isZero()) { // short search found road block
 
-		closest_intersect = snap_to_nearest_node(closest_intersect, 1, &roadNodeType);
+		closest_intersect = snap_to_nearest_node(closest_intersect, 1, &roadNodeType);		// **** snap to (node) happens here
+		closest_intersect = snap_to_nearest_end(closest_intersect, 1); // this works giving road nodes priority to be selected first, which if that did happen this ends up behaving like a nop.
 		select_road_intersect(closest_intersect, roadNodeType);
 
 #ifndef NDEBUG
@@ -736,7 +801,8 @@ void __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const orig
 
 		if (!closest_intersect.isZero()) { // short search found road block
 
-			closest_intersect = snap_to_nearest_node(closest_intersect, 1, &roadNodeType);
+			closest_intersect = snap_to_nearest_node(closest_intersect, 1, &roadNodeType);	// **** snap to (node) happens here
+			closest_intersect = snap_to_nearest_end(closest_intersect, 1); // this works giving road nodes priority to be selected first, which if that did happen this ends up behaving like a nop.
 			select_road_intersect(closest_intersect, roadNodeType);
 		}
 	}
@@ -784,13 +850,17 @@ static std::vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(std
 	int32_t sum(0), counter(0);
 	for (std::vector<ROAD_SEGMENT>::const_iterator i = start; i != end; ++i) {
 		
-		int32_t const heightstep(i->h0);
+		int32_t heightstep(0);
 		
+		// 2x sampling, more sampling = higher accuracy //
+		heightstep = i->h0;
+		sum += heightstep;
+		heightstep = i->h1;
 		sum += heightstep;
 		++counter;
 
 		if (counter > SAMPLE_COUNT) {
-			int32_t const average(sum / counter);
+			int32_t const average(sum / (counter << 1));
 
 			if (average > currentHeightStep) {
 				target = i;
@@ -802,6 +872,7 @@ static std::vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(std
 				targetHeightStep = SFM::max(0, heightstep < average ? heightstep : average);
 				return(target);
 			}
+			break;
 		}		
 	} // for
 
@@ -864,6 +935,35 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 	}//for offset
 }
 
+static auto const checkAdjacentInlineForRoadHeightEnd(point2D_t const currentPoint, uint32_t const encoded_direction) {
+
+	typedef struct {
+		uint32_t const road_heightstep;
+		bool const existing_road;
+	} Returned;
+
+	// check adjacent nodes inline with direction //
+	static constexpr int32_t const SIDE_OFFSET = Iso::SEGMENT_SIDE_WIDTH + 1;
+	bool bExisting(false);
+	point2D_t sidePoint[2]{};
+	Iso::Voxel const* pSideVoxel[2]{ nullptr };
+
+	getAdjacentSides<false>(currentPoint, encoded_direction, SIDE_OFFSET, sidePoint, pSideVoxel);
+
+	for (uint32_t side = 0; side < 2; ++side) {
+		if (pSideVoxel[side]) {
+			Iso::Voxel oSideVoxel(*pSideVoxel[side]);
+
+			if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
+
+				return(Returned{ Iso::getRoadHeightStepEnd(oSideVoxel), false });
+			}
+		}
+	}
+
+	return(Returned{ 0, false });
+}
+
 bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, point2D_t const endPoint)
 {
 	point2D_t const direction(p2D_sgn(p2D_sub(endPoint, currentPoint)));
@@ -906,10 +1006,17 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		if (nullptr == pVoxel)
 			return(false);
 
-		Iso::Voxel const oVoxel(*pVoxel);
+		// bugfix: check adjacent nodes inline with direction //
+		auto const [road_heightstep, exists] = checkAdjacentInlineForRoadHeightEnd(currentPoint, encoded_direction);
+				
+		if (!exists) {
+			currentSegment.h0 = getSmoothHeightStep(currentPoint, encoded_direction);
+		}
+		else {
+			currentSegment.h1 = road_heightstep;
+		}
 
 		currentSegment.origin.v = currentPoint.v;
-		currentSegment.h0 = getSmoothHeightStep(currentPoint, encoded_direction);
 	}
 
 	// elevation 
@@ -973,19 +1080,26 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		else if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {  // existing road
 
 			// same axis for existing road being drawn now? // Prevent drawing road over road.
-			switch (Iso::getRoadDirection(oVoxel))
-			{
-			case Iso::ROAD_DIRECTION::N:
-			case Iso::ROAD_DIRECTION::S:
-				bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::N) || (encoded_direction == Iso::ROAD_DIRECTION::S));
-				break;
-			case Iso::ROAD_DIRECTION::E:
-			case Iso::ROAD_DIRECTION::W:
-				bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::E) || (encoded_direction == Iso::ROAD_DIRECTION::W));
-				break;
+			// bugfix: **only** applies to straight segments of roads, nodes need to be bypassed on this check!
+
+			if (!Iso::isRoadNode(oVoxel)) { // is existing road not a node?
+				switch (Iso::getRoadDirection(oVoxel))
+				{
+				case Iso::ROAD_DIRECTION::N:
+				case Iso::ROAD_DIRECTION::S:
+					bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::N) || (encoded_direction == Iso::ROAD_DIRECTION::S));
+					break;
+				case Iso::ROAD_DIRECTION::E:
+				case Iso::ROAD_DIRECTION::W:
+					bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::E) || (encoded_direction == Iso::ROAD_DIRECTION::W));
+					break;
+				}
 			}
 
-			if (!bExistingCancel) {
+			if (bExistingCancel) {
+				currentSegment.h0 = Iso::getRoadHeightStepEnd(oVoxel); // bugfix: update the beginning height of the segment (h0 would be used by next segment)
+			}
+			else { // all nodes no straights apply below!
 				bool const bCenterNode(isRoadNodeType(currentPoint, encoded_direction));
 
 #if defined(DEBUG_ROAD_SEGMENTS)
@@ -1209,7 +1323,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 	uint32_t target_count(0);
 
-	std::vector<ROAD_SEGMENT>::const_iterator iter(segments.begin());
+	std::vector<ROAD_SEGMENT>::const_iterator iter(segments.cbegin());
 	std::vector<ROAD_SEGMENT>::const_iterator target(segments.cend());
 
 	ptrdiff_t target_to_start(0);
@@ -1220,7 +1334,6 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 	// everything but auto tiling
 	for (; iter != segments.cend(); ++iter)
 	{
-		static constexpr float const MAX_CHANGE_RATE_HEIGHTSTEP_PER_SEGMENT = 4.0f;// SFM::max(1.0f, SFM::abs(float(currentHeightStep) - fAverageHeightStep) * 0.5f);
 		currentPoint.v = iter->origin.v;
 
 		if (segments.cend() == target) {
@@ -1234,99 +1347,12 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 			if (segments.cend() != pending_target) {
 
-				//if (pending_target->node) {
-#if defined(DEBUG_ROAD_SEGMENTS)
-					FMT_LOG_DEBUG("Target Found, is a Node");
-#endif
-					// intersection always becomes target //
-					target = pending_target;
-					targetHeightStep = pending_targetHeightStep;
-					// common //
-					target_to_start = target - iter; startHeightStep = currentHeightStep;
-				//} // end intersection //
-				/*else {
-#if defined(DEBUG_ROAD_SEGMENTS)
-					FMT_LOG_DEBUG("Target Found, is an Edge");
-#endif
-
-					int32_t following_targetHeightStep(0);
-					std::vector<ROAD_SEGMENT>::const_iterator const following_target = findTargetRoadSegment(pending_target, segments.cend(), currentHeightStep, following_targetHeightStep);
-
-					if (segments.cend() != following_target) {
-
-#if defined(DEBUG_ROAD_SEGMENTS)
-						FMT_LOG_DEBUG("Following Target Found");
-#endif
-
-						// only if span from p2 - p1 < p1 - p0
-						if (following_target - pending_target < pending_target - iter) {
-
-							// take target that is closest to current heightstep
-							// ** or **
-							// change is great (too fast)
-							// h2 - h1 / p2 - p1
-							if (SFM::abs(float(following_targetHeightStep - pending_targetHeightStep) / float(following_target - pending_target)) < MAX_CHANGE_RATE_HEIGHTSTEP_PER_SEGMENT) { // = heightstep/segment 
-								// skip over to the following target height //
-								// only accept new target on rate of change rule for current height vs target
-								if (SFM::abs(float(following_targetHeightStep - currentHeightStep) / float(following_target - iter)) < MAX_CHANGE_RATE_HEIGHTSTEP_PER_SEGMENT) { // = heightstep/segment
-									target = following_target;
-									targetHeightStep = following_targetHeightStep;
-									// common //
-									target_to_start = target - iter; startHeightStep = currentHeightStep;
-
-#if defined(DEBUG_ROAD_SEGMENTS)
-									FMT_LOG_DEBUG("Following Target made current target");
-#endif
-								}
-							}
-							else {
-								int32_t const delta = SFM::abs(currentHeightStep - pending_targetHeightStep) - SFM::abs(currentHeightStep - following_targetHeightStep);
-
-								if (delta > 0) {
-
-									// only accept new target on rate of change rule for current height vs target
-									if (SFM::abs(float(pending_targetHeightStep - currentHeightStep) / float(pending_target - iter)) < MAX_CHANGE_RATE_HEIGHTSTEP_PER_SEGMENT) { // = heightstep/segment
-										target = pending_target;
-										targetHeightStep = pending_targetHeightStep;
-										// common //
-										target_to_start = target - iter; startHeightStep = currentHeightStep;
-
-#if defined(DEBUG_ROAD_SEGMENTS)
-										FMT_LOG_DEBUG("Pending Target made current target");
-#endif
-									}
-								}
-								else if (delta < 0) {  // if equal to zero the heights are equal 
-									// skip over to the following target height //
-									// only accept new target on rate of change rule for current height vs target
-
-									if (SFM::abs(float(following_targetHeightStep - currentHeightStep) / float(following_target - iter)) < MAX_CHANGE_RATE_HEIGHTSTEP_PER_SEGMENT) { // = heightstep/segment
-										target = following_target;
-										targetHeightStep = following_targetHeightStep;
-										// common //
-										target_to_start = target - iter; startHeightStep = currentHeightStep;
-
-#if defined(DEBUG_ROAD_SEGMENTS)
-										FMT_LOG_DEBUG("skipped pending target, Following Target made current target");
-#endif
-									}
-
-								}
-							}
-						}
-						else {
-#if defined(DEBUG_ROAD_SEGMENTS)
-							FMT_LOG_DEBUG("Following Target Discarded");
-#endif
-						}
-					}
-					else {
-#if defined(DEBUG_ROAD_SEGMENTS)
-						FMT_LOG_DEBUG("Following Target not Found");
-#endif
-					}
-				}*/
-			} // end found pending target
+				// intersection always becomes target //
+				target = pending_target;
+				targetHeightStep = pending_targetHeightStep;
+				// common //
+				target_to_start = target - iter; startHeightStep = currentHeightStep;
+			}
 		}
 
 		if (iter == target) {
