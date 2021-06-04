@@ -18,7 +18,7 @@ public: // accessors and mutators
 	bool const									isAllowedObtainNewSequences() const { return(obtain_allowed); }
 
 	void										setAllowedObtainNewSequences(bool const allowed) { obtain_allowed = allowed; }
-
+	void										setForcedSequence(uint32_t const index) { forced_sequence = (int32_t)index; }
 public: // main methods
 	uint32_t const __vectorcall getPixelColor(__m128i const xmPosition) const;
 	void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
@@ -31,6 +31,7 @@ private:
 	tTime									tFrameStarted;
 	uint32_t								frame;
 	int32_t									loops;
+	int32_t									forced_sequence;
 	uint32_t								unique_hash_seed;
 	Volumetric::voxB::voxelScreen			voxelscreen;
 	int64_t									_background_task_id;
@@ -55,6 +56,7 @@ public:
 		tFrameStarted = std::move(src.tFrameStarted);
 		frame = std::move(src.frame);
 		loops = std::move(src.loops);
+		forced_sequence = std::move(src.forced_sequence);
 		
 	}
 	ImageAnimation& operator=(ImageAnimation&& src) noexcept
@@ -72,6 +74,7 @@ public:
 		tFrameStarted = std::move(src.tFrameStarted);
 		frame = std::move(src.frame);
 		loops = std::move(src.loops);
+		forced_sequence = std::move(src.forced_sequence);
 
 		return(*this);
 	}

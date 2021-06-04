@@ -26,13 +26,21 @@
 
 #define PANNING_ENABLED // panning plays some tricks on visibility, however it is a superior control of camera / view
 
+//#define GIF_MODE
+
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
 //#define LIVESHADER_MODE
 
 #define DEBUG_DISABLE_MUSIC
-#define DEBUG_TRAFFIC
+//#define DEBUG_TRAFFIC
+
+//#define DEBUG_EXPORT_BLUENOISE_KTX
+//#define DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
+//#define DEBUG_EXPORT_BLACKBODY_KTX
+//#define DEBUG_EXPORT_NOISEMIX_KTX
+// 
 //#define DEBUG_COMPUTE_LIGHT_UPLOAD
 //#define DEBUG_HIGHLIGHT_BOUNDING_RECTS
 //#define DEBUG_TEST_FRONT_TO_BACK

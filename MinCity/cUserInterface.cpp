@@ -28,6 +28,12 @@ void cUserInterface::setActivatedTool(uint32_t const uiToolType, std::optional<u
 	_tools->setActivatedTool(uiToolType, uiSubTool);
 }
 
+void cUserInterface::KeyAction(int32_t const key, bool const down, bool const ctrl)
+{
+	auto* const ActivatedTool(_tools->getActivatedTool());
+
+	ActivatedTool->KeyAction(key, down, ctrl);
+}
 void __vectorcall cUserInterface::LeftMousePressAction(FXMVECTOR const xmMousePos)
 {
 	auto* const ActivatedTool(_tools->getActivatedTool());

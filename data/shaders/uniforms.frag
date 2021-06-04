@@ -14,8 +14,10 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #define subgroup_quad_enabled
 #define fragment_shader
+#if !defined(BASIC)
 #include "screendimensions.glsl"           
 #include "common.glsl"     
+#endif
 
 layout(early_fragment_tests) in;              
 
@@ -24,18 +26,17 @@ layout(location = 0) out vec4 outColor;
 #else
 layout(location = 0) out vec3 outColor;
 #ifdef BASIC
-#if (defined(HEIGHT) || defined(T2D) || defined(ROAD))
 layout(location = 1) out vec2 outMouse;
-#endif
 #endif
 #endif
 
 #include "voxel_fragment.glsl"
 
-#if defined(BASIC) && (defined(HEIGHT) || defined(T2D) || defined(ROAD))
+#if defined(BASIC)
 void main() {
 	outMouse.rg = In._voxelIndex;
 }
+
 #else
 
 #if (defined(ROAD) && !defined(TRANS))
@@ -154,7 +155,7 @@ void main() {
 	fresnelTerm = smoothstep(0.0f, 1.0f, min(1.0f, bump /* (1.0f - terrainHeight)*/ + pow(bump, 5.0f)));
 
 	// smoother
-	vec4 road_segment = texture(_texArray[TEX_ROAD], In.uv_local.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
+	vec4 road_segment = texture(_texArray[TEX_ROAD], In.world_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
 	// or ** more sharp pixelated but without any aliasing hmmm...
 	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)),In.uv_local.z), dFdx(In.uv_local.xy), dFdy(In.uv_local.xy)); 
 	
@@ -194,11 +195,11 @@ void main() {
 	const vec3 V = normalize(In.V.xyz); 
 
 	// smoother
-	const float road_tile_luma = dot(texture(_texArray[TEX_ROAD], In.uv_local.xyz).rgb, LUMA);
+	const float road_tile_luma = dot(texture(_texArray[TEX_ROAD], In.world_uv.xyz).rgb, LUMA);
 	//const vec4 dFdUV = vec4( dFdx(In.uv_local.xy), dFdy(In.uv_local.xy) );
 	//const float road_tile_luma = dot(textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)), In.uv_local.z), dFdUV.xy, dFdUV.zw).rgb, LUMA);
 
-	const vec2 uv = In.uv_local.xy + vec2(0.0f, In._time*0.5f);
+	const vec2 uv = In.world_uv.xy + vec2(0.0f, In._time*0.5f);
 	vec4 road_segment;
 	road_segment.a = texture(_texArray[TEX_ROAD], vec3(uv, SELECTION)).a;
 	// or ** more sharp pixelated but without any aliasing hmmm...

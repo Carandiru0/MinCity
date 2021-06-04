@@ -46,6 +46,7 @@ namespace Volumetric
 		BUILDING_COMMERCIAL,
 		BUILDING_INDUSTRIAL,
 
+		NAMED,
 		MISC // last
 	);
 
@@ -55,16 +56,27 @@ namespace Volumetric
 		// *** must be negative values
 		EMPTY = -1,
 		CARS = -2,
-		MISC = -3 // last
+
+		NAMED = -3,
+		MISC = -4 // last
 	);
 
 	// #### No particular Order #### //// DYNAMIC or STATIC  -- saved indices for models index that are "special", index must match as loaded for the *group* it belongs to.
 	BETTER_ENUM(eVoxelModels_Indices, uint32_t const,
 
-		// ** static ** 
+		// ** static misc ** 
 		EMPTY = 0,
 
-		// ** dynamic **
+
+		// ** static named **
+		ROCK_STAGE = 0,
+
+
+		// ** dynamic cars **
+		POLICE_CAR = 0, // from group CARS - should be the very first car file as index is used in a special way
+
+
+		// ** dynamic misc **
 		DEPTH_CUBE = 0,
 		HOLOGRAM_GIRL = 1,
 		HOLOGRAM_GIRL2 = 2,
@@ -74,7 +86,17 @@ namespace Volumetric
 		TRAFFIC_SIGN = 6,
 		COPTER_PROP = 7,
 		COPTER_BODY = 8,
-		POLICE_CAR = 0 // from group CARS - should be the very first car file as index is used in a special way
+		GIF_LIGHT = 9,
+
+
+		// ** dynamic named **
+		GUITAR = 0,
+		SINGER = 1,
+		MUSICIAN = 2,
+		LIGHT = 3,
+		CROWD = 4 // **** NOTE THERE ARE 7 CROWD VOXEL MODELS INCLUDING THIS ONE AFTERWARDS
+
+
 	);
 
 	bool const LoadAllVoxelModels();
@@ -92,7 +114,7 @@ namespace Volumetric
 		uint32_t size;
 
 		sModelGroup(int32_t const modelID_)
-			: modelID(modelID_)
+			: modelID(modelID_), offset(0), size(0)
 		{}
 
 	} ModelGroup;
@@ -121,11 +143,13 @@ namespace Volumetric
 			Residential(eVoxelModels_Static::BUILDING_RESIDENTAL),
 			Commercial(eVoxelModels_Static::BUILDING_COMMERCIAL),
 			Industrial(eVoxelModels_Static::BUILDING_INDUSTRIAL),
+			StaticNamed(eVoxelModels_Static::NAMED),
 			StaticMisc(eVoxelModels_Static::MISC), // last
 
 			/* dynamic groups */
 			DynamicEmpty(eVoxelModels_Dynamic::EMPTY),
 			DynamicCars(eVoxelModels_Dynamic::CARS),
+			DynamicNamed(eVoxelModels_Dynamic::NAMED),
 			DynamicMisc(eVoxelModels_Dynamic::MISC); // last
 	} // end ns
 
@@ -166,6 +190,15 @@ namespace Volumetric
 	}
 
 	template<>
+	STATIC_INLINE auto const* const __restrict getVoxelModel<eVoxelModels_Static::NAMED>(uint32_t const index) {
+		return(&_staticModels[isolated_group::StaticNamed.offset + index]);
+	}
+	template<>
+	STATIC_INLINE uint32_t const getVoxelModelCount<eVoxelModels_Static::NAMED>() {
+		return(isolated_group::StaticNamed.size);
+	}
+
+	template<>
 	STATIC_INLINE auto const* const __restrict getVoxelModel<eVoxelModels_Static::MISC>(uint32_t const index) {
 		return(&_staticModels[isolated_group::StaticMisc.offset + index]);
 	}
@@ -191,6 +224,16 @@ namespace Volumetric
 	STATIC_INLINE uint32_t const getVoxelModelCount<eVoxelModels_Dynamic::CARS>() {
 		return(isolated_group::DynamicCars.size);
 	}
+
+	template<>
+	STATIC_INLINE auto const* const __restrict getVoxelModel<eVoxelModels_Dynamic::NAMED>(uint32_t const index) {
+		return(&_dynamicModels[isolated_group::DynamicNamed.offset + index]);
+	}
+	template<>
+	STATIC_INLINE uint32_t const getVoxelModelCount<eVoxelModels_Dynamic::NAMED>() {
+		return(isolated_group::DynamicNamed.size);
+	}
+
 	template<>
 	STATIC_INLINE auto const* const __restrict getVoxelModel<eVoxelModels_Dynamic::MISC>(uint32_t const index) {
 		return(&_dynamicModels[isolated_group::DynamicMisc.offset + index]);

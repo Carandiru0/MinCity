@@ -288,7 +288,10 @@
     <ClInclude Include="cPoliceCarGameObject.h" />
     <ClInclude Include="cPostProcess.h" />
     <ClInclude Include="cProcedural.h" />
+    <ClInclude Include="cRemoteUpdateGameObject.h" />
     <ClInclude Include="cRoadTool.h" />
+    <ClInclude Include="cRockStageGameObject.h" />
+    <ClInclude Include="cSelectTool.h" />
     <ClInclude Include="cSignageGameObject.h" />
     <ClInclude Include="cTestGameObject.h" />
     <ClInclude Include="cTextureBoy.h" />
@@ -297,6 +300,7 @@
     <ClInclude Include="cTrafficSignGameObject.h" />
     <ClInclude Include="cUpdateableGameObject.h" />
     <ClInclude Include="cUserInterface.h" />
+    <ClInclude Include="cVideoScreenGameObject.h" />
     <ClInclude Include="cVoxelWorld.h" />
     <ClInclude Include="cVulkan.h" />
     <ClInclude Include="cZoningTool.h" />
@@ -366,7 +370,10 @@
     <ClCompile Include="cPoliceCarGameObject.cpp" />
     <ClCompile Include="cPostProcess.cpp" />
     <ClCompile Include="cProcedural.cpp" />
+    <ClCompile Include="cRemoteUpdateGameObject.cpp" />
     <ClCompile Include="cRoadTool.cpp" />
+    <ClCompile Include="cRockStageGameObject.cpp" />
+    <ClCompile Include="cSelectTool.cpp" />
     <ClCompile Include="cSignageGameObject.cpp" />
     <ClCompile Include="cTestGameObject.cpp" />
     <ClCompile Include="cTextureBoy.cpp" />
@@ -375,6 +382,7 @@
     <ClCompile Include="cTrafficSignGameObject.cpp" />
     <ClCompile Include="cUpdateableGameObject.cpp" />
     <ClCompile Include="cUserInterface.cpp" />
+    <ClCompile Include="cVideoScreenGameObject.cpp" />
     <ClCompile Include="cVoxelWorld.cpp" />
     <ClCompile Include="cVulkan.cpp" />
     <ClCompile Include="cZoningTool.cpp" />
@@ -455,17 +463,13 @@
 
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
 
-"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin"
-
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin"
-
-"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
 
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
 
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC   --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
 
@@ -473,17 +477,13 @@
 
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
 
-"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin"
-
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  -DT2D  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin"
-
-"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DBASIC -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin"
 
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin"
 
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  -DTRANS -DROAD  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_road%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_road%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>

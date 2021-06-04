@@ -24,26 +24,35 @@ namespace Volumetric
 	// static models and dynamic models are loaded in separate tasks already
 	// checked, and removing the task per model results in noticably faster loading of all voxel models
 
-	template<bool const DYNAMIC>
+	// this function is re-entrant for a group, appending correctly if called in such a way (eg. named files)
+	template<bool const DYNAMIC, bool const SINGLE_FILE = false>
 	static void LoadModelGroup(std::string_view const file_group, ModelGroup& __restrict groupInfo)
 	{
 		std::wstring wszFile;
 		std::wstring const wsz_file_group(stringconv::s2ws(file_group));
 
 		bool bExists(false);
-		uint32_t modelCount(0);
+		uint32_t modelCount(groupInfo.size); // start with current count
 
-		if constexpr(DYNAMIC) {
-			groupInfo.offset = (uint32_t)_dynamicModels.size();
-		}
-		else {
-			groupInfo.offset = (uint32_t)_staticModels.size();
+		// record offset once
+		if (0 == groupInfo.offset) {
+			if constexpr (DYNAMIC) {
+				groupInfo.offset = (uint32_t)_dynamicModels.size();
+			}
+			else {
+				groupInfo.offset = (uint32_t)_staticModels.size();
+			}
 		}
 
 		using voxModel = Volumetric::voxB::voxelModel<DYNAMIC>;
 		using voxIdent = Volumetric::voxB::voxelModelIdent<DYNAMIC>;
 		do {
-			wszFile = fmt::format(FMT_STRING(L"{}{:03d}"), wsz_file_group, modelCount);
+			if constexpr (SINGLE_FILE) {
+				wszFile = wsz_file_group;
+			}
+			else {
+				wszFile = fmt::format(FMT_STRING(L"{}{:03d}"), wsz_file_group, modelCount);
+			}
 
 			voxModel* __restrict pVox;
 			
@@ -60,11 +69,30 @@ namespace Volumetric
 				voxB::AddTransparentVOX(wszFile, pVox); // optional
 				voxB::AddVideoscreenVOX(wszFile, pVox); // optional
 				++modelCount;
+
+				if constexpr (SINGLE_FILE) {
+					break; // done jump out of loop
+				}
 			}
 
 		} while (bExists);
 
-		groupInfo.size = modelCount;
+		// update the count
+		groupInfo.size += modelCount;
+	}
+
+	template<bool const DYNAMIC>
+	static void LoadModelNamed(std::string_view const file_name_no_extension) {
+
+		if constexpr (DYNAMIC) {
+
+			LoadModelGroup<DYNAMIC, true>(file_name_no_extension, isolated_group::DynamicNamed);
+
+		}
+		else { // STATIC
+
+			LoadModelGroup<DYNAMIC, true>(file_name_no_extension, isolated_group::StaticNamed);
+		}
 	}
 
 	static bool LoadAllStaticVoxelModels() // #### Same Order #### //// STATIC
@@ -79,6 +107,12 @@ namespace Volumetric
 		LoadModelGroup<STATIC>(FILE_BUILDING_RESIDENTIAL, isolated_group::Residential);
 		LoadModelGroup<STATIC>(FILE_BUILDING_COMMERCIAL, isolated_group::Commercial);
 		LoadModelGroup<STATIC>(FILE_BUILDING_INDUSTRIAL, isolated_group::Industrial);
+
+#ifdef GIF_MODE
+		LoadModelNamed<STATIC>("rock_stage/rock_stage");
+#endif
+
+		// last!
 		LoadModelGroup<STATIC>(FILE_STATIC_MISC, isolated_group::StaticMisc); // last
 
 		return(Success);
@@ -93,6 +127,22 @@ namespace Volumetric
 
 		LoadModelGroup<DYNAMIC>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
 		LoadModelGroup<DYNAMIC>(FILE_DYNAMIC_CARS, isolated_group::DynamicCars);
+
+#ifdef GIF_MODE
+		LoadModelNamed<DYNAMIC>("rock_stage/guitar");
+		LoadModelNamed<DYNAMIC>("rock_stage/singer");
+		LoadModelNamed<DYNAMIC>("rock_stage/musician");
+		LoadModelNamed<DYNAMIC>("rock_stage/light");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__0");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__1");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__2");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__3");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__4");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__5");
+		LoadModelNamed<DYNAMIC>("rock_stage/crowd__6");
+#endif
+
+		// last!
 		LoadModelGroup<DYNAMIC>(FILE_DYNAMIC_MISC, isolated_group::DynamicMisc); // last
 
 		// *** apply special functionality to specific models here *** //

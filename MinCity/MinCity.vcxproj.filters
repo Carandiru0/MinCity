@@ -306,6 +306,18 @@
     <ClInclude Include="cPoliceCarGameObject.h">
       <Filter>Header Files\Gameplay\Cars</Filter>
     </ClInclude>
+    <ClInclude Include="cVideoScreenGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cSelectTool.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cRemoteUpdateGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cRockStageGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -451,6 +463,18 @@
     </ClCompile>
     <ClCompile Include="cPoliceCarGameObject.cpp">
       <Filter>Source Files\Gameplay\Cars</Filter>
+    </ClCompile>
+    <ClCompile Include="cVideoScreenGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cSelectTool.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cRemoteUpdateGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cRockStageGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

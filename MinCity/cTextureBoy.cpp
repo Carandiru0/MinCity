@@ -34,7 +34,9 @@ void cTextureBoy::Initialize()
 	MinCity::TextureBoy.ImagingToTexture<false>(imageNoise, _noiseTexture);
 
 #ifndef NDEBUG
-	ImagingSaveToKTX(imageNoise, DATA_DIR "noise_mix.ktx");
+#ifdef DEBUG_EXPORT_NOISEMIX_KTX
+	ImagingSaveToKTX(imageNoise, DEBUG_DIR "noisemix_test.ktx");
+#endif
 #endif
 
 	ImagingDelete(imageNoise);

@@ -11,19 +11,149 @@ namespace world
 		}
 	}
 
+	cTestGameObject::cTestGameObject(cTestGameObject&& src) noexcept
+		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src))
+	{
+		src.free_ownership();
+
+		// important
+		if (Instance && *Instance) {
+			(*Instance)->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
+			(*Instance)->setVoxelEventFunction(&cTestGameObject::OnVoxel);
+		}
+		// important
+		if (src.Instance && *src.Instance) {
+			(*src.Instance)->setOwnerGameObject<cTestGameObject>(nullptr, nullptr);
+			(*src.Instance)->setVoxelEventFunction(nullptr);
+		}
+	}
+	cTestGameObject& cTestGameObject::operator=(cTestGameObject&& src) noexcept
+	{
+		tUpdateableGameObject::operator=(std::forward<tUpdateableGameObject&&>(src));
+
+		src.free_ownership();
+
+		// important
+		if (Instance && *Instance) {
+			(*Instance)->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
+			(*Instance)->setVoxelEventFunction(&cTestGameObject::OnVoxel);
+		}
+		// important
+		if (src.Instance && *src.Instance) {
+			(*src.Instance)->setOwnerGameObject<cTestGameObject>(nullptr, nullptr);
+			(*src.Instance)->setVoxelEventFunction(nullptr);
+		}
+
+		return(*this);
+	}
+
 	cTestGameObject::cTestGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_)
+		: tUpdateableGameObject(instance_), _glass_color(MASK_GLASS_COLOR), _bulb_color(MASK_BULB_COLOR),
+		_accumulator(0.0f), _direction(1.0f)
 	{
 		instance_->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
+		instance_->setVoxelEventFunction(&cTestGameObject::OnVoxel);
+	}
+
+	// If currently visible event:
+	Volumetric::voxB::voxelState const cTestGameObject::OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
+	{
+		return(reinterpret_cast<cTestGameObject const* const>(_this)->OnVoxel(voxel, rOriginalVoxelState, vxl_index));
+	}
+	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
+	Volumetric::voxB::voxelState const cTestGameObject::OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+	{
+		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
+
+		Volumetric::voxB::voxelState voxelState(rOriginalVoxelState);
+
+#ifdef GIF_MODE
+
+		if (MASK_GLASS_COLOR == voxel.Color) {
+			voxel.Color = _glass_color;
+		}
+		else if (MASK_BULB_COLOR == voxel.Color) {
+			voxel.Color = _bulb_color;
+		}
+
+#else
+
+
+#endif
+		return(voxelState);
 	}
 
 	void cTestGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		// some spinning on depth cube
-			
+#ifdef GIF_MODE
+
+		_accumulator += tDelta.count() * _direction * 0.333f;
+
+		if (_direction >= 0.0f) {
+			if (_accumulator >= 1.0f) {
+
+				_direction = -_direction;
+			}
+		}
+		else {
+			if (_accumulator <= 0.0f) {
+
+				_direction = -_direction;
+			}
+		}
+
+		uvec4_v const black_body(MinCity::VoxelWorld.blackbody(_accumulator));
+		uvec4_t color;
+		
+		SFM::unpack_rgba(BULB_COLOR, color);
+
+		uvec4_v bulb_color(color);
+		bulb_color = SFM::modulate(bulb_color, black_body);
+
+		bulb_color.rgba(color);
+		_bulb_color = SFM::pack_rgba(color);
+
+		SFM::unpack_rgba(GLASS_COLOR, color);
+		color.a = SFM::float_to_u8(_accumulator * 0.5f);
+
+		uvec4_v glass_color(color);
+		glass_color = SFM::blend(glass_color, bulb_color);
+
+		glass_color.rgba(color);
+		_glass_color = SFM::pack_rgba(color);
+
+#define SPEED (Iso::VOX_SIZE*2.0f)
+
+		/// 
+		// parent rotation of all lights 
+		_parent_rotation += tDelta.count() * SPEED;
+
+
+		XMVECTOR xmLoc((*Instance)->getLocation());
+		XMVECTOR const xmLookAt(XMVectorZero());
+
+		XMVECTOR xmDir = XMVectorSubtract(xmLoc, xmLookAt);
+		xmDir = XMVector2Normalize(xmDir);
+		{
+			v2_rotation_t vOrient;
+			vOrient = xmDir;
+
+			(*Instance)->setLocationAzimuth(xmLoc, /*_parent_rotation +*/ vOrient);
+		}
+
+		xmLoc = XMVectorSetY(xmLoc, (*Instance)->getElevation());
+		xmDir = XMVectorSubtract(xmLoc, xmLookAt);
+		xmDir = XMVector2Normalize(xmDir);
+		{
+			v2_rotation_t vOrient;
+			vOrient = -xmDir;
+
+			//(*Instance)->setPitch(vOrient);
+		}
+#else
 		v2_rotation_t vOrient( (*Instance)->getAzimuth() );
 
-		vOrient += tDelta.count() * 0.15f;
+		vOrient += tDelta.count() * 0.5f;
 			
 		(*Instance)->setAzimuth(vOrient);
 
@@ -42,6 +172,7 @@ namespace world
 		//xmDisplacement = XMVectorSetY(xmDisplacement, 0.0f);
 		Instance->setLocation(xmLocation);
 		*/
+#endif
 	}
 
 

@@ -26,7 +26,7 @@ layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far s
 readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
-	flat vec2	local_uv;
+	flat vec2	world_uv;
 #ifndef BASIC
 	flat vec3    ambient;
 	flat float   occlusion;
@@ -38,7 +38,7 @@ readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
 	flat vec4   corners;
-	flat vec2	local_uv;
+	flat vec2	world_uv;
 #ifndef BASIC
 	flat vec3    ambient;
 	flat float   occlusion;
@@ -51,6 +51,9 @@ readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
 	flat uint	adjacency;
+#ifdef BASIC
+	flat vec2	world_uv;
+#endif
 #ifndef BASIC
 	flat vec3    ambient;
 	flat vec3	 color;
@@ -166,7 +169,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 
 #if defined(HEIGHT) 
 	const vec2 texel_texture = HALF_TEXEL_OFFSET_TEXTURE; // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].local_uv.xy);
+	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
 #endif
 #if defined(ROAD)
 	const vec2 texel_road_texture = vec2(0.5f, ROAD_WIDTH * 0.5f);
@@ -178,7 +181,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #ifndef BASIC
 	const float rotate = In[0].extra.y;
 	const vec2 texel_texture = mix(HALF_TEXEL_OFFSET_TEXTURE.yx, HALF_TEXEL_OFFSET_TEXTURE.xy, rotate); // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].local_uv.xy);
+	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
 #endif
 	const vec4 corners = In[0].corners; 
 #endif
@@ -195,7 +198,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #ifdef ROAD
 	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.uv_local.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -215,7 +218,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #ifdef ROAD
 	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.uv_local.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -235,7 +238,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #ifdef ROAD
 	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.uv_local.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -255,14 +258,14 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #ifdef ROAD
 	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.uv_local.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
 	EmitVxlVertex(center, tangent);
+}
 
 	EndPrimitive();
-}
 
 } // end BeginQuad
 
@@ -289,7 +292,7 @@ void main() {
 #endif
 
 #ifdef ROAD
-	Out.uv_local.z = In[0].extra.x; // road tile index in .z, which is good for indexing texture array nicely as special.xy already contains uv coords
+	Out.world_uv.z = In[0].extra.x; // road tile index in .z, which is good for indexing texture array nicely as special.xy already contains uv coords
 #endif
 	
 #if !(defined(HEIGHT) || defined(ROAD))
@@ -313,9 +316,7 @@ void main() {
 
 #else // basic
 
-#if (defined(HEIGHT) || defined(ROAD))
-	Out._voxelIndex = In[0].local_uv.xy;// * 2.0f - 1.0f; // normalized world uv coords
-#endif 
+	Out._voxelIndex = In[0].world_uv.xy; // normalized world grid uv coords
 
 #endif  // basic
 	

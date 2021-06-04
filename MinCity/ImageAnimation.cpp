@@ -13,7 +13,7 @@ namespace fs = std::filesystem;
 
 ImageAnimation::ImageAnimation(Volumetric::voxB::voxelScreen const& voxelscreen_, uint32_t const unique_hash_seed_)
 	: _background_task_id(0), sequence(nullptr), next_sequence(nullptr), tFrameStarted(zero_time_point), frame(0), loops(0), status(UNLOADED),
-	voxelscreen(voxelscreen_), unique_hash_seed(unique_hash_seed_), obtain_allowed(false)
+	voxelscreen(voxelscreen_), unique_hash_seed(unique_hash_seed_), obtain_allowed(false), forced_sequence(-1)
 
 {
 }
@@ -188,7 +188,7 @@ void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desire
 		}
 	}
 
-	int32_t const random_index(PsuedoRandomNumber(0, gif_count[micro]));
+	int32_t const random_index((forced_sequence >= 0 ? forced_sequence : PsuedoRandomNumber(0, gif_count[micro])));
 	
 	std::string const szFile(fmt::format(FMT_STRING("anim_{:03d}.gif"), random_index));
 

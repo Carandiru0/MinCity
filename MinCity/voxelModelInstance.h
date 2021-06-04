@@ -29,7 +29,9 @@ namespace Volumetric
 	public:
 		uint32_t const											      getHash() const { return(hashID); }
 		XMVECTOR const __vectorcall									  getLocation() const { return(XMLoadFloat2A(&vLoc)); }
+		XMVECTOR const __vectorcall									  getLocation3D() const { return(XMVectorSetY(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat2A(&vLoc)), fElevation)); }
 		float const __vectorcall									  getElevation() const { return(fElevation); } // additional "height above ground"
+		
 		point2D_t const	__vectorcall								  getVoxelIndex() const { return(v2_to_p2D(getLocation())); }	// returns voxel index occupied by the origin of this instance
 																																	// this is synchronized as the "root voxel" index by the voxel world
 		void __vectorcall setElevation(float const fElevation_) { fElevation = fElevation_; }																															// this must use a floor type operation on the floating point vector to be correct
@@ -94,7 +96,10 @@ namespace Volumetric
 	public:
 		__inline voxB::voxelModel<Dynamic> const& __restrict		  getModel() const { return(model); }
 		uint32_t const												  getFlags() const { return(flags);}
+		bool const													  isHighlighted() const { return(highlighted); }
+
 		uint32_t const												  getTransparency() const { return(transparency); } // use eVoxelTransparency enum
+		void														  setHighlighted(bool const highlighted_) { highlighted = highlighted_; }
 
 		/// Transparency only has affect if loaded model has state groups defining the voxels that are transparent at load model time
 		void														  setTransparency(uint32_t const transparency_) { transparency = transparency_; } // use eVoxelTransparency enum
@@ -111,10 +116,11 @@ namespace Volumetric
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
+		bool												highlighted;
 		uint8_t												transparency;	// 4 distinct levels of transparency supported - see eVoxelTransparency enum - however all values between 0 - 255 will be correctly converted to transparency level that is closest
 	public:
 		inline explicit voxelModelInstance(voxB::voxelModel<Dynamic> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
-			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
+			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), highlighted(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
 		{}
 	};
 
@@ -165,9 +171,11 @@ namespace Volumetric
 		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); }
 
 		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc, _vAzimuth); }			//-ok
+		void __vectorcall setLocation3D(FXMVECTOR const xmLoc) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), _vAzimuth); }		//-ok
 		void __vectorcall setAzimuth(v2_rotation_t const vAzi) { synchronize(getLocation(), vAzi); }	//-ok
 		void __vectorcall setPitch(v2_rotation_t const vPit) { _vPitch = vPit; }						// pitch doesn't affect synchronization
 		void __vectorcall setLocationAzimuth(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { synchronize(xmLoc, vAzi); }  //*best
+		void __vectorcall setLocation3DAzimuth(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), vAzi); }  //*best
 	public:
 		void __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vAzi);	// must be called whenever a change in location/rotation is intended 
 	private:

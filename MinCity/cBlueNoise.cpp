@@ -22,7 +22,9 @@ namespace supernoise
 
 			MinCity::TextureBoy.ImagingToTexture_RG<false>(imgBlueNoise, _blueNoiseTexture);
 #ifndef NDEBUG
-			ImagingSaveToKTX(imgBlueNoise, DATA_DIR "bluenoise_dual_channel.ktx");
+#ifdef DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
+			ImagingSaveToKTX(imgBlueNoise, DEBUG_DIR "bluenoise_dual_channel_test.ktx");
+#endif
 #endif
 			// capture first channel for usage outside of gpu texture scope (cpu only)
 			_blueNoise1D = (float* const)scalable_aligned_malloc(BLUENOISE_DIMENSION_SZ * BLUENOISE_DIMENSION_SZ * sizeof(float), 16);

@@ -31,13 +31,15 @@ STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped()
 {
 	point2D_t const hoverVoxel(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-	//point2D_t hoverVoxelSnapped(
-	//	SFM::roundToMultipleOf<false>(hoverVoxel.x, (int32_t)Iso::ROAD_SEGMENT_WIDTH),
-	//	SFM::roundToMultipleOf<false>(hoverVoxel.y, (int32_t)Iso::ROAD_SEGMENT_WIDTH)
-	//);
+	/*
+	point2D_t hoverVoxelSnapped(
+		SFM::roundToMultipleOf<false>(hoverVoxel.x, (int32_t)Iso::ROAD_SEGMENT_WIDTH),
+		SFM::roundToMultipleOf<false>(hoverVoxel.y, (int32_t)Iso::ROAD_SEGMENT_WIDTH)
+	);
 
-	//hoverVoxelSnapped = p2D_add(hoverVoxelSnapped, p2D_muls(p2D_sgn(p2D_sub(hoverVoxel, hoverVoxelSnapped)), Iso::SEGMENT_SIDE_WIDTH));
-	
+	hoverVoxelSnapped = p2D_add(hoverVoxelSnapped, p2D_muls(p2D_sgn(p2D_sub(hoverVoxel, hoverVoxelSnapped)), Iso::SEGMENT_SIDE_WIDTH));
+	*/
+
 	return(hoverVoxel);
 }
 
@@ -2040,6 +2042,6 @@ void cRoadTool::deactivate()
 
 void cRoadTool::activate()
 {
-
+	MinCity::Vulkan.setMouseBufferMode(eMouseBufferMode::GROUND_VOXELS);
 }
 

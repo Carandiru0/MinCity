@@ -132,7 +132,7 @@ typedef struct key_event
 
 static inline struct alignas(16) // double clicking is purposely not supported for ease of use (touch tablet or touch screen)
 {
-	static constexpr uint32_t const MAX_TYPED = 32;
+	static constexpr uint32_t const MAX_TYPED = 64; // lots of room for multiple key actions / frame
 
 	bool input_focused;
 
@@ -723,6 +723,7 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 					   vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo,
 					   RenderingInfo const& __restrict renderInfo) const
 {	
+#ifndef GIF_MODE
 	UniformDecl::NuklearPushConstants PushConstants;
 
 	cb_render.bindPipeline(vk::PipelineBindPoint::eGraphics, renderInfo.pipeline);
@@ -771,6 +772,7 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 
 		index_offset += cmd->elem_count;
 	}
+#endif
 }
 
 // *******************************************************************************************
@@ -849,40 +851,32 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			}
 		}
 	}
-	else { // key handling normal (game focused)
+	else { // key handling normal (exclusively gui or exclusively game focused)
+		bool const ctrl((glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) || (glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS));
 
-		// only keys we care about for GAME INPUT
 		for (uint32_t i = 0; i < nk_input.keys_count; ++i) {
 
-			bool const down(GLFW_PRESS == nk_input.keys[i].action);
-
+			bool const down(((GLFW_PRESS & nk_input.keys[i].action) | (GLFW_REPEAT & nk_input.keys[i].action)));
+			
+			// ** only gui related actions here ** //
 			switch (nk_input.keys[i].key)
 			{
-			case GLFW_KEY_SPACE:
-				if (!down) { // on released
-					MinCity::Pause(!MinCity::isPaused());
-				}
-				break;
-			case GLFW_KEY_R:
-				if (!down) { // on released
-					MinCity::VoxelWorld.resetCameraAngleZoom();
-				}
-				break;
+			/* ADD AS NEEDED
 			case GLFW_KEY_DELETE:
+				nk_input_key(ctx, NK_KEY_DEL, down);
+				bInputGUIDelta = true;
 				break;
 			case GLFW_KEY_BACKSPACE:
+				nk_input_key(ctx, NK_KEY_BACKSPACE, down);
+				bInputGUIDelta = true;
 				break;
-			case GLFW_KEY_ENTER:
-				break;
-			case GLFW_KEY_LEFT:
-				break;
-			case GLFW_KEY_RIGHT:
-				break;
+			*/
 			default:
+				// (exclusively game focused) key events are all forwarded to VoxelWorld for handling //
+				MinCity::VoxelWorld.OnKey(nk_input.keys[i].key, down, ctrl);
 				break;
 			}
 		}
-
 	}
 
 	// handling mouse input

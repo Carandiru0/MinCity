@@ -13,7 +13,7 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	flat vec4 extra;	
 	flat vec3 ambient;
 #ifdef ROAD
-	vec3 uv_local;
+	vec3 world_uv;
 #endif
 
 } Out;
@@ -27,7 +27,7 @@ readonly layout(location = 0) in streamIn   // in/out to pixel shader (all membe
 	flat vec4 extra;	
 	flat vec3 ambient;
 #ifdef ROAD
-	vec3 uv_local;
+	vec3 world_uv;
 #endif
 } In;
 #endif
@@ -82,9 +82,7 @@ readonly layout(location = 0) in streamIn   // in/out to pixel shader (all membe
 
 #ifdef BASIC
 
-#if (defined(HEIGHT) || defined(T2D) || defined(ROAD))
 #define _voxelIndex extra.xy
-#endif
 
 #endif
 

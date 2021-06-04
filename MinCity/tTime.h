@@ -26,7 +26,7 @@ static constexpr size_t const FRAME_UPDATE_INTERVAL_US = 33333ULL; // in microse
 static constexpr nanoseconds const fixed_delta_duration = microseconds(FRAME_UPDATE_INTERVAL_US);
 static constexpr nanoseconds const fixed_delta_x2_duration = microseconds(FRAME_UPDATE_INTERVAL_US<<1ULL);
 
-#endif
+#endif 
 
 
 

@@ -41,8 +41,18 @@ layout (constant_id = 1) const float VolumeDimensions_X = 0.0f;
 layout (constant_id = 2) const float VolumeDimensions_Y = 0.0f;
 layout (constant_id = 3) const float VolumeDimensions_Z = 0.0f;
 #define VolumeDimensions vec3(VolumeDimensions_X, VolumeDimensions_Y, VolumeDimensions_Z)
+// corresponding to volume dimensions
+const vec3 TransformToIndexScale = vec3(2.0f, -2.0f, 2.0f);
+layout (constant_id = 4) const float TransformToIndexBias_X = 0.0f;
+layout (constant_id = 5) const float TransformToIndexBias_Y = 0.0f;
+layout (constant_id = 6) const float TransformToIndexBias_Z = 0.0f;
+#define TransformToIndexBias vec3(TransformToIndexBias_X, TransformToIndexBias_Y, TransformToIndexBias_Z)
+layout (constant_id = 7) const float InvToIndex_X = 0.0f;
+layout (constant_id = 8) const float InvToIndex_Y = 0.0f;
+layout (constant_id = 9) const float InvToIndex_Z = 0.0f;
+#define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
-#elif defined(HEIGHT) || defined(ROAD)
+#elif defined(HEIGHT) || defined(ROAD) // NOT BASIC:
 
 layout (constant_id = 1) const float VolumeDimensions_Y = 0.0f;
 
@@ -53,7 +63,7 @@ layout(location = 0) out streamOut
 {
 	writeonly flat vec3	right, forward;
 	flat vec3 up;
-	writeonly flat vec2	local_uv;
+	writeonly flat vec2	world_uv;
 #ifndef BASIC
 	writeonly flat vec3    ambient;
 	writeonly flat float   occlusion;
@@ -65,7 +75,7 @@ writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat vec4   corners;
-	flat vec2	local_uv;
+	flat vec2	world_uv;
 #ifndef BASIC
 	flat vec3    ambient;
 	flat float   occlusion;
@@ -78,6 +88,9 @@ writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat uint	adjacency;
+#ifdef BASIC
+	flat vec2	world_uv;
+#endif
 #ifndef BASIC
 	flat vec3    ambient;
 	flat vec3	 color;
@@ -92,9 +105,9 @@ writeonly layout(location = 0) out streamOut
 
 #if defined(HEIGHT) || defined(ROAD)
 #ifdef BASIC
-layout (constant_id = 4) const float INV_MAX_HEIGHT_STEPS = 0.0f;
-layout (constant_id = 5) const float HEIGHT_SCALE = 0.0f;
-layout (constant_id = 6) const int MINIVOXEL_FACTOR = 1;
+layout (constant_id = 10) const float INV_MAX_HEIGHT_STEPS = 0.0f;
+layout (constant_id = 11) const float HEIGHT_SCALE = 0.0f;
+layout (constant_id = 12) const int MINIVOXEL_FACTOR = 1;
 #else
 layout (constant_id = 2) const float INV_MAX_HEIGHT_STEPS = 0.0f;
 layout (constant_id = 3) const float HEIGHT_SCALE = 0.0f;
@@ -205,9 +218,9 @@ vec3 v3_rotate_azimuth(in const vec3 p)
 #endif
 
 void main() {
- 
-  gl_Position = vec4(inWorldPos.xyz, 1.0f);
- 
+  
+  vec3 worldPos = inWorldPos.xyz;
+
   { // orientation output vectors right, forward, up
 	const float size = VOX_SIZE;
 
@@ -232,8 +245,11 @@ void main() {
 #endif
 
 #if defined(HEIGHT) || defined(ROAD) // terrain/road voxels only
-  Out.local_uv.xy = inUV.xy;
+  Out.world_uv.xy = inUV.xy;
+#elif defined(BASIC)
+  Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels
 #endif
+
 #if !(defined(HEIGHT) || defined(ROAD) || defined(BASIC)) // voxels only
   Out.passthru = inUV.w; // pass-thru - important as .w component is customizable dependent on fragment shader used (normally a packed color, but for ie.) shockwaves it's uniform distance)
 #endif
@@ -321,7 +337,7 @@ void main() {
 	const float y_max = max(corner_height.x, corner_height.y);
 	
 	// perfectly centered, delta_height removes staircase
-	gl_Position.y = (y_max - (y_max - y_min) * 0.5f) - delta_height.y * 0.5f;
+	worldPos.y = (y_max - (y_max - y_min) * 0.5f) - delta_height.y * 0.5f;
   }
 #endif
 
@@ -350,7 +366,14 @@ void main() {
 #endif
 #endif // clear
 
+	// out position //
+	gl_Position = vec4(worldPos, 1.0f);
+
 #if defined(BASIC) && !defined(ROAD) // only basic past this point
+
+	// derive the normalized index
+	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
+
 // Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
 #if defined(CLEAR) // erase
 	const float opacity = 0.0f;
@@ -362,7 +385,7 @@ void main() {
 
 #if !defined(HEIGHT)
 
-const ivec3 ivoxel = ivec3(floor(inUV.xyz * VolumeDimensions)).xzy;
+const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions)).xzy;
 
 #if defined(TRANS)
 const float existing = imageLoad(opacityMap, ivoxel).r;  // already occupied with an opaque or transparent block
@@ -377,8 +400,8 @@ else // already filled with opaque block
   imageStore(opacityMap, ivoxel, opacity.rrrr);
 
 #else // terrain only
-  const ivec3 ivoxel = ivec3(floor(vec3(inUV.z, 0.0f, inUV.w) * VolumeDimensions));
-  const int ivoxel_height = int(floor(voxel_height + 0.5f));
+  const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
+  const int ivoxel_height = int(floor(voxel_height));
 
   ivec3 iminivoxel;
   

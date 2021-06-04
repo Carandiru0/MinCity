@@ -427,12 +427,12 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 					p2D_to_v2(currentState.voxelIndex), p2D_to_v2(currentState.voxelDirection),
 					p2D_to_v2(targetState.voxelIndex), p2D_to_v2(targetState.voxelDirection));
 
-				targetState.distance = _arcs[0].length + _arcs[1].length;
+				targetState.distance = (_arcs[0].length + _arcs[1].length) * 2.0f; // bugfix: must be 2x else car moves too fast thru xing
 				return(true);
 			}
 
 			// straight thru intersection
-			targetState.distance = XMVectorGetX(XMVector2Length(p2D_to_v2(p2D_sub(voxelRoadTarget, _this.currentState.voxelIndex))));
+			targetState.distance = XMVectorGetX(XMVector2Length(p2D_to_v2(p2D_sub(voxelRoadTarget, _this.currentState.voxelIndex)))) * 2.0f; // bugfix: must be 2x else car moves too fast thru xing
 
 			return(true);
 		}
@@ -500,7 +500,7 @@ bool const __vectorcall cCarGameObject::corner(state const& __restrict currentSt
 						p2D_to_v2(currentState.voxelIndex), p2D_to_v2(currentState.voxelDirection),
 						p2D_to_v2(targetState.voxelIndex), p2D_to_v2(targetState.voxelDirection));
 
-	targetState.distance = _arcs[0].length + _arcs[1].length;
+	targetState.distance = (_arcs[0].length + _arcs[1].length) * 2.0f;  // bugfix: must be 2x else car moves thru corner too fast
 
 	return(true);
 }
@@ -767,7 +767,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 
 		// any changes to members of *this should be done only *after* ccd (below)
 		XMVECTOR const xmTarget(p2D_to_v2(_this.targetState.voxelIndex));
-		XMVECTOR xmNow, xmNowR(_this.currentState.vAzimuth.v2());;
+		XMVECTOR xmNow, xmNowR(_this.currentState.vAzimuth.v2());
 
 		// v = d/t
 		// t = d/v
@@ -947,6 +947,7 @@ void cCarGameObject::Initialize(tTime const& __restrict tNow)
 }
 void cCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
+#ifndef GIF_MODE
 	if (size() < MAX_CARS) {
 
 		static tTime tLastCreation(zero_time_point);
@@ -969,7 +970,7 @@ void cCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& _
 	FMT_NUKLEAR_DEBUG(false, "cars active: {:n}  cars errored out: {:n}", size(), g_cars_errored_out);
 #endif
 #endif	
-
+#endif
 }
 
 cCarGameObject::~cCarGameObject()

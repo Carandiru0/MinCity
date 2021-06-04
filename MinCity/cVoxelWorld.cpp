@@ -24,6 +24,13 @@
 #include "shockwave.h"
 #include "rain.h"
 
+#ifdef GIF_MODE
+#include "cVideoScreenGameObject.h"
+#include "cRockStageGameObject.h"
+#endif
+
+#include "cRemoteUpdateGameObject.h"
+#include "cBuildingGameObject.h"
 #include "cTrafficControlGameObject.h"
 #include "cPoliceCarGameObject.h"
 #include "cCarGameObject.h"
@@ -279,37 +286,41 @@ void cVoxelWorld::GenerateGround()
 	supernoise::NewNoisePermutation();
 
 	// Generate Image
-	ImagingMemoryInstance* imageNoise = MinCity::Procedural.GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep() );
+	Imaging imageNoise = MinCity::Procedural.GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep() );
 
 	// Create and Upload Texture //
 	{
 		// must be BGRX into resampling (4 channels)
 		Imaging resampledImg = ImagingResample(imageNoise, Iso::WORLD_GRID_SIZE << 1, Iso::WORLD_GRID_SIZE << 1, IMAGING_TRANSFORM_BICUBIC);
-		
-		Imaging filteredImg = MinCity::Procedural.BilateralFilter(resampledImg);
-		ImagingDelete(resampledImg);
+		ImagingDelete(imageNoise); imageNoise = resampledImg;
 
-		resampledImg = ImagingResample(filteredImg, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BICUBIC);
-		ImagingDelete(filteredImg);
-		ImagingDelete(imageNoise); imageNoise = resampledImg; // final image for voxel grid heights
+		Imaging const filteredImg = MinCity::Procedural.BilateralFilter(imageNoise);
+		ImagingDelete(imageNoise); imageNoise = filteredImg;
+
+		resampledImg = ImagingResample(imageNoise, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BICUBIC);
+		ImagingDelete(imageNoise); imageNoise = resampledImg;
 
 		// terrain teture is multiple of voxel grid size, power of 2 and not exceeding 16384
 		// should be placed in dedicated memory on gpu
 		resampledImg = ImagingResample(imageNoise, world::TERRAIN_TEXTURE_SZ, world::TERRAIN_TEXTURE_SZ, IMAGING_TRANSFORM_BICUBIC);
-		
-		//resampledImg = MinCity::Procedural.Colorize_TestPattern(resampledImg);
+		ImagingDelete(imageNoise); imageNoise = resampledImg;
+
 #ifndef DEBUG_LOADTIME_BC7_COMPRESSION_DISABLED
-		Imaging imgCompressedBC7 = ImagingCompressBGRAToBC7(resampledImg);
-		
+		Imaging imgCompressedBC7 = ImagingCompressBGRAToBC7(imageNoise);
+
 		MinCity::TextureBoy.ImagingToTexture_BC7<true>(imgCompressedBC7, _terrainTexture);
 		
-		ImagingDelete(imgCompressedBC7);
+#ifdef GIF_MODE
+		ImagingDelete(imageNoise); imageNoise = imgCompressedBC7; // hack for making ground flat for "gif mode" - need reflections
 #else
-		MinCity::TextureBoy.ImagingToTexture(resampledImg, _terrainTexture);
+		ImagingDelete(imgCompressedBC7);
 #endif
-		ImagingDelete(resampledImg);
-
+#else
+		MinCity::TextureBoy.ImagingToTexture(imageNoise, _terrainTexture);
+#endif
 		MinCity::TextureBoy.AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
+
+		// imageNoise is released at end of function
 	}
 
 	// Traverse Grid
@@ -647,6 +658,31 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 		rotateCamera(fp_seconds(fixed_delta_duration).count()); // *** slow turntable rotation using delta directly is ok here
 	}
 	return(xmOrigin);
+}
+
+void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
+{
+	switch (key)
+	{
+	case GLFW_KEY_SPACE:
+		if (!down) { // on released
+			MinCity::Pause(!MinCity::isPaused());
+		}
+		break;
+	case GLFW_KEY_R:
+		if (!down) { // on released
+			resetCameraAngleZoom();
+		}
+		break;
+	case GLFW_KEY_S:
+		if (!down) { // on released
+			cMinCity::UserInterface.setActivatedTool(eTools::SELECT);
+		}
+		break;
+	default: // further processing delegated to user interface and the tools it consists of
+		cMinCity::UserInterface.KeyAction(key, down, ctrl);
+		break;
+	}
 }
 
 bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn)
@@ -1829,35 +1865,7 @@ static struct voxelRender // ** static container, all methods and members must b
 			groundHash |= (Iso::getOcclusion(oVoxel) << 5);		//				111x xxxx
 			groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
 
-			// ************ uv.y must be inverted !!!! (bugfix: minimap does not match world map)
-			point2D_t voxelWorldUV(voxelIndex);
-			//voxelWorldUV.y = (int32_t)(Iso::WORLD_GRID_SIZE - 1) - voxelWorldUV.y;
-
-			XMVECTOR voxelLocalUV;
-			{
-				{ // bugfix for mismatch between static voxel model lighting not matching location for terrain (inversion here aswell)
-					voxelLocalUV = XMVectorSubtract(_voxelGridToLocal, XMVectorSubtract(_voxelGridToLocal, xmIndex));
-				}
-			}
-			// ***xy = world relative UV*****,  ****** zw = visible relative UV ******* see voxelModel.h render() for details
-
-			// fractional offset is in world coordinates
-			// allows grid to scroll smoothly
-			// for the *signed* fractional range +-0.0 - 0.9999
-			// represents a fractional part of the main voxel grid element whose size is VOX_SIZE
-			// so a UV coordinate needs to be scaled accordingly to remap the range of oine discrete grid voxel to a 
-			// uv range equal to it
-			// (1.0f / VOX_SIZE) * fractional world coordinates = normalized fractional coordinates
-			// normalized fractional coordinates * INVERSE_GRID_VISIBLE = uv coordinates for "local visible uv range" that we care about
-			// add that to the voxel local UV shoulld then apply smooth interpolation of local UV coordinates
-			// just like the world coordinates applied to the model origins
-			// hope there is enough precision....
-			// may need to convert signed fractional range to unsigned...
-			// y axis u(V) may be flipped uggghh
-
-			XMVECTOR const xmUVs(SFM::__fma(XMVectorRotateRight<2>(voxelLocalUV), _xmInverseVisible,
-				XMVectorScale(p2D_to_v2(voxelWorldUV), Iso::INVERSE_WORLD_GRID_FSIZE))
-			); // terrain uses only xz for 3d lightmap sample, as y = 0
+			XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 
 			localGround.emplace_back(
 				voxelGround,
@@ -1889,35 +1897,7 @@ static struct voxelRender // ** static container, all methods and members must b
 			roadHash |= (Iso::isEmissive(oVoxel) << 8);						//                           0000 0001	  xxxx xxxx
 			roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);		// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
 
-			// ************ uv.y must be inverted !!!! (bugfix: minimap does not match world map)
-			point2D_t voxelWorldUV(voxelIndex);
-			//voxelWorldUV.y = (int32_t)(Iso::WORLD_GRID_SIZE - 1) - voxelWorldUV.y;
-
-			XMVECTOR voxelLocalUV;
-			{
-				{ // bugfix for mismatch between static voxel model lighting not matching location for terrain (inversion here aswell)
-					voxelLocalUV = XMVectorSubtract(_voxelGridToLocal, XMVectorSubtract(_voxelGridToLocal, xmIndex));
-				}
-			}
-			// ***xy = world relative UV*****,  ****** zw = visible relative UV ******* see voxelModel.h render() for details
-
-			// fractional offset is in world coordinates
-			// allows grid to scroll smoothly
-			// for the *signed* fractional range +-0.0 - 0.9999
-			// represents a fractional part of the main voxel grid element whose size is VOX_SIZE
-			// so a UV coordinate needs to be scaled accordingly to remap the range of oine discrete grid voxel to a 
-			// uv range equal to it
-			// (1.0f / VOX_SIZE) * fractional world coordinates = normalized fractional coordinates
-			// normalized fractional coordinates * INVERSE_GRID_VISIBLE = uv coordinates for "local visible uv range" that we care about
-			// add that to the voxel local UV shoulld then apply smooth interpolation of local UV coordinates
-			// just like the world coordinates applied to the model origins
-			// hope there is enough precision....
-			// may need to convert signed fractional range to unsigned...
-			// y axis u(V) may be flipped uggghh
-
-			XMVECTOR const xmUVs(SFM::__fma(XMVectorRotateRight<2>(voxelLocalUV), _xmInverseVisible,
-				XMVectorScale(p2D_to_v2(voxelWorldUV), Iso::INVERSE_WORLD_GRID_FSIZE))
-			); // terrain uses only xz for 3d lightmap sample, as y = 0
+			XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 
 			localRoad.emplace_back(
 				voxelRoad,
@@ -2054,7 +2034,7 @@ static struct voxelRender // ** static container, all methods and members must b
 						// Add the offset of the world origin calculated
 						// Now inside screenspacve coordinates
 						// Rendering is FRONT to BACK only (checked)
-						point2D_t const voxelIndex(x, y);
+						point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
 						XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)));
 
 						if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
@@ -2175,14 +2155,14 @@ inline static struct alignas(32) voxelData
 
 namespace Volumetric
 {
-	voxLink* VolumetricLink(nullptr);
+	inline voxLink* VolumetricLink{ nullptr };
 }
 namespace world
 {
 	cVoxelWorld::cVoxelWorld()
 		:
 		_lastState{}, _currentState{}, _targetState{},
-		_vMouse{},
+		_vMouse{}, _voxelIndexHoveredOk(false),
 		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
@@ -2202,8 +2182,9 @@ namespace world
 		{
 			supernoise::blue.Load(TEXTURE_DIR L"bluenoise.8bit");
 #ifndef NDEBUG
+#ifdef DEBUG_EXPORT_BLUENOISE_KTX
 			// validation test - save blue noise texture from resulting 1D blue noise function
-			ImagingMemoryInstance* imgNoise = ImagingNew(eIMAGINGMODE::MODE_L, BLUENOISE_DIMENSION_SZ, BLUENOISE_DIMENSION_SZ);
+			Imaging imgNoise = ImagingNew(eIMAGINGMODE::MODE_L, BLUENOISE_DIMENSION_SZ, BLUENOISE_DIMENSION_SZ);
 
 			size_t psuedoFrame(0);
 
@@ -2213,9 +2194,10 @@ namespace world
 				}
 			}
 
-			ImagingSaveToKTX(imgNoise, DEBUG_DIR "noisetest.ktx");
+			ImagingSaveToKTX(imgNoise, DEBUG_DIR "bluenoise_test.ktx");
 
 			ImagingDelete(imgNoise);
+#endif
 #endif
 		}
 		
@@ -2229,7 +2211,9 @@ namespace world
 
 		_blackbodyImage = blackbodyImage; // save image to be used for blackbody radiation light color lookup
 #ifndef NDEBUG
-		ImagingSaveToKTX(blackbodyImage, DEBUG_DIR "blackbodytest.ktx");
+#ifdef DEBUG_EXPORT_BLACKBODY_KTX
+		ImagingSaveToKTX(blackbodyImage, DEBUG_DIR "blackbody_test.ktx");
+#endif
 #endif
 	}
 
@@ -2301,11 +2285,318 @@ namespace world
 		return(nullptr);
 	}
 
+#ifdef GIF_MODE
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_guitarer(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	{
+		{
+			static constexpr float const REFERENCE_HEIGHT = 5.31f;
+			static constexpr milliseconds JUMP_TIME = milliseconds(600);
+			static constexpr float INV_JUMP_TIME = 1.0f / fp_seconds(JUMP_TIME).count();
+
+			static fp_seconds accumulator{};
+
+			if ((accumulator += tDelta) >= fp_seconds(JUMP_TIME)) {
+
+				accumulator -= fp_seconds(JUMP_TIME);
+			}
+
+			float const height = SFM::triangle_wave(REFERENCE_HEIGHT - 1.0f, REFERENCE_HEIGHT + 1.0f, accumulator.count() * INV_JUMP_TIME);
+
+			xmLocation = XMVectorSetY(xmLocation, height);
+		}
+		{
+			static constexpr float const REFERENCE_ANGLE = -1.3333f;
+			static constexpr milliseconds SWING_TIME = milliseconds(3600);
+			static constexpr float INV_SWING_TIME = 1.0f / fp_seconds(SWING_TIME).count();
+
+			static fp_seconds accumulator{};
+
+			if ((accumulator += tDelta) >= fp_seconds(SWING_TIME)) {
+
+				accumulator -= fp_seconds(SWING_TIME);
+			}
+
+			float const swing = SFM::triangle_wave(-XM_PI * 0.5f, XM_PI * 0.5f, accumulator.count() * INV_SWING_TIME);
+
+			vAzimuth = v2_rotation_t(REFERENCE_ANGLE + swing);
+		}
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+	}
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_singer(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	{
+		{
+			static constexpr float const REFERENCE_HEIGHT = 5.31f;
+			static constexpr milliseconds JUMP_TIME = milliseconds(600);
+			static constexpr float INV_JUMP_TIME = 1.0f / fp_seconds(JUMP_TIME).count();
+
+			static fp_seconds accumulator{};
+
+			if ((accumulator += tDelta) >= fp_seconds(JUMP_TIME)) {
+
+				accumulator -= fp_seconds(JUMP_TIME);
+			}
+
+			float const height = SFM::triangle_wave(REFERENCE_HEIGHT, REFERENCE_HEIGHT + 2.0f, accumulator.count() * INV_JUMP_TIME);
+
+			xmLocation = XMVectorSetY(xmLocation, height);
+		}
+		{
+			static constexpr float const REFERENCE_X = 1.0f;
+			static constexpr milliseconds MOVE_TIME = milliseconds(1200);
+			static constexpr float INV_MOVE_TIME = 1.0f / fp_seconds(MOVE_TIME).count();
+
+			static fp_seconds accumulator{};
+
+			if ((accumulator += tDelta) >= fp_seconds(MOVE_TIME)) {
+
+				accumulator -= fp_seconds(MOVE_TIME);
+			}
+
+			float const x = SFM::triangle_wave(REFERENCE_X, REFERENCE_X + 6.0f, accumulator.count() * INV_MOVE_TIME);
+
+			xmLocation = XMVectorSetX(xmLocation, x);
+		}
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+	}
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_keyboarder(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	{
+		static constexpr float const REFERENCE_HEIGHT = 5.31f;
+		static constexpr milliseconds JUMP_TIME = milliseconds(300);
+		static constexpr float INV_JUMP_TIME = 1.0f / fp_seconds(JUMP_TIME).count();
+
+		static fp_seconds accumulator{};
+
+		if ((accumulator += tDelta) >= fp_seconds(JUMP_TIME)) {
+
+			accumulator -= fp_seconds(JUMP_TIME);
+		}
+
+		float const height = SFM::triangle_wave(REFERENCE_HEIGHT - 1.0f, REFERENCE_HEIGHT + 1.0f, accumulator.count() * INV_JUMP_TIME);
+
+		xmLocation = XMVectorSetY(xmLocation, height);
+
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+	}
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_drummer(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	{
+		static constexpr float const REFERENCE_HEIGHT = 9.31f;
+		static constexpr milliseconds JUMP_TIME = milliseconds(500);
+		static constexpr float INV_JUMP_TIME = 1.0f / fp_seconds(JUMP_TIME).count();
+
+		static fp_seconds accumulator{};
+
+		if ((accumulator += tDelta) >= fp_seconds(JUMP_TIME)) {
+
+			accumulator -= fp_seconds(JUMP_TIME);
+		}
+		
+		float const height = SFM::triangle_wave(REFERENCE_HEIGHT - 1.0f, REFERENCE_HEIGHT + 1.0f, accumulator.count() * INV_JUMP_TIME);
+
+		xmLocation = XMVectorSetY(xmLocation, height);
+
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+	}
+	
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_crowd(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	{
+		static constexpr float const REFERENCE_HEIGHT = 0.5f;
+		static constexpr milliseconds JUMP_TIME = milliseconds(750);
+		static constexpr float INV_JUMP_TIME = 1.0f / fp_seconds(JUMP_TIME).count();
+
+		using map = std::unordered_map<uint32_t, fp_seconds>;
+		static map member;
+
+		HashSetSeed((int32_t)hash);
+
+		if (member.end() == member.find(hash)) {
+			// initialize unique timing offset
+			member[hash] = PsuedoRandomFloat() * fp_seconds(JUMP_TIME);
+		}
+
+		fp_seconds& accumulator(member[hash]);
+
+		if ((accumulator += tDelta) >= fp_seconds(JUMP_TIME)) {
+
+			accumulator -= fp_seconds(JUMP_TIME);
+		}
+
+		float const variance = PsuedoRandomFloat() + 1.0f;
+		float const height = SFM::triangle_wave(REFERENCE_HEIGHT - variance, REFERENCE_HEIGHT + variance, accumulator.count() * INV_JUMP_TIME);
+
+		xmLocation = XMVectorSetY(xmLocation, height);
+
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+	}
+#endif
+
 	void cVoxelWorld::OnLoaded(tTime const& __restrict tNow)
 	{
+		// rain!!!
+		_activeRain = new sRainInstance(XMVectorZero(), 128.0f);
+
 		// Initialize Car/Traffic simulation
 		::cCarGameObject::Initialize(tNow);
 		::cPoliceCarGameObject::Initialize(tNow);
+
+#ifdef GIF_MODE
+
+#define STAGE
+//#define BALL
+		point2D_t const center(MinCity::VoxelWorld.getHoveredVoxelIndex());
+		using flags = Volumetric::eVoxelModelInstanceFlags;
+
+#ifdef STAGE
+		
+		rotateCamera(-v2_rotation_constants::v45.angle());
+		
+		point2D_t start(p2D_add(center, point2D_t(32, 0)));
+
+		{ // screen
+			world::cVideoScreenGameObject* pGameObject;
+
+			pGameObject = MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cVideoScreenGameObject, Volumetric::eVoxelModels_Static::BUILDING_INDUSTRIAL>(start,
+				6,
+				flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING);
+
+			pGameObject->setSequence(58);
+		}
+
+		{ // stage
+			world::cRockStageGameObject* pGameObject;
+
+			pGameObject = MinCity::VoxelWorld.placeUpdateableInstanceAt<world::cRockStageGameObject, Volumetric::eVoxelModels_Static::NAMED>(p2D_add(start, point2D_t(-34, 0)),
+				Volumetric::eVoxelModels_Indices::ROCK_STAGE,
+				flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING);
+		}
+
+		{ // band
+			world::cRemoteUpdateGameObject* pGameObject;
+
+			pGameObject = MinCity::VoxelWorld.placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
+				Volumetric::eVoxelModels_Indices::GUITAR,
+				flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING);
+			if (pGameObject) {
+				pGameObject->setUpdateFunction(&do_update_guitarer);
+				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(7.0f, 5.31f, 8.0f, 0.0f));
+				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.3333f));
+			}
+
+			pGameObject = MinCity::VoxelWorld.placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
+				Volumetric::eVoxelModels_Indices::SINGER,
+				flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING);
+			if (pGameObject) {
+				pGameObject->setUpdateFunction(&do_update_singer);
+				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(1.0f, 5.31f, 3.0f, 0.0f));
+				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.4666f));
+			}
+
+			pGameObject = MinCity::VoxelWorld.placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
+				Volumetric::eVoxelModels_Indices::MUSICIAN,
+				flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING);
+			if (pGameObject) {
+				pGameObject->setUpdateFunction(&do_update_keyboarder);
+				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(7.0f, 5.31f, -7.0f, 0.0f));
+				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.5999f));
+			}
+
+			pGameObject = MinCity::VoxelWorld.placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
+				Volumetric::eVoxelModels_Indices::MUSICIAN,
+				flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING);
+			if (pGameObject) {
+				pGameObject->setUpdateFunction(&do_update_drummer);
+				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(26.0f, 9.316f, 0.0f, 0.0f));
+				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.6666f));
+			}
+		}
+
+		{ // crowd
+			static constexpr int32_t const
+				CROWD_WIDTH = 32,
+				CROWD_HEIGHT = 16;
+
+			
+
+			point2D_t const startCrowd(-10, 40);
+
+			for (int32_t y = 0; y < CROWD_HEIGHT; ++y) {
+
+				for (int32_t x = 0; x < CROWD_WIDTH; ++x) {
+
+					world::cRemoteUpdateGameObject* pGameObject;
+
+					pGameObject = MinCity::VoxelWorld.placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_sub(startCrowd, point2D_t(x * 3, y * 5 + (int32_t)PsuedoRandomNumber32(-1, 1))),
+						Volumetric::eVoxelModels_Indices::CROWD,
+						flags::GROUND_CONDITIONING);
+					if (pGameObject) {
+						pGameObject->setUpdateFunction(&do_update_crowd);
+						//pGameObject->getModelInstance()->setLocation3D(XMVectorSet(26.0f, 9.316f, 0.0f, 0.0f));
+						pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(1.5999f));
+					}
+
+				}
+			}
+		}
+
+		// big lights
+		cTestGameObject* pGameObj;
+
+		static constexpr int32_t const offset(48);
+
+		for (float i = 1.0f; i < 128.0f; i += 33.0f)
+		{
+			pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), p2D_add(center, point2D_t(offset, offset))),
+				Volumetric::eVoxelModels_Indices::GIF_LIGHT);
+			pGameObj->getModelInstance()->setElevation(i);
+
+			pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), p2D_add(center, point2D_t(offset, -offset))),
+				Volumetric::eVoxelModels_Indices::GIF_LIGHT);
+			pGameObj->getModelInstance()->setElevation(i);
+
+			pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), p2D_add(center, point2D_t(-(offset >> 4), offset + 10))),
+				Volumetric::eVoxelModels_Indices::GIF_LIGHT);
+			pGameObj->getModelInstance()->setElevation(i);
+
+			pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), p2D_add(center, point2D_t(-(offset >> 4), -(offset + 10)))),
+				Volumetric::eVoxelModels_Indices::GIF_LIGHT);
+			pGameObj->getModelInstance()->setElevation(i);
+		}
+#endif
+
+#ifdef BALL
+		static constexpr float const NUM_LIGHTS = 128.0f,
+									 SPREAD = 128.0f * Iso::VOX_SIZE;
+
+		rotateCamera(-v2_rotation_constants::v45.angle());
+
+		cTestGameObject* pGameObj(nullptr);
+
+		XMVECTOR const xmHover(XMVectorSwizzle< XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_X >(p2D_to_v2(center)));		// x_0_z
+		XMVECTOR const xmVisibleCenter(XMVectorSwizzle< XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_X >(p2D_to_v2(getVisibleGridCenter())));
+
+		for (float i = 0.0f; i < NUM_LIGHTS; i += 1.0f)
+		{
+			XMVECTOR xmGen(SFM::golden_sphere_coord(i, NUM_LIGHTS)); // x_y_z
+			xmGen = XMVectorScale(xmGen, SPREAD);
+
+			XMVECTOR const xmLocation(XMVectorAdd(xmVisibleCenter, XMVectorAdd(xmHover, xmGen)));
+
+			// back to x_z_0
+			point2D_t const location = v2_to_p2D(XMVectorSwizzle< XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_X >(xmLocation));
+
+			if ( location.y < 0) {
+				pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(location,
+					Volumetric::eVoxelModels_Indices::GIF_LIGHT);
+
+				if (pGameObj) {
+					// y
+					pGameObj->getModelInstance()->setElevation(XMVectorGetY(xmLocation));
+				}
+			}
+		}
+#endif
+
+#else
+		
 
 #ifdef DEBUG_DEPTH_CUBE
 
@@ -2345,9 +2636,7 @@ namespace world
 				FMT_LOG_FAIL(GAME_LOG, "No Copter for you - nullptr");
 			}
 		}
-
-		// rain!!!
-		_activeRain = new sRainInstance(XMVectorZero(), 128.0f);
+#endif
 	}
 
 	// *** no simultaneous !writes! to grid or grid data can occur while calling this function ***
@@ -3170,12 +3459,19 @@ namespace world
 				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
 				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set1_ps(Iso::WORLD_GRID_FSIZE), _mm_set1_ps(Iso::WORLD_GRID_FHALFSIZE));
 
-				point2D_t const voxelIndex(v2_to_p2D(xmVoxelIndex));
+				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
 				if (!voxelIndex.isZero()) {
 
 					_voxelIndexHover.v = voxelIndex.v;
+					_voxelIndexHoveredOk = true;
 				}
+				else {
+					_voxelIndexHoveredOk = false;
+				}
+			}
+			else {
+				_voxelIndexHoveredOk = false;
 			}
 		}
 #ifdef DEBUG_MOUSE_HOVER_VOXEL
@@ -3306,9 +3602,6 @@ namespace world
 		UpdateUniformStateTarget(critical_now(), tStart, bFirstUpdate);
 		//###########################################################//
 		
-		[[unlikely]] if ( eExclusivity::MAIN != cMinCity::getExclusivity() ) // ** Only after this point exists game update related code
-			return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
-
 		// ***** Anything that uses uniform state updates AFTER
 		if (_bMotionDelta || oCamera.Motion) {
 
@@ -3316,198 +3609,242 @@ namespace world
 
 			_bMotionDelta = false; // must reset
 		}
-		
-		// any operations that do not need to execute while paused should not
-		if (!bPaused) {
 
-			{ // static instance validation
+		[[likely]] if (!bFirstUpdate) {
 
-				using static_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
-				for (static_unordered_map::const_iterator iter = _hshVoxelModelInstances_Static.cbegin();
-					iter != _hshVoxelModelInstances_Static.cend(); ++iter) {
+			[[unlikely]] if (eExclusivity::MAIN != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
+				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
 
-					if (iter->second) {
-						iter->second->Validate();
-					}
+#ifdef GIF_MODE
+			static constexpr float const SWING = 0.025f;
+			static float accumulator(0.0f);
+
+			if ((tNow - tStart) >= milliseconds(2000)) {
+				accumulator += tDelta.count() * 0.1666f;
+
+				static float negative(1.0f), positive(0.0f);
+
+				if (accumulator >= 1.0f) {
+					accumulator -= 1.0f;
+					std::swap(negative, positive);
 				}
-				// parallel version any benefit? did crash....
-				/*
-				tbb::parallel_for_each(_hshVoxelModelInstances_Static.cbegin(), _hshVoxelModelInstances_Static.cend(), [&](std::pair<uint32_t const, Volumetric::voxelModelInstance_Static*> iter) {
-					if (iter.second) {
-						iter.second->Validate();
-					}
-				});
-				*/
+
+				rotateCamera(SFM::triangle_wave(-(1.0f + negative), (1.0f + positive), accumulator) * SWING);
 			}
-			{ // dynamic instance validation
+#endif
 
-				using dynamic_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
-				for (dynamic_unordered_map::const_iterator iter = _hshVoxelModelInstances_Dynamic.cbegin();
-					iter != _hshVoxelModelInstances_Dynamic.cend(); ++iter) {
+			// any operations that do not need to execute while paused should not
+			if (!bPaused) {
 
-					if (iter->second) {
-						iter->second->Validate();
-					}
-				}
-				/* parallel version any benefit? did crash....
-				tbb::parallel_for_each(_hshVoxelModelInstances_Dynamic.cbegin(), _hshVoxelModelInstances_Dynamic.cend(), [&](std::pair<uint32_t const, Volumetric::voxelModelInstance_Dynamic*> iter) {
-					if (iter.second) {
-						iter.second->Validate();
-					}
-				});
-				*/
-			}
+				{ // static instance validation
 
-			// update all image animations //
-			{
-				auto it = ImageAnimation::begin();
-				while (ImageAnimation::end() != it) {
+					using static_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
+					for (static_unordered_map::const_iterator iter = _hshVoxelModelInstances_Static.cbegin();
+						iter != _hshVoxelModelInstances_Static.cend(); ++iter) {
 
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-			// update all dynamic/updateable game objects //
-			{
-				// traffic controllers - *should be done b4 cars* //
-				auto it = cTrafficControlGameObject::begin();
-				while (cTrafficControlGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-				::cCarGameObject::UpdateAll(tNow, tDelta);
-				::cPoliceCarGameObject::UpdateAll(tNow, tDelta);
-			}
-			{
-				// copter //
-				auto it = cCopterGameObject::begin();
-				while (cCopterGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-			{
-				auto it = cTestGameObject::begin();
-				while (cTestGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-
-			// ---------------------------------------------------------------------------//
-			CleanUpInstanceQueue(); // *** must be done after all game object updates *** //
-			// ---------------------------------------------------------------------------//
-
-			// TESTING: //
-			/*
-			static tTime tLastTest(zero_time_point);
-			static uint32_t copter_count(0);
-
-			if (copter_count < 5 && tNow - tLastTest > milliseconds(500))
-			{
-				tLastTest = tNow;
-
-				point2D_t const randomVoxelIndex = getRandomNonVisibleVoxelIndexNear();
-
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(randomVoxelIndex));
-				if (pVoxel) {
-
-					Iso::Voxel oVoxel(*pVoxel);
-
-					if (!(Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))) { // only if not road
-						if (nullptr != placeCopterInstanceAt(randomVoxelIndex)) {
-							++copter_count;
+						if (iter->second) {
+							iter->second->Validate();
 						}
 					}
+					// parallel version any benefit? did crash....
+					/*
+					tbb::parallel_for_each(_hshVoxelModelInstances_Static.cbegin(), _hshVoxelModelInstances_Static.cend(), [&](std::pair<uint32_t const, Volumetric::voxelModelInstance_Static*> iter) {
+						if (iter.second) {
+							iter.second->Validate();
+						}
+					});
+					*/
+				}
+				{ // dynamic instance validation
 
-					//world::setVoxelAt(randomRoadEdgeVoxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+					using dynamic_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
+					for (dynamic_unordered_map::const_iterator iter = _hshVoxelModelInstances_Dynamic.cbegin();
+						iter != _hshVoxelModelInstances_Dynamic.cend(); ++iter) {
+
+						if (iter->second) {
+							iter->second->Validate();
+						}
+					}
+					/* parallel version any benefit? did crash....
+					tbb::parallel_for_each(_hshVoxelModelInstances_Dynamic.cbegin(), _hshVoxelModelInstances_Dynamic.cend(), [&](std::pair<uint32_t const, Volumetric::voxelModelInstance_Dynamic*> iter) {
+						if (iter.second) {
+							iter.second->Validate();
+						}
+					});
+					*/
+				}
+
+				// update all image animations //
+				{
+					auto it = ImageAnimation::begin();
+					while (ImageAnimation::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+				}
+				// update all dynamic/updateable game objects //
+				{
+					// traffic controllers - *should be done b4 cars* //
+					auto it = cTrafficControlGameObject::begin();
+					while (cTrafficControlGameObject::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+					::cCarGameObject::UpdateAll(tNow, tDelta);
+					::cPoliceCarGameObject::UpdateAll(tNow, tDelta);
+				}
+				{
+					// copter //
+					auto it = cCopterGameObject::begin();
+					while (cCopterGameObject::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+				}
+				{
+					auto it = cRemoteUpdateGameObject::begin();
+					while (cRemoteUpdateGameObject::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+				}
+				{
+					auto it = cTestGameObject::begin();
+					while (cTestGameObject::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+				}
+#ifdef GIF_MODE
+				
+				{
+					auto it = cRockStageGameObject::begin();
+					while (cRockStageGameObject::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+				}
+#endif
+
+
+				// ---------------------------------------------------------------------------//
+				CleanUpInstanceQueue(); // *** must be done after all game object updates *** //
+				// ---------------------------------------------------------------------------//
+
+				// TESTING: //
+				/*
+				static tTime tLastTest(zero_time_point);
+				static uint32_t copter_count(0);
+
+				if (copter_count < 5 && tNow - tLastTest > milliseconds(500))
+				{
+					tLastTest = tNow;
+
+					point2D_t const randomVoxelIndex = getRandomNonVisibleVoxelIndexNear();
+
+					Iso::Voxel const* const pVoxel(world::getVoxelAt(randomVoxelIndex));
+					if (pVoxel) {
+
+						Iso::Voxel oVoxel(*pVoxel);
+
+						if (!(Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))) { // only if not road
+							if (nullptr != placeCopterInstanceAt(randomVoxelIndex)) {
+								++copter_count;
+							}
+						}
+
+						//world::setVoxelAt(randomRoadEdgeVoxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+					}
+					else {
+						FMT_LOG_FAIL(GAME_LOG, "No voxel at ({:d},{:d}) !!", randomVoxelIndex.x, randomVoxelIndex.y);
+					}
+
+
+				}
+				static tTime tLast(zero_time_point);
+
+				if ((high_resolution_clock::now() - tLast) > nanoseconds(milliseconds(50))) {
+
+					FMT_NUKLEAR_DEBUG(false, " copters( {:n} )", copter_count);
+					tLast = high_resolution_clock::now();
+				}
+				*/
+
+				// special instances //
+				/*
+				if (_activeExplosion) {
+
+					if (!UpdateExplosion(tNow, _activeExplosion)) {
+						SAFE_DELETE(_activeExplosion);
+					}
 				}
 				else {
-					FMT_LOG_FAIL(GAME_LOG, "No voxel at ({:d},{:d}) !!", randomVoxelIndex.x, randomVoxelIndex.y);
+
+					_activeExplosion = new sExplosionInstance(XMVectorZero(), 50.0f);
 				}
 
-				
-			}
-			static tTime tLast(zero_time_point);
+				if (_activeTornado) {
 
-			if ((high_resolution_clock::now() - tLast) > nanoseconds(milliseconds(50))) {
-
-				FMT_NUKLEAR_DEBUG(false, " copters( {:n} )", copter_count);
-				tLast = high_resolution_clock::now();
-			}
-			*/
-
-			// special instances //
-			/*
-			if (_activeExplosion) {
-
-				if (!UpdateExplosion(tNow, _activeExplosion)) {
-					SAFE_DELETE(_activeExplosion);
+					if (!UpdateTornado(tNow, _activeTornado)) {
+						SAFE_DELETE(_activeTornado);
+					}
 				}
-			}
-			else {
+				else {
 
-				_activeExplosion = new sExplosionInstance(XMVectorZero(), 50.0f);
-			}
-
-			if (_activeTornado) {
-
-				if (!UpdateTornado(tNow, _activeTornado)) {
-					SAFE_DELETE(_activeTornado);
+					//_activeTornado = new sTornadoInstance(XMVectorZero(), 75.0f);
 				}
-			}
-			else {
+				*/
 
-				//_activeTornado = new sTornadoInstance(XMVectorZero(), 75.0f);
-			}
-			*/
+				if (_activeRain) {
 
-			if (_activeRain) {
-
-				if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
-					SAFE_DELETE(_activeRain);
+					if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
+						SAFE_DELETE(_activeRain);
+					}
 				}
-			}
 
-			if (_activeShockwave) {
+				if (_activeShockwave) {
 
-				if (!UpdateShockwave(tNow, _activeShockwave)) {
-					SAFE_DELETE(_activeShockwave);
+					if (!UpdateShockwave(tNow, _activeShockwave)) {
+						SAFE_DELETE(_activeShockwave);
+					}
 				}
-			}
-			else // (nullptr == _activeShockwave) { // ** testing ** //
-			{
-				_activeShockwave = new sShockwaveInstance(XMVectorZero(), 100.0f);	// maximum radius is also limited by length of animation time, set radius as low as possible to get best perf while still covering the desired maxium area for the etire aimation
-			}
-
-
-			// City Update //
-			MinCity::City->Update(tNow);
-
-			// TESTING //
-			{
-				tTime tLast(zero_time_point);
-				seconds interval(1);
-
-				if (tNow - tLast > nanoseconds(interval)) {
-
-					MinCity::City->modifyPopulationBy(PsuedoRandomNumber(-10000, 10000));
-					MinCity::City->modifyCashBy(PsuedoRandomNumber32(-1000, 1000));
-
-					interval = seconds(PsuedoRandomNumber(1, 15));
-					tLast = tNow;
+				else // (nullptr == _activeShockwave) { // ** testing ** //
+				{
+#ifndef GIF_MODE
+					_activeShockwave = new sShockwaveInstance(XMVectorZero(), 100.0f);	// maximum radius is also limited by length of animation time, set radius as low as possible to get best perf while still covering the desired maxium area for the etire aimation
+#endif
 				}
-			}
 
-		} // end !Paused //
 
+				// City Update //
+				MinCity::City->Update(tNow);
+
+				// TESTING //
+				{
+					tTime tLast(zero_time_point);
+					seconds interval(1);
+
+					if (tNow - tLast > nanoseconds(interval)) {
+
+						MinCity::City->modifyPopulationBy(PsuedoRandomNumber(-10000, 10000));
+						MinCity::City->modifyCashBy(PsuedoRandomNumber32(-1000, 1000));
+
+						interval = seconds(PsuedoRandomNumber(1, 15));
+						tLast = tNow;
+					}
+				}
+
+			} // end !Paused //
+		}
+		else
 		{ // ### ONLOADED EVENT must be triggered here !! //
-			[[unlikely]] if (bFirstUpdate) {
-				OnLoaded(tNow);
-			}
+			OnLoaded(tNow);
 		}
 	}
 
@@ -3646,6 +3983,20 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getHeight())); // should be height
 		constants.emplace_back(vku::SpecializationConstant(3, (float)Volumetric::voxelOpacity::getDepth())); // should be depth
+
+		XMFLOAT3A transformBias, transformInv;
+
+		XMStoreFloat3A(&transformBias, Volumetric::_xmTransformToIndexBias);
+		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisibleXYZ);
+
+		// do not swizzle or change order
+		constants.emplace_back(vku::SpecializationConstant(4, (float)transformBias.x));
+		constants.emplace_back(vku::SpecializationConstant(5, (float)transformBias.y));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)transformBias.z));
+
+		constants.emplace_back(vku::SpecializationConstant(7, (float)transformInv.x));
+		constants.emplace_back(vku::SpecializationConstant(8, (float)transformInv.y));
+		constants.emplace_back(vku::SpecializationConstant(9, (float)transformInv.z));
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -3653,9 +4004,9 @@ namespace world
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)1.0f / Iso::MAX_HEIGHT_STEP));
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Iso::HEIGHT_SCALE));
-		constants.emplace_back(vku::SpecializationConstant(6, (int)MINIVOXEL_FACTOR));		
+		constants.emplace_back(vku::SpecializationConstant(10, (float)1.0f / Iso::MAX_HEIGHT_STEP));
+		constants.emplace_back(vku::SpecializationConstant(11, (float)Iso::HEIGHT_SCALE));
+		constants.emplace_back(vku::SpecializationConstant(12, (int)MINIVOXEL_FACTOR));		
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)

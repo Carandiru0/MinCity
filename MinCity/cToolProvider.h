@@ -3,6 +3,7 @@
 #include "tTime.h"
 #include "cRoadTool.h"
 #include "cZoningTool.h"
+#include "cSelectTool.h"
 
 class cToolProvider final
 {
@@ -18,6 +19,7 @@ private:
 	cAbstractToolMethods*		_ActivatedTool;
 	cRoadTool					_RoadTool;
 	cZoningTool					_ZoningTool;
+	cSelectTool					_SelectTool;
 public:
 	cToolProvider();
 	~cToolProvider();

@@ -18,8 +18,8 @@ class cPoliceCarGameObject : public cCarGameObject // type colony becomes cPolic
 		MAX_CARS = 2;
 
 	static constexpr float const
-		MIN_SPEED = 30.0f,
-		PURSUIT_SPEED = MIN_SPEED * 2.0f;
+		MIN_SPEED = 36.0f,
+		PURSUIT_SPEED = MIN_SPEED * 1.5f;
 
 	static constexpr uint32_t const
 		MASK_COLOR_BLUE = 0xff0000,		//bgra

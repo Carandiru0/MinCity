@@ -45,7 +45,6 @@ layout (binding = 6, rgba8) writeonly restrict uniform image3D outTemporalR[3]; 
 layout (binding = 7) uniform sampler3D inTemporalC[2];	// (color) lightmap history
 layout (binding = 8, rgba8) writeonly restrict uniform image3D outTemporalC[2]; // n temporal history volumes -only to be used with imageStore (writeonly)
 layout (binding = 9, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
-layout (binding = 10) uniform sampler2D noiseMap;	// bluenoise
 
 // "World Visible Volume"
 layout (constant_id = 0) const float WorldDimensions_Width = 0.0f;
@@ -230,8 +229,6 @@ const float VOX_SIZE = 0.0625f;
 
 void sampleC(inout vec3 color, in const vec3 location, in const float d0) 
 {
-	//const vec3 bn = textureLod(noiseMap, (gl_GlobalInvocationID.xy + vec2(gl_GlobalInvocationID.z)) * BLUE_NOISE_UV_SCALER, 0).rgb * 2.0f - 1.0f;
-
 	const float max_volume_distance = length(VolumeDimensions);
 	const float volume_distance = d0 * max_volume_distance;
 

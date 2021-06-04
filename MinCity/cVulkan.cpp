@@ -89,6 +89,13 @@ bool const cVulkan::LoadVulkanFramework()
 	return(false);
 }
 
+void cVulkan::setMouseBufferMode(uint32_t const mode) 
+{ 
+	if (mode != _mouseBufferMode) {
+		_mouseBufferMode = mode;
+		_window->setStaticCommandsDirty(cVulkan::renderStaticCommandBuffer); // trigger update as static rendering has changed
+	}
+}
 void cVulkan::setVsyncDisabled(bool const bDisabled)
 {
 	_bVsyncDisabled = bDisabled;
@@ -169,8 +176,8 @@ void cVulkan::CreateNuklearResources()
 	MinCity::VoxelWorld.SetSpecializationConstants_Nuklear(constants);
 
 	// Create two shaders, vertex and fragment. 
-	vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "nuklear.vert.bin" };
-	vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "nuklear.frag.bin", constants };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "nuklear.vert.bin" };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "nuklear.frag.bin", constants };
 
 	// Build a template for descriptor sets that use these shaders.
 	size_t const imageCount(MinCity::Nuklear.getImageCount());
@@ -299,7 +306,7 @@ void cVulkan::CreateComputeResources()
 
 	_comData.pipelineLayout = plm.createUnique(_device);
 	{
-		vku::ShaderModule comp{ _device, SHADER_BINARY_DIR "light_seed.comp.bin", constants_jfa };
+		vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_seed.comp.bin", constants_jfa };
 
 		// Make a pipeline to use the vertex format and shaders.
 		vku::ComputePipelineMaker pm{};
@@ -310,7 +317,7 @@ void cVulkan::CreateComputeResources()
 		_comData.pipeline[eComputeLightPipeline::SEED] = pm.createUnique(_device, cache, *_comData.pipelineLayout);
 	}
 	{
-		vku::ShaderModule comp{ _device, SHADER_BINARY_DIR "light_jfa.comp.bin", constants_jfa };
+		vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_jfa.comp.bin", constants_jfa };
 
 		// Make a pipeline to use the vertex format and shaders.
 		vku::ComputePipelineMaker pm{};
@@ -321,7 +328,7 @@ void cVulkan::CreateComputeResources()
 		_comData.pipeline[eComputeLightPipeline::JFA] = pm.createUnique(_device, cache, *_comData.pipelineLayout);
 	}
 	{
-		vku::ShaderModule comp{ _device, SHADER_BINARY_DIR "light_mip.comp.bin", constants_jfa };
+		vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_mip.comp.bin", constants_jfa };
 
 		// Make a pipeline to use the vertex format and shaders.
 		vku::ComputePipelineMaker pm{};
@@ -394,10 +401,10 @@ void cVulkan::CreateVolumetricResources()
 		
 	// Create two shaders, vertex and fragment. 
 	MinCity::VoxelWorld.SetSpecializationConstants_VolumetricLight_VS(constantsVS);
-	vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "volumetric.vert.bin", constantsVS };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "volumetric.vert.bin", constantsVS };
 
 	MinCity::VoxelWorld.SetSpecializationConstants_VolumetricLight_FS(constantsFS);
-	vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "volumetric.frag.bin", constantsFS };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "volumetric.frag.bin", constantsFS };
 
 	// Build a template for descriptor sets that use these shaders.
 	auto const samplers{ getSamplerArray
@@ -515,8 +522,8 @@ void cVulkan::CreateUpsampleResources()
 
 		MinCity::VoxelWorld.SetSpecializationConstants_Resolve(constants);
 
-		vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "postquad_resolve.vert.bin" };
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "upsample_resolve.frag.bin", constants };
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_resolve.vert.bin" };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample_resolve.frag.bin", constants };
 
 		// Build a template for descriptor sets that use these shaders.
 		auto const samplers{ getSamplerArray
@@ -572,7 +579,7 @@ void cVulkan::CreateUpsampleResources()
 	}
 
 
-	vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" }; // common for upsample stage & blend stage
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" }; // common for upsample stage & blend stage
 
 
 	{ constexpr uint32_t const index = eUpsamplePipeline::UPSAMPLE;
@@ -580,7 +587,7 @@ void cVulkan::CreateUpsampleResources()
 		std::vector< vku::SpecializationConstant > constants;
 
 		MinCity::VoxelWorld.SetSpecializationConstants_Upsample(constants);
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "upsample.frag.bin", constants };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample.frag.bin", constants };
 
 		// Build a template for descriptor sets that use these shaders.
 		vku::DescriptorSetLayoutMaker	dslm;
@@ -636,7 +643,7 @@ void cVulkan::CreateUpsampleResources()
 
 	{ constexpr uint32_t const index = eUpsamplePipeline::BLEND;
 
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "upsample_blend.frag.bin" };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample_blend.frag.bin" };
 
 		// Build a template for descriptor sets that use these shaders.
 		vku::DescriptorSetLayoutMaker	dslm;
@@ -692,12 +699,12 @@ void cVulkan::CreateUpsampleResources()
 void cVulkan::CreateDepthResolveResources()
 {
 	// Create two shaders, vertex and fragment. 
-	vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" };
 
 	std::vector< vku::SpecializationConstant > constants;
 
 	MinCity::VoxelWorld.SetSpecializationConstants_DepthResolve_FS(constants);
-	vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "depthresolve.frag.bin", constants };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "depthresolve.frag.bin", constants };
 
 	// Build a template for descriptor sets that use these shaders.
 	vku::DescriptorSetLayoutMaker	dslm;
@@ -789,7 +796,7 @@ void cVulkan::CreatePostAAResources()
 	MinCity::VoxelWorld.SetSpecializationConstants_PostAA(constants);
 
 	// Make 5 distict pipelines to use the vertex format and shaders.
-	vku::ShaderModule vertcommon_{ _device, SHADER_BINARY_DIR "postquad.vert.bin", constants }; // common except for last 2 passes
+	vku::ShaderModule const vertcommon_{ _device, SHADER_BINARY_DIR "postquad.vert.bin", constants }; // common except for last 2 passes
 
 	{ // temporal resolve subpass + anamorphic mask downsample + blur mask downsample
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -801,7 +808,7 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "postaatmp.frag.bin", constants };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaatmp.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -820,7 +827,7 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "postaapp0.frag.bin", constants };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp0.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -839,7 +846,7 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "postaapp1.frag.bin", constants };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp1.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -858,8 +865,8 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "postquadpp2.vert.bin", constants };
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "postaapp2.frag.bin", constants };
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquadpp2.vert.bin", constants };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp2.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -877,8 +884,8 @@ void cVulkan::CreatePostAAResources()
 		pm.cullMode(vk::CullModeFlagBits::eFront);
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		
-		vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "postquad_overlay.vert.bin", constants };
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "postaaoverlay.frag.bin", constants };
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_overlay.vert.bin", constants };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaaoverlay.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -907,7 +914,8 @@ void cVulkan::CreateVoxelResources()
 	CreateSharedVoxelResources();	//MUST be 1st
 
 	vk::DeviceSize totalSize{};
-	vku::ShaderModule geom_null_{}, frag_null_{};
+	vku::ShaderModule const geom_null_{}, frag_null_{};
+	vku::ShaderModule const frag_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.frag.bin" };
 
 	{ // terrain voxels //
 
@@ -917,15 +925,16 @@ void cVulkan::CreateVoxelResources()
 		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_GS(constants_terrain_gs);
 		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_FS(constants_terrain_fs);
 
-		vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "uniforms_height.vert.bin", constants_terrain_vs };
-		vku::ShaderModule geom_{ _device, SHADER_BINARY_DIR "uniforms_height.geom.bin", constants_terrain_gs };
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "uniforms_t2d.frag.bin", constants_terrain_fs };
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_height.vert.bin", constants_terrain_vs };
+		vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_height.geom.bin", constants_terrain_gs };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_t2d.frag.bin", constants_terrain_fs };
 
 		vk::DeviceSize gpuSize{};
 
 		// main vertex buffer for terrain
 		gpuSize = Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(VertexDecl::VoxelNormal); totalSize += gpuSize;
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo) = new vku::DynamicVertexBuffer(gpuSize, true);
+		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_ZONLY]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo); // basic refers to vertex buffer
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo); // basic refers to vertex buffer
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo); // basic refers to vertex buffer
 
@@ -935,15 +944,18 @@ void cVulkan::CreateVoxelResources()
 			vert_, geom_, frag_, 0U);
 
 		{
-			vku::ShaderModule vert_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.vert.bin", constants_terrain_basic_vs };
-			vku::ShaderModule geom_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.geom.bin" };
-			vku::ShaderModule frag_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_t2d.frag.bin" };
+			vku::ShaderModule const vert_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.vert.bin", constants_terrain_basic_vs };
+			vku::ShaderModule const geom_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.geom.bin" };
+
+			CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_ZONLY],
+				_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+				vert_basic_terrain_, geom_basic_terrain_, frag_null_, 0U);
 
 			CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC],
 				_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_basic_terrain_, geom_basic_terrain_, frag_basic_terrain_, 0U);
+				vert_basic_terrain_, geom_basic_terrain_, frag_basic_, 0U);
 
-			vku::ShaderModule vert_basic_clear_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_height.vert.bin", constants_terrain_basic_vs };
+			vku::ShaderModule const vert_basic_clear_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_height.vert.bin", constants_terrain_basic_vs };
 
 			CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR],
 				_window->upPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
@@ -964,6 +976,7 @@ void cVulkan::CreateVoxelResources()
 		// main vertex buffer for rooad
 		gpuSize = Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(VertexDecl::VoxelNormal); totalSize += gpuSize;
 		(*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo) = new vku::DynamicVertexBuffer(gpuSize, true);
+		(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC_ZONLY]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo); // basic refers to vertex buffer
 		(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo); // basic refers to vertex buffer
 		(*_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo); // trans refers to vertex buffer
 		(*_rtData[eVoxelPipeline::VOXEL_ROAD_CLEARMASK]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo); // clearmask refers to vertex buffer
@@ -974,9 +987,9 @@ void cVulkan::CreateVoxelResources()
 
 		// opaque road
 		{
-			vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "uniforms_road.vert.bin", constants_road_vs };
-			vku::ShaderModule geom_{ _device, SHADER_BINARY_DIR "uniforms_road.geom.bin", constants_road_gs };
-			vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "uniforms_road.frag.bin", constants_road_fs };
+			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_road.vert.bin", constants_road_vs };
+			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_road.geom.bin", constants_road_gs };
+			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_road.frag.bin", constants_road_fs };
 			CreateVoxelResource(_rtData[eVoxelPipeline::VOXEL_ROAD],
 				_window->midPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
@@ -986,27 +999,30 @@ void cVulkan::CreateVoxelResources()
 				vert_, geom_, frag_, 0U);
 
 			{ // specialization for static road
-				vku::ShaderModule vert_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.vert.bin", constants_road_basic_vs };
-				vku::ShaderModule geom_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.geom.bin" };
-				vku::ShaderModule frag_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.frag.bin" };
+				vku::ShaderModule const vert_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.vert.bin", constants_road_basic_vs };
+				vku::ShaderModule const geom_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.geom.bin" };
+
+				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC_ZONLY],
+					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_basic_road_, geom_basic_road_, frag_null_, 0U);
 
 				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC],
 					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_road_, geom_basic_road_, frag_basic_road_, 0U);
+					vert_basic_road_, geom_basic_road_, frag_basic_, 0U);
 			}
 		}
 		// transparent road
 		{
-			vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.vert.bin", constants_road_vs };
-			vku::ShaderModule geom_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.geom.bin", constants_road_gs };
-			vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.frag.bin", constants_road_fs };
+			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.vert.bin", constants_road_vs };
+			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.geom.bin", constants_road_gs };
+			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.frag.bin", constants_road_fs };
 			CreateVoxelResource<false, false, false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS],
 				_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 
 			{ // specialization for static road
-				vku::ShaderModule vert_basic_road_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_road.vert.bin", constants_road_basic_vs };
-				vku::ShaderModule geom_basic_road_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_road.geom.bin" };
+				vku::ShaderModule const vert_basic_road_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_road.vert.bin", constants_road_basic_vs };
+				vku::ShaderModule const geom_basic_road_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_road.geom.bin" };
 
 				CreatePipeline_VoxelClear_Static(_rtData[eVoxelPipeline::VOXEL_ROAD_CLEARMASK],
 					vert_basic_road_trans_, geom_basic_road_trans_);
@@ -1022,18 +1038,19 @@ void cVulkan::CreateVoxelResources()
 		MinCity::VoxelWorld.SetSpecializationConstants_Voxel_GS(constants_voxel_gs);
 		MinCity::VoxelWorld.SetSpecializationConstants_Voxel_FS(constants_voxel_fs);
 
-		vku::ShaderModule geom_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
-		vku::ShaderModule geom_{ _device, SHADER_BINARY_DIR "uniforms.geom.bin", constants_voxel_gs };
-		vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "uniforms.frag.bin", constants_voxel_fs };
+		vku::ShaderModule const geom_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
+		vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms.geom.bin", constants_voxel_gs };
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms.frag.bin", constants_voxel_fs };
 
 		{ // static //
 
-			vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "uniforms.vert.bin", constants_voxel_vs };
+			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms.vert.bin", constants_voxel_vs };
 
 			vk::DeviceSize gpuSize{};
 			
 			gpuSize = Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(VertexDecl::VoxelNormal); totalSize += gpuSize;
 			(*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo) = new vku::DynamicVertexBuffer(gpuSize, true);
+			(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_ZONLY]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo); // basic refers to vertex buffer
 			(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo); // basic refers to vertex buffer
 			(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo); // basic refers to vertex buffer
 			(*_rtData[eVoxelPipeline::VOXEL_STATIC_OFFSCREEN]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo); // basic refers to vertex buffer
@@ -1047,13 +1064,17 @@ void cVulkan::CreateVoxelResources()
 				_window->offscreenPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 			{
-				vku::ShaderModule vert_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.vert.bin", constants_voxel_basic_vs };
-					
-				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC],
+				vku::ShaderModule const vert_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.vert.bin", constants_voxel_basic_vs };
+
+				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_ZONLY],
 					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 					vert_basic_, geom_basic_, frag_null_, 0U);
 
-				vku::ShaderModule vert_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear.vert.bin", constants_voxel_basic_vs };
+				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC],
+					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_basic_, geom_basic_, frag_basic_, 0U);
+
+				vku::ShaderModule const vert_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear.vert.bin", constants_voxel_basic_vs };
 
 				CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR],
 					_window->upPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
@@ -1061,12 +1082,13 @@ void cVulkan::CreateVoxelResources()
 			}
 		}
 		{ // dynamic //
-			vku::ShaderModule vert_dynamic_{ _device, SHADER_BINARY_DIR "uniforms_dynamic.vert.bin", constants_voxel_vs };
+			vku::ShaderModule const vert_dynamic_{ _device, SHADER_BINARY_DIR "uniforms_dynamic.vert.bin", constants_voxel_vs };
 				
 			vk::DeviceSize gpuSize{};
 
 			gpuSize = Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(VertexDecl::VoxelDynamic); totalSize += gpuSize;
 			(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo) = new vku::DynamicVertexBuffer(gpuSize, true);
+			(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_ZONLY]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo); // basic refers to vertex buffer
 			(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo); // basic refers to vertex buffer
 			(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo); // basic refers to vertex buffer
 			(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_OFFSCREEN]._vbo) = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo); // basic refers to vertex buffer
@@ -1081,13 +1103,17 @@ void cVulkan::CreateVoxelResources()
 				vert_dynamic_, geom_, frag_, 0U);
 
 			{
-				vku::ShaderModule vert_dynamic_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic_dynamic.vert.bin", constants_voxel_basic_vs };
-
-				CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC],
+				vku::ShaderModule const vert_dynamic_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic_dynamic.vert.bin", constants_voxel_basic_vs };
+				
+				CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_ZONLY],
 					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 					vert_dynamic_basic_, geom_basic_, frag_null_, 0U);
 
-				vku::ShaderModule vert_dynamic_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_dynamic.vert.bin", constants_voxel_basic_vs };
+				CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC],
+					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_dynamic_basic_, geom_basic_, frag_basic_, 0U);
+
+				vku::ShaderModule const vert_dynamic_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_dynamic.vert.bin", constants_voxel_basic_vs };
 
 				CreateVoxelResource<true, true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR],
 					_window->upPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
@@ -1102,15 +1128,15 @@ void cVulkan::CreateVoxelResources()
 			(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo)->createPartitions((uint32_t)eVoxelDynamicVertexBufferPartition::_size());
 
 			// for transparency rendering only
-			vku::ShaderModule vert_dynamic_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_dynamic.vert.bin", constants_voxel_vs };
-			vku::ShaderModule geom_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans.geom.bin", constants_voxel_gs };
+			vku::ShaderModule const vert_dynamic_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_dynamic.vert.bin", constants_voxel_vs };
+			vku::ShaderModule const geom_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans.geom.bin", constants_voxel_gs };
 
 			// VOXEL_SHADER_TRANS
 			{			
 				std::vector< vku::SpecializationConstant > constants_voxel_frag_trans(constants_voxel_fs);
 				MinCity::VoxelWorld.AddSpecializationConstants_Voxel_FS_Transparent(constants_voxel_frag_trans);
 					
-				vku::ShaderModule frag_voxeltrans_{ _device, SHADER_BINARY_DIR "uniforms_trans.frag.bin", constants_voxel_frag_trans };
+				vku::ShaderModule const frag_voxeltrans_{ _device, SHADER_BINARY_DIR "uniforms_trans.frag.bin", constants_voxel_frag_trans };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_TRANS>(
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_trans_, frag_voxeltrans_, 0U);
@@ -1123,7 +1149,7 @@ void cVulkan::CreateVoxelResources()
 
 			// VOXEL_SHADER_EXPLOSION
 			{																						  // ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule frag_voxelexplosion_{ _device, SHADER_BINARY_DIR "voxel_explosion.frag.bin", constants_voxel_fs };
+				vku::ShaderModule const frag_voxelexplosion_{ _device, SHADER_BINARY_DIR "voxel_explosion.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_EXPLOSION>(
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_, frag_voxelexplosion_, 0U);
@@ -1134,7 +1160,7 @@ void cVulkan::CreateVoxelResources()
 
 			// VOXEL_SHADER_TORNADO
 			{																						  // ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule frag_voxeltornado_{ _device, SHADER_BINARY_DIR "voxel_tornado.frag.bin", constants_voxel_fs };
+				vku::ShaderModule const frag_voxeltornado_{ _device, SHADER_BINARY_DIR "voxel_tornado.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_TORNADO>(
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_, frag_voxeltornado_, 0U);
@@ -1145,7 +1171,7 @@ void cVulkan::CreateVoxelResources()
 
 			// VOXEL_SHADER_SHOCKWAVE
 			{																						  // ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule frag_voxelshockwave_{ _device, SHADER_BINARY_DIR "voxel_shockwave.frag.bin", constants_voxel_fs };
+				vku::ShaderModule const frag_voxelshockwave_{ _device, SHADER_BINARY_DIR "voxel_shockwave.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_SHOCKWAVE>(
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_, frag_voxelshockwave_, 0U);
@@ -1160,10 +1186,10 @@ void cVulkan::CreateVoxelResources()
 				std::vector< vku::SpecializationConstant > constants_voxel_rain_vs;
 				MinCity::VoxelWorld.SetSpecializationConstants_VoxelRain_VS(constants_voxel_rain_vs);
 
-				vku::ShaderModule vert_dynamic_trans_rain_{ _device, SHADER_BINARY_DIR "uniforms_trans_dynamic.vert.bin", constants_voxel_rain_vs };
+				vku::ShaderModule const vert_dynamic_trans_rain_{ _device, SHADER_BINARY_DIR "uniforms_trans_dynamic.vert.bin", constants_voxel_rain_vs };
 
 				// ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule frag_voxelrain_{ _device, SHADER_BINARY_DIR "voxel_rain.frag.bin", constants_voxel_fs };
+				vku::ShaderModule const frag_voxelrain_{ _device, SHADER_BINARY_DIR "voxel_rain.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_RAIN>(
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_rain_, geom_trans_, frag_voxelrain_, 0U);
@@ -1251,9 +1277,9 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 	MinCity::VoxelWorld.SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, true);
 	MinCity::VoxelWorld.SetSpecializationConstants_Voxel_ClearMask_FS(constants_voxel_fs);
 
-	vku::ShaderModule vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
-	vku::ShaderModule geom_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
-	vku::ShaderModule frag_{ _device, SHADER_BINARY_DIR "voxel_clear.frag.bin", constants_voxel_fs };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
+	vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "voxel_clear.frag.bin", constants_voxel_fs };
 
 	// Make a pipeline to use the vertex format and shaders.
 	vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -1309,10 +1335,10 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 
 void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they are static) there are no other static transparents
 	cVulkan::sRTDATA& rtData,
-	vku::ShaderModule& __restrict vert,
-	vku::ShaderModule& __restrict geom)  // clear mask
+	vku::ShaderModule const& __restrict vert,
+	vku::ShaderModule const& __restrict geom)  // clear mask
 {
-	vku::ShaderModule frag{ _device, SHADER_BINARY_DIR "voxel_clear.frag.bin" };
+	vku::ShaderModule const frag{ _device, SHADER_BINARY_DIR "voxel_clear.frag.bin" };
 
 	// Make a pipeline to use the vertex format and shaders.
 	vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -1891,8 +1917,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(s.cb);
 
 	{
-		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];			 // front-to-back must be false for proper selection of mousebuffer (roads / zoning) - makes selection behind buildings or other voxels except terrain 
-		uint32_t const ActiveMaskCount = renderAllVoxels<0, NUM_CHILD_MASKS, false>(s, deferredChildMasks);
+		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];			  
+		uint32_t const ActiveMaskCount = renderAllVoxels_ZPass<NUM_CHILD_MASKS>(s, deferredChildMasks);
 		renderClearMasks(std::forward<vku::static_renderpass&&>(s), deferredChildMasks, ActiveMaskCount);
 	}
 	s.cb.nextSubpass(vk::SubpassContents::eInline);
@@ -2352,15 +2378,19 @@ void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 
 	// clean up main vertex buffers
 	// remove references that basic has
+	(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_ZONLY]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR]._vbo) = nullptr;
+	(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC_ZONLY]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_ROAD_CLEARMASK]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_ROAD_OFFSCREEN]._vbo) = nullptr;
+	(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_ZONLY]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_STATIC_OFFSCREEN]._vbo) = nullptr;
+	(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_ZONLY]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR]._vbo) = nullptr;
 	(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC_OFFSCREEN]._vbo) = nullptr;

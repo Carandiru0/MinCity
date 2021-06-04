@@ -348,14 +348,14 @@ namespace voxB
 		typedef struct __declspec(novtable) sRenderFuncBlockChunk {
 
 		private:
-			XMVECTOR const						xmVoxelOrigin;
+			XMVECTOR const						xmVoxelOrigin, xmUV;
 			voxB::voxelDescPacked const* const __restrict voxelsIn;
 			tbb::atomic<VOXELBUFFER_3D*>& __restrict voxelsOut;
 			tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxelsOut_trans;
 			VoxelThreadBatch& __restrict		batchedVoxels;
 			VoxelTransThreadBatch& __restrict	batchedVoxels_trans;
 			Iso::Voxel const& __restrict		rootVoxel;
-			voxelModelInstance<Dynamic> const& instance;
+			voxelModelInstance<Dynamic> const&  instance;
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 			PerformanceType& PerformanceCounters;
 #endif		
@@ -363,7 +363,7 @@ namespace voxB
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
 
-			__forceinline explicit __vectorcall sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_,
+			__forceinline explicit __vectorcall sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmUV_,
 				voxB::voxelDescPacked const* const __restrict voxelsIn_,
 				tbb::atomic<VOXELBUFFER_3D*>& __restrict voxelsOut_,
 				tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxelsOut_trans_,
@@ -377,6 +377,7 @@ namespace voxB
 			) // add in ground height from root voxel passed in, total area encompassing the model has been averaged / flat //
 				: 
 				xmVoxelOrigin(XMVectorSubtract(xmVoxelOrigin_, XMVectorSet(0.0f, instance_.getElevation(), 0.0f, 0.0f))),
+				xmUV(xmUV_),
 				voxelsIn(voxelsIn_), voxelsOut(voxelsOut_), voxelsOut_trans(voxelsOut_trans_),
 				batchedVoxels(batchedVoxels_), batchedVoxels_trans(batchedVoxels_trans_),
 				rootVoxel(rootVoxel_),
@@ -401,6 +402,7 @@ namespace voxB
 					vxl_begin(r.begin()),
 					vxl_end(r.end());
 
+				bool const highlighted(instance.isHighlighted());
 				uint32_t const flags(instance.getFlags());
 
 				auto const& __restrict model(instance.getModel());
@@ -468,11 +470,11 @@ namespace voxB
 
 							if (state.Hidden)
 								continue;
-							Emissive = Iso::isEmissive(rootVoxel) | state.Emissive;			// dynamic emission state
+							Emissive = highlighted | state.Emissive | Iso::isEmissive(rootVoxel);			// dynamic emission state
 							Transparent = state.Transparent;
 						}
 						else {
-							Emissive = Iso::isEmissive(rootVoxel);		// static emission state
+							Emissive = highlighted | Iso::isEmissive(rootVoxel);		// static emission state
 						}
 
 						hash |= (Emissive << 12);						// 0000 0000 0001 xxxx xxxx xxxx
@@ -483,11 +485,7 @@ namespace voxB
 							// these are not world coordinates! good for sampling view locked/aligned volumes such as the lightmap
 
 							// Make All voxels relative to voxel root origin // inversion neccessary //
-							XMVECTOR const xmUVs(XMVectorMultiplyAdd(
-								xmIndex,
-								Volumetric::_xmInverseVisibleXYZ,
-								XMVectorSet(0.0f, 0.0f, 0.0f, (float)voxel.getColor())
-							));
+							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)voxel.getColor()));
 
 							if (!Transparent) {
 								
@@ -587,7 +585,8 @@ namespace voxB
 		tbb::affinity_partitioner part;
 
 		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, _numVoxels, eThreadBatchGrainSize::MODEL),
-			RenderFuncBlockChunk(xmVoxelOrigin,
+			RenderFuncBlockChunk(xmVoxelOrigin, 
+				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
 				_Voxels, 
 				pVoxelsOut, pVoxelsOutTrans, 
 				batchedVoxels, batchedVoxels_trans,

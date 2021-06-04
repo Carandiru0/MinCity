@@ -624,14 +624,14 @@ void cMinCity::UpdateWorld()
 	}
 
 	// add to fixed timestamp n fixed steps, while also removing the fixed step from the accumulator
-	bool bDispatchUpdate(false);
 	while (tAccumulate >= fixed_delta_duration) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
 		m_tCriticalNow += fixed_delta_duration;
 
 		tAccumulate -= fixed_delta_duration;
-		bDispatchUpdate = true;
+
+		VoxelWorld.Update(m_tNow, fixed_delta_duration, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
 	
 	Audio.Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
@@ -643,14 +643,10 @@ void cMinCity::UpdateWorld()
 		Nuklear.UpdateGUI(); // gui requires critical timing (always on, never pause gui)
 		tLastGUI = tCriticalNow;
 	}
-
-	if (bDispatchUpdate) {
-		fp_seconds const tDelta(tDeltaFixedStep);
-		VoxelWorld.Update(m_tNow, tDelta, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
-	}
 	
 	// fractional amount for render path
-	VoxelWorld.UpdateUniformState(fp_seconds(fp_seconds(tAccumulate) / fp_seconds(fixed_delta_duration)).count()); // always update everyframe
+	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(fixed_delta_duration)); // always update everyframe
+
 	//---------------------------------------------------------------------------------------------------------------------------------------//
 	tLast = tCriticalNow;
 	

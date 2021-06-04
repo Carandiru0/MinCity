@@ -71,11 +71,11 @@ namespace world
 		rect2D_t const				getVisibleGridBounds() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		rect2D_t const				getVisibleGridBoundsClamped() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const&			getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
-		point2D_t const&			getHoveredVoxelIndex() const { return(_voxelIndexHover); }
+		point2D_t const&			getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
+		bool const					isHoveredVoxelIndexOk() const { return(_voxelIndexHoveredOk); } // if false there was a invalid voxelIndex since the hovered voxel index was last updated, eg.) use to detect when clicking on nothing
 		XMVECTOR const XM_CALLCONV	getOrigin() const; // World Space (-x,-y) ... (x,y) - not swizzled
 		v2_rotation_t const&		getAzimuth() const;
 		float const					getZoomFactor() const;
-		XMFLOAT3A const&			getPickRayIntersect() const { return(_vPickRayIntersect); }
 		UniformState const& __vectorcall getCurrentState() const { return(_currentState); }
 
 
@@ -121,6 +121,7 @@ namespace world
 		std::vector<std::string> const& getLoadList() const;
 		// ##################
 
+		void OnKey(int32_t const key, bool const down, bool const ctrl = false);
 		bool const __vectorcall OnMouseMotion(FXMVECTOR xmMousePosition);
 		void OnMouseLeft(int32_t const state);
 		void OnMouseRight(int32_t const state);
@@ -261,15 +262,12 @@ namespace world
 		uint32_t					_mouseState;
 		XMFLOAT2A					_vMouse;
 		point2D_t					_voxelIndexHover;
+		bool						_voxelIndexHoveredOk;
 		XMFLOAT2A					_vDragLast;
 		tTime						_tDragStart = zero_time_point;
 		
 		bool						_bMotionInvalidate = false, _bMotionDelta = false;
 		bool						_bDraggingMouse = false;
-
-		XMFLOAT3A					_vPickRayIntersect;
-		XMFLOAT3A					_vPickRayOrigin,
-									_vPickRayEnd;
 
 		sExplosionInstance*			_activeExplosion;
 		sTornadoInstance*			_activeTornado;

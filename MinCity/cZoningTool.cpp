@@ -182,7 +182,7 @@ void cZoningTool::deactivate()
 
 void cZoningTool::activate()
 {
-
+	MinCity::Vulkan.setMouseBufferMode(eMouseBufferMode::GROUND_VOXELS);
 }
 
 

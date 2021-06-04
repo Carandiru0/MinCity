@@ -23,6 +23,9 @@ void cToolProvider::setActivatedTool(uint32_t const uiToolType, std::optional<ui
 
 	switch (uiToolType)
 	{
+	case eTools::SELECT:
+		_ActivatedTool = &_SelectTool;
+		break;
 	case eTools::ZONING:
 		_ActivatedTool = &_ZoningTool;
 		break;

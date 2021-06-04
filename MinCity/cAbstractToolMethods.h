@@ -8,7 +8,8 @@
 // Tools:
 BETTER_ENUM(eTools, uint32_t const,
 	ROADS = 0,
-	ZONING
+	ZONING,
+	SELECT
 );
 // SubTools:
 // *first entry in enumerations must be zero and reserved for any subtool*
@@ -34,6 +35,7 @@ public: // no data inside abstract tool - only methods
 	virtual void setActivatedSubTool(uint32_t const subtool) {} // optional
 
 	// actions - inheritor designate include functionality, otherwise always optional (stubbed out)
+	virtual void KeyAction(int32_t const key, bool const down, bool const ctrl) {};
 	virtual void __vectorcall PressAction(FXMVECTOR const xmMousePos) {};
 	virtual void __vectorcall ReleaseAction(FXMVECTOR const xmMousePos) {};
 	virtual void __vectorcall ClickAction(FXMVECTOR const xmMousePos) {};

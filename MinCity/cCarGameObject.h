@@ -47,7 +47,7 @@ class cCarGameObject : public world::tUpdateableGameObject<Volumetric::voxelMode
 		MAX_CARS = 100;
 
 	static constexpr float const
-		MIN_SPEED = 30.0f;
+		MIN_SPEED = 36.0f;
 public:
 	static constexpr uint32_t const
 		MASK_COLOR_HEADLIGHT = 0xf0f0f0,		//bgra
