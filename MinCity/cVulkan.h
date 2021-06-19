@@ -153,6 +153,11 @@ BETTER_ENUM(eComputeLightPipeline, uint32_t const,
 	JFA = 1,
 	FILTER = 2
 );
+BETTER_ENUM(eTextureShader, uint32_t const,	// compute shaders that work on a 2D texture, like shadertoy fullscreen quad pixel shaders - except with compute.
+
+	WIND_FBM = 0,
+	WIND_DIRECTION
+);
 
 BETTER_ENUM(eUpsamplePipeline, uint32_t const,
 
@@ -187,7 +192,7 @@ public:
 
 	vk::CommandPool const& __restrict							defaultPool() const { return(_window->commandPool(vku::eCommandPools::DEFAULT_POOL)); }
 	vk::CommandPool const& __restrict							transientPool() const { return(_window->commandPool(vku::eCommandPools::TRANSIENT_POOL)); }
-	vk::CommandPool const& __restrict							computePool() const { return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL)); }
+	vk::CommandPool const& __restrict							computePool(uint32_t const index) const { if (0u == index) return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_PRIMARY)); return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_SECONDARY)); }
 	vk::CommandPool const& __restrict							dmaTransferPool(vku::eCommandPools const dma_transfer_pool_id) const { return(_window->commandPool(dma_transfer_pool_id)); }
 
 	vk::ImageView const&										offscreenImageView2D() const { return(_window->offscreenImageView()); }
@@ -446,31 +451,38 @@ private:
 public: // ### public skeleton
 	typedef struct sCOMPUTEDATA
 	{
-		vk::UniquePipelineLayout		pipelineLayout;
-		vk::UniquePipeline				pipeline[eComputeLightPipeline::_size()];
-		vk::UniqueDescriptorSetLayout	descLayout;
-		std::vector<vk::DescriptorSet>	sets;
+		struct compute_light {
+			vk::UniquePipelineLayout		pipelineLayout;
+			vk::UniquePipeline				pipeline[eComputeLightPipeline::_size()];
+			vk::UniqueDescriptorSetLayout	descLayout;
+			std::vector<vk::DescriptorSet>	sets;
 
-#ifdef DEBUG_LIGHT_PROPAGATION
-		sCOMPUTEDEBUGLIGHTDATA			debugLightData;
-#endif
-
-		sCOMPUTEDATA()
-		{}
-		~sCOMPUTEDATA()
-		{
-#ifdef DEBUG_LIGHT_PROPAGATION
-			debugLightData.~sCOMPUTEDEBUGLIGHTDATA();
-#endif
-			for (uint32_t i = 0; i < eComputeLightPipeline::_size(); ++i) {
-				pipeline[i].release();
+			~compute_light() {
+				for (uint32_t i = 0; i < eComputeLightPipeline::_size(); ++i) {
+					pipeline[i].release();
+				}
+				sets.clear(); sets.shrink_to_fit();
+				pipelineLayout.release();
+				descLayout.release();
 			}
-			
-			sets.clear(); sets.shrink_to_fit();	
+		} light;
 
-			pipelineLayout.release();
-			descLayout.release();
-		}
+		struct compute_texture {
+			vk::UniquePipelineLayout		pipelineLayout;
+			vk::UniquePipeline				pipeline[eTextureShader::_size()];
+			vk::UniqueDescriptorSetLayout	descLayout;
+			std::vector<vk::DescriptorSet>	sets[eTextureShader::_size()];
+
+			~compute_texture() {
+				for (uint32_t i = 0; i < eTextureShader::_size(); ++i) {
+					pipeline[i].release();
+					sets[i].clear(); sets[i].shrink_to_fit();
+				}
+				pipelineLayout.release();
+				descLayout.release();
+			}
+		} texture;
+
 	} sCOMPUTEDATA;
 private: // ### private instance
 	static sCOMPUTEDATA _comData;

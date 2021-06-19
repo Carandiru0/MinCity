@@ -55,6 +55,9 @@
     <Filter Include="Source Files\Gameplay\Cars">
       <UniqueIdentifier>{7ad9fd4f-a249-45ad-b39f-a4248e0bf4f8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders\textureshaders">
+      <UniqueIdentifier>{e31b0f6d-6586-4d77-85b8-45ad7ef68e74}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -531,6 +534,12 @@
     </CustomBuild>
     <CustomBuild Include="..\data\shaders\voxel_tornado.frag">
       <Filter>Shaders\voxel effects</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\data\shaders\textureshader_000.comp">
+      <Filter>Shaders\textureshaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\data\shaders\textureshader_001.comp">
+      <Filter>Shaders\textureshaders</Filter>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>

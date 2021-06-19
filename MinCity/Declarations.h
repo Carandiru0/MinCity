@@ -127,11 +127,10 @@ namespace UniformDecl
 	struct __declspec(novtable) alignas(4) ComputeLightPushConstants : ComputeLightPushConstantsFilter {
 	};
 
-#ifdef DEBUG_LIGHT_PROPAGATION
-	struct __declspec(novtable) ComputeDebugLightPushConstantsJFA { // 4 = 4 bytes
-		int32_t		slice_index;
-	};
-#endif
+	typedef struct __declspec(novtable) alignas(4) TextureShaderPushConstants { // 4 = 4 bytes
+		XMFLOAT2	origin;
+		float		frame_or_time;	// customizable per textureshader requirements
+	} TextureShaderPushConstants;
 
 } // end ns UniformDecl
 

@@ -1,0 +1,125 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_control_flow_attributes : enable
+
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
+
+
+// ******** textureshader ********** WIND ************* //
+// **************************************************** //
+
+#include "common.glsl"
+
+#define GROUP_SIZE 8
+layout (local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE, local_size_z = 1) in;
+
+layout (push_constant) restrict readonly uniform PushConstant {
+    layout(offset=0) vec2       origin;
+	layout(offset=8) float		time;		// time elapsed since start
+} pc;
+
+// # of components and bitdepth can be customized per textureShader requirements
+layout (binding = 0) uniform sampler2D inputMap;	// input texture map (blue noise)
+layout (binding = 1, r16) writeonly restrict uniform image2D outputMap;	// output texture map (2D)
+//////////////////////////////////////////////////////////////////////////////////
+
+layout (constant_id = 0) const float OutputWidth = 1.0f;
+layout (constant_id = 1) const float OutputHeight = 1.0f;
+layout (constant_id = 2) const float InvOutputWidth = 1.0f;
+layout (constant_id = 3) const float InvOutputHeight = 1.0f;
+layout (constant_id = 4) const float total_number_of_frames = 1.0f;
+
+#define OutputDimensions (vec2(OutputWidth, OutputHeight))
+#define InvOutputDimensions (vec2(InvOutputWidth, InvOutputHeight))
+
+vec4 random4(in const vec2 uv) { 
+
+	// blue noise providing good results for 2D random numbers, must be in point sampling mode!
+    // this returns 4 random values at once using textureGather
+    return( textureGather(inputMap, uv * BLUE_NOISE_UV_SCALER).wzxy ); // swizzled to get correct order
+}
+// Based on Morgan McGuire @morgan3d
+// https://www.shadertoy.com/view/4dS3Wd
+float noise(in const vec2 uv) {
+    const vec2 i = floor(uv);
+    const vec2 f = fract(uv);
+
+    // Four corners in 2D of a tile
+    const vec4 abcd = random4(i);
+
+    const vec2 u = f * f * (3.0f - 2.0f * f);  // smoothstep
+
+    return( mix(abcd.x, abcd.y, u.x) + 
+            (abcd.z - abcd.x) * u.y * (1.0f - u.x) + 
+            (abcd.w - abcd.y) * u.x * u.y );
+}
+
+float fbm( in vec2 uv ) {
+        
+    const float fbm_shift = 71.0f;   // 71 = ~length of *inside* circle radius of square that is 128x128
+    const mat2 fbm_rotation = mat2(0.877582f, 0.479425f, 
+                                   -0.479425f, 0.877582f);
+
+    float v = 0.0f;
+    float a = 0.5f;
+
+    // Shifted & Rotated to reduce axial bias
+    
+    // int numOctaves = int(min(10.0, log2(iResolution.x))) - 3;
+    for (uint octave = 0u; octave < 6u; ++octave) {
+        v += a * noise(uv);
+        uv = fbm_rotation * uv * 2.0f + fbm_shift;
+        a *= 0.5f;
+    }
+
+    return(v);
+}
+
+void main() 
+{
+
+#ifdef ODD_TEXTURE_DIMENSIONS
+	// this is required, as 2D dimensions are not explicitly defined as square, power of 2, and divisable by local size (8) with no remainder
+	{ // #### Required Bounds Check //
+		if ( any(greaterThanEqual(gl_GlobalInvocationID.xy - TextureDimensions, vec2(0))) )
+			return;
+	}
+	// else / otherwise all dispatches fit into texture dimensions
+#endif
+
+	const vec2 uv = (gl_GlobalInvocationID.xy + pc.origin) * InvOutputDimensions * 3.0f;
+
+    vec2 q;
+    q.x = fbm( uv );
+    q.y = fbm( uv + vec2(1.0f));
+
+    const float time = pc.time * 0.5f;
+
+    vec2 r;
+    r.x = fbm( uv + q + vec2(1.7f,9.2f)+ 0.15f*time );
+    r.y = fbm( uv + q + vec2(8.3f,2.8f)+ 0.126f*time );
+
+    const float f = fbm(uv+r);
+
+    float shade = 0.0f;
+    shade = mix(shade, 0.164706f, clamp(length(q), 0.0f, 1.0f));
+    shade = mix(shade, 1.0f, clamp(r.x, 0.0f, 1.0f));
+
+    shade = shade * (f*f*f+.6*f*f+.5*f); // quintic smoothing
+
+    const float bn = textureLod(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALER, 0.0f).r * 2.0f - 1.0f;
+	shade = shade + bn * BLUE_NOISE_DITHER_SCALAR * 0.5f;
+
+    imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), shade.rrrr); // output shade and dithered shade in alpha channel to next textureShader pass.
+}
+
+
+

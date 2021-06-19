@@ -239,7 +239,7 @@ void main() {
   }
 
   const uint hash = floatBitsToUint(inWorldPos.w);
-  
+ 
 #if !(defined(HEIGHT) || defined(ROAD)) // voxels only
   Out.adjacency = (hash & MASK_ADJACENCY);
 #endif
@@ -375,13 +375,14 @@ void main() {
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
 // Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
-#if defined(CLEAR) // erase
-	const float opacity = 0.0f;
-#elif defined(TRANS) // transparent
+#if !defined(CLEAR) 
+	
+#if defined(TRANS) // transparent
 	float opacity		= fma(emissive, -0.5f, -0.5f);		//  < 0 transparent to -0.5, emissive to -1.0
 #else // opaque 
 	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
-#endif // if clear
+#endif
+#endif // if !clear
 
 #if !defined(HEIGHT)
 
@@ -397,7 +398,11 @@ else // already filled with opaque block
 #endif
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
+#if defined(CLEAR) // erase
+  imageStore(opacityMap, ivoxel, vec4(0));
+#else
   imageStore(opacityMap, ivoxel, opacity.rrrr);
+#endif
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
@@ -411,7 +416,11 @@ else // already filled with opaque block
 
 	  [[dependency_infinite]] for( iminivoxel.x = MINIVOXEL_FACTOR - 1; iminivoxel.x >= 0 ; --iminivoxel.x ) {		// width - optimal cache order
 	    
+#if defined(CLEAR) // erase
+		imageStore(opacityMap, (ivoxel + iminivoxel).xzy, vec4(0));
+#else
 		imageStore(opacityMap, (ivoxel + iminivoxel).xzy, opacity.rrrr);
+#endif
 	  }
 	}
   }

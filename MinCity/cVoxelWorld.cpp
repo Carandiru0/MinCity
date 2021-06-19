@@ -2163,7 +2163,7 @@ namespace world
 		:
 		_lastState{}, _currentState{}, _targetState{},
 		_vMouse{}, _voxelIndexHoveredOk(false),
-		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
+		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr), _textureShader{},
 		_blackbodyImage(nullptr),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
 		_activeExplosion(nullptr), _activeTornado(nullptr), _activeShockwave(nullptr), _activeRain(nullptr)
@@ -2172,6 +2172,58 @@ namespace world
 #endif
 	{
 		Volumetric::VolumetricLink = new Volumetric::voxLink{ *this, _OpacityMap, _Visibility };
+	}
+
+	void cVoxelWorld::makeTextureShaderOutputsReadOnly(vk::CommandBuffer const& __restrict cb)
+	{
+		for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
+			_textureShader[shader].output->setLayoutFragmentFromCompute(cb, vku::ACCESS_WRITEONLY);
+		}
+	}
+
+	void cVoxelWorld::createTextureShader(uint32_t const shader, vku::GenericImage* const& __restrict input, bool const referenced, point2D_t const shader_dimensions, vk::Format const format)
+	{
+		static constexpr uint32_t const
+			COMPUTE_LOCAL_SIZE_BITS = 3u,	// 2^3 = 8
+			COMPUTE_LOCAL_SIZE = (1u << COMPUTE_LOCAL_SIZE_BITS);	// 2^3 = 8
+
+		_textureShader[shader].input = input;
+		_textureShader[shader].referenced = referenced;
+
+		vk::Extent3D extents{};
+		
+		if (!referenced || shader_dimensions.isZero()) {	// output extents based on new input textures only
+															// if input texture is referenced - output texture (shader_dimensions) should be defined / customized
+			extents = _textureShader[shader].input->extent();
+		}
+		else {
+			extents.width = shader_dimensions.x;
+			extents.height = shader_dimensions.y;
+		}
+
+		// output texture
+		_textureShader[shader].output = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage, MinCity::Vulkan.getDevice(), extents.width, extents.height, 1, vk::SampleCountFlagBits::e1, format);
+
+		// indirect dispatch
+		vk::DispatchIndirectCommand const dispatchCommand{
+
+					(extents.width >> COMPUTE_LOCAL_SIZE_BITS) + (0u == (extents.width % COMPUTE_LOCAL_SIZE) ? 0u : 1u), // local size x = 8
+					(extents.height >> COMPUTE_LOCAL_SIZE_BITS) + (0u == (extents.height % COMPUTE_LOCAL_SIZE) ? 0u : 1u), // local size y = 8
+					1
+		};
+
+		_textureShader[shader].indirect_buffer = new vku::IndirectBuffer(sizeof(dispatchCommand));
+
+		_textureShader[shader].indirect_buffer->upload(MinCity::Vulkan.getDevice(), MinCity::Vulkan.computePool(1), MinCity::Vulkan.computeQueue(1), dispatchCommand); // uses opposite compute queue in all cases, to be parallel with first compute queue which is for lighting only.
+
+	}
+
+	// *** best results if input texture is square, a power of two, and cleanly divides by computes local size (8) with no remainder.
+	void cVoxelWorld::createTextureShader(uint32_t const shader, std::wstring_view const szInputTexture)
+	{
+		// input texture
+		MinCity::TextureBoy.LoadKTXTexture(reinterpret_cast<vku::TextureImage3D*& __restrict>(_textureShader[shader].input), szInputTexture);
+		createTextureShader(shader, _textureShader[shader].input, false);
 	}
 
 	void cVoxelWorld::LoadTextures()
@@ -2210,6 +2262,13 @@ namespace world
 		MinCity::TextureBoy.AddTextureToTextureArray(_blackbodyTexture, TEX_BLACKBODY);
 
 		_blackbodyImage = blackbodyImage; // save image to be used for blackbody radiation light color lookup
+
+		// other textures, not part of common texture array:
+
+		// texture shaders:
+		createTextureShader(eTextureShader::WIND_FBM, supernoise::blue.getTexture2D(), true, point2D_t(256, 256), vk::Format::eR16Unorm);
+		createTextureShader(eTextureShader::WIND_DIRECTION, _textureShader[eTextureShader::WIND_FBM].output, true, point2D_t(256, 256), vk::Format::eR16G16B16A16Unorm); // will use same dimensions as input, which is the output defined previously.
+		
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_BLACKBODY_KTX
 		ImagingSaveToKTX(blackbodyImage, DEBUG_DIR "blackbody_test.ktx");
@@ -2247,7 +2306,7 @@ namespace world
 #ifndef NDEBUG
 		OutputVoxelStats();
 #endif
-		_OpacityMap.create(MinCity::Vulkan.getDevice(), MinCity::Vulkan.computePool(), MinCity::Vulkan.computeQueue(0), MinCity::getFramebufferSize());
+		_OpacityMap.create(MinCity::Vulkan.getDevice(), MinCity::Vulkan.computePool(0), MinCity::Vulkan.computeQueue(0), MinCity::getFramebufferSize());
 		MinCity::PostProcess.create(MinCity::Vulkan.getDevice(), MinCity::Vulkan.transientPool(), MinCity::Vulkan.graphicsQueue(), MinCity::getFramebufferSize());
 		createAllBuffers();
 		
@@ -3127,8 +3186,98 @@ namespace world
 	}
 	bool const cVoxelWorld::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
-		return(_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data));
+		if (c.cb_render_texture) {
+
+			static tTime tLast(now());
+			static uint32_t temporal_size(0);
+			static bool bComputeRecorded(false);
+
+			tTime const tNow(now());
+			fp_seconds const tDelta(tNow - tLast);
+
+			// update memory for push constants
+			XMVECTOR const origin(getOrigin());
+			
+			for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
+				
+				static constexpr fp_seconds const target_frametime(fp_seconds(fixed_delta_duration) * 4.0f);
+
+				uint32_t const has_frames(_textureShader[shader].input->extent().depth - 1);
+
+				if (has_frames) {
+					float const total_frames(has_frames);
+					fp_seconds const loop_time(total_frames * target_frametime);
+
+					fp_seconds accumulator(_textureShader[shader].accumulator);
+
+					float const progress = SFM::lerp(0.0f, total_frames - 1.0f, accumulator.count() / loop_time.count());
+					_textureShader[shader].push_constants.frame_or_time = progress;
+
+					accumulator += tDelta;
+					if (accumulator >= loop_time) {
+						accumulator -= loop_time;
+					}
+					_textureShader[shader].accumulator = accumulator;
+				}
+				else {
+					_textureShader[shader].accumulator += tDelta;
+					_textureShader[shader].push_constants.frame_or_time = _textureShader[shader].accumulator.count(); // defaults to time elapsed since synchronized start timestamp of texture shaders
+				}
+
+				XMStoreFloat2(&_textureShader[shader].push_constants.origin, origin);
+			}
+
+			tLast = tNow;
+
+			// only record once
+			if (!bComputeRecorded) {
+
+				vk::CommandBufferBeginInfo bi{};
+
+				c.cb_render_texture.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb_render_texture, vkNames::CommandBuffer::COMPUTE_TEXTURE);
+
+				// batch barriers all together
+				for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
+					_textureShader[shader].output->setLayoutCompute<true>(c.cb_render_texture, vku::ACCESS_WRITEONLY);
+				}
+
+				// run texture shaders (compute)
+				for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
+
+					c.cb_render_texture.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.texture.pipelineLayout, 0, render_data.texture.sets[shader][0], nullptr);
+					c.cb_render_texture.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.texture.pipeline[shader]);
+
+					c.cb_render_texture.pushConstants(*render_data.texture.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
+						(uint32_t)0U,
+						(uint32_t)sizeof(UniformDecl::TextureShaderPushConstants), reinterpret_cast<void const* const>(&_textureShader[shader].push_constants));
+
+					c.cb_render_texture.dispatchIndirect(_textureShader[shader].indirect_buffer->buffer(), 0);
+
+					_textureShader[shader].output->setLayoutCompute<false>(c.cb_render_texture, vku::ACCESS_READONLY); // so that successive texture shaders (multipass) can use outputs as an input.
+				}
+
+				c.cb_render_texture.end();
+				
+				// for next compute iteration
+				if (++temporal_size > 2) {
+					// bug - memory referenced for push constants not updating automatically like it should ? bComputeRecorded = true;
+				}
+			}
+			else {
+
+				// the compute buffer does not need to be recorded, reuse
+				// this updates the layout for the output image state after the pre-recorded compute cb is done
+				for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
+					_textureShader[shader].output->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+				}
+			}
+		}
+		else {
+			return(_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data));
+		}
+		return(true);
 	}
+
 	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
 		vku::DynamicVertexBuffer* const* const& __restrict vbo, vku::UniformBuffer& __restrict ubo)
 	{
@@ -3359,7 +3508,7 @@ namespace world
 		}
 	}
 
-	void XM_CALLCONV cVoxelWorld::translateCameraOrient(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does not orient in current direction of camera
+	void XM_CALLCONV cVoxelWorld::translateCameraOrient(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does orient in current direction of camera
 	{
 		static tTime tLast{ zero_time_point };
 
@@ -4111,10 +4260,42 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(11, (float)Volumetric::voxelOpacity::getHeight())); // should be height
 		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getHeight())); // should be inv height
 	}
+	void cVoxelWorld::SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader)
+	{
+		vk::Extent3D const input_extents(_textureShader[shader].input->extent());
+		vk::Extent3D const output_extents(_textureShader[shader].output->extent());
+		
+		constants.emplace_back(vku::SpecializationConstant(0, (float)output_extents.width));// // frame buffer width
+		constants.emplace_back(vku::SpecializationConstant(1, (float)output_extents.height));// // frame buffer height
+		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)output_extents.width));// // frame buffer width
+		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)output_extents.height));// // frame buffer height
+		constants.emplace_back(vku::SpecializationConstant(4, (float)(input_extents.depth - 1)));// // number of frames - 1 (has to be from input texture extents
+	}
 
 	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT)
 	{
 		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearClamp);
+	}
+	void cVoxelWorld::UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT)
+	{
+		// customization of descriptor sets (used samplers) for texture shaders here:
+		vk::Sampler sampler;
+
+		switch (shader)
+		{
+		case eTextureShader::WIND_FBM:
+			sampler = samplerPointRepeat;  // input texture (blue noise - requires point sampling)
+			break;
+		default:
+			sampler = samplerLinearRepeat; // default for a texture shaders that don't explicitly define sampler like above.
+			break;
+		}
+
+		dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(sampler, _textureShader[shader].input->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // input texture (blue noise - requires point sampling)
+
+		dsu.beginImages(1U, 0, vk::DescriptorType::eStorageImage);
+		dsu.image(nullptr, _textureShader[shader].output->imageView(), vk::ImageLayout::eGeneral); // output texture
 	}
 
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
@@ -4125,16 +4306,18 @@ namespace world
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // blue noise
 		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearRepeat, _textureShader[eTextureShader::WIND_DIRECTION].output->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // blue noise
+		dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 2, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 2, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Reflection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 3, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 3, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
+		dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
 		dsu.image(nullptr, halfreflectionImageView, vk::ImageLayout::eGeneral);
-		dsu.beginImages(4U, 1, vk::DescriptorType::eStorageImage);
+		dsu.beginImages(5U, 1, vk::DescriptorType::eStorageImage);
 		dsu.image(nullptr, halfvolumetricImageView, vk::ImageLayout::eGeneral);
 		
 #ifdef DEBUG_VOLUMETRIC
@@ -4562,6 +4745,16 @@ namespace world
 		SAFE_DELETE(_roadTexture);
 		SAFE_DELETE(_blackbodyTexture);
 
+		for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
+			SAFE_DELETE(_textureShader[shader].indirect_buffer);
+			SAFE_DELETE(_textureShader[shader].output);
+			if (!_textureShader[shader].referenced) {
+				SAFE_DELETE(_textureShader[shader].input);
+			}
+			else {
+				_textureShader[shader].input = nullptr;
+			}
+		}
 		if (_blackbodyImage) {
 			ImagingDelete(_blackbodyImage);
 		}

@@ -31,7 +31,7 @@
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-//#define LIVESHADER_MODE
+#define LIVESHADER_MODE
 
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC

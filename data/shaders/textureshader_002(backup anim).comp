@@ -1,0 +1,112 @@
+#version 450
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_control_flow_attributes : enable
+
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
+
+
+// ******** textureshader ********** WIND ************* //
+// **************************************************** //
+
+#include "common.glsl"
+#include "transform.glsl"
+
+#define GROUP_SIZE 8
+layout (local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE, local_size_z = 1) in;
+
+layout (push_constant) restrict readonly uniform PushConstant {
+	layout(offset=0) float		frame;		//  current frame (can be fractional so that animation is interpolated frame to frame to give a smoother animation)
+} pc;
+
+layout (binding = 0) uniform sampler3D inputMap;	// input texture map (3D)
+layout (binding = 1, rgba8) writeonly restrict uniform image2D outputMap;	// output texture map (2D)
+//////////////////////////////////////////////////////////////////////////////////
+
+layout (constant_id = 0) const float TextureWidth = 1.0f;
+layout (constant_id = 1) const float TextureHeight = 1.0f;
+layout (constant_id = 2) const float InvTextureWidth = 1.0f;
+layout (constant_id = 3) const float InvTextureHeight = 1.0f;
+layout (constant_id = 4) const float total_number_of_frames = 1.0f;
+
+#define TextureDimensions (vec2(TextureWidth, TextureHeight))
+#define InvTextureDimensions (vec2(InvTextureWidth, InvTextureHeight))
+
+#define BUMP_SCALE 0.5f
+
+void main() 
+{
+
+#ifdef ODD_TEXTURE_DIMENSIONS
+	// this is required, as 2D dimensions are not explicitly defined as square, power of 2, and divisable by local size (8) with no remainder
+	{ // #### Required Bounds Check //
+		if ( any(greaterThanEqual(gl_GlobalInvocationID.xy - TextureDimensions, vec2(0))) )
+			return;
+	}
+	// else / otherwise all dispatches fit into texture dimensions
+#endif
+
+	vec3 uvw;
+	uvw.xy = gl_GlobalInvocationID.xy * InvTextureDimensions;
+	uvw.z = pc.frame / total_number_of_frames;
+
+	vec2 gradient_now, gradient_last;
+
+	gradient_now.x = textureLodOffset(inputMap, uvw, 0.0f, ivec3(-1,  0,  0)).r - textureLodOffset(inputMap, uvw, 0.0f, ivec3( 1,  0,  0)).r;
+	gradient_now.y = textureLodOffset(inputMap, uvw, 0.0f, ivec3( 0, -1,  0)).r - textureLodOffset(inputMap, uvw, 0.0f, ivec3( 0,  1,  0)).r;
+	gradient_now = normalize(-gradient_now);
+
+	// adjust uvw to be last frame with wraparound
+	uvw.z = (pc.frame - 1.0f) / total_number_of_frames;;
+	[[flatten]] if (uvw.z < 0.0f) {
+		uvw.z = total_number_of_frames - (-uvw.z);
+	}
+
+	gradient_last.x = textureLodOffset(inputMap, uvw, 0.0f, ivec3(-1,  0,  0)).r - textureLodOffset(inputMap, uvw, 0.0f, ivec3( 1,  0,  0)).r;
+	gradient_last.y = textureLodOffset(inputMap, uvw, 0.0f, ivec3( 0, -1,  0)).r - textureLodOffset(inputMap, uvw, 0.0f, ivec3( 0,  1,  0)).r;
+	gradient_last = normalize(-gradient_last);
+
+	vec2 direction;
+    
+    gradient_now = gradient_now * 0.5f + 0.5f;
+    gradient_now = 1.0f - gradient_now;
+    gradient_now = gradient_now * 2.0f - 1.0f;
+    
+    gradient_last = gradient_last * 0.5f + 0.5f;
+    gradient_last = 1.0f - gradient_last;
+    gradient_last = gradient_last * 2.0f - 1.0f;
+    
+    direction = gradient_now - gradient_last;
+
+	float center_now, center_last;
+
+	// save the last frame uvw
+	const vec3 uvw2 = uvw;
+	// refresh the current frame uvw
+	uvw.xy = gl_GlobalInvocationID.xy * InvTextureDimensions;
+	uvw.z = pc.frame / total_number_of_frames;
+	
+	center_now = textureLod(inputMap, uvw, 0.0f).r;
+	center_last = textureLod(inputMap, uvw2, 0.0f).r;
+
+	// ** handling above to optimize # of concurrent registers optimization.
+
+	direction = abs(center_now - center_last) * direction;
+	
+	vec3 normal = vec3(direction * 1024.0f, 1.0f / BUMP_SCALE);
+	normal = normalize(normal);
+
+	vec4 output_wind = vec4(normal * 0.5f + 0.5f, center_now);
+
+	imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), output_wind);
+}
+
+
+

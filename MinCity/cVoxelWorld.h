@@ -166,6 +166,8 @@ namespace world
 		void SetSpecializationConstants_Voxel_ClearMask_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void AddSpecializationConstants_Voxel_FS_Transparent(std::vector<vku::SpecializationConstant>& __restrict constants);
 		
+		void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
+
 		// macros for sampler sets
 #define SAMPLER_SET_SINGLE vk::Sampler const& sampler
 #define SAMPLER_SET_STANDARD vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat,
@@ -173,6 +175,7 @@ namespace world
 #define SAMPLER_SET_STANDARD_POINT_ANISO vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT);
+		void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
 
 		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
@@ -221,7 +224,12 @@ namespace world
 		size_t const numStaticModelInstances() const { return(_hshVoxelModelInstances_Static.size()); }
 
 		uvec4_v const __vectorcall blackbody(float const norm) const;
+
+		void makeTextureShaderOutputsReadOnly(vk::CommandBuffer const& __restrict cb);
 	private:
+		void createTextureShader(uint32_t const shader, std::wstring_view const szInputTexture);
+		void createTextureShader(uint32_t const shader, vku::GenericImage* const& __restrict input, bool const referenced = false, point2D_t const shader_dimensions = point2D_t{}, vk::Format const format = vk::Format::eB8G8R8A8Unorm);
+
 		// placeXXXInstanceAt specializations
 		cCopterGameObject* const placeCopterInstanceAt(point2D_t const voxelIndex);
 
@@ -251,6 +259,16 @@ namespace world
 		vku::TextureImage2D*		_terrainTexture;
 		vku::TextureImage2DArray*	_roadTexture;
 		vku::TextureImage2D*		_blackbodyTexture;
+		struct {
+			vku::GenericImage*						input;	// can use any texture type as input
+			vku::TextureImageStorage2D*				output;
+			vku::IndirectBuffer*					indirect_buffer;
+			
+			UniformDecl::TextureShaderPushConstants push_constants;
+
+			fp_seconds								accumulator;
+			bool									referenced;	// input texture points to a already allocated texture for usage
+		} _textureShader[eTextureShader::_size()];
 
 		ImagingMemoryInstance*		_blackbodyImage;
 
@@ -586,9 +604,6 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 #endif
 	return(nullptr);
 }
-
-
-
 
 } // end ns world
 

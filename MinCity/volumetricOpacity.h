@@ -525,7 +525,7 @@ namespace Volumetric
 	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
 	__inline void volumetricOpacity<Width, Height, Depth>::renderSeed(vku::compute_pass const& __restrict  c) const
 	{
-		c.cb_render.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -537,10 +537,10 @@ namespace Volumetric
 		PushConstants.index_output = index_output;
 		PushConstants.index_input = index_input;
 
-		c.cb_render.pushConstants(*render_data.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
-			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsJFA), (void const* const)&PushConstants);
+		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
+			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsJFA), reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -561,11 +561,11 @@ namespace Volumetric
 
 		constexpr size_t const begin(offsetof(UniformDecl::ComputeLightPushConstants, index_input));
 
-		c.cb_render.pushConstants(*render_data.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
+		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U,
-			(uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsOverlap) + (uint32_t)begin, &PushConstants);
+			(uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsOverlap) + (uint32_t)begin, reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -577,12 +577,12 @@ namespace Volumetric
 			SHADER_LOCAL_SIZE_BITS = 3U, // 2^3 = 8
 			SHADER_LOCAL_SIZE = (1U << SHADER_LOCAL_SIZE_BITS);			//  **** 8 x 8 x 8 ****
 
-		c.cb_render.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.pipelineLayout, 0, render_data.sets[0], nullptr);
+		c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.pipelineLayout, 0, render_data.sets[0], nullptr);
 
 		// minmax stage //
-		c.cb_render.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.pipeline);
+		c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.pipeline);
 
-		c.cb_render.dispatch(
+		c.cb_render_light.dispatch(
 			(Width >> SHADER_LOCAL_SIZE_BITS) + (0U == (Width % SHADER_LOCAL_SIZE) ? 0U : 1U),    // local size x = 8
 			(Depth >> SHADER_LOCAL_SIZE_BITS) + (0U == (Depth % SHADER_LOCAL_SIZE) ? 0U : 1U),    // local size y = 8
 			(Height >> SHADER_LOCAL_SIZE_BITS) + (0U == (Height % SHADER_LOCAL_SIZE) ? 0U : 1U)); // local size z = 8
@@ -596,8 +596,7 @@ namespace Volumetric
 		{
 			return(upload_light(c.resource_index, c.cb_transfer_light));  // returns current dirty state
 		}
-
-		/*else if (nullptr != c.cb_render)*/ { // nullptr check not required as this is the only other state, and pointer is guarenteed
+		else if (c.cb_render_light) { 
 
 			static uint32_t temporal_size(0);
 			static bool bComputeRecorded(false);
@@ -608,14 +607,14 @@ namespace Volumetric
 
 				vk::CommandBufferBeginInfo bi{};
 
-				c.cb_render.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb_render, vkNames::CommandBuffer::COMPUTE_LIGHT);
+				c.cb_render_light.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb_render_light, vkNames::CommandBuffer::COMPUTE_LIGHT);
 
 				// grouping barriers as best as possible (down sample depth sets 2 aswell)
 				// set pipeline barriers only once before ping pong begins
-				LightMap.DistanceDirection->setLayoutCompute<true>(c.cb_render, vku::ACCESS_WRITEONLY);
-				LightMap.Color->setLayoutCompute<true>(c.cb_render, vku::ACCESS_WRITEONLY);
-				LightMap.Reflection->setLayoutCompute<true>(c.cb_render, vku::ACCESS_WRITEONLY);
-				LightProbeMap.imageGPUIn->setLayoutCompute(c.cb_render, vku::ACCESS_READONLY);
+				LightMap.DistanceDirection->setLayoutCompute<true>(c.cb_render_light, vku::ACCESS_WRITEONLY);
+				LightMap.Color->setLayoutCompute<true>(c.cb_render_light, vku::ACCESS_WRITEONLY);
+				LightMap.Reflection->setLayoutCompute<true>(c.cb_render_light, vku::ACCESS_WRITEONLY);
+				LightProbeMap.imageGPUIn->setLayoutCompute(c.cb_render_light, vku::ACCESS_READONLY);
 
 				// need only set the state of the downsampled depth buffer to prepare for volumetric subpass
 				// the depth buffer (original) will be reset/cleared at beginning of main static renderpass so it doesn't matter what state its left in here
@@ -623,10 +622,10 @@ namespace Volumetric
 				// the layout for the downsampled depth buffer is changed to shaderreadonly optimal at end of this compute command buffer
 
 				// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
-				c.cb_render.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.pipelineLayout, 0, render_data.sets[0], nullptr);
+				c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[0], nullptr);
 
 				// ##### SEED STAGE //
-				c.cb_render.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.pipeline[eComputeLightPipeline::SEED]);
+				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
 
 				// SEED uses PING output, hardcoded, push constants not required for seed stage
 				renderSeed(c);
@@ -634,7 +633,7 @@ namespace Volumetric
 				// ###### JUMP FLOOD PROPOGATE STAGE //
 				uint32_t uPing(ePingPongMap::PING), uPong(ePingPongMap::PONG);
 
-				c.cb_render.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.pipeline[eComputeLightPipeline::JFA]);
+				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
 
 				uint32_t step(MAX_STEP_PINGPONG >> 1);
 				do
@@ -651,14 +650,14 @@ namespace Volumetric
 				std::swap(uPing, uPong);
 
 				// Last step, filtering - temporal super-sampling, blending & antialiasing
-				c.cb_render.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.pipeline[eComputeLightPipeline::FILTER]);
+				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
 
 				renderFilter(c, render_data, uPing);
 
-				LightProbeMap.imageGPUIn->setLayout(c.cb_render, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_READONLY,
+				LightProbeMap.imageGPUIn->setLayout(c.cb_render_light, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_READONLY,
 					vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY);
 
-				c.cb_render.end();
+				c.cb_render_light.end();
 
 				// for next compute iteration
 				if (++temporal_size > TEMPORAL_VOLUMES) {

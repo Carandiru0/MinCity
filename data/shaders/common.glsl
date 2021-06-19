@@ -200,6 +200,24 @@ vec3 OKLABToRGB(in const vec3 oklab)
 	return(kLMStoCONE*(oklab*oklab*oklab));
 }
 
+vec3 PQInverse(in const vec3 linear) {
+
+	const float display_nits = 400.0f;
+	const float 
+		m1 = 1305.0f/8192.0f,
+		m2 = 2523.0f/32.0f,
+		c3 = 2392.0f/128.0f,
+		c2 = 2413.0f/128.0f,
+		c1 = c3 - c2 + 1.0f;
+
+	const vec3 y = pow(linear, vec3(m1));
+
+	vec3 non_linear = (c1 + c2 * y) / (1.0f + c3 * y);
+	non_linear = pow(non_linear, vec3(m2));
+
+	return(non_linear);
+}
+
 vec3 unpackColor(in float fetched) {
 
 	// SHADER sees     A B G R			(RGBA in reverse) 
@@ -210,7 +228,6 @@ float packColor(in const vec3 pushed) {
 	// SHADER sees     A B G R			(RGBA in reverse) 
 	return(float(packUnorm4x8(vec4(pushed,0.0f))));
 }
-
 
 vec2 compressNormal(in const vec3 normal)  // expects in normal to be normalized
 {

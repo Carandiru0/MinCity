@@ -263,113 +263,52 @@ void cVulkan::CreateNuklearResources()
 
 void cVulkan::CreateComputeResources()
 {
-	{ // descriptor set shared between JFA and SEED, different pipelines //
-		// Build a template for descriptor sets that use these shaders.
-		vku::DescriptorSetLayoutMaker	dslm;
-
-		auto const samplers{ getSamplerArray
-			<eSamplerAddressing::CLAMP>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
-			)
-		};
-		dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, &getLinearSampler()); // 3d volume seed (lightprobes)
-		dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
-		dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
-		/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (distance & direction)
-		dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (distance & direction)
-		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
-		dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
-		dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
-		dslm.image(8U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // temporal history volumes (color)
-		dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output
-		
-		_comData.descLayout = dslm.createUnique(_device);
-	}
-
-	// We need to create a descriptor set to tell the shader where
-		// our buffers are.
-	vku::DescriptorSetMaker			dsm;
-	dsm.layout(*_comData.descLayout);
-
-	_comData.sets = dsm.create(_device, _fw.descriptorPool());
-
-	std::vector< vku::SpecializationConstant > constants_jfa;
-	MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants_jfa);
-
-	// SEED & JFA  //
-	
-	vku::PipelineLayoutMaker		plm;
-	plm.descriptorSetLayout(*_comData.descLayout);
-	// pipeline layout is the same/shared across all stages
-	plm.pushConstantRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(UniformDecl::ComputeLightPushConstants));
-
-	_comData.pipelineLayout = plm.createUnique(_device);
+	// light -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
-		vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_seed.comp.bin", constants_jfa };
+		{ // descriptor set shared between JFA and SEED, different pipelines //
+			// Build a template for descriptor sets that use these shaders.
+			vku::DescriptorSetLayoutMaker	dslm;
 
-		// Make a pipeline to use the vertex format and shaders.
-		vku::ComputePipelineMaker pm{};
-		pm.shader(vk::ShaderStageFlagBits::eCompute, comp);
+			auto const samplers{ getSamplerArray
+				<eSamplerAddressing::CLAMP>(
+					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+				)
+			};
+			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, &getLinearSampler()); // 3d volume seed (lightprobes)
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
+			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
+			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (distance & direction)
+			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (distance & direction)
+			dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
+			dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
+			dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
+			dslm.image(8U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // temporal history volumes (color)
+			dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output
 
-		// Create a pipeline using a renderPass built for our window.
-		auto& cache = _fw.pipelineCache();
-		_comData.pipeline[eComputeLightPipeline::SEED] = pm.createUnique(_device, cache, *_comData.pipelineLayout);
-	}
-	{
-		vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_jfa.comp.bin", constants_jfa };
-
-		// Make a pipeline to use the vertex format and shaders.
-		vku::ComputePipelineMaker pm{};
-		pm.shader(vk::ShaderStageFlagBits::eCompute, comp);
-
-		// Create a pipeline using a renderPass built for our window.
-		auto& cache = _fw.pipelineCache();
-		_comData.pipeline[eComputeLightPipeline::JFA] = pm.createUnique(_device, cache, *_comData.pipelineLayout);
-	}
-	{
-		vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_mip.comp.bin", constants_jfa };
-
-		// Make a pipeline to use the vertex format and shaders.
-		vku::ComputePipelineMaker pm{};
-		pm.shader(vk::ShaderStageFlagBits::eCompute, comp);
-
-		// Create a pipeline using a renderPass built for our window.
-		auto& cache = _fw.pipelineCache();
-		_comData.pipeline[eComputeLightPipeline::FILTER] = pm.createUnique(_device, cache, *_comData.pipelineLayout);
-	}
-
-#ifdef DEBUG_LIGHT_PROPAGATION
-	{
-		// Build a template for descriptor sets that use these shaders.
-		vku::DescriptorSetLayoutMaker	dslm;
-
-		vk::Sampler const samplers_in[2]{ *getLinearSampler(eSampler::CLAMP), *getLinearSampler(eSampler::CLAMP) };
-
-		dslm.buffer(0U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eCompute, 1); // min, max of slice
-		dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers_in); // 3d volumes, light probe input & pingpong output as input
-		dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // slice blit output
-
-		_comData.debugLightData.descLayout = dslm.createUnique(_device);
+			_comData.light.descLayout = dslm.createUnique(_device);
+		}
 
 		// We need to create a descriptor set to tell the shader where
-		// our buffers are.
+			// our buffers are.
 		vku::DescriptorSetMaker			dsm;
-		dsm.layout(*_comData.debugLightData.descLayout);
+		dsm.layout(*_comData.light.descLayout);
 
-		_comData.debugLightData.sets = dsm.create(_device, _fw.descriptorPool());
-		
-		std::vector< vku::SpecializationConstant > constants_debug;
-		MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants_debug, eComputeDebugLightPipeline::MINMAX);
+		_comData.light.sets = dsm.create(_device, _fw.descriptorPool());
+
+		std::vector< vku::SpecializationConstant > constants_jfa;
+		MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants_jfa);
+
+		// SEED & JFA  //
 
 		vku::PipelineLayoutMaker		plm;
-		plm.descriptorSetLayout(*_comData.debugLightData.descLayout);
-		// pipeline layout is the same/shared across both stages
-		plm.pushConstantRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(UniformDecl::ComputeDebugLightPushConstantsJFA));
-		_comData.debugLightData.pipelineLayout = plm.createUnique(_device);
+		plm.descriptorSetLayout(*_comData.light.descLayout);
+		// pipeline layout is the same/shared across all stages
+		plm.pushConstantRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(UniformDecl::ComputeLightPushConstants));
 
+		_comData.light.pipelineLayout = plm.createUnique(_device);
 		{
-			vku::ShaderModule comp{ _device, SHADER_BINARY_DIR "light_debug_minmax.comp.bin", constants_debug };
+			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_seed.comp.bin", constants_jfa };
 
 			// Make a pipeline to use the vertex format and shaders.
 			vku::ComputePipelineMaker pm{};
@@ -377,10 +316,10 @@ void cVulkan::CreateComputeResources()
 
 			// Create a pipeline using a renderPass built for our window.
 			auto& cache = _fw.pipelineCache();
-			_comData.debugLightData.pipeline[eComputeDebugLightPipeline::MINMAX] = pm.createUnique(_device, cache, *_comData.debugLightData.pipelineLayout);
+			_comData.light.pipeline[eComputeLightPipeline::SEED] = pm.createUnique(_device, cache, *_comData.light.pipelineLayout);
 		}
 		{
-			vku::ShaderModule comp{ _device, SHADER_BINARY_DIR "light_debug_blit.comp.bin", constants_debug };
+			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_jfa.comp.bin", constants_jfa };
 
 			// Make a pipeline to use the vertex format and shaders.
 			vku::ComputePipelineMaker pm{};
@@ -388,11 +327,70 @@ void cVulkan::CreateComputeResources()
 
 			// Create a pipeline using a renderPass built for our window.
 			auto& cache = _fw.pipelineCache();
-			_comData.debugLightData.pipeline[eComputeDebugLightPipeline::BLIT] = pm.createUnique(_device, cache, *_comData.debugLightData.pipelineLayout);
+			_comData.light.pipeline[eComputeLightPipeline::JFA] = pm.createUnique(_device, cache, *_comData.light.pipelineLayout);
+		}
+		{
+			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_mip.comp.bin", constants_jfa };
+
+			// Make a pipeline to use the vertex format and shaders.
+			vku::ComputePipelineMaker pm{};
+			pm.shader(vk::ShaderStageFlagBits::eCompute, comp);
+
+			// Create a pipeline using a renderPass built for our window.
+			auto& cache = _fw.pipelineCache();
+			_comData.light.pipeline[eComputeLightPipeline::FILTER] = pm.createUnique(_device, cache, *_comData.light.pipelineLayout);
 		}
 	}
-#endif
 
+	// texture shaders -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	{
+		// shared/common among texture shaders:
+		{
+			// Build a template for descriptor sets that use these shaders.
+			vku::DescriptorSetLayoutMaker	dslm;
+
+			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1); // input texture - not using immutable sampler, so it can be customized per texture shaders decriptor set.
+			dslm.image(1U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // output texture
+
+			_comData.texture.descLayout = dslm.createUnique(_device);
+		}
+
+		// We need to create a descriptor set to tell the shader where
+				// our buffers are.
+		vku::DescriptorSetMaker			dsm;
+		dsm.layout(*_comData.texture.descLayout);
+
+		for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
+		{
+			_comData.texture.sets[shader] = dsm.create(_device, _fw.descriptorPool());
+		}
+
+		vku::PipelineLayoutMaker		plm;
+		plm.descriptorSetLayout(*_comData.texture.descLayout);
+		plm.pushConstantRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(UniformDecl::TextureShaderPushConstants));
+
+		_comData.texture.pipelineLayout = plm.createUnique(_device);
+
+		for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
+		{
+			std::string const szFile(fmt::format(FMT_STRING("textureshader_{:03d}.comp.bin"), shader));
+			std::wstring wszFile(szFile.begin(), szFile.end());
+			wszFile = SHADER_BINARY_DIR + wszFile;
+
+			std::vector< vku::SpecializationConstant > constants_textureshader;
+			MinCity::VoxelWorld.SetSpecializationConstants_TextureShader(constants_textureshader, shader);	// each textureshader can have distinct specialization constants
+
+			vku::ShaderModule const comp{ _device, wszFile, constants_textureshader };
+
+			// Make a pipeline to use the vertex format and shaders.
+			vku::ComputePipelineMaker pm{};
+			pm.shader(vk::ShaderStageFlagBits::eCompute, comp);
+
+			// Create a pipeline using a renderPass built for our window.
+			auto& cache = _fw.pipelineCache();
+			_comData.texture.pipeline[shader] = pm.createUnique(_device, cache, *_comData.texture.pipelineLayout);
+		}
+	}
 }
 
 void cVulkan::CreateVolumetricResources()
@@ -416,13 +414,14 @@ void cVulkan::CreateVolumetricResources()
 	dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
 	dslm.image(1U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);  // half-res depth
 	dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // blue noise
-	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
-	dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
-	
+	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::REPEAT>());  // fog
+	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
+	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
 #ifdef DEBUG_VOLUMETRIC
 	dslm.buffer(10U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
-#endif
+#endif	
 	_volData.descLayout = dslm.createUnique(_device);
+
 	// We need to create a descriptor set to tell the shader where
 	// our buffers are.
 	vku::DescriptorSetMaker			dsm;
@@ -456,12 +455,12 @@ void cVulkan::CreateVolumetricResources()
 		{
 			vk::DeviceSize gpuSize = _countof(vertices) * sizeof(VertexDecl::just_position);
 			_volData._vbo = vku::VertexBuffer(gpuSize);
-			_volData._vbo.upload(_device, dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_THREAD_PRIMARY), transferQueue(), vertices, gpuSize);
+			_volData._vbo.upload(_device, dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_PRIMARY), transferQueue(), vertices, gpuSize);
 		}
 		{
 			vk::DeviceSize gpuSize = _countof(indices) * sizeof(uint16_t);
 			_volData._ibo = vku::IndexBuffer(gpuSize);
-			_volData._ibo.upload(_device, dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_THREAD_PRIMARY), transferQueue(), indices, gpuSize);
+			_volData._ibo.upload(_device, dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_PRIMARY), transferQueue(), indices, gpuSize);
 			_volData.index_count = _countof(indices);
 		}
 	}
@@ -1422,14 +1421,21 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 //
 // Update the descriptor sets for the shader uniforms.
 	{ // ###### Compute
-		_dsu.beginDescriptorSet(_comData.sets[0]);
+		_dsu.beginDescriptorSet(_comData.light.sets[0]);
 		MinCity::VoxelWorld.UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD_POINT);
-#ifdef DEBUG_LIGHT_PROPAGATION
-		_dsu.beginDescriptorSet(_comData.debugLightData.sets[0]);
-		MinCity::VoxelWorld.UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD, eComputeDebugLightPipeline::MINMAX);
-#endif
+
 		// update descriptor set (still called)
 		_dsu.update(_device);
+
+		// ###### Texture Shaders (Compute)
+		for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
+		{
+			_dsu.beginDescriptorSet(_comData.texture.sets[shader][0]);
+			MinCity::VoxelWorld.UpdateDescriptorSet_TextureShader(_dsu, shader, SAMPLER_SET_STANDARD_POINT);
+
+			// update descriptor set (still called)
+			_dsu.update(_device);
+		}
 	}
 	
 	{ // ###### Nuklear
@@ -1890,6 +1896,9 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// ### current state for opacity map will always be general at this point, no need to transition layouts //
 	
+	// transition alll textureshader outputs to shaderreadonlyoptimal
+	MinCity::VoxelWorld.makeTextureShaderOutputsReadOnly(s.cb);
+
 	// prepare halfres target for writes in depth resolve fragment shader
 	_window->depthResolvedImage(1).setLayout(s.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY);
 
@@ -2053,7 +2062,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	s.cb.end();
 }
 
-inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& d)
+inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d)
 {
 	static vku::DynamicVertexBuffer* const __restrict vbos[] = {
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo),

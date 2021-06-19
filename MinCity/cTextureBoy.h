@@ -39,6 +39,7 @@ public:
 	// ### LOADING ### //
 	bool const KTXFileExists(std::wstring_view const path) const;
 	// format inside of KTX file, make sure to save in the correct format! (srgb vs unorm) 
+	bool const LoadKTXTexture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path);
 	template<bool const WorkaroundLayerSizeDoubledInFileBug = false>
 	bool const LoadKTXTexture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path);
@@ -71,6 +72,9 @@ public:
 	// Sequences, always non dedicated memory and is srgb
 	void ImagingSequenceToTexture(ImagingSequence const* const image, vku::TextureImage2DArray*& __restrict texture);
 
+	// ### UPDATING ### //
+	template <typename T>
+	void UpdateTexture(T const* const __restrict bytes, vku::TextureImage3D*& __restrict texture) const;
 private:
 	vk::CommandPool const& __restrict								transientPool() const;
 	vk::CommandPool const& __restrict							    dmaTransferPool() const;
@@ -385,19 +389,32 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 
 			if (ktxFile.ok()) {
 
-				uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0));
 				vk::CommandPool const* __restrict commandPool(&transientPool());
 				vk::Queue const* __restrict queue(&graphicsQueue());
-				if ((0 == width % 8) && (0 == height % 8)) {
-					commandPool = &dmaTransferPool();
-					queue = &transferQueue();
-				}
 
-				if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
-					texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.format());
+				if constexpr (std::is_same<T, vku::TextureImage3D>::value) {
+					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0)), depth(ktxFile.depth(0));
+
+					if ((0 == width % 8) && (0 == height % 8) && (0 == depth % 8)) {
+						commandPool = &dmaTransferPool();
+						queue = &transferQueue();
+					}
+					texture = new T(_device, width, height, depth, ktxFile.format());
 				}
 				else {
-					texture = new T(_device, width, height, 1, ktxFile.format());
+					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0));
+					
+					if ((0 == width % 8) && (0 == height % 8)) {
+						commandPool = &dmaTransferPool();
+						queue = &transferQueue();
+					}
+
+					if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
+						texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.format());
+					}
+					else {
+						texture = new T(_device, width, height, 1, ktxFile.format());
+					}
 				}
 				// must use the upload in KTXFile
 				ktxFile.upload(_device, *texture, pReadPointer, *commandPool, *queue);
@@ -425,3 +442,20 @@ bool const cTextureBoy::LoadKTXTexture(vku::TextureImage2DArray*& __restrict tex
 }
 
 
+template <typename T>
+void cTextureBoy::UpdateTexture(T const* const __restrict bytes, vku::TextureImage3D*& __restrict texture) const // todo currently assuming 4 components rgba in size calculation below
+{
+	vk::CommandPool const* __restrict commandPool(&transientPool());
+	vk::Queue const* __restrict queue(&graphicsQueue());
+
+	vk::Extent3D const extents(texture->extent());
+
+	if (extents.width == extents.height == extents.depth) {
+		if ((0 == extents.width % 8)) {
+			commandPool = &dmaTransferPool();
+			queue = &transferQueue();
+		}
+	}
+
+	texture->upload(_device, bytes, extents.width * extents.height * extents.depth * sizeof(T) * 4, *commandPool, *queue);
+}

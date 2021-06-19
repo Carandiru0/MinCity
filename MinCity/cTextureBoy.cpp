@@ -50,7 +50,7 @@ vk::CommandPool const& __restrict								cTextureBoy::transientPool() const
 }
 vk::CommandPool const& __restrict							    cTextureBoy::dmaTransferPool() const
 {
-	return(MinCity::Vulkan.dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_THREAD_PRIMARY));
+	return(MinCity::Vulkan.dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_PRIMARY));
 	//return(transientPool()); // bug: currently images some how are in state imagesrcoptimal if the dma queue is used for there upload
 }							 // this is a workaround for now
 vk::Queue const& __restrict										cTextureBoy::graphicsQueue() const
@@ -179,6 +179,10 @@ bool const cTextureBoy::KTXFileExists(std::wstring_view const path) const
 bool const cTextureBoy::LoadKTXTexture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path)
 {
 	return(LoadKTXTexture<vku::TextureImage2D>(texture, path));
+}
+bool const cTextureBoy::LoadKTXTexture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path)
+{
+	return(LoadKTXTexture<vku::TextureImage3D>(texture, path));
 }
 
 void cTextureBoy::CleanUp()

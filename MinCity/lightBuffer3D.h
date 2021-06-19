@@ -194,7 +194,7 @@ public:
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		// floor to ints
-		ivec4_v const xmIndex(SFM::floor_to_i32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))));
+		ivec4_v const xmIndex(SFM::round_to_i32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))));
 		ivec4_t iIndex;
 		xmIndex.xyzw(iIndex);
 

@@ -755,7 +755,7 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 			PushConstants.type = _imageVector[PushConstants.array_index]->type; // resolve type (sdf, rgba) 
 
 			cb_render.pushConstants(*renderInfo.pipelineLayout, vk::ShaderStageFlagBits::eFragment, 
-				(uint32_t)0U, (uint32_t)sizeof(UniformDecl::NuklearPushConstants), (void const* const)&PushConstants);
+				(uint32_t)0U, (uint32_t)sizeof(UniformDecl::NuklearPushConstants), reinterpret_cast<void const* const>(&PushConstants));
 
 			last_texture_id = texture_id;
 		}
@@ -1357,7 +1357,7 @@ void  cNuklear::UpdateGUI()
 		nk_end(_ctx);
 		
 #ifdef DEBUG_LUT_WINDOW
-		draw_lut_window(tNow, window_height + 2);
+		draw_lut_window(tLocal, window_height + 2);
 #endif
 	}
 	else { // ### PAUSED ### //

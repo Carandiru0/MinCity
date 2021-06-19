@@ -18,6 +18,8 @@ layout (constant_id = 1) const float VolumeDimensions_Y = 0.0f;
 layout (constant_id = 2) const float VolumeDimensions_Z = 0.0f;
 #define VolumeDimensions vec3(VolumeDimensions_X, VolumeDimensions_Y, VolumeDimensions_Z)
 
+const vec3 origin_correction = vec3(0.0f, 0.5f, 0.0f);
+
 void main() {
  							 		
 	vec3 eyeDir = u._eyeDir.xyz;
@@ -29,7 +31,7 @@ void main() {
 	const vec3 VolumeScale = VolumeDimensions * 0.5f;
 
 									// eyeDir provides highest accuracy 
-	const vec3 volume_translation = vec3(eyeDir.x, -eyeDir.y * 2.0f, eyeDir.z) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f);
+	const vec3 volume_translation = vec3(eyeDir.x, -eyeDir.y * 2.0f, eyeDir.z) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f) + origin_correction;
 	
 	// inverted y translation, also put at groundlevel
 	gl_Position = u._viewProj * vec4(fma(inPos.xyz, VolumeScale, volume_translation /*+ grid_offset_v3() * VolumeScale*/), 1.0f);

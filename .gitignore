@@ -44,3 +44,7 @@ desktop.ini
 *.bin
 *.TMP
 *.bak
+*.vktrace
+*.iobj
+*.iobj
+*.vktracer

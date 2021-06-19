@@ -154,12 +154,14 @@ void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in ve
 
 // main public functions
 #ifdef FAST_LIGHTMAP
-vec3 getLightFast(out vec3 light_color, out float attenuation, in const vec3 uvw, in const float volume_length) 
+vec3 getLightFast(out vec3 light_color, out float attenuation, out float normalized_distance, in const vec3 uvw, in const float volume_length) 
 {
 	vec4 light_direction_distance; 
 
 	getLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
 	    
+	normalized_distance = light_direction_distance.a;
+
 	const float light_distance = light_direction_distance.a * volume_length * DISTANCE_SCALE; // denormalization and scaling to world coordinates
 	
 	attenuation = 1.0f / (1.0f + light_distance*light_distance);  

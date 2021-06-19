@@ -883,6 +883,30 @@
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
     </CustomBuild>
+    <CustomBuild Include="..\data\shaders\textureshader_000.comp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DNOTHING  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DNOTHING  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+    </CustomBuild>
+    <CustomBuild Include="..\data\shaders\textureshader_001.comp">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DNOTHING  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DNOTHING  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+    </CustomBuild>
     <None Include="..\data\shaders\transform.glsl" />
     <None Include="..\Data\Shaders\voxel_fragment.glsl" />
     <CustomBuild Include="..\data\shaders\voxel_tornado.frag">

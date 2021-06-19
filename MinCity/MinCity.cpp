@@ -212,20 +212,38 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_FALSE);	// ensure this is off
 	
+	glfwWindowHint(GLFW_RED_BITS, 10);
+	glfwWindowHint(GLFW_GREEN_BITS, 10);
+	glfwWindowHint(GLFW_BLUE_BITS, 10);
+	glfwWindowHint(GLFW_REFRESH_RATE, 75);
+
 	/// cool option 
 	glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 	glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 
-	point2D_t resolution(getFramebufferSize());	// set by ini settings b4
-	point2D_t max_resolution(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
-	if (Vulkan.isFullScreenExclusiveExtensionSupported()) {
-		// maximum monitor resolution, users can decide to render to resolutions up to 2x the actual monitor resolution using "super resolution" in the amd cntrl panel, or similar for nvidia
-		// only works properly if dedicated fullscreen exclusive mode is enabled and supported
-		// other wise maximum resolution defaults to the actual screen resolution of the monitor
-		max_resolution = p2D_shiftl(max_resolution, 1);
+	point2D_t const desired_resolution(getFramebufferSize());	// set by ini settings b4
+	point2D_t const max_resolution(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+
+	point2D_t resolution( SFM::min(desired_resolution.v, max_resolution.v) ); // clamp ini set resoluion to maximum monitor resolution
+
+	GLFWmonitor* const primary_monitor(glfwGetPrimaryMonitor());
+
+	if (!Vulkan.isFullScreenExclusiveExtensionSupported()) { // if not exclusive fullscreen
+
+		if (resolution < max_resolution) { // and resolution is less than the monitor solution (not borderless fullscreen)
+
+			// adjust the window to be friendly with the windows taskbar
+			rect2D_t rectUsableArea;
+			glfwGetMonitorWorkarea(primary_monitor, &rectUsableArea.left, &rectUsableArea.top, &rectUsableArea.right, &rectUsableArea.bottom);
+			// glfwGetMonitorWorkarea returns the position, then the dimensions (width/height)
+			// formatting rect to be correct from window position (top-left):
+			rectUsableArea.right += rectUsableArea.left;
+			rectUsableArea.bottom += rectUsableArea.top;
+
+			// clamp resolution to bounds of work area rect
+			resolution.v = SFM::clamp(resolution.v, rectUsableArea.left_top().v, rectUsableArea.right_bottom().v);
+		}
 	}
-  
-	resolution.v = SFM::min(resolution.v, max_resolution.v); // clamp ini set resoluion to maximum monitor resolution
 
 	// DPI Scaling - Scales Resolution by the factor set in display setings for Windows, eg.) 125% - Only affects borderless windowed mode
 	//																								 Native resolution is used for fullscreen exclusive
@@ -238,7 +256,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	GLFWmonitor* monitor(nullptr); // default to "windowed" mode. Can be smaller than desktop resolution or be a "borderless full screen window"
 								   // otherwise:
 	if (Vulkan.isFullScreenExclusiveExtensionSupported()) { // if the ini setting is enabled & the extension for fullscreen exclusive is available
-		monitor = glfwGetPrimaryMonitor();	// this enables native full-screen, allowing GLFW to change desktop resolution
+		monitor = primary_monitor;	// this enables native full-screen, allowing GLFW to change desktop resolution
 	}										// the actual exclusive mode is handled in the window part of vku
 	
 	glfwwindow = glfwCreateWindow(resolution.x, resolution.y, Globals::TITLE, monitor, nullptr);
@@ -250,7 +268,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	if (framebuffer_size.x > max_resolution.x || framebuffer_size.y > max_resolution.y) {
 		glfwDestroyWindow(glfwwindow); glfwwindow = nullptr;
 		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
-		fmt::print(fg(fmt::color::orange), "ini resolution > than maximum monitor resolution, dpi awareness disabled\n");
+		fmt::print(fg(fmt::color::orange), "dpi awareness disabled\n");
 
 		glfwwindow = glfwCreateWindow(resolution.x, resolution.y, Globals::TITLE, monitor, nullptr);
 
@@ -281,9 +299,9 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	{ // output resolution info
 		point2D_t const used_resolution(Nuklear.getFramebufferSize());
-		fmt::print(fg(fmt::color::white), "resolution(.ini):  "); fmt::print(fg(fmt::color::hot_pink), "{:d}x{:d}\n", resolution.x, resolution.y);
+		fmt::print(fg(fmt::color::white), "resolution(desired):  "); fmt::print(fg(fmt::color::hot_pink), "{:d}x{:d}\n", desired_resolution.x, desired_resolution.y);
 		fmt::print(fg(fmt::color::white), "resolution(using):  "); fmt::print(fg(fmt::color::hot_pink), "{:d}x{:d}\n", used_resolution.x, used_resolution.y);
-		fmt::print(fg(fmt::color::white), "dpi scaling: "); fmt::print(fg(fmt::color::green_yellow), "{:.0f}%\n", (float(used_resolution.x) / float(resolution.x)) * 100.0f);
+		fmt::print(fg(fmt::color::white), "dpi scaling: "); fmt::print(fg(fmt::color::green_yellow), "{:.0f}%\n", (float(used_resolution.x) / float(desired_resolution.x)) * 100.0f);
 	}
 
 	supernoise::InitializeDefaultNoiseGeneration();

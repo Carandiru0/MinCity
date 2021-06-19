@@ -19,8 +19,8 @@ cPostProcess::cPostProcess()
 void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize) {
 
 	// LUT
-	if (!LoadLUT(TEXTURE_DIR L"zblade.cube")) {
-		FMT_LOG_FAIL(TEX_LOG, "Unable to load 3D lut {:s}", "zblade.cube");
+	if (!LoadLUT(TEXTURE_DIR L"core.cube")) {
+		FMT_LOG_FAIL(TEX_LOG, "Unable to load 3D lut {:s}", "core.cube");
 	}
 
 	_temporalColorImage = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
@@ -116,7 +116,7 @@ static bool const MixLUT(ImagingLUT*& __restrict lut, std::string_view const szl
 		lut_A = nullptr;
 	}
 	else {
-		FMT_LOG_FAIL(TEX_LOG, "Could not mix luts {:d} <> {:d]", lut_A->size, lut_B->size);
+		FMT_LOG_FAIL(TEX_LOG, "Could not mix luts");
 		bReturn = false;
 	}
 

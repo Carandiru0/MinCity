@@ -156,7 +156,7 @@ void main() {
 		vec4 depthWeights;
 		{
 			const float fullDepth = subpassLoad(inputFullDepth).r;
-			const vec4 halfDepth = textureGather(HalfDepthMap, In.uv, 0);  // 0 = r = depth
+			const vec4 halfDepth = textureGather(HalfDepthMap, In.uv);  // 0 = r = depth
 
 			depthWeights = 1.0f / (abs(halfDepth - fullDepth) + 1e-5f);  // epsilon corrects nans or infinity resulting in artifacts
 		}
