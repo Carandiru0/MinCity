@@ -100,14 +100,31 @@ void cVulkan::setVsyncDisabled(bool const bDisabled)
 {
 	_bVsyncDisabled = bDisabled;
 }
-bool const cVulkan::isFullScreenExclusiveExtensionSupported() const
+bool const cVulkan::isFullScreenExclusiveExtensionSupported() const // needed to query support during window creation
 {
 	return(_fw.isFullScreenExclusiveExtensionSupported());
+}
+bool const cVulkan::isFullScreenExclusive() const // after the window has been created, this indicates if fullscreen exclusive mode is on.
+{
+	return(_window->isFullScreenExclusive());
 }
 void cVulkan::setFullScreenExclusiveEnabled(bool const bEnabled)
 {
 	_fw.setFullScreenExclusiveEnabled(bEnabled);
 }
+bool const cVulkan::isHDR() const // after the window has been created, this indicates if HDR is on.
+{
+	return(_window->isHDR());
+}
+uint32_t const cVulkan::getMaximumNits() const
+{
+	return(_fw.getMaximumNits());
+}
+void cVulkan::setHDREnabled(bool const bEnabled, uint32_t const max_nits)
+{
+	_fw.setHDREnabled(bEnabled, max_nits);
+}
+
 bool const cVulkan::LoadVulkanWindow(GLFWwindow* const glfwwindow)
 {
 	// Create a window to draw into
@@ -478,10 +495,10 @@ void cVulkan::CreateVolumetricResources()
 
 	pm.depthCompareOp(vk::CompareOp::eAlways);
 	pm.depthClampEnable(VK_FALSE); // must be false
-	pm.depthTestEnable(VK_FALSE);		// for volume rendering, depth testing can be enabled if culling back faces, and clockwise frontfaces
+	pm.depthTestEnable(VK_TRUE);		// for volume rendering, depth testing can be enabled if culling back faces, and clockwise frontfaces
 	pm.depthWriteEnable(VK_FALSE);		// no depthwrites, as tarnsparency is used here
-	pm.cullMode(vk::CullModeFlagBits::eFront);			// if camera goes inside volume, culling front faces and counter clockwise must be used
-	pm.frontFace(vk::FrontFace::eCounterClockwise);		// see https://www.willusher.io/webgl/2019/01/13/volume-rendering-with-webgl
+	pm.cullMode(vk::CullModeFlagBits::eBack);			// if camera goes inside volume, culling front faces and counter clockwise must be used
+	pm.frontFace(vk::FrontFace::eClockwise);			// see https://www.willusher.io/webgl/2019/01/13/volume-rendering-with-webgl
 														// in Mincity camera zoom is done with projection matrix - so view matrix is never inside volume!
 														// allowing depth testing to be enabled!
 
@@ -771,7 +788,7 @@ void cVulkan::CreatePostAAResources()
 	
 	dslm.image(9U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);							// anamorphic flare array source
 	dslm.image(10U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// anamorphic flare array out
-	dslm.image(11U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());					// 3d lut
+	dslm.image(11U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, samplers);					// 3d lut
 	dslm.image(12U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui 0
 	dslm.image(13U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui 1
 
@@ -854,6 +871,14 @@ void cVulkan::CreatePostAAResources()
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[2] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
+
+	if (isHDR()) {
+		// *** this clears the current vector of constants, and replaces it with the spec constants w/Maximum Nits defined
+		constants.clear();
+		// required for the last 2 passes / pipelines if HDR is on
+		MinCity::VoxelWorld.SetSpecializationConstants_PostAA_HDR(constants);
+	}
+
 	{ // final pass aa + blur upsample + dithering + anamorphic flare	
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
 		pm.depthCompareOp(vk::CompareOp::eAlways);
@@ -864,8 +889,15 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquadpp2.vert.bin", constants };
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp2.frag.bin", constants };
+		std::wstring szFragShader;
+		if (isHDR()) { // select shader
+			szFragShader = SHADER_BINARY_DIR "postaapp2_hdr.frag.bin";
+		}
+		else {
+			szFragShader = SHADER_BINARY_DIR "postaapp2.frag.bin";
+		}
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquadpp2.vert.bin" };
+		vku::ShaderModule const frag_{ _device, szFragShader, constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -883,8 +915,15 @@ void cVulkan::CreatePostAAResources()
 		pm.cullMode(vk::CullModeFlagBits::eFront);
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 		
-		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_overlay.vert.bin", constants };
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaaoverlay.frag.bin", constants };
+		std::wstring szFragShader;
+		if (isHDR()) { // select shader
+			szFragShader = SHADER_BINARY_DIR "postaaoverlay_hdr.frag.bin";
+		}
+		else {
+			szFragShader = SHADER_BINARY_DIR "postaaoverlay.frag.bin";
+		}
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_overlay.vert.bin" };
+		vku::ShaderModule const frag_{ _device, szFragShader, constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
@@ -1547,6 +1586,8 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	// set static pre-recorded command buffers here //
 	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer);
 	_window->setStaticPresentCommands(cVulkan::renderPresentCommandBuffer);
+
+	WaitDeviceIdle(); // bugfix, wait until device is ready before proceeding with execution
 }
 
 namespace vku
@@ -1780,7 +1821,7 @@ void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out) const	// 
 		// copy entire framebuffer to output
 		// 200 to 400 us faster than standard memcpy - hopefully this works for all frameBuffer sizes
 		// frameBufferSizes are guaranteed to have a granularity of 8 (bugfix in GLFW)
-		__memcpy_aligned_32_stream((uint8_t* const __restrict)mem_out, (uint8_t const* const __restrict)gpu_read_back, size_t(framebufferSz.x) * size_t(framebufferSz.y) * sizeof(uint32_t));
+		__memcpy_aligned_32_stream_threaded((uint8_t* const __restrict)mem_out, (uint8_t const* const __restrict)gpu_read_back, size_t(framebufferSz.x) * size_t(framebufferSz.y) * sizeof(uint32_t));
 
 		_offscreenBuffer.unmap();
 	}
@@ -2323,10 +2364,25 @@ void cVulkan::enableOffscreenCopy()
 	// use method: getOffscreenCopyStatus()
 }
 
+static void setHdrMetadata(vk::HdrMetadataEXT& metadata)
+{
+	// Mastered on LG DisplayHDR 400 (Vesa certified 400nit maximum luminance) ST2084 BT.2020
+	metadata.displayPrimaryRed.x = 0.708f;
+	metadata.displayPrimaryRed.y = 0.292f;
+	metadata.displayPrimaryGreen.x = 0.170f;
+	metadata.displayPrimaryGreen.y = 0.797f;
+	metadata.displayPrimaryBlue.x = 0.131f;
+	metadata.displayPrimaryBlue.y = 0.046f;
+	metadata.minLuminance = 0.0f;
+	metadata.maxLuminance = 400.0f; // This will cause tonemapping to happen on display end as long as it's greater than display's actual queried max luminance. The look will change and it will be display dependent!
+	metadata.maxContentLightLevel = 400.0f;
+	metadata.maxFrameAverageLightLevel = 400.0f; // max and average content light level data will be used to do tonemapping on display
+}
+
 void cVulkan::OnRestored(struct GLFWwindow* const glfwwindow)
 {
 #if defined(FULLSCREEN_EXCLUSIVE)
-	if (_window->isFullScreenExclusiveSupported()) { // extension is enabled & supported, device queried for actual support, enabled on swap chain
+	if (isFullScreenExclusive()) { // extension is enabled & supported, device queried for actual support, enabled on swap chain
 
 		if (!_bFullScreenExclusiveAcquired) {
 
@@ -2334,6 +2390,15 @@ void cVulkan::OnRestored(struct GLFWwindow* const glfwwindow)
 			{
 				_bFullScreenExclusiveAcquired = true;
 				FMT_LOG_OK(GPU_LOG, "Fullscreen Exclusive Mode Acquired");
+
+				if (isHDR()) {
+#if defined(VK_EXT_hdr_metadata) // *** must only be set after fullscreen exclusive has been acquired
+					// mastering hdr metadata "hint" for HDR10 
+					vk::HdrMetadataEXT metadata{};
+					setHdrMetadata(metadata);
+					_device.setHdrMetadataEXT(1u, &_window->swapchain(), &metadata);
+#endif
+				}
 			}
 		}
 	}
@@ -2350,7 +2415,7 @@ void cVulkan::OnRestored(struct GLFWwindow* const glfwwindow)
 void cVulkan::OnLost(struct GLFWwindow* const glfwwindow)
 {
 #if defined(FULLSCREEN_EXCLUSIVE)
-	if (_window->isFullScreenExclusiveSupported()) { // extension is enabled & supported, device queried for actual support, enabled on swap chain
+	if (isFullScreenExclusive()) { // extension is enabled & supported, device queried for actual support, enabled on swap chain
 
 		if (_bFullScreenExclusiveAcquired) {
 			vkReleaseFullScreenExclusiveModeEXT(_device, _window->swapchain());
@@ -2374,12 +2439,12 @@ void cVulkan::OnLost(struct GLFWwindow* const glfwwindow)
 
 void cVulkan::WaitDeviceIdle()
 {
-	// Wait until all drawing is done and then kill the window.
 	_device.waitIdle();
 }
 
 void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 {
+	// Wait until all drawing is done and then kill the window.
 	WaitDeviceIdle();
 
 	_mouseBuffer.release();

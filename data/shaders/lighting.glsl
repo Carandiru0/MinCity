@@ -87,7 +87,6 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 	uv += normalize(V.xz) * 0.05f * density;	// nicely offsets texture coordinates following the contour of density (externally calculated - matches roads, shockwave density, etc)
 												// along the current view direction
 
-	
 	const vec4 refracted_backbuffer_color = textureLod(grabPassMap, uv, 0); // sample again with refraction offset
 	const float weight_refracted = transparency_weight(refracted_backbuffer_color.a);
 
@@ -102,14 +101,14 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 vec3 reflection(in const float luminance) 
 {
 	// no aliasing
-	vec4 ambient_reflection = subpassLoad(ambientLightMap);
+	const vec4 ambient_reflection = subpassLoad(ambientLightMap);
 
 	// pre-multiply for bilateral alpha - this also fades the reflection as distance grows greater
 	// the current luminance of the "area" affects the brightness of the reflection, with an inverse relationship (brightness of "area" lighting dominates, causing reflection to be less visible and blend in with lighting)
 	return( ambient_reflection.rgb * ambient_reflection.a * (1.0f - luminance * 0.5f) ); // bugfix: reflections not showing in very luminant areas - luminance must be multiplied by 0.5f
 }
 
-//NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
+// NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
 float chiGGX(in const float v)
 {
     //return v > 0. ? 1. : 0.;

@@ -6,7 +6,7 @@ layout(location = 0) in vec4 inPos;
 
 writeonly layout(location = 0) out streamOut
 {
-	noperspective vec3	ray_dir;	// do not want perspective correction. interpolation of ray_dir is simple.
+	vec3				rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
 
@@ -18,30 +18,29 @@ layout (constant_id = 1) const float VolumeDimensions_Y = 0.0f;
 layout (constant_id = 2) const float VolumeDimensions_Z = 0.0f;
 #define VolumeDimensions vec3(VolumeDimensions_X, VolumeDimensions_Y, VolumeDimensions_Z)
 
-const vec3 origin_correction = vec3(0.0f, 0.5f, 0.0f);
-
 void main() {
- 							 		
+ 			
+	// Compute eye position and ray directions in the unit cube space
+	// fragment shaders always sample with height being z component
+
+	const vec3 eyePos = u._eyePos.xyz;
+	Out.rd.xzy = normalize(inPos.xyz - eyePos);
+	Out.eyePos.xzy = eyePos;
+
 	vec3 eyeDir = u._eyeDir.xyz;
 	eyeDir.y = -eyeDir.y;  // must invert y axis here!! otherwise rotation of camera reveals incorrect depth
 	eyeDir = normalize(eyeDir);  
 	Out.eyeDir.xzy = eyeDir; // Out.eyeDir is flat, normalized and good to use normalized in fragment shader
 
+
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 	const vec3 VolumeScale = VolumeDimensions * 0.5f;
 
-									// eyeDir provides highest accuracy 
-	const vec3 volume_translation = vec3(eyeDir.x, -eyeDir.y * 2.0f, eyeDir.z) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f) + origin_correction;
+	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
+	const vec3 volume_translation = mix(vec3(-0.5f), vec3(0.0f), eyeDir * 0.5f + 0.5f) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f);
 	
 	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewProj * vec4(fma(inPos.xyz, VolumeScale, volume_translation /*+ grid_offset_v3() * VolumeScale*/), 1.0f);
-
-	// Compute eye position and ray directions in the unit cube space
-
-	//fragment shaders always sample with height being z component
-	const vec3 eyePos = u._eyePos.xyz;
-	Out.ray_dir.xzy = normalize(inPos.xyz - eyePos);
-	Out.eyePos.xzy = eyePos;
+	gl_Position = u._viewProj * vec4(fma(inPos.xyz, VolumeScale, volume_translation), 1.0f);	
 }
 
 /*

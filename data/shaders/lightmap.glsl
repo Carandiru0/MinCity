@@ -27,7 +27,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 // *********************************************** private usage : //                 
 
-#ifdef FAST_LIGHTMAP
+//#ifdef FAST_LIGHTMAP
 // iq's awesome smoothstep based sampling 
 // https://www.shadertoy.com/view/MlS3Dc - ultrasmooth subpixel sampling   
 void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
@@ -39,6 +39,7 @@ void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 l
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
 }
+#ifdef FAST_LIGHTMAP
 void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -117,37 +118,25 @@ void lightmap_internal_sampleNaturalNeighbour(out vec4 light_direction_distance,
 
 
 #ifdef FAST_LIGHTMAP
-void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in vec3 uvw ) 
+void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	uvw = uvw * LightVolumeDimensions;                      
-	
 	// rndC sampling
-	uvw = rndC(uvw);
-	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw);
+	lightmap_internal_fetch_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions));
 }
-void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in vec3 uvw ) 
+void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	uvw = uvw * LightVolumeDimensions;                      
-	
 	// rndC sampling
-	uvw = rndC(uvw);
-	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, uvw);
+	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions));
 }
 #endif
 
-void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in vec3 uvw ) 
+void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	uvw = uvw * LightVolumeDimensions;                      
+	// linear sampling
+	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions);
 
 	// nn sampling
-	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw);
-	
-	// ANTIALIASING DISTANCE: no longer needed - done in computer shader !!!
-	
-	//light_distance = textureLod(volumeMap[LIGHT], (uvw + 0.5f) * InvLightVolumeDimensions, 0).r;
-	//const float aaf = fwidth(light_direction_distance.r);
-	//light_color = mix(vec3(1,0,0), light_color, aaf);     
-	//light_direction_distance.r = smoothstep(0.0f, light_direction_distance.r - aaf, aaf);
+	//lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions);
 }
 
 #define DISTANCE_SCALE (0.125f) // matches scale of a minivoxel....

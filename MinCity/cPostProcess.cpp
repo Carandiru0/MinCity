@@ -6,9 +6,11 @@
 #include <Utility/stringconv.h>
 #include <Utility/async_long_task.h>
 
+#define COLOR_LUT_FILE "color.cube"
+
 cPostProcess::cPostProcess()
 	: _blurStep{ nullptr }, _lastColorImage(nullptr), _temporalColorImage(nullptr), _anamorphicFlare{ nullptr },
-	_lutTex(nullptr)
+	_lutTex{ nullptr }
 #ifdef DEBUG_LUT_WINDOW
 	,_lut(nullptr), _task_id_mix_luts(0)
 #endif
@@ -18,9 +20,9 @@ cPostProcess::cPostProcess()
 
 void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize) {
 
-	// LUT
-	if (!LoadLUT(TEXTURE_DIR L"core.cube")) {
-		FMT_LOG_FAIL(TEX_LOG, "Unable to load 3D lut {:s}", "core.cube");
+	// LUT's
+	if (!LoadLUT(TEXTURE_DIR COLOR_LUT_FILE)) {
+		FMT_LOG_FAIL(TEX_LOG, "Unable to load 3D lut {:s}", COLOR_LUT_FILE);
 	}
 
 	_temporalColorImage = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,

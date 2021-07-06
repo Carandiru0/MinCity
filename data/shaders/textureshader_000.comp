@@ -118,7 +118,7 @@ void main()
     const float bn = textureLod(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALER, 0.0f).r * 2.0f - 1.0f;
 	shade = shade + bn * BLUE_NOISE_DITHER_SCALAR * 0.5f;
 
-    imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), shade.rrrr); // output shade and dithered shade in alpha channel to next textureShader pass.
+    imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), shade.rrrr); // output dithered shade to next textureShader pass.
 }
 
 

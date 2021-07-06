@@ -20,7 +20,7 @@ namespace supernoise
 
 		if (imgBlueNoise) {
 
-			MinCity::TextureBoy.ImagingToTexture_RG<false>(imgBlueNoise, _blueNoiseTexture);
+			MinCity::TextureBoy.ImagingToTexture_RG<false>(imgBlueNoise, _blueNoiseTexture); // generated texture is in linear colorspace
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
 			ImagingSaveToKTX(imgBlueNoise, DEBUG_DIR "bluenoise_dual_channel_test.ktx");

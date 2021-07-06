@@ -207,6 +207,9 @@ public:
 	
 	uint32_t const												getMouseBufferMode() const { return(_mouseBufferMode); }
 	bool const													isFullScreenExclusiveExtensionSupported() const;
+	bool const													isFullScreenExclusive() const;
+	bool const													isHDR() const;
+	uint32_t const												getMaximumNits() const;
 	bool const													isRenderingEnabled() const { return(_bRenderingEnabled); }
 	
 	// Common Samplers //
@@ -252,6 +255,8 @@ public:
 	void setMouseBufferMode(uint32_t const mode);
 	void setVsyncDisabled(bool const bDisabled);
 	void setFullScreenExclusiveEnabled(bool const bEnabled);
+	void setHDREnabled(bool const bEnabled, uint32_t const max_nits = 0);
+
 	bool const LoadVulkanFramework();
 	bool const LoadVulkanWindow(struct GLFWwindow* const glfwwindow);
 	void CreateResources();

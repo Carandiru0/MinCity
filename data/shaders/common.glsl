@@ -200,24 +200,6 @@ vec3 OKLABToRGB(in const vec3 oklab)
 	return(kLMStoCONE*(oklab*oklab*oklab));
 }
 
-vec3 PQInverse(in const vec3 linear) {
-
-	const float display_nits = 400.0f;
-	const float 
-		m1 = 1305.0f/8192.0f,
-		m2 = 2523.0f/32.0f,
-		c3 = 2392.0f/128.0f,
-		c2 = 2413.0f/128.0f,
-		c1 = c3 - c2 + 1.0f;
-
-	const vec3 y = pow(linear, vec3(m1));
-
-	vec3 non_linear = (c1 + c2 * y) / (1.0f + c3 * y);
-	non_linear = pow(non_linear, vec3(m2));
-
-	return(non_linear);
-}
-
 vec3 unpackColor(in float fetched) {
 
 	// SHADER sees     A B G R			(RGBA in reverse) 
@@ -227,6 +209,23 @@ float packColor(in const vec3 pushed) {
 	
 	// SHADER sees     A B G R			(RGBA in reverse) 
 	return(float(packUnorm4x8(vec4(pushed,0.0f))));
+}
+
+// Converts a color from linear to sRGB (branchless)
+vec3 toSRGB(vec3 linearRGB)
+{
+    const bvec3 cutoff = lessThan(linearRGB, vec3(0.0031308f));
+    vec3 higher = 1.055f*pow(linearRGB, vec3(1.0f/2.4f)) - 0.055f;
+    vec3 lower = linearRGB * vec3(12.92f);
+
+    return mix(1.055f*pow(linearRGB, vec3(1.0f/2.4f)) - 0.055f, linearRGB * 12.92f, cutoff);
+}
+
+// Converts a color from sRGB to linear (branchless)
+vec3 toLinear(vec3 sRGB)
+{
+    const bvec3 cutoff = lessThan(sRGB, vec3(0.04045f));
+    return mix(pow((sRGB + vec3(0.055f)) / 1.055f, vec3(2.4f)), sRGB / 12.92f, cutoff);
 }
 
 vec2 compressNormal(in const vec3 normal)  // expects in normal to be normalized
@@ -363,21 +362,22 @@ vec3 supersample(restrict in const sampler2D colorTex, in const vec2 uv)	//  ** 
 #endif // frag
 
 // single pass, single direction fast gaussian 13 tap blur - https://github.com/Jam3/glsl-fast-gaussian-blur
-vec3 blur(restrict in const sampler2D image, in const vec2 uv, in const vec2 inv_resolution, in const vec2 direction) {
+vec3 blur(restrict in const sampler2D image, in const vec2 uv, in const vec2 inv_resolution, in vec2 direction) {
   
   vec3 color = textureLod(image, uv, 0).rgb * 0.1964825501511404;
+  direction = direction * inv_resolution; // bake distance into direction for offset
   {
-	  const vec2 off1 = vec2(1.411764705882353) * direction * inv_resolution;
+	  const vec2 off1 = 1.411764705882353 * direction;
 	  color += textureLod(image, uv + off1, 0).rgb * 0.2969069646728344;
 	  color += textureLod(image, uv - off1, 0).rgb * 0.2969069646728344;
   }
   {
-	  const vec2 off2 = vec2(3.2941176470588234) * direction * inv_resolution;
+	  const vec2 off2 = 3.2941176470588234 * direction;
 	  color += textureLod(image, uv + off2, 0).rgb * 0.09447039785044732;
 	  color += textureLod(image, uv - off2, 0).rgb * 0.09447039785044732;
   }
   {
-	  const vec2 off3 = vec2(5.176470588235294) * direction * inv_resolution;
+	  const vec2 off3 = 5.176470588235294 * direction;
 	  color += textureLod(image, uv + off3, 0).rgb * 0.010381362401148057;
 	  color += textureLod(image, uv - off3, 0).rgb * 0.010381362401148057;
   }
@@ -527,7 +527,7 @@ void expandBlurAA( restrict in const sampler2D colorTex, inout vec4 color, in co
 #endif
 
 // diagonally skewed pixel bleeding, pass in center sample or else
-// bleedStr & InvScreenResDimensions must be compiletime constants defined before including this header file
+// InvScreenResDimensions must be a global constant defined before including this header file
 #if defined(InvScreenResDimensions)
 vec3 bleed(restrict in const sampler2D colorTex, in const vec3 color, in const vec2 uv, in const float strength)
 {

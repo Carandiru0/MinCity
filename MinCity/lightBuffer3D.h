@@ -38,7 +38,7 @@ public:
 		__memclr_aligned_stream(_cache, LightWidth * LightHeight * LightDepth);
 	}
 
-	__declspec(safebuffers) void __vectorcall commit(vku::GenericBuffer const& stagingBuffer) {
+	__declspec(safebuffers) void __vectorcall commit(vku::GenericBuffer const& __restrict stagingBuffer) {
 
 		XMVECTOR xmMax(XMVectorZero());
 		{ // maximum
@@ -70,7 +70,7 @@ public:
 
 		// copy internal cache to write-combined memory (staging buffer) using streaming stores
 		// this fully replaces the volume for the stagingBuffer irregardless of current light bounds min & max (important) (this effectively reduces the need to clear the gpu - writecombined *staging* buffer)
-		__memcpy_aligned_32_stream(stagingBuffer.map(), _cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A)); // faster copy with 32 - guarnteed that size is multiple of XMFLOAT4A (16) x2 (32) - due to the entire volume using a size that is always an even number. Otherwise this would be 1 off and the _16 would have to be used
+		__memcpy_aligned_32_stream_threaded(stagingBuffer.map(), _cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A)); // faster copy with 32 - guarnteed that size is multiple of XMFLOAT4A (16) x2 (32) - due to the entire volume using a size that is always an even number. Otherwise this would be 1 off and the _16 would have to be used
 		stagingBuffer.unmap();
 	}
 
@@ -217,17 +217,26 @@ public:
 	{
 		writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth>::clear_tracking();
 
-		_internal = (std::atomic_uint32_t* __restrict)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
+		//_internal = (std::atomic_uint32_t* __restrict)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
+		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
 		__memclr_aligned_32<LightWidth * LightHeight * LightDepth, true>(_internal);
 
-		_cache = (XMFLOAT4A*)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
+		//_cache = (XMFLOAT4A*)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
+		_cache = (XMFLOAT4A*)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
 		__memclr_aligned_stream(_cache, LightWidth * LightHeight * LightDepth);
 	}
 	~lightBuffer3D()
 	{
 		// memory is now automagically freed on process exit scalable_aligned_free(internal);
-		_internal = nullptr;
-		_cache = nullptr;
+		//_internal = nullptr;
+		//_cache = nullptr;
+
+		if (_internal) {
+			scalable_aligned_free(_internal); _internal = nullptr;
+		}
+		if (_cache) {
+			scalable_aligned_free(_cache); _cache = nullptr;
+		}
 	}
 
 private:
@@ -242,8 +251,8 @@ private:
 	uvec4_t								  _max_extents,
 										  _min_extents;
 
-	std::atomic_uint32_t* __restrict	  _internal;
-	XMFLOAT4A* __restrict				  _cache;
+	alignas(CACHE_LINE_BYTES) std::atomic_uint32_t* __restrict	_internal;
+	alignas(CACHE_LINE_BYTES) XMFLOAT4A* __restrict				_cache;
 };
 
 

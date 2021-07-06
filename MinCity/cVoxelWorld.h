@@ -141,7 +141,8 @@ namespace world
 		void SetSpecializationConstants_Resolve(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_Upsample(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_PostAA(std::vector<vku::SpecializationConstant>& __restrict constants);
-
+		void SetSpecializationConstants_PostAA_HDR(std::vector<vku::SpecializationConstant>& __restrict constants);
+		
 		void SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel);
 		void SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel);
 		void SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants);

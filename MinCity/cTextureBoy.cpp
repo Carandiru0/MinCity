@@ -31,7 +31,7 @@ void cTextureBoy::Initialize()
 	// Generate Image
 	ImagingMemoryInstance* imageNoise = MinCity::Procedural.GenerateNoiseImageMixed(NOISE_TEXTURE_SIZE, supernoise::interpolator::SmoothStep());
 
-	MinCity::TextureBoy.ImagingToTexture<false>(imageNoise, _noiseTexture);
+	MinCity::TextureBoy.ImagingToTexture<false>(imageNoise, _noiseTexture); // generated texture is in linear colorspace
 
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_NOISEMIX_KTX

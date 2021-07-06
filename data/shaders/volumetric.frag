@@ -26,8 +26,9 @@ layout(early_fragment_tests) in;
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS 512.0f
-#define BOUNCE_EPSILON 0.5f
+
 #define BOUNCE_INTERVAL (GOLDEN_RATIO_ZERO * 0.5f) // optimized when less, 0.25f is too short, 0.5f is to long
+#define BOUNCE_EPSILON 0.5f
 
 const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
@@ -35,6 +36,7 @@ const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 #define EPSILON 0.000000001f
 #define LIGHT_ABSORBTION 0.25f // how bright the volumetric light appears, % of light reflected by air/fog
 #define FOG_STRENGTH -0.08f // must be negative
+#define FOG_MAX_HEIGHT 80.0f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
 //#define DEBUG_VOLUMETRIC
@@ -54,7 +56,7 @@ layout (binding = 10) restrict buffer DebugStorageBuffer {
 
 readonly layout(location = 0) in streamIn
 {   // must all be xzy
-	noperspective vec3	ray_dir;  // do not want perspective correction. interpolation of ray_dir is simple.
+	vec3				rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
 } In;
@@ -186,12 +188,6 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 	return(attenuation);  
 }
 
-float fresnel(in const vec3 N, in const vec3 V)
-{
-	// leaving the flexibility of appling pow() to the implementation
-	return 1.0f - max(0.0f, dot(N, V));
-}
-
 // (intended for volumetric light) - returns attenuation and light color, uses directional derivatiuves to further shade lighting 
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
 float fetch_light_volumetric( out vec3 light_color, out float scattering, inout float transparency, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
@@ -204,24 +200,27 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, inout 
 	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
 
 	// dynamic fog
-	const float FOG_MAX_HEIGHT = 128.0f;
 	vec4 fog = textureLod(fogMap, uvw.xy, 0.0f);
 	fog.xyz = fog.xyz * 2.0f - 1.0f;
 	fog.xyz = normalize(fog.xyz);
 
-	const float f = pow(fresnel(fog.xyz, normalize(In.eyeDir)), 5.0f);
-
-	const float NdotL = max(0.0f, dot(-light_direction, fog.xyz));
-	const float fog_max_height = fog.w * FOG_MAX_HEIGHT;
-	const float fog_height = max(0.0f, InvVolumeDimensions_Z * fog_max_height - uvw.z);
+	const float fog_max_height = InvVolumeDimensions_Z * FOG_MAX_HEIGHT;
+	const float fog_height = max(0.0f, InvVolumeDimensions_Z * FOG_MAX_HEIGHT * fog.w - uvw.z);
 	
 	transparency += fog_height;
 
 	// scattering lit fog
+	const float NdotL = max(0.0f, dot(-light_direction, fog.xyz));
 	const float opacity_light = fetch_opacity(uvw + light_direction * normalized_distance + fog.xyz * InvVolumeDimensions_Z);
+	scattering = max(0.0f, dot(-light_direction, normalize(vec3(opacity_light))));
+	scattering = fog_height * scattering;
+	scattering = scattering * (1.0f + NdotL);
 
-	scattering = max(0.0f, dot(-light_direction, normalize(opacity_light * vec3(f))));
-	scattering = 0.5f * f * mix(fog_height, scattering, 1.0f - NdotL);
+	//scattering = max(0.0f, dot(-light_direction, normalize(opacity_light * vec3(f))));
+
+	//
+	//scattering = mix(scattering * fog_height, scattering, f);
+	//scattering = mix(scattering, scattering * NdotL, fog.w);
 
 	return(attenuation);  
 }
@@ -309,7 +308,7 @@ void vol_lit(out vec3 light_color, out float intensity, out float scattering, ou
 
 // rgb(0.222f,0.222f,1.0f) (far depth color) - royal blue (cooler)
 // rgb(0.80f,0.65f,1.0f) (near depth color) - royal purle (warmer) 
-const vec3 royal_blue_purple = vec3(0.1776f,0.1443f,1.0f); // components are maximized (above combined)
+//const vec3 royal_blue_purple = vec3(0.1776f,0.1443f,1.0f); // components are maximized (above combined)
 
 void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt)
 {
@@ -326,11 +325,11 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
-	const float fogAmount = (1.0f - LIGHT_ABSORBTION) * (1.0f - exp2(((transparency + emission) * 0.5f + scattering * 100.0f) * FOG_STRENGTH));
-	const float lightAmount = LIGHT_ABSORBTION * attenuation + emission;  // this is what brings out a volumetric glow *do not change*
+	const float fogAmount = (voxel.tran) * (1.0f - exp2(((transparency + emission) * 0.5f + scattering * 100.0f) * FOG_STRENGTH));
+	const float lightAmount = (1.0f - opacity) * attenuation + emission;  // this is what brings out a volumetric glow *do not change*
 
 	// this is balanced so that sigmaS remains conservative. Only emission or intensity can bring the level of sigmaS above 1.0f
-	const float sigmaS = fogAmount * (1.0f - voxel.tran) + lightAmount * (1.0f - opacity) + intensity;
+	const float sigmaS = fogAmount * lightAmount + fogAmount + intensity;
 	const float inv_sigmaE = 1.0f / max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
@@ -422,7 +421,7 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const 
 void main() {
   
 	// Step 1: Normalize the view ray
-	/*const*/ vec3 rd = normalize(In.ray_dir);
+	/*const*/ vec3 rd = normalize(In.rd);
 
 	// Step 2: Intersect the ray with the volume bounds to find the interval
 	// along the ray overlapped by the volume.
@@ -584,7 +583,7 @@ void main() {
 	// - done!
 	//vec4 test = textureLod(fogMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f);
 
-	//imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), vec4(test.rgb, 1.0f)); // <-- this is correct blending of light, don't change it. opacity = 1.0f - transmission
+	//imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), vec4(test.aaa, 1.0f)); // <-- this is correct blending of light, don't change it. opacity = 1.0f - transmission
 	
 }
 

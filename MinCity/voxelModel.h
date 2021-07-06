@@ -485,7 +485,7 @@ namespace voxB
 							// these are not world coordinates! good for sampling view locked/aligned volumes such as the lightmap
 
 							// Make All voxels relative to voxel root origin // inversion neccessary //
-							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)voxel.getColor()));
+							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)voxel.getColor())); // srgb is passed to vertex shader which converts it to srgb faster than here with cpu
 
 							if (!Transparent) {
 								
@@ -543,7 +543,7 @@ namespace voxB
 								// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
 								// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
 								// and is in the fragment shaderrecieved swizzled in xzy form
-								VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, SFM::srgb_to_linear_rgba(voxel.getColor()));
+								VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, SFM::srgb_to_linear_rgba(voxel.getColor())); // must convert from srgb to linear
 								
 							}
 						}

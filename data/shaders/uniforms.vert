@@ -345,7 +345,7 @@ void main() {
 
   {
 #ifndef BASIC
-	Out.color = unpackColor(inUV.w);
+	Out.color = toLinear(unpackColor(inUV.w)); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
 #endif
   }
 
@@ -385,8 +385,7 @@ void main() {
 #endif // if !clear
 
 #if !defined(HEIGHT)
-
-const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions)).xzy;
+const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions).xzy);
 
 #if defined(TRANS)
 const float existing = imageLoad(opacityMap, ivoxel).r;  // already occupied with an opaque or transparent block
@@ -402,6 +401,13 @@ else // already filled with opaque block
   imageStore(opacityMap, ivoxel, vec4(0));
 #else
   imageStore(opacityMap, ivoxel, opacity.rrrr);
+#endif
+
+  // hole filling for rotated (xz) voxels (simplified and revised portion of novel oriented rect algorithm)
+#if defined(CLEAR) // erase
+   imageStore(opacityMap, ivec3(ivoxel.x, ivoxel.y - 1, ivoxel.z), vec4(0));			// this is suprisingly coherent 
+#else																					// and works by layer, resulting in bugfix for hole filling.
+   imageStore(opacityMap, ivec3(ivoxel.x, ivoxel.y - 1, ivoxel.z), opacity.rrrr);		// reflections on rotated models are no longer distorted.
 #endif
 
 #else // terrain only

@@ -13,14 +13,14 @@ __declspec(noinline) void local_init_tbb_floating_point_env()
 }
 
 // CALL from MAIN THREAD //
-__declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT)
+__declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads)
 {
 	local_init_tbb_floating_point_env();
 
 	//!
 	//! Init the tbb task scheduler here allows correct floating point settings to be captured correctly
 	//!
-	TASK_INIT = new tbb::task_scheduler_init(); // automatic # of threads is best for production code;
+	TASK_INIT = new tbb::task_scheduler_init(num_threads); // automatic # of threads is best for production code;
 
 	// tbb has captured the floating point context, and is in sync with same fp settings as the main thread
 	// prevent unloading of tbb

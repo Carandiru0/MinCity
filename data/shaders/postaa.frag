@@ -3,6 +3,9 @@
 #extension GL_KHR_shader_subgroup_quad: enable
 
 #include "screendimensions.glsl"
+#ifdef HDR
+layout (constant_id = 4) const float MaximumNits = 1000.0f;
+#endif
 
 #define subgroup_quad_enabled
 #define fragment_shader
@@ -42,6 +45,7 @@ layout (binding = 9) uniform sampler2D anamorphicMap[2];
 layout (binding = 10, r8) writeonly restrict uniform image2D outAnamorphic[2];
 
 layout (binding = 11) uniform sampler3D lutMap;
+
 layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI0;
 layout (input_attachment_index = 1, set = 0, binding = 13) uniform subpassInput inputGUI1;
 
@@ -173,9 +177,57 @@ const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
 //const vec3 gui_nixie = vec3(960.784e-3f, 1.0f, 94.1176e-3f);
 #endif
 
-#define LUT_SIZE_STANDARD 33
+#define LUT_SIZE_STANDARD 65
 const float LUT_SCALE = (LUT_SIZE_STANDARD - 1.0f) / LUT_SIZE_STANDARD;
 const float LUT_OFFSET = 1.0f / (2.0f * LUT_SIZE_STANDARD);
+
+// sRGB to bt.2020 wide gamut
+vec3 bt709_to_bt2020(in const vec3 color)
+{
+	// using 4 digits values, based of double precision values when rounded
+	// see: https://stackoverflow.com/questions/46132625/convert-from-linear-rgb-to-xyz
+	// then it is using the official values which are only defined to 4 digits
+	// https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2087-0-201510-I!!PDF-E.pdf
+	// 
+	// [RGB.2020] = inverse(m) * n * [RGB.709]
+
+	// this uses the reduced to matrix "o" 
+	// row major //
+	const mat3 xyz_to_bt2020 = mat3(	// values are the inverse matrix
+		  1.71650f, -0.66662f,   0.01765f,
+		 -0.35558f,  1.61644f,  -0.04281f,
+		 -0.25337f,  0.01577f,   0.94208f );
+	const mat3 bt709_to_xyz = mat3(
+		 0.4124564f, 0.2126729f, 0.0193339f,
+		 0.3575761f, 0.7151522f, 0.1191920f,
+		 0.1804375f, 0.0721750f, 0.9503041f );
+
+	const mat3 bt709_to_xyz_to_bt2020 = xyz_to_bt2020 * bt709_to_xyz;	// accurate
+	/*
+	const mat3 bt709_to_xyz_to_bt2020 = mat3( // row major //			// inaccurate!
+         0.6274f, 0.0691f, 0.0164f,
+         0.3293f, 0.9195f, 0.0880f,
+         0.0433f, 0.0114f, 0.8956f);
+	*/
+	return(bt709_to_xyz_to_bt2020 * color);
+}
+
+vec3 PQ(in const vec3 color, in const float display_max_nits)
+{
+    // Apply ST2084 curve
+    const float m1 = 2610.0f / 4096.0f * 0.25f;
+    const float m2 = 2523.0f / 4096.0f * 128.0f;
+
+    const float c2 = 2413.0f / 4096.0f * 32.0f;
+    const float c3 = 2392.0f / 4096.0f * 32.0f;
+	const float c1 = c3 - c2 + 1.0f;
+
+	// max(vec3(0), color.xyz) * ((display_max_nits / 80.0f) * (80.0f/10000.0f))
+    const vec3 y = pow(max(vec3(0), color.xyz) * ((display_max_nits / 80.0f) * (80.0f/10000.0f)), vec3(m1));
+
+    return ( pow((c1 + c2 * y) / (1.0f + c3 * y), vec3(m2)) );
+}
+
 
 void main() {
 
@@ -238,19 +290,29 @@ void main() {
 	// save last color for temporal usuage - do not want dithering to add random aliasing
 	imageStore(outLastColor, ivec2(In.uv * ScreenResDimensions), vec4(color, temporal_color.a));	// must preserve temporal alpha channel in output
 
-	// add in the finalized bloom
-	{
-		vec3 blur = textureLod(blurMap[0], In.uv, 0).rgb;
-
+	{ // 1.) LUT & add in the finalized bloom
+	
 		// ############# Final Post Processing Pass ###################### //
 		// *** 3D LUT *** - apply before dithering and anamorphic flares //
-		color = textureLod(lutMap, color.rgb * LUT_SCALE + LUT_OFFSET, 0).rgb;
-	
+		color = textureLod(lutMap, color * LUT_SCALE + LUT_OFFSET, 0).rgb;
+		
+		const vec3 blur = textureLod(blurMap[0], In.uv, 0).rgb;
+
 		color += 0.5f * blur * (1.0f - color.r*color.g*color.b); // *BEST APPLIED ONLY HERE* apply factor (dependent on existing color whiteness) of the bloom before the 3D lut is applied (expanding output range)
 	}
-	// *** DITHERING - do not change, validated fft and with highpass to be of extreme quality
-	{
-	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
+#ifdef HDR
+	{ // 2.) HDR
+		// ************* //	
+		// https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2087-0-201510-I!!PDF-E.pdf
+		color = pow(color, vec3(2.4f)); // linear to srgb gamma 2.4
+		color = bt709_to_bt2020(color);	// srgb/bt.709 to bt.2020 wide gamut color
+		color = PQ(color, MaximumNits);	// finally encoded with Perceptual Quantitizer HDR ST2084
+										// maximum display nits customizable for user display
+	}
+#endif
+	{ // 3.) *** DITHERING - do not change, validated fft and with highpass to be of extreme quality
+
+		// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
 		// *bluenoise RED-GREEN channel used* //
 		const vec2 noise_dual_dither = textureLod(noiseMap, (In.uv * ScreenResDimensions + vec2(In.jitter, -In.jitter)) * BLUE_NOISE_UV_SCALER, 0).rg * BLUE_NOISE_DITHER_SCALAR;
 		// this actually doesn't ruin the blue noise, mixing by luminance two different blue noises seems to isolate quite well, being
@@ -263,7 +325,7 @@ void main() {
 		color += clamp(anamorphicFlare(In.uv) - noise_dual_dither[1U - frame], 0.0f, 1.0f);
 	}
 	
-	// ************* //	
+	//color = pow(color, vec3(1.0f/2.2f));
 	outColor = vec4(color, 1.0f);
 
 
@@ -330,8 +392,8 @@ void main() {
 	float blurDecay = clamp(In.time_delta * BURNINTIME, 0.0f, 1.0f);
 	blurDecay = max(0.0f, blurDecay - gui_prev.shade);
     
-	outColor.rgb = mix(gui_bleed - blurDecay, gui_color, blurDecay);
-	outColor.a = max(gui_prev.alpha, grey.alpha);
+	outColor.rgb = clamp(mix(gui_bleed - blurDecay, gui_color, blurDecay), 0.0f, 1.0f);
+	outColor.a = clamp(max(gui_prev.alpha, grey.alpha), 0.0f, 1.0f);
 #endif
 }
 

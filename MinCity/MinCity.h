@@ -112,7 +112,7 @@ public:
 	__declspec(noinline) static void Cleanup(struct GLFWwindow* const glfwwindow);
 private:
 	// Private Init //
-	__declspec(noinline) static HANDLE const SetupEnvironment(); // for main thread only
+	__declspec(noinline) static int32_t const SetupEnvironment(); // for main thread only
 
 	static void LoadINI();
 	static bool const Shutdown(int32_t const action, bool const expedite = false); // returns true if MinCity will be shutdown

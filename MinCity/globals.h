@@ -31,7 +31,7 @@
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-#define LIVESHADER_MODE
+//#define LIVESHADER_MODE
 
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC
@@ -130,7 +130,6 @@ namespace Globals
 #define _S * const 
 	static constexpr char const 
 		_S TITLE = "MinCity";
-
 
 #define DATA_DIR L"data/"
 #define BIN_DIR L"\\data\\bin\\" // bugfix, needs to be \\ for this one (secure dll loading)

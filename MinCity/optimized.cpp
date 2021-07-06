@@ -7,6 +7,8 @@
 #define stream true
 #define store  false
 
+static constexpr size_t const MINIMUM_PAGE_SIZE = 4096; // Windows Only, cannot be changed by user //
+
 // ########### CLEAR ############ //
 
 namespace internal_mem
@@ -27,7 +29,8 @@ namespace internal_mem
 #endif
 			
  // 128 bytes/iteration
-			while (bytes >= (CACHE_LINE_BYTES << 1))
+			#pragma loop( ivdep )
+			for ( ; bytes >= (CACHE_LINE_BYTES << 1) ; bytes -= (CACHE_LINE_BYTES << 1) )
 			{
 				if constexpr (streaming) {
 					_mm256_stream_si256(dest, xmZero);	// vertex buffers are very large, using streaming stores
@@ -42,11 +45,11 @@ namespace internal_mem
 					_mm256_store_si256(dest + 3ULL, xmZero);
 				}
 				dest += 4ULL;
-				bytes -= (CACHE_LINE_BYTES << 1);
 			}
 
  // 32 bytes/iteration
-			while (bytes >= element_size)
+			#pragma loop( ivdep )
+			for ( ; bytes >= element_size ; bytes -= element_size )
 			{
 				if constexpr (streaming) {
 					_mm256_stream_si256(dest, xmZero);	// vertex buffers are very large, using streaming stores
@@ -55,7 +58,6 @@ namespace internal_mem
 					_mm256_store_si256(dest, xmZero);
 				}
 				++dest;
-				bytes -= element_size;
 			}
 		}
 		else { // size does not fit into multiple of 32bytes
@@ -69,7 +71,8 @@ namespace internal_mem
 #endif
 
  // 128 bytes/iteration
-			while (bytes >= (CACHE_LINE_BYTES << 1))
+			#pragma loop( ivdep )
+			for ( ; bytes >= (CACHE_LINE_BYTES << 1) ; bytes -= (CACHE_LINE_BYTES << 1) )
 			{
 				if constexpr (streaming) {
 					_mm_stream_si128(dest, _mm256_castsi256_si128(xmZero));
@@ -92,11 +95,11 @@ namespace internal_mem
 					_mm_store_si128(dest + 7ULL, _mm256_castsi256_si128(xmZero));
 				}
 				dest += 8ULL;
-				bytes -= (CACHE_LINE_BYTES << 1);
 			}
 
  // 16bytes / iteration
-			while (bytes >= element_size)
+			#pragma loop( ivdep )
+			for ( ; bytes >= element_size ; bytes -= element_size)
 			{
 				if constexpr (streaming) {
 					_mm_stream_si128(dest, _mm256_castsi256_si128(xmZero));	
@@ -105,7 +108,6 @@ namespace internal_mem
 					_mm_store_si128(dest, _mm256_castsi256_si128(xmZero));
 				}
 				++dest;
-				bytes -= element_size;
 			}
 		}
 	}
@@ -139,39 +141,205 @@ INTRINSIC_MEMFUNC_IMPL __memclr_aligned_stream(XMFLOAT4A* __restrict dest, size_
 	__builtin_assume_aligned(dest, 32ULL);
 
  // 128 bytes/iteration
-	while (numelements >= (CACHE_LINE_ELEMENTS << 1))  // // 8x XMFLOAT4A / iteration
+	#pragma loop( ivdep )
+	for (; numelements >= (CACHE_LINE_ELEMENTS << 1); numelements -= (CACHE_LINE_ELEMENTS << 1))  // // 8x XMFLOAT4A / iteration
 	{
 		_mm256_stream_si256((__m256i* const __restrict)dest, xmZero);
 		_mm256_stream_si256((__m256i* const __restrict)(dest + 2ULL), xmZero);
 		_mm256_stream_si256((__m256i* const __restrict)(dest + 4ULL), xmZero);
 		_mm256_stream_si256((__m256i* const __restrict)(dest + 6ULL), xmZero);
-
 		dest += 8ULL;
-		numelements -= (CACHE_LINE_ELEMENTS << 1);
 	}
 
  // 32 bytes/iteration
-	while (numelements >= 2ULL) // // 2x XMFLOAT4A / iteration
+	#pragma loop( ivdep )
+	for ( ; numelements >= 2ULL; numelements -= 2ULL ) // // 2x XMFLOAT4A / iteration
 	{
 		_mm256_stream_si256((__m256i*const __restrict)dest, xmZero);
 		dest += 2ULL;
-		numelements -= 2ULL;
 	}
 
  // 16 bytes/iteration
-	while (0ULL != numelements) {	// residual if what is left not multiple // 1x XMFLOAT4A / iteration
+	#pragma loop( ivdep )
+	for (; 0ULL != numelements; --numelements) {	// residual if what is left not multiple // 1x XMFLOAT4A / iteration
 		_mm_stream_si128((__m128i* const __restrict)(dest), _mm256_castsi256_si128(xmZero));
 		++dest;
-		--numelements;
 	}
 }
-
 
 // ########### COPY ############ //
 namespace internal_mem
 {
-	template<bool const streaming, typename T>
-	static INTRINSIC_MEMFUNC_IMPL __memcpy_aligned(T* __restrict dest, T const* __restrict src, size_t bytes)
+	template<typename T>
+	static INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_store(T* __restrict dest, T const* __restrict src, size_t bytes)
+	{
+		if constexpr (std::is_same_v<T, __m256i>) {
+			static constexpr size_t const element_size = sizeof(__m256i);
+			__builtin_assume_aligned(dest, 32ULL);
+
+#ifndef NDEBUG
+			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m256i) - data is not aligned\n");
+			static_assert(0 == (sizeof(T) % element_size), "__memcpy_aligned:  element not divisable by sizeof(__m256i)\n");
+#endif
+
+			// 128 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= (CACHE_LINE_BYTES << 1); bytes -= (CACHE_LINE_BYTES << 1))
+			{
+				_mm_prefetch((const CHAR*)src + 2ULL, _MM_HINT_T0);
+
+				_mm256_store_si256(dest, _mm256_load_si256(src));
+				_mm256_store_si256(dest + 1ULL, _mm256_load_si256(src + 1ULL));
+				_mm256_store_si256(dest + 2ULL, _mm256_load_si256(src + 2ULL));
+				_mm256_store_si256(dest + 3ULL, _mm256_load_si256(src + 3ULL));
+
+				dest += 4ULL; src += 4ULL;
+			}
+
+			// 32 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= element_size; bytes -= element_size)
+			{
+				_mm256_store_si256(dest, _mm256_load_si256(src));
+
+				++dest; ++src;
+			}
+		}
+		else {
+			static constexpr size_t const element_size = sizeof(__m128i);
+			__builtin_assume_aligned(dest, 16ULL);
+
+#ifndef NDEBUG
+			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m128i) - data is not aligned\n");
+			static_assert(0 == (sizeof(T) % element_size), "__memcpy_aligned:  element not divisable by sizeof(__m128i)\n");
+#endif
+
+			// 128 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= (CACHE_LINE_BYTES << 1); bytes -= (CACHE_LINE_BYTES << 1))
+			{
+				_mm_prefetch((const CHAR*)src + 4ULL, _MM_HINT_T0);
+
+				_mm_store_si128(dest, _mm_load_si128(src));
+				_mm_store_si128(dest + 1ULL, _mm_load_si128(src + 1ULL));
+				_mm_store_si128(dest + 2ULL, _mm_load_si128(src + 2ULL));
+				_mm_store_si128(dest + 3ULL, _mm_load_si128(src + 3ULL));
+				_mm_store_si128(dest + 4ULL, _mm_load_si128(src + 4ULL));
+				_mm_store_si128(dest + 5ULL, _mm_load_si128(src + 5ULL));
+				_mm_store_si128(dest + 6ULL, _mm_load_si128(src + 6ULL));
+				_mm_store_si128(dest + 7ULL, _mm_load_si128(src + 7ULL));
+
+				dest += 8ULL; src += 8ULL;
+			}
+
+			// 16 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= element_size; bytes -= element_size)
+			{
+				_mm_store_si128(dest, _mm_load_si128(src));
+
+				++dest; ++src;
+			}
+		}
+	}
+} // end ns
+
+namespace internal_mem
+{
+	static constexpr size_t const _cache_size = MINIMUM_PAGE_SIZE;
+	thread_local alignas(CACHE_LINE_BYTES) unsigned char _streaming_cache[_cache_size]{};	// 4KB reserved/thread
+
+	template<typename T>
+	static INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_stream_load(T* __restrict dest, T const* __restrict src, size_t bytes) // don't call directly use __memcpy_aligned_stream instead
+	{
+		if constexpr (std::is_same_v<T, __m256i>) {
+			static constexpr size_t const element_size = sizeof(__m256i);
+			__builtin_assume_aligned(dest, 32ULL);
+
+#ifndef NDEBUG
+			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m256i) - data is not aligned\n");
+			static_assert(0 == (sizeof(T) % element_size), "__memcpy_aligned:  element not divisable by sizeof(__m256i)\n");
+#endif
+
+			// 128 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= (CACHE_LINE_BYTES << 1); bytes -= (CACHE_LINE_BYTES << 1))
+			{
+				_mm_prefetch((const CHAR*)src + 2ULL, _MM_HINT_NTA);
+
+				__m256i const // batching streaming loads
+					a(_mm256_stream_load_si256(src)),
+					b(_mm256_stream_load_si256(src + 1ULL)),
+					c(_mm256_stream_load_si256(src + 2ULL)),
+					d(_mm256_stream_load_si256(src + 3ULL));
+
+				_mm256_store_si256(dest, a);
+				_mm256_store_si256(dest + 1ULL, b);
+				_mm256_store_si256(dest + 2ULL, c);
+				_mm256_store_si256(dest + 3ULL, d);
+
+				dest += 4ULL; src += 4ULL;
+			}
+
+			// 32 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= element_size; bytes -= element_size)
+			{
+				_mm256_store_si256(dest, _mm256_stream_load_si256(src));
+
+				++dest; ++src;
+			}
+		}
+		else {
+			static constexpr size_t const element_size = sizeof(__m128i);
+			__builtin_assume_aligned(dest, 16ULL);
+
+#ifndef NDEBUG
+			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m128i) - data is not aligned\n");
+			static_assert(0 == (sizeof(T) % element_size), "__memcpy_aligned:  element not divisable by sizeof(__m128i)\n");
+#endif
+
+			// 128 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= (CACHE_LINE_BYTES << 1); bytes -= (CACHE_LINE_BYTES << 1))
+			{
+				_mm_prefetch((const CHAR*)src + 4ULL, _MM_HINT_NTA); 
+
+				__m128i const // batching streaming loads
+					a(_mm_stream_load_si128(src)),
+					b(_mm_stream_load_si128(src + 1ULL)),
+					c(_mm_stream_load_si128(src + 2ULL)),
+					d(_mm_stream_load_si128(src + 3ULL)),
+					e(_mm_stream_load_si128(src + 4ULL)),
+					f(_mm_stream_load_si128(src + 5ULL)),
+					g(_mm_stream_load_si128(src + 6ULL)),
+					h(_mm_stream_load_si128(src + 7ULL));
+
+				_mm_store_si128(dest, a);
+				_mm_store_si128(dest + 1ULL, b);
+				_mm_store_si128(dest + 2ULL, c);
+				_mm_store_si128(dest + 3ULL, d);
+				_mm_store_si128(dest + 4ULL, e);
+				_mm_store_si128(dest + 5ULL, f);
+				_mm_store_si128(dest + 6ULL, g);
+				_mm_store_si128(dest + 7ULL, h);
+
+				dest += 8ULL; src += 8ULL;
+			}
+
+			// 16 bytes / iteration
+#pragma loop( ivdep )
+			for (; bytes >= element_size; bytes -= element_size)
+			{
+				_mm_store_si128(dest, _mm_stream_load_si128(src));
+
+				++dest; ++src;
+			}
+		}
+	}
+
+	template<typename T>
+	static INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_stream_store(T* __restrict dest, T const* __restrict src, size_t bytes) // don't call directly use __memcpy_aligned_stream instead
 	{
 		if constexpr (std::is_same_v<T, __m256i>) {
 			static constexpr size_t const element_size = sizeof(__m256i);
@@ -183,39 +351,32 @@ namespace internal_mem
 #endif
 
  // 128 bytes / iteration
-			while (bytes >= (CACHE_LINE_BYTES << 1))
+			#pragma loop( ivdep )
+			for ( ; bytes >= (CACHE_LINE_BYTES << 1) ; bytes -= (CACHE_LINE_BYTES << 1) )
 			{
-				if constexpr (streaming) {
-					_mm_prefetch((const CHAR*)(src + 2), _MM_HINT_NTA);
-					_mm256_stream_si256(dest, _mm256_stream_load_si256(src));
-					_mm256_stream_si256(dest + 1ULL, _mm256_stream_load_si256(src + 1ULL));
-					_mm_prefetch((const CHAR*)(src + 2), _MM_HINT_NTA);
-					_mm256_stream_si256(dest + 2ULL, _mm256_stream_load_si256(src + 2ULL));
-					_mm256_stream_si256(dest + 3ULL, _mm256_stream_load_si256(src + 3ULL));
-				}
-				else {
-					_mm_prefetch((const CHAR*)(src + 2), _MM_HINT_NTA);
-					_mm256_store_si256(dest, _mm256_load_si256(src));
-					_mm256_store_si256(dest + 1ULL, _mm256_load_si256(src + 1ULL));
-					_mm_prefetch((const CHAR*)(src + 2), _MM_HINT_NTA);
-					_mm256_store_si256(dest + 2ULL, _mm256_load_si256(src + 2ULL));
-					_mm256_store_si256(dest + 3ULL, _mm256_load_si256(src + 3ULL));
-				}
+				_mm_prefetch((const CHAR*)src + 2ULL, _MM_HINT_T0);
+
+				__m256i const // batching streaming stores (below)
+					a(_mm256_load_si256(src)),
+					b(_mm256_load_si256(src + 1ULL)),
+					c(_mm256_load_si256(src + 2ULL)),
+					d(_mm256_load_si256(src + 3ULL));
+
+				_mm256_stream_si256(dest, a);
+				_mm256_stream_si256(dest + 1ULL, b);
+				_mm256_stream_si256(dest + 2ULL, c);
+				_mm256_stream_si256(dest + 3ULL, d);
+
 				dest += 4ULL; src += 4ULL;
-				bytes -= (CACHE_LINE_BYTES << 1);
 			}
 
  // 32 bytes / iteration
-			while (bytes >= element_size)
+			#pragma loop( ivdep )
+			for ( ; bytes >= element_size; bytes -= element_size )
 			{
-				if constexpr (streaming) {
-					_mm256_stream_si256(dest, _mm256_stream_load_si256(src));
-				}
-				else {
-					_mm256_store_si256(dest, _mm256_load_si256(src));
-				}
+				_mm256_stream_si256(dest, _mm256_load_si256(src));
+
 				++dest; ++src;
-				bytes -= element_size;
 			}
 		}
 		else {
@@ -228,70 +389,134 @@ namespace internal_mem
 #endif
 
  // 128 bytes / iteration
-			while (bytes >= (CACHE_LINE_BYTES << 1))
+			#pragma loop( ivdep )
+			for ( ; bytes >= (CACHE_LINE_BYTES << 1); bytes -= (CACHE_LINE_BYTES << 1) )
 			{
-				if constexpr (streaming) {
-					_mm_prefetch((const CHAR*)(src + 4), _MM_HINT_NTA);
-					_mm_stream_si128(dest, _mm_stream_load_si128(src));
-					_mm_stream_si128(dest + 1ULL, _mm_stream_load_si128(src + 1ULL));
-					_mm_stream_si128(dest + 2ULL, _mm_stream_load_si128(src + 2ULL));
-					_mm_stream_si128(dest + 3ULL, _mm_stream_load_si128(src + 3ULL));
-					_mm_prefetch((const CHAR*)(src + 4), _MM_HINT_NTA);
-					_mm_stream_si128(dest + 4ULL, _mm_stream_load_si128(src + 4ULL));
-					_mm_stream_si128(dest + 5ULL, _mm_stream_load_si128(src + 5ULL));
-					_mm_stream_si128(dest + 6ULL, _mm_stream_load_si128(src + 6ULL));
-					_mm_stream_si128(dest + 7ULL, _mm_stream_load_si128(src + 7ULL));
-				}
-				else {
-					_mm_prefetch((const CHAR*)(src + 4), _MM_HINT_NTA);
-					_mm_store_si128(dest, _mm_load_si128(src));
-					_mm_store_si128(dest + 1ULL, _mm_load_si128(src + 1ULL));
-					_mm_store_si128(dest + 2ULL, _mm_load_si128(src + 2ULL));
-					_mm_store_si128(dest + 3ULL, _mm_load_si128(src + 3ULL));
-					_mm_prefetch((const CHAR*)(src + 4), _MM_HINT_NTA);
-					_mm_store_si128(dest + 4ULL, _mm_load_si128(src + 4ULL));
-					_mm_store_si128(dest + 5ULL, _mm_load_si128(src + 5ULL));
-					_mm_store_si128(dest + 6ULL, _mm_load_si128(src + 6ULL));
-					_mm_store_si128(dest + 7ULL, _mm_load_si128(src + 7ULL));
-				}
+				_mm_prefetch((const CHAR*)src + 4ULL, _MM_HINT_T0);
+
+				__m128i const // batching streaming stores (below)
+					a(_mm_load_si128(src)),
+					b(_mm_load_si128(src + 1ULL)),
+					c(_mm_load_si128(src + 2ULL)),
+					d(_mm_load_si128(src + 3ULL)),
+					e(_mm_load_si128(src + 4ULL)),
+					f(_mm_load_si128(src + 5ULL)),
+					g(_mm_load_si128(src + 6ULL)),
+					h(_mm_load_si128(src + 7ULL));
+
+				_mm_stream_si128(dest, a);
+				_mm_stream_si128(dest + 1ULL, b);
+				_mm_stream_si128(dest + 2ULL, c);
+				_mm_stream_si128(dest + 3ULL, d);
+				_mm_stream_si128(dest + 4ULL, e);
+				_mm_stream_si128(dest + 5ULL, f);
+				_mm_stream_si128(dest + 6ULL, g);
+				_mm_stream_si128(dest + 7ULL, h);
+
 				dest += 8ULL; src += 8ULL;
-				bytes -= (CACHE_LINE_BYTES << 1);
 			}
 
  // 16 bytes / iteration
-			while (bytes >= element_size)
+			#pragma loop( ivdep )
+			for ( ; bytes >= element_size ; bytes -= element_size)
 			{
-				if constexpr (streaming) {
-					_mm_stream_si128(dest, _mm_stream_load_si128(src));
-				}
-				else {
-					_mm_store_si128(dest, _mm_load_si128(src));
-				}
+				_mm_stream_si128(dest, _mm_load_si128(src));
+
 				++dest; ++src;
-				bytes -= element_size;
 			}
+		}
+	}
+
+	template<typename T>
+	static INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_stream(T* __restrict dest, T const* __restrict src, size_t bytes)
+	{
+		static constexpr size_t const element_size = sizeof(T);
+		static constexpr size_t const block_size = _cache_size;
+		static constexpr size_t const elements_per_block = block_size / element_size;	// cache size is always configured to be a multiple of element sizes, so there is never a remainder for elements per block
+
+		T* const __restrict cache((T* const __restrict)_streaming_cache);
+
+// 4096 bytes / iteration
+		for (; bytes >= block_size; bytes -= block_size) {
+
+			_mm_mfence(); // isolates streaming loads from streaming stores
+
+			_mm_prefetch((const CHAR*)src, _MM_HINT_T0);
+			__memcpy_aligned_stream_load(cache, src, block_size);
+
+			_mm_mfence(); // isolates streaming loads from streaming stores
+
+			_mm_prefetch((const CHAR*)cache, _MM_HINT_T0);
+			__memcpy_aligned_stream_store(dest, cache, block_size);
+
+			dest += elements_per_block; src += elements_per_block;
+		}
+
+// residual block bytes, < 4096 bytes
+		if (bytes) {
+
+			_mm_mfence(); // isolates streaming loads from streaming stores
+
+			__memcpy_aligned_stream_load(cache, src, bytes);
+
+			_mm_mfence(); // isolates streaming loads from streaming stores
+
+			__memcpy_aligned_stream_store(dest, cache, bytes);
+
 		}
 	}
 }//end ns
 
 INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_32_stream(void* const __restrict dest, void const* const __restrict src, size_t const bytes)
 {
-	internal_mem::__memcpy_aligned<stream>((__m256i* const __restrict)dest, (__m256i* const __restrict)src, bytes);
+	internal_mem::__memcpy_aligned_stream((__m256i* const __restrict)dest, (__m256i* const __restrict)src, bytes);
 }
 INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_32_store(void* const __restrict dest, void const* const __restrict src, size_t const bytes)
 {
-	internal_mem::__memcpy_aligned<store>((__m256i* const __restrict)dest, (__m256i* const __restrict)src, bytes);
+	internal_mem::__memcpy_aligned_store((__m256i* const __restrict)dest, (__m256i* const __restrict)src, bytes);
 }
 INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_16_stream(void* const __restrict dest, void const* const __restrict src, size_t const bytes)
 {
-	internal_mem::__memcpy_aligned<stream>((__m128i* const __restrict)dest, (__m128i* const __restrict)src, bytes);
+	internal_mem::__memcpy_aligned_stream((__m128i* const __restrict)dest, (__m128i* const __restrict)src, bytes);
 }
 INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_16_store(void* const __restrict dest, void const* const __restrict src, size_t const bytes)
 {
-	internal_mem::__memcpy_aligned<store>((__m128i* const __restrict)dest, (__m128i* const __restrict)src, bytes);
+	internal_mem::__memcpy_aligned_store((__m128i* const __restrict)dest, (__m128i* const __restrict)src, bytes);
 }
 
-static constexpr size_t const MINIMUM_PAGE_SIZE = 4096; // Windows Only, cannot be changed by user //
+// [very large copies]
+INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_32_stream_threaded(void* const __restrict dest, void const* const __restrict src, size_t const bytes)
+{
+	static constexpr size_t const block_size = internal_mem::_cache_size;
+
+	tbb::affinity_partitioner part;
+	tbb::parallel_for(
+		tbb::blocked_range<__m256i const* __restrict>((__m256i* const __restrict)src, (__m256i* const __restrict)(((uint8_t const* const __restrict)src) + bytes), block_size),
+		[&](tbb::blocked_range<__m256i const* __restrict> block) {
+
+			ptrdiff_t const offset(((uint8_t const* const __restrict)block.begin()) - ((uint8_t const* const __restrict)src));
+			ptrdiff_t const current_block_size(((uint8_t const* const __restrict)block.end()) - ((uint8_t const* const __restrict)block.begin())); // required since last block can be partial 
+
+			internal_mem::__memcpy_aligned_stream((__m256i* const __restrict)(((uint8_t const* const __restrict)dest) + offset), block.begin(), (size_t const)current_block_size);
+		}
+	, part);
+}
+INTRINSIC_MEMFUNC_IMPL __memcpy_aligned_16_stream_threaded(void* const __restrict dest, void const* const __restrict src, size_t const bytes)
+{
+	static constexpr size_t const block_size = internal_mem::_cache_size;
+
+	tbb::affinity_partitioner part;
+	tbb::parallel_for(
+		tbb::blocked_range<__m128i const* __restrict>((__m128i* const __restrict)src, (__m128i* const __restrict)(((uint8_t const* const __restrict)src) + bytes), block_size),
+		[&](tbb::blocked_range<__m128i const* __restrict> block) {
+
+			ptrdiff_t const offset(((uint8_t const* const __restrict)block.begin()) - ((uint8_t const* const __restrict)src));
+			ptrdiff_t const current_block_size(((uint8_t const* const __restrict)block.end()) - ((uint8_t const* const __restrict)block.begin())); // required since last block can be partial 
+
+			internal_mem::__memcpy_aligned_stream((__m128i* const __restrict)(((uint8_t const* const __restrict)dest) + offset), block.begin(), (size_t const)current_block_size);
+		}
+	, part);
+}
 
 // large allocations //
 INTRINSIC_MEM_ALLOC_FUNC __memalloc_large(size_t const bytes, size_t const alignment)

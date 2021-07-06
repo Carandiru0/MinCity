@@ -53,11 +53,14 @@ INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* const __restrict dest
 
 
 // [copies]
-INTRINSIC_MEMFUNC __memcpy_aligned_32_stream(void* const __restrict dest, void const* const __restrict src, size_t bytes);
-INTRINSIC_MEMFUNC __memcpy_aligned_32_store(void* const __restrict dest, void const* const __restrict src, size_t bytes);
-INTRINSIC_MEMFUNC __memcpy_aligned_16_stream(void* const __restrict dest, void const* const __restrict src, size_t bytes);
-INTRINSIC_MEMFUNC __memcpy_aligned_16_store(void* const __restrict dest, void const* const __restrict src, size_t bytes);
+INTRINSIC_MEMFUNC __memcpy_aligned_32_stream(void* const __restrict dest, void const* const __restrict src, size_t const bytes);
+INTRINSIC_MEMFUNC __memcpy_aligned_32_store(void* const __restrict dest, void const* const __restrict src, size_t const bytes);
+INTRINSIC_MEMFUNC __memcpy_aligned_16_stream(void* const __restrict dest, void const* const __restrict src, size_t const bytes);
+INTRINSIC_MEMFUNC __memcpy_aligned_16_store(void* const __restrict dest, void const* const __restrict src, size_t const bytes);
 
+// [very large copies]
+INTRINSIC_MEMFUNC __memcpy_aligned_32_stream_threaded(void* const __restrict dest, void const* const __restrict src, size_t bytes);
+INTRINSIC_MEMFUNC __memcpy_aligned_16_stream_threaded(void* const __restrict dest, void const* const __restrict src, size_t bytes);
 
 // [large allocations] 
 // requiring physical memory and no page faults (never swapped to page file)

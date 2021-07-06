@@ -1,8 +1,6 @@
 #ifndef PCH_H
 #define PCH_H
 
-#pragma fp_contract (on)
-
 #ifndef VC_EXTRALEAN
 #define VC_EXTRALEAN
 #endif

@@ -85,7 +85,7 @@ namespace liveshader
 			pm.replace_shader(1, vk::ShaderStageFlagBits::eFragment, frag_);	
 			/*******/
 			
-			device.waitIdle();
+			MinCity::Vulkan.WaitDeviceIdle();
 			auto& cache = fw.pipelineCache();
 			pipeline_out = std::move(pm.create(device, cache, *pipelineLayout, renderPass));
 

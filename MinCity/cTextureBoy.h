@@ -54,23 +54,23 @@ public:
 	// **note bDedicatedMemory template parameter is ignored / not used in the updating context**
 
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture);  // default rgba
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture);  // default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture);  // default rgba
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture);  // default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture);	// default rgba
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture);	// default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture);	// default rgba
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture);	// default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture_RG(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture);
+	void ImagingToTexture_RG(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture); // rg 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture_R(ImagingMemoryInstance const* const image, vku::TextureImage2D*&__restrict texture);
+	void ImagingToTexture_R(ImagingMemoryInstance const* const image, vku::TextureImage2D*&__restrict texture); // r 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
 	void ImagingToTexture_BC7(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture); // compressed rgba
 	// 3D lut always in dedicated memory and is not srgb
-	__inline void ImagingToTexture(ImagingLUT const* const lut, vku::TextureImage3D*& __restrict texture);	// default rgba
+	__inline void ImagingToTexture(ImagingLUT const* const lut, vku::TextureImage3D*& __restrict texture);	// default rgba 16bpc
 	// Sequences, always non dedicated memory and is srgb
-	void ImagingSequenceToTexture(ImagingSequence const* const image, vku::TextureImage2DArray*& __restrict texture);
+	void ImagingSequenceToTexture(ImagingSequence const* const image, vku::TextureImage2DArray*& __restrict texture); // default rgba 8bpc
 
 	// ### UPDATING ### //
 	template <typename T>

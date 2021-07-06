@@ -83,7 +83,7 @@ namespace UniformDecl
 		XMMATRIX	proj;
 		XMVECTOR	eyePos;
 		XMVECTOR	eyeDir;
-		XMVECTOR	aligned_data0;	// .xy = unused, .z = time, .w = frame time delta
+		XMVECTOR	aligned_data0;	// .xy = fract offset, .z = time, .w = frame time delta
 		XMVECTOR	aligned_data1;	// .x = max light distance
 		uint32_t	frame; // must be last
 	};

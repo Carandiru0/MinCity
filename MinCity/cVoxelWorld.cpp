@@ -308,7 +308,7 @@ void cVoxelWorld::GenerateGround()
 #ifndef DEBUG_LOADTIME_BC7_COMPRESSION_DISABLED
 		Imaging imgCompressedBC7 = ImagingCompressBGRAToBC7(imageNoise);
 
-		MinCity::TextureBoy.ImagingToTexture_BC7<true>(imgCompressedBC7, _terrainTexture);
+		MinCity::TextureBoy.ImagingToTexture_BC7<false>(imgCompressedBC7, _terrainTexture);	// generated texture is in linear colorspace
 		
 #ifdef GIF_MODE
 		ImagingDelete(imageNoise); imageNoise = imgCompressedBC7; // hack for making ground flat for "gif mode" - need reflections
@@ -316,7 +316,7 @@ void cVoxelWorld::GenerateGround()
 		ImagingDelete(imgCompressedBC7);
 #endif
 #else
-		MinCity::TextureBoy.ImagingToTexture(imageNoise, _terrainTexture);
+		MinCity::TextureBoy.ImagingToTexture<false>(imageNoise, _terrainTexture); // generated texture is in linear colorspace
 #endif
 		MinCity::TextureBoy.AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
 
@@ -1002,110 +1002,55 @@ namespace world
 		point2D_t const voxelEnd(voxelArea.right_bottom());
 		point2D_t p;
 
-		// oriented rect filling algorithm, see processing sketch "rotation" for reference
-		if (vR.sine() >= 0.0f) {
+		// oriented rect filling algorithm, see processing sketch "rotation" for reference (using revised version)
+		while (voxelIterate.y <= voxelEnd.y) {
 
-			while (voxelIterate.y <= voxelEnd.y) {
+			voxelIterate.x = voxelArea.left;
+			while (voxelIterate.x <= voxelEnd.x) {
 
-				voxelIterate.x = voxelArea.left;
-				while (voxelIterate.x <= voxelEnd.x) {
+				point2D_t const p0(p);
+				p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
 
-					point2D_t const p0(p);
-					p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
-
-					// back
-					if (0 == (p.y - p0.y - 1)) {
-						setVoxelHashAt<true>(point2D_t(p.x, p0.y), hash);
+				// back
+				if (0 == (SFM::abs(p.y - p0.y) - 1)) {
+					setVoxelHashAt<true>(point2D_t(p.x, p0.y), hash);
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-						Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
-						if (pVoxel) {
-							Iso::Voxel oVoxel(*pVoxel);
-							if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
-							{
-								Iso::setEmissive(oVoxel);
-								setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
-							}
-						}
-#endif
-#endif
-					}
-
-					// center 
-					setVoxelHashAt<true>(p, hash);
-
-#ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
-#ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-					Iso::Voxel const* const pVoxel = getVoxelAt(p);
+					Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
 					if (pVoxel) {
 						Iso::Voxel oVoxel(*pVoxel);
 						if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
 						{
 							Iso::setEmissive(oVoxel);
-							setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
+							setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
 						}
 					}
 #endif
 #endif
-
-					++voxelIterate.x;
 				}
 
-				++voxelIterate.y;
-			}
-		}
-		else {
-
-			while (voxelIterate.y <= voxelEnd.y) {
-
-				voxelIterate.x = voxelArea.left;
-				while (voxelIterate.x <= voxelEnd.x) {
-
-					point2D_t const p0(p);
-					p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
-
-					// back
-					if (0 == (p0.y - p.y - 1)) {
-						setVoxelHashAt<true>(point2D_t(p.x, p0.y), hash);
+				// center 
+				setVoxelHashAt<true>(p, hash);
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-						Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
-						if (pVoxel) {
-							Iso::Voxel oVoxel(*pVoxel);
-							if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
-							{
-								Iso::setEmissive(oVoxel);
-								setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
-							}
-						}
-#endif
-#endif
+				Iso::Voxel const* const pVoxel = getVoxelAt(p);
+				if (pVoxel) {
+					Iso::Voxel oVoxel(*pVoxel);
+					if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
+					{
+						Iso::setEmissive(oVoxel);
+						setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
 					}
-
-					// center 
-					setVoxelHashAt<true>(p, hash);
-
-#ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
-#ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-					Iso::Voxel const* const pVoxel = getVoxelAt(p);
-					if (pVoxel) {
-						Iso::Voxel oVoxel(*pVoxel);
-						if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
-						{
-							Iso::setEmissive(oVoxel);
-							setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
-						}
-					}
-#endif
-#endif
-
-					++voxelIterate.x;
 				}
+#endif
+#endif
 
-				++voxelIterate.y;
+				++voxelIterate.x;
 			}
+
+			++voxelIterate.y;
 		}
 	}
 
@@ -1171,98 +1116,49 @@ namespace world
 		point2D_t const voxelEnd(voxelArea.right_bottom());
 		point2D_t p;
 
-		// oriented rect filling algorithm, see processing sketch "rotation" for reference
-		if (vR.sine() >= 0.0f) {
+		// oriented rect filling algorithm, see processing sketch "rotation" for reference (revised version)
+		while (voxelIterate.y <= voxelEnd.y) {
 
-			while (voxelIterate.y <= voxelEnd.y) {
+			voxelIterate.x = voxelArea.left;
+			while (voxelIterate.x <= voxelEnd.x) {
 
-				voxelIterate.x = voxelArea.left;
-				while (voxelIterate.x <= voxelEnd.x) {
+				point2D_t const p0(p);
+				p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
 
-					point2D_t const p0(p);
-					p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
-
-					// back
-					if (0 == (p.y - p0.y - 1)) {
-						resetVoxelHashAt<true>(point2D_t(p.x, p0.y), hash);
+				// back
+				if (0 == (SFM::abs(p.y - p0.y) - 1)) {
+					resetVoxelHashAt<true>(point2D_t(p.x, p0.y), hash);
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-						Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
-						if (pVoxel) {
-							Iso::Voxel oVoxel(*pVoxel);
-							Iso::clearEmissive(oVoxel);
-							setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
-						}
-#endif
-#endif
-					}
-
-					// center 
-					resetVoxelHashAt<true>(p, hash);
-
-#ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
-#ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-					Iso::Voxel const* const pVoxel = getVoxelAt(p);
+					Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
 					if (pVoxel) {
 						Iso::Voxel oVoxel(*pVoxel);
 						Iso::clearEmissive(oVoxel);
-						setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
+						setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
 					}
 #endif
 #endif
-
-					++voxelIterate.x;
 				}
 
-				++voxelIterate.y;
-			}
-		}
-		else {
-
-			while (voxelIterate.y <= voxelEnd.y) {
-
-				voxelIterate.x = voxelArea.left;
-				while (voxelIterate.x <= voxelEnd.x) {
-
-					point2D_t const p0(p);
-					p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
-
-					// back
-					if (0 == (p0.y - p.y - 1)) {
-						resetVoxelHashAt<true>(point2D_t(p.x, p0.y), hash);
+				// center 
+				resetVoxelHashAt<true>(p, hash);
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-						Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
-						if (pVoxel) {
-							Iso::Voxel oVoxel(*pVoxel);
-							Iso::clearEmissive(oVoxel);
-							setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
-						}
-#endif
-#endif
-					}
-
-					// center 
-					resetVoxelHashAt<true>(p, hash);
-
-#ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
-#ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-					Iso::Voxel const* const pVoxel = getVoxelAt(p);
-					if (pVoxel) {
-						Iso::Voxel oVoxel(*pVoxel);
-						Iso::clearEmissive(oVoxel);
-						setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
-					}
-#endif
-#endif
-
-					++voxelIterate.x;
+				Iso::Voxel const* const pVoxel = getVoxelAt(p);
+				if (pVoxel) {
+					Iso::Voxel oVoxel(*pVoxel);
+					Iso::clearEmissive(oVoxel);
+					setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
 				}
+#endif
+#endif
 
-				++voxelIterate.y;
+				++voxelIterate.x;
 			}
+
+			++voxelIterate.y;
 		}
 	}
 
@@ -1842,7 +1738,7 @@ static struct voxelRender // ** static container, all methods and members must b
 	using VoxelThreadBatch = tbb::enumerable_thread_specific<
 		VoxelLocalBatch,
 		tbb::cache_aligned_allocator<VoxelLocalBatch>,
-		tbb::ets_key_per_instance >;
+		tbb::ets_key_per_instance >;                
 	
 	static inline VoxelThreadBatch batchedGround, batchedRoad, batchedRoadTrans;
 
@@ -2254,7 +2150,7 @@ namespace world
 		}
 		
 		// other textures:
-		MinCity::TextureBoy.LoadKTXTexture<true>(_roadTexture, TEXTURE_DIR L"road_array.ktx");
+		MinCity::TextureBoy.LoadKTXTexture<true>(_roadTexture, TEXTURE_DIR L"road_array.ktx");  // remeber for loading straight from ktx, colorspace is defined by file. In this case the file should have been saved srgb.
 		MinCity::TextureBoy.AddTextureToTextureArray(_roadTexture, TEX_ROAD);
 
 		Imaging const blackbodyImage(ImagingLoadRawBGRA(TEXTURE_DIR "blackbody_real.data", BLACKBODY_IMAGE_WIDTH, 1));
@@ -2665,7 +2561,7 @@ namespace world
 #endif
 		{ // test dynamics 
 			cTestGameObject* pGameObj;
-
+			/*
 			if (PsuedoRandom5050()) {
 				pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
 					Volumetric::eVoxelModels_Indices::HOLOGRAM_GIRL);
@@ -2678,11 +2574,12 @@ namespace world
 					pGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
 				}
 				else {
+			*/
 					pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(25, 25)),
 						Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
 					pGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_75);
-				}
-			}
+			/*	}
+			}*/
 		}
 
 
@@ -3260,7 +3157,8 @@ namespace world
 				
 				// for next compute iteration
 				if (++temporal_size > 2) {
-					// bug - memory referenced for push constants not updating automatically like it should ? bComputeRecorded = true;
+					// bug - memory referenced for push constants not updating automatically like it should ? 
+					// bComputeRecorded = true;
 				}
 			}
 			else {
@@ -3667,6 +3565,7 @@ namespace world
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
 		//pack into vector for uniform buffer layout
+		_currentState.Uniform.aligned_data0 = getOriginFractionalGridOffsetXY(); // xy = fract grid offset
 		_currentState.Uniform.aligned_data0 = XMVectorSetZ(_currentState.Uniform.aligned_data0, (time_delta + time_delta_last) * 0.5f); // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
 		_currentState.Uniform.aligned_data0 = XMVectorSetW(_currentState.Uniform.aligned_data0, _currentState.time); // w = time
 
@@ -3679,7 +3578,7 @@ namespace world
 		// the fractional offset here cancels out the "staircase" pattern that would be evident when scrolling - **important that the *target* gridoffset is used
 		// swizzle is ONLY for 2D vector to 3D vector conversion, placing x,y into x & z
 		// evrything is still in world transform where xyz = width, height, depth
-		XMVECTOR const xmOffset = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat2A(&oCamera.voxelFractionalGridOffset));
+		XMVECTOR const xmOffset = getOriginFractionalGridOffsetXZ();
 		_currentState.Uniform.eyePos = XMVectorAdd(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder), xmOffset);
 		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(_currentState.Uniform.eyePos, xmOffset)); // target is always 0,0,0 (not including fractional grid offset)
 
@@ -3701,6 +3600,7 @@ namespace world
 			XMStoreFloat3A(&lastEyePos, _currentState.Uniform.eyePos);
 		}
 
+		// not yet required
 		_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
 
 		// Update Frustum, which updates projection matrix, which is derived from ZoomFactor
@@ -4085,7 +3985,16 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 	}
-	
+	void cVoxelWorld::SetSpecializationConstants_PostAA_HDR(std::vector<vku::SpecializationConstant>& __restrict constants)
+	{
+		point2D_t const frameBufferSize(MinCity::getFramebufferSize());
+
+		constants.emplace_back(vku::SpecializationConstant(0, (float)frameBufferSize.x));// // frame buffer width
+		constants.emplace_back(vku::SpecializationConstant(1, (float)frameBufferSize.y));// // frame buffer height
+		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
+		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
+		constants.emplace_back(vku::SpecializationConstant(4, (float)MinCity::Vulkan.getMaximumNits()));// // maximum brightness of user monitor in nits, as defined in MinCity.ini
+	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		point2D_t const frameBufferSize(MinCity::getFramebufferSize());

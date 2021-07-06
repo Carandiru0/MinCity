@@ -1769,7 +1769,7 @@ void  cNuklear::UpdateGUI()
 											((nk_image_extended* const)_guiImages.load_thumbnail)->type = RGBA_IMAGE; // **this is a safe cast** memory is actually allocated as nk_image_extended
 
 											// update texture for thumbnail from new imaging data returned from previewworld
-											MinCity::TextureBoy.ImagingToTexture<false>(_guiTextures.load_thumbnail.image, _guiTextures.load_thumbnail.texture);
+											MinCity::TextureBoy.ImagingToTexture<false>(_guiTextures.load_thumbnail.image, _guiTextures.load_thumbnail.texture); // todo: this may need to be srgb....
 										}
 									}
 								}

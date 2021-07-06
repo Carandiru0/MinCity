@@ -22,14 +22,14 @@ public:
 	__inline void Render(vku::present_renderpass&& __restrict pp,
 						 struct cVulkan::sPOSTAADATA const& __restrict render_data) const;
 
+private:
 	bool const LoadLUT(std::wstring_view const filenamepath); // full filename and path wide string
 #ifdef DEBUG_LUT_WINDOW
+public:
 	bool const MixLUT(std::string_view const szlutA, std::string_view const szlutB, float const tT); // filename only, normal strings
 	bool const SaveMixedLUT(std::string& szlutMixed, std::string_view const szlutA, std::string_view const szlutB, float const tT); // filename only, normal strings
 	bool const UploadLUT(); // returns true if uploaded to GPU, false if not
 #endif
-
-private:
 
 private:
 	vku::TextureImageStorage2D* _anamorphicFlare[2];
@@ -39,7 +39,7 @@ private:
 
 	vku::TextureImageStorage2D* _blurStep[2];
 
-	vku::TextureImage3D* _lutTex;
+	vku::TextureImage3D*		_lutTex;
 
 #ifdef DEBUG_LUT_WINDOW
 	ImagingLUT*				_lut;

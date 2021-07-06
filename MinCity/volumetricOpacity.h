@@ -250,7 +250,7 @@ namespace Volumetric
 			createIndirectDispatch(device, commandPool, queue);
 
 			for (uint32_t i = 0; i < 2; ++i) {
-				LightProbeMap.stagingBuffer[i].createAsStagingBuffer(getLightProbeMapSizeInBytes());
+				LightProbeMap.stagingBuffer[i].createAsStagingBuffer(getLightProbeMapSizeInBytes(), true);
 			}
 			LightProbeMap.imageGPUIn = new vku::TextureImage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,
 				LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);

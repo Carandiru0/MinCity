@@ -100,11 +100,15 @@ void cMinCity::LoadINI()
 		Nuklear.setFrameBufferSize(iResolutionWidth, iResolutionHeight);
 	}
 	else {
-		Nuklear.setFrameBufferSize(Globals::DEFAULT_SCREEN_WIDTH, Globals::DEFAULT_SCREEN_HEIGHT);
+		// default to maximum desktop resolution
+		Nuklear.setFrameBufferSize(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
 	}
 
 	bool const bFullscreenExclusive = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"FULLSCREEN_EXCLUSIVE", TRUE, szINIFile);
 	Vulkan.setFullScreenExclusiveEnabled(bFullscreenExclusive);
+
+	uint32_t const uiHDRNits = (uint32_t)GetPrivateProfileInt(L"RENDER_SETTINGS", L"HDR_NITS", TRUE, szINIFile);
+	Vulkan.setHDREnabled(0 != uiHDRNits, uiHDRNits);
 
 	bool const bVsyncEnabled = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"VSYNC", TRUE, szINIFile);
 	Vulkan.setVsyncDisabled(!bVsyncEnabled);
@@ -783,8 +787,9 @@ void cMinCity::ClearEvents(bool const bDisableNewEventsAfter)
 	}
 }
 void cMinCity::OnFocusLost()
-{
+{	
 	m_bFocused = false;
+	ClipCursor(nullptr);
 }
 void cMinCity::OnFocusRestored()
 {
@@ -829,7 +834,7 @@ __declspec(noinline) static bool SetProcessPrivilege(
 	tp.PrivilegeCount = 1;
 	tp.Privileges[0].Luid = luid;
 	if (bEnablePrivilege)
-		tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+ 		tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
 	else
 		tp.Privileges[0].Attributes = 0;
 
@@ -854,10 +859,21 @@ __declspec(noinline) static bool SetProcessPrivilege(
 	return(true);
 }
 
-__declspec(noinline) HANDLE const cMinCity::SetupEnvironment() // main thread and hyperthreading cache optimizations
+__declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread and hyperthreading cache optimizations
 {
+	int32_t num_hw_threads(-1); // -1 will have tbb automatically fallback, in cases where it can't be optimized here.00000000000000002111111111111111/
 	HANDLE const hProcess(GetCurrentProcess());
 	HANDLE const hThread(GetCurrentThread());
+
+	{
+		HANDLE hToken;
+		if (OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+		{
+			SetProcessPrivilege(hToken, SE_INC_BASE_PRIORITY_NAME, true);
+			SetProcessPrivilege(hToken, SE_INC_WORKING_SET_NAME, true);
+			SetProcessPrivilege(hToken, SE_LOCK_MEMORY_NAME, true);
+		}
+	}
 
 	// 1st step: Process CPU Priority
 	// *** setting cpu process prority at any given time also resets all threads created by that process. So It should only be used
@@ -887,6 +903,9 @@ __declspec(noinline) HANDLE const cMinCity::SetupEnvironment() // main thread an
 
 				std::set<DWORD> hw_cores;
 				std::vector<DWORD> logical_processors;
+
+				logical_processors.reserve(32);
+
 				uint8_t const* ptr = data.get();
 				for (DWORD size = 0; size < retsize; ) {
 					auto const info = reinterpret_cast<SYSTEM_CPU_SET_INFORMATION const* const>(ptr);
@@ -897,6 +916,8 @@ __declspec(noinline) HANDLE const cMinCity::SetupEnvironment() // main thread an
 					ptr += info->Size;
 					size += info->Size;
 				}
+
+				num_hw_threads = hw_cores.size();
 
 				bool const hyperthreaded = logical_processors.size() != hw_cores.size();
 
@@ -920,9 +941,36 @@ __declspec(noinline) HANDLE const cMinCity::SetupEnvironment() // main thread an
 					}
 				}
 
-				// any new threads are limited to hw cores not the same as the main thread
-				SetProcessDefaultCpuSets(hProcess, logical_processors.data() + logical_processor_count_used,
-					(unsigned long)logical_processors.size() - logical_processor_count_used);
+				// remove main application threads cores from vector so they are not used for any new threads spawned from this point on.
+				for (std::vector<DWORD>::const_iterator iter = logical_processors.cbegin(); iter != logical_processors.cend(); ) {
+
+					if (0 == logical_processor_count_used) {
+						break;
+					}
+					else {
+						iter = logical_processors.erase(iter);
+					}
+					--logical_processor_count_used;
+				}
+
+				// if hyperthreading is on, limit to the available actual hardware cores. The even elements of the vector represent the first thread on a 
+				// hyperthreaded core. The second thread is therefore the one we want to erase from the vector; all even keep, all odd erase.
+				uint32_t index(0);
+				for (std::vector<DWORD>::const_iterator iter = logical_processors.cbegin(); iter != logical_processors.cend(); ) {
+
+					if (index & 1) { // is odd?
+						iter = logical_processors.erase(iter);
+					}
+					else {
+						++iter;
+					}
+					++index;
+				}
+
+				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread.
+				if (logical_processors.size() > 1) {
+					SetProcessDefaultCpuSets(hProcess, logical_processors.data(), (unsigned long)logical_processors.size());
+				}
 			}
 		}
 	}
@@ -943,15 +991,6 @@ __declspec(noinline) HANDLE const cMinCity::SetupEnvironment() // main thread an
 
 	SYSTEM_INFO sysInfo;
 	GetSystemInfo(&sysInfo);
-
-	{
-		HANDLE hToken;
-		if (OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
-		{
-			SetProcessPrivilege(hToken, L"SeIncreaseWorkingSetPrivilege", true);
-			SetProcessPrivilege(hToken, L"SeLockMemoryPrivilege", true);
-		}
-	}
 
 	// optimize usage of virtual memory of process
 	{
@@ -1003,10 +1042,10 @@ __declspec(noinline) HANDLE const cMinCity::SetupEnvironment() // main thread an
 			sizeof(MemPrio));
 	}
 
-	return(hThread);
+	return(num_hw_threads);
 }
 
-extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT);  // external forward decl
+extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
 	// setup secure loading of dlls, should be done before loading any dlls, or creation of any threads under this process (including dlls creating threads)
@@ -1038,9 +1077,9 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	// https://docs.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
 	timeEndPeriod(1); // ensure that the regular default timer resolution is active
 
-	SetupEnvironment();
+	int32_t const num_hw_threads(SetupEnvironment());
 	
-	global_init_tbb_floating_point_env(TASK_INIT);
+	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads);
 }
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {

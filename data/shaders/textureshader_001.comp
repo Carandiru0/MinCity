@@ -56,21 +56,20 @@ void main()
 
 	const vec2 uv = gl_GlobalInvocationID.xy * InvOutputDimensions;
 
-	// using the red channel (shade - not dithered) for gradient / normal calculation. Keeps the normals smooth.
+	// (shade dithered) which results in no banding artifacts when raymarched in the volumetric shader that uses this wind direction + opacity/height
+	vec4 direction_height;
+	direction_height.w = textureLod(inputMap, uv, 0.0f).r; // height
+
 	vec2 gradient;
 
 	gradient.x = textureLodOffset(inputMap, uv, 0.0f, ivec2(-1,  0)).r - textureLodOffset(inputMap, uv, 0.0f, ivec2( 1,  0)).r;
 	gradient.y = textureLodOffset(inputMap, uv, 0.0f, ivec2( 0, -1)).r - textureLodOffset(inputMap, uv, 0.0f, ivec2( 0,  1)).r;
 	gradient = normalize(-gradient);
 
-	vec3 direction = vec3(gradient * 256.0f, 1.0f / BUMP_SCALE);
-	direction = normalize(direction) * 0.5f + 0.5f;
+	direction_height.xyz = vec3(gradient * 256.0f, 1.0f / BUMP_SCALE);
+	direction_height.xyz = normalize(direction_height.xyz) * 0.5f + 0.5f;
 
-	// alpha channel, representing opacity or rather transparency of the fog and it's height.
-	// is the (shade dithered) which results in no banding artifacts when raymarched in the volumetric shader that uses this wind direction + opacity/height
-	const float dithered_center = textureLod(inputMap, uv, 0.0f).r;
-
-	imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), vec4(direction, dithered_center));
+	imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), direction_height);
 }
 
 

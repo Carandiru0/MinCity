@@ -23,9 +23,9 @@ namespace Volumetric
 		static constexpr uint32_t const
 			NUM_BYTES_PER_VOXEL_LIGHT = sizeof(memLayoutV),
 			NUM_BYTES_PER_VOXEL = sizeof(memLayout),
-			SHADER_LOCAL_SIZE_BITS = 3U, // 2^3 = 8   ,   2^5 = 32
-			SHADER_LOCAL_SIZE = (1U << SHADER_LOCAL_SIZE_BITS),			//  **** 8 x 8 x 16 (1024 MAX) seems optimal don't change VPGR usage of 33 vs 41 b4 with 8x8x4(256) ****
-			SHADER_LOCAL_SIZE_BITS_Z = 3U,
+			SHADER_LOCAL_SIZE_BITS = 3U, // 2^3 = 8   ,   2^5 = 32    , etc.
+			SHADER_LOCAL_SIZE = (1U << SHADER_LOCAL_SIZE_BITS),
+			SHADER_LOCAL_SIZE_BITS_Z = 2U,
 			SHADER_LOCAL_SIZE_Z = (1U << SHADER_LOCAL_SIZE_BITS_Z);
 	} // end ns
 
