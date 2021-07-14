@@ -80,26 +80,27 @@ layout (binding = 5, rgba8) writeonly restrict uniform image2D outImage[2]; // r
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 
-layout (constant_id = 4) const float VolumeDimensions_X = 0.0f;
-layout (constant_id = 5) const float VolumeDimensions_Y = 0.0f;
-layout (constant_id = 6) const float VolumeDimensions_Z = 0.0f;
-layout (constant_id = 7) const float InvVolumeDimensions_X = 0.0f;
-layout (constant_id = 8) const float InvVolumeDimensions_Y = 0.0f;
-layout (constant_id = 9) const float InvVolumeDimensions_Z = 0.0f;
+layout (constant_id = 4) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
+layout (constant_id = 5) const float VolumeDimensions_X = 0.0f;
+layout (constant_id = 6) const float VolumeDimensions_Y = 0.0f;
+layout (constant_id = 7) const float VolumeDimensions_Z = 0.0f;
+layout (constant_id = 8) const float InvVolumeDimensions_X = 0.0f;
+layout (constant_id = 9) const float InvVolumeDimensions_Y = 0.0f;
+layout (constant_id = 10) const float InvVolumeDimensions_Z = 0.0f;
 #define VolumeDimensions vec3(VolumeDimensions_X, VolumeDimensions_Y, VolumeDimensions_Z)
 #define InvVolumeDimensions vec3(InvVolumeDimensions_X, InvVolumeDimensions_Y, InvVolumeDimensions_Z)
 
-layout (constant_id = 10) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 11) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 12) const float LightVolumeDimensions_Z = 0.0f;
-layout (constant_id = 13) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 14) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 15) const float InvLightVolumeDimensions_Z = 0.0f;
+layout (constant_id = 11) const float LightVolumeDimensions_X = 0.0f;
+layout (constant_id = 12) const float LightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 13) const float LightVolumeDimensions_Z = 0.0f;
+layout (constant_id = 14) const float InvLightVolumeDimensions_X = 0.0f;
+layout (constant_id = 15) const float InvLightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 16) const float InvLightVolumeDimensions_Z = 0.0f;
 #define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
 #define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
 
-layout (constant_id = 16) const float ZFar = 0.0f;
-layout (constant_id = 17) const float ZNear = 0.0f;
+layout (constant_id = 17) const float ZFar = 0.0f;
+layout (constant_id = 18) const float ZNear = 0.0f;
 
 #define FAST_LIGHTMAP
 #include "lightmap.glsl"
@@ -179,8 +180,7 @@ vec3 computeNormal(in const vec3 uvw)
 float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 										 
 	float attenuation;
-	const float volume_length = length(VolumeDimensions);
-	const vec3 light_direction = getReflectionLightFast(light_color, attenuation, uvw, volume_length);
+	const vec3 light_direction = getReflectionLightFast(light_color, attenuation, uvw, VolumeLength);
 
 	// directional derivative - equivalent to dot(N,L) operation
 	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -192,9 +192,8 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
 float fetch_light_volumetric( out vec3 light_color, out float scattering, inout float transparency, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 		
-	float attenuation, normalized_distance;		//   ____FAST____
-	const float volume_length = length(VolumeDimensions);
-	const vec3 light_direction = getLightFast(light_color, attenuation, normalized_distance, uvw, volume_length);
+	float attenuation, normalized_distance;
+	const vec3 light_direction = getLightFast(light_color, attenuation, normalized_distance, uvw, VolumeLength);
 
 	// directional derivative - equivalent to dot(N,L) operation
 	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent

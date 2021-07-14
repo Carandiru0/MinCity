@@ -150,7 +150,7 @@ public:
 	
 	bool const enableMinimapRendering(bool const bEnable) { return(_InterlockedCompareExchange(reinterpret_cast<uint32_t* const __restrict>(&_bMinimapRenderingEnabled), bEnable, !bEnable)); }
 
-	void Upload(vk::CommandBuffer& __restrict cb_transfer,
+	void Upload(uint32_t const resource_index, vk::CommandBuffer& __restrict cb_transfer,
 				vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo);
 	void AcquireTransferQueueOwnership(vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo);
 	void Render(vk::CommandBuffer& __restrict cb_render,
@@ -171,12 +171,13 @@ public:
 
 private:
 	void LoadGUITextures();
+	void SetGUIDirty();
 
 #ifdef DEBUG_LUT_WINDOW
 	void draw_lut_window(tTime const& __restrict tNow, uint32_t const height_offset);
 #endif
 private:
-	vku::GenericBuffer			_stagingBuffer[2];
+	vku::double_buffer<vku::GenericBuffer>	_stagingBuffer[2];
 	vku::TextureImage2DArray*	_fontTexture;
 	struct GLFWwindow*		    _win;
 	struct nk_context*			_ctx;
@@ -194,8 +195,8 @@ private:
 	float						_frameBufferAspect;
 	bool						_frameBufferDPIAware;
 	bool						_bUniformSet, _bUniformAcquireRequired,
-								_bAcquireRequired,
-								_bGUIDirty;
+								_bAcquireRequired;
+	vku::double_buffer<bool>	_bGUIDirty;
 	int32_t						_iWindowQuitSelection,
 								_iWindowSaveSelection,
 								_iWindowLoadSelection;

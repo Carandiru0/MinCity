@@ -21,7 +21,7 @@ namespace internal_mem
 		if constexpr (std::is_same_v<T, __m256i>) { // size does fit into multiple of 32bytes
 
 			static constexpr size_t const element_size = sizeof(__m256i);
-			__builtin_assume_aligned(dest, 32ULL);
+			dest = std::assume_aligned<32>(dest);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memclr_aligned:  size not a multiple of sizeof(__m256i) - data is not aligned\n");
@@ -33,10 +33,10 @@ namespace internal_mem
 			for ( ; bytes >= (CACHE_LINE_BYTES << 1) ; bytes -= (CACHE_LINE_BYTES << 1) )
 			{
 				if constexpr (streaming) {
-					_mm256_stream_si256(dest, xmZero);	// vertex buffers are very large, using streaming stores
-					_mm256_stream_si256(dest + 1ULL, xmZero);	// vertex buffers are very large, using streaming stores
-					_mm256_stream_si256(dest + 2ULL, xmZero);	// vertex buffers are very large, using streaming stores
-					_mm256_stream_si256(dest + 3ULL, xmZero);	// vertex buffers are very large, using streaming stores
+					_mm256_stream_si256(dest, xmZero);	
+					_mm256_stream_si256(dest + 1ULL, xmZero);	
+					_mm256_stream_si256(dest + 2ULL, xmZero);	
+					_mm256_stream_si256(dest + 3ULL, xmZero);	
 				}
 				else {
 					_mm256_store_si256(dest, xmZero);
@@ -63,7 +63,7 @@ namespace internal_mem
 		else { // size does not fit into multiple of 32bytes
 
 			static constexpr size_t const element_size = sizeof(__m128i);
-			__builtin_assume_aligned(dest, 16ULL);
+			dest = std::assume_aligned<16>(dest);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memclr_aligned:  size not a multiple of sizeof(__m128i) - data is not aligned\n");
@@ -138,7 +138,7 @@ INTRINSIC_MEMFUNC_IMPL __memclr_aligned_stream(XMFLOAT4A* __restrict dest, size_
 
 	__m256i const xmZero(_mm256_setzero_si256()); 
 
-	__builtin_assume_aligned(dest, 32ULL);
+	dest = std::assume_aligned<32>(dest);
 
  // 128 bytes/iteration
 	#pragma loop( ivdep )
@@ -175,7 +175,7 @@ namespace internal_mem
 	{
 		if constexpr (std::is_same_v<T, __m256i>) {
 			static constexpr size_t const element_size = sizeof(__m256i);
-			__builtin_assume_aligned(dest, 32ULL);
+			dest = std::assume_aligned<32>(dest); src = std::assume_aligned<32>(src);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m256i) - data is not aligned\n");
@@ -207,7 +207,7 @@ namespace internal_mem
 		}
 		else {
 			static constexpr size_t const element_size = sizeof(__m128i);
-			__builtin_assume_aligned(dest, 16ULL);
+			dest = std::assume_aligned<16>(dest); src = std::assume_aligned<16>(src);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m128i) - data is not aligned\n");
@@ -254,7 +254,7 @@ namespace internal_mem
 	{
 		if constexpr (std::is_same_v<T, __m256i>) {
 			static constexpr size_t const element_size = sizeof(__m256i);
-			__builtin_assume_aligned(dest, 32ULL);
+			dest = std::assume_aligned<32>(dest); src = std::assume_aligned<32>(src);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m256i) - data is not aligned\n");
@@ -292,7 +292,7 @@ namespace internal_mem
 		}
 		else {
 			static constexpr size_t const element_size = sizeof(__m128i);
-			__builtin_assume_aligned(dest, 16ULL);
+			dest = std::assume_aligned<16>(dest); src = std::assume_aligned<16>(src);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m128i) - data is not aligned\n");
@@ -343,7 +343,7 @@ namespace internal_mem
 	{
 		if constexpr (std::is_same_v<T, __m256i>) {
 			static constexpr size_t const element_size = sizeof(__m256i);
-			__builtin_assume_aligned(dest, 32ULL);
+			dest = std::assume_aligned<32>(dest); src = std::assume_aligned<32>(src);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m256i) - data is not aligned\n");
@@ -381,7 +381,7 @@ namespace internal_mem
 		}
 		else {
 			static constexpr size_t const element_size = sizeof(__m128i);
-			__builtin_assume_aligned(dest, 16ULL);
+			dest = std::assume_aligned<16>(dest); src = std::assume_aligned<16>(src);
 
 #ifndef NDEBUG
 			assert_print(0 == (bytes % element_size), "__memcpy_aligned:  size not a multiple of sizeof(__m128i) - data is not aligned\n");

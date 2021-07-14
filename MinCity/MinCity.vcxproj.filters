@@ -321,6 +321,9 @@
     <ClInclude Include="cRockStageGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_doublebuffer.h">
+      <Filter>Header Files\VulkanCore</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

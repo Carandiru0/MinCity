@@ -353,6 +353,7 @@
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vkNames.h" />
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku.hpp" />
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_addon.hpp" />
+    <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_doublebuffer.h" />
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_framework.hpp" />
   </ItemGroup>
   <ItemGroup>

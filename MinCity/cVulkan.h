@@ -11,6 +11,7 @@
 
 // ^^^^^^^ this is the only area of program that should include these files *****
 #include <Utility/class_helper.h>
+#include <vku/vku_doublebuffer.h>
 #include "Declarations.h"
 #include "RenderInfo.h"
 #include "tTime.h"
@@ -247,9 +248,9 @@ public:
 	}
 
 	// Dynamic Voxels Partition Info Array //
-	__inline vku::VertexBufferPartition* const __restrict& __restrict    getDynamicPartitionInfo() const;
+	__inline vku::VertexBufferPartition* const __restrict& __restrict    getDynamicPartitionInfo(uint32_t const resource_index) const;
 	// Road        ""   ""   "" //
-	__inline vku::VertexBufferPartition* const __restrict& __restrict    getRoadPartitionInfo() const;
+	__inline vku::VertexBufferPartition* const __restrict& __restrict    getRoadPartitionInfo(uint32_t const resource_index) const;
 
 	// Main Methods //
 	void setMouseBufferMode(uint32_t const mode);
@@ -262,6 +263,7 @@ public:
 	void CreateResources();
 	void UpdateDescriptorSetsAndStaticCommandBuffer();
 
+	void WaitPresentIdle();
 	void WaitDeviceIdle();
 	void Cleanup(struct GLFWwindow* const glfwwindow);
 
@@ -270,7 +272,7 @@ public:
 	void OnLost(struct GLFWwindow* const glfwwindow);
 
 	// Specific Rendering //
-	void checkStaticCommandsDirty();
+	void checkStaticCommandsDirty(uint32_t const resource_index);
 	void enableOffscreenRendering(bool const bEnable);	// *only in main thread* is this a safe operation
 	void enableOffscreenCopy(); // *only in main thread* is this a safe operation
 	std::atomic_flag& getOffscreenCopyStatus() { return(_OffscreenCopied); } // when return value (flag) is cleared offscreen copy is available - to be used asynchronously in a seperate thread only!
@@ -291,11 +293,11 @@ public:
 		baseBufferObject.upload(_device, transientPool(), _window->graphicsQueue(), value);
 	}
 	template<typename T>
-	void upload_BufferDeferred(vku::GenericBuffer& __restrict baseBufferObject, vk::CommandBuffer& __restrict cb, vku::GenericBuffer& __restrict stagingBuffer, T const& __restrict value, vk::DeviceSize const sizeInBytes, vk::DeviceSize const maxsizeInBytes = 0) const {
+	void uploadBufferDeferred(vku::GenericBuffer& __restrict baseBufferObject, vk::CommandBuffer& __restrict cb, vku::GenericBuffer& __restrict stagingBuffer, T const& __restrict value, vk::DeviceSize const sizeInBytes, vk::DeviceSize const maxsizeInBytes = 0) const {
 		baseBufferObject.uploadDeferred(cb, stagingBuffer, value, sizeInBytes, (0 == maxsizeInBytes ? sizeInBytes : maxsizeInBytes) );
 	}
 	template<typename T>
-	void upload_BufferDeferred(vku::GenericBuffer& __restrict baseBufferObject, vk::CommandBuffer& __restrict cb, vku::GenericBuffer& __restrict stagingBuffer, const std::vector<T, tbb::scalable_allocator<T> > & __restrict value, size_t const maxreservecount = 0) const {
+	void uploadBufferDeferred(vku::GenericBuffer& __restrict baseBufferObject, vk::CommandBuffer& __restrict cb, vku::GenericBuffer& __restrict stagingBuffer, const std::vector<T, tbb::scalable_allocator<T> > & __restrict value, size_t const maxreservecount = 0) const {
 		baseBufferObject.uploadDeferred(cb, stagingBuffer, value, maxreservecount);
 	}
 
@@ -314,7 +316,7 @@ private:
 		vku::ShaderModule const& __restrict frag,
 		uint32_t const subPassIndex = 0U);
 	template<uint32_t const childIndex>
-	void CreateVoxelChildResource(vk::Pipeline& pipeline, vku::VertexBufferPartition const* const& partition);
+	void CreateVoxelChildResource(vk::Pipeline& pipeline, vku::double_buffer<vku::VertexBufferPartition const*>&& partition);
 
 	void CreateNuklearResources();
 
@@ -496,9 +498,9 @@ private: // ### private instance
 private: // ### private skeleton, private instance
 	static struct sNUKLEARDATA
 	{
-		vku::UniformBuffer				_ubo;
-		vku::DynamicVertexBuffer		_vbo;
-		vku::DynamicIndexBuffer			_ibo;
+		vku::UniformBuffer									_ubo;
+		vku::double_buffer<vku::DynamicVertexBuffer>		_vbo;
+		vku::double_buffer<vku::DynamicIndexBuffer>			_ibo;
 
 		vk::UniquePipelineLayout		pipelineLayout;
 		vk::Pipeline					pipeline;
@@ -508,8 +510,10 @@ private: // ### private skeleton, private instance
 		~sNUKLEARDATA()
 		{
 			_ubo.release();
-			_vbo.release();
-			_ibo.release();
+			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+				_vbo[i].release();
+				_ibo[i].release();
+			}
 
 			pipelineLayout.release();
 			sets.clear(); sets.shrink_to_fit();
@@ -519,12 +523,12 @@ private: // ### private skeleton, private instance
 	//-------------------------------------------------------------------------------------------------------------------------------//
 	static struct sRTSHARED_DATA
 	{
-		vku::UniformBuffer				_ubo;
-		vk::UniqueDescriptorSetLayout	descLayout[eVoxelDescSharedLayout::_size()];
+		vku::double_buffer<vku::UniformBuffer>	_ubo;
+		vk::UniqueDescriptorSetLayout			descLayout[eVoxelDescSharedLayout::_size()];
 
 		~sRTSHARED_DATA()
 		{
-			_ubo.release();
+			_ubo[0].release(); _ubo[1].release();
 			for (uint32_t iDx = 0; iDx < eVoxelDescSharedLayout::_size(); ++iDx) {
 				descLayout[iDx].release();
 			}
@@ -554,43 +558,43 @@ private: // ### private skeleton, private instance
 	//-------------------------------------------------------------------------------------------------------------------------------//
 	static struct sRTDATA
 	{
-		VertexBufferPool::iterator const		_vbo;
-		vk::Pipeline							pipeline;
+		vku::double_buffer<VertexBufferPool::iterator const>		_vbo;
+		vk::Pipeline												pipeline;
 
 		sRTDATA()
-			: _vbo(_vbos.emplace_back(nullptr)) // pointer to available position in vector
+			: _vbo{ _vbos.emplace_back(nullptr), _vbos.emplace_back(nullptr) } // pointer to available position in vector
 		{}
 		~sRTDATA() = default;
 	} _rtData[eVoxelPipeline::_size()];
 	// ****** //
 	static struct sRTDATA_CHILD
 	{
-		sRTDATA const&							parent;
-		vk::Pipeline							pipeline;
-		vku::VertexBufferPartition const*		vbo_partition_info;
-		bool const								transparency,
-												mask;
+		sRTDATA const&												parent;
+		vk::Pipeline												pipeline;
+		vku::double_buffer<vku::VertexBufferPartition const*>		vbo_partition_info;
+		bool const													transparency,
+																	mask;
 
 		sRTDATA_CHILD(sRTDATA const& parent_, bool const transparency_, bool const mask_)
-			: parent(parent_), vbo_partition_info(nullptr), transparency(transparency_), mask(mask_)
+			: parent(parent_), vbo_partition_info{ nullptr, nullptr }, transparency(transparency_), mask(mask_)
 		{}
 		~sRTDATA_CHILD() = default;
 	} _rtDataChild[eVoxelPipelineCustomized::_size()];
 	//-------------------------------------------------------------------------------------------------------------------------------//
 	static struct sVOLUMETRICLIGHTDATA
 	{
-		vku::UniformBuffer const&		_ubo;
-		vku::VertexBuffer				_vbo;
-		vku::IndexBuffer				_ibo;
-		uint32_t						index_count;
+		vku::double_buffer<vku::UniformBuffer> const&	_ubo;
+		vku::VertexBuffer								_vbo;
+		vku::IndexBuffer								_ibo;
+		uint32_t										index_count;
 
 		vk::UniquePipelineLayout		pipelineLayout;
 		vk::Pipeline					pipeline;
 		vk::UniqueDescriptorSetLayout	descLayout;
 		std::vector<vk::DescriptorSet>	sets;
 
-		sVOLUMETRICLIGHTDATA(vku::UniformBuffer const& commonshared_ubo)
-			: _ubo(commonshared_ubo), index_count(0)
+		sVOLUMETRICLIGHTDATA(vku::double_buffer<vku::UniformBuffer> const& common_shared_ubo)
+			: _ubo(common_shared_ubo), index_count(0)
 		{}
 
 		~sVOLUMETRICLIGHTDATA()
@@ -632,7 +636,7 @@ public:
 
 private:
 	template<uint32_t const descriptor_set>
-	STATIC_INLINE void bindVoxelDescriptorSet(vk::CommandBuffer& __restrict cb);
+	STATIC_INLINE void bindVoxelDescriptorSet(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
 
 	template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks = 0>
 	STATIC_INLINE uint32_t const renderDynamicVoxels(vku::static_renderpass const& s, sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks = nullptr);
@@ -788,8 +792,10 @@ void cVulkan::CreateVoxelChildResource(
 {
 	// only specializes pipeline, everything else is owned by parent sRTDATA
 	cVulkan::sRTDATA_CHILD& rtData(_rtDataChild[childIndex]);
-	// initialize const pointer to the correct vertex buffer partition info, partition memory is allocated before any calols to this function
-	rtData.vbo_partition_info = &(*rtData.parent._vbo)->partitions()[childIndex + 1];
+	// initialize const pointer to the correct vertex buffer partition info, partition memory is allocated before any calls to this function
+	for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
+		rtData.vbo_partition_info[resource_index] = &(*rtData.parent._vbo[resource_index])->partitions()[childIndex + 1];
+	}
 
 	// Make a pipeline to use the vertex format and shaders.
 	vku::PipelineMaker pm(width, height);
@@ -839,32 +845,34 @@ void cVulkan::CreateVoxelChildResource(
 } 
 // always dynamic - overload for referencing a shared pipeline, and a reference to an existing partition
 template<uint32_t const childIndex>
-void cVulkan::CreateVoxelChildResource(vk::Pipeline& pipeline, vku::VertexBufferPartition const* const& partition)
+void cVulkan::CreateVoxelChildResource(vk::Pipeline& pipeline, vku::double_buffer<vku::VertexBufferPartition const*>&& partition)
 {
 	// only specializes pipeline, everything else is owned by parent sRTDATA
 	cVulkan::sRTDATA_CHILD& rtData(_rtDataChild[childIndex]);
 
 	rtData.pipeline = pipeline;  // reference
-	rtData.vbo_partition_info = partition;
+	rtData.vbo_partition_info = std::move(partition);
 }
 
-__inline vku::VertexBufferPartition* const __restrict& __restrict cVulkan::getDynamicPartitionInfo() const {
-	return((*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo)->partitions());
+__inline vku::VertexBufferPartition* const __restrict& __restrict cVulkan::getDynamicPartitionInfo(uint32_t const resource_index) const {
+	return((*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->partitions());
 }
-__inline vku::VertexBufferPartition* const __restrict& __restrict cVulkan::getRoadPartitionInfo() const {
-	return((*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo)->partitions());
+__inline vku::VertexBufferPartition* const __restrict& __restrict cVulkan::getRoadPartitionInfo(uint32_t const resource_index) const {
+	return((*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index])->partitions());
 }
 
 template<uint32_t const descriptor_set>
-STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(vk::CommandBuffer& __restrict cb)
+STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(uint32_t const resource_index, vk::CommandBuffer& __restrict cb)
 {
 	cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_rtSharedDescSet[descriptor_set].pipelineLayout, 0,
-		_rtSharedDescSet[descriptor_set].sets[0], nullptr);
+		_rtSharedDescSet[descriptor_set].sets[resource_index], nullptr);
 }
 
 template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks>
 STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass const& s, [[maybe_unused]] sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks)
 {
+	uint32_t const resource_index(s.resource_index);
+
 	[[maybe_unused]]
 	uint32_t ActiveMaskCount(0);
 
@@ -878,14 +886,14 @@ STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass
 
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_DYNAMIC_BASIC + voxel_pipeline_index;
 
-	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo)->ActiveVertexCount<VertexDecl::VoxelDynamic>();
+	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
 	if (0 != ActiveVertexCount) {
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo)->buffer(), vk::DeviceSize(0));
+		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 		// main partition (always starts at vertex positiob 0)
 		{
-			uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo)->partitions()[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].active_vertex_count;
+			uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].active_vertex_count;
 			if (0 != partition_vertex_count) {
 				s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 				s.cb.draw(partition_vertex_count, 1, 0, 0);
@@ -898,7 +906,7 @@ STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass
 		for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
 
 			sRTDATA_CHILD const& __restrict rtDataChild(_rtDataChild[child]);
-			vku::VertexBufferPartition const* const __restrict child_partition = rtDataChild.vbo_partition_info;
+			vku::VertexBufferPartition const* const __restrict child_partition = rtDataChild.vbo_partition_info[resource_index];
 			if (nullptr != child_partition && !rtDataChild.transparency) {
 
 				if (!rtDataChild.mask) {
@@ -928,14 +936,16 @@ STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 {
+	uint32_t const resource_index(s.resource_index);
+
 	// static voxels
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC + voxel_pipeline_index;
 
-	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo)->ActiveVertexCount<VertexDecl::VoxelNormal>();
+	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
 	if (0 != ActiveVertexCount) {
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo)->buffer(), vk::DeviceSize(0));
+		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 		s.cb.draw(ActiveVertexCount, 1, 0, 0);
 	}
 }
@@ -943,17 +953,19 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
 {
+	uint32_t const resource_index(s.resource_index);
+
 	// roads
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_BASIC + voxel_pipeline_index;
 
-	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo)->ActiveVertexCount<VertexDecl::VoxelNormal>();
+	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
 	if (0 != ActiveVertexCount) {
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo)->buffer(), vk::DeviceSize(0));
+		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 		// main partition (always starts at vertex positiob 0)
 		{
-			uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo)->partitions()[eVoxelRoadVertexBufferPartition::PARENT_MAIN].active_vertex_count;
+			uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_MAIN].active_vertex_count;
 			if (0 != partition_vertex_count) {
 				s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 				s.cb.draw(partition_vertex_count, 1, 0, 0);
@@ -965,14 +977,16 @@ STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 {
+	uint32_t const resource_index(s.resource_index);
+
 	// terrain
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC + voxel_pipeline_index;
 
-	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo)->ActiveVertexCount<VertexDecl::VoxelNormal>();
+	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
 	if (0 != ActiveVertexCount) {
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo)->buffer(), vk::DeviceSize(0));
+		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 		s.cb.draw(ActiveVertexCount, 1, 0, 0);
 	}
 }

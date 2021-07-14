@@ -62,8 +62,8 @@ namespace world
 			vku::GenericBuffer		reset_subgroup_layer_count_max,
 									reset_shared_buffer;
 
-			vku::StorageBuffer		subgroup_layer_count_max,
-									shared_buffer;
+			vku::double_buffer<vku::StorageBuffer>		subgroup_layer_count_max,
+														shared_buffer;
 		} Buffers;
 
 	public:
@@ -106,7 +106,7 @@ namespace world
 		
 		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
 			vku::DynamicVertexBuffer* const* const& __restrict vbo, vku::UniformBuffer& __restrict ubo);
-		void AcquireTransferQueueOwnership(vk::CommandBuffer& __restrict cb);
+		void AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
 																																					// Order of operations, *each operation is dependent on previous operation*
 		void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdate = false);		//			0
 		void __vectorcall UpdateUniformState(float const tRemainder);																				//			1
@@ -180,12 +180,12 @@ namespace world
 
 		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
-		void UpdateDescriptorSet_VolumetricLightUpsample(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
+		void UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		
 		void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView0, vk::ImageView const& __restrict guiImageView1, SAMPLER_SET_STANDARD_POINT);
 		
-		void UpdateDescriptorSet_VoxelCommon(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO);
-		void UpdateDescriptorSet_Voxel_ClearMask(vku::DescriptorSetUpdater& __restrict ds);
+		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO);
+		void UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict ds);
 
 		__inline point2D_t const* const __restrict lookupVoxelModelInstanceRootIndex(uint32_t const hash) const;  // read-only access
 		__inline point2D_t * const __restrict acquireVoxelModelInstanceRootIndex(uint32_t const hash);  // read-write access
@@ -236,7 +236,7 @@ namespace world
 
 		void __vectorcall UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate = false);
 		
-		void createAllBuffers();
+		void createAllBuffers(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue);
 		void OutputVoxelStats() const;
 		void RenderTask_Normal(uint32_t const resource_index) const;
 		void RenderTask_Minimap() const;

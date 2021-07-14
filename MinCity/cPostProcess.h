@@ -56,10 +56,12 @@ public:
 __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 								   struct cVulkan::sPOSTAADATA const& __restrict render_data) const
 {
+	uint32_t const resource_index(pp.resource_index);
+
 	// begin "actual render pass"
 	pp.cb.beginRenderPass(pp.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
 
-	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout, 0, render_data.sets[0], nullptr);
+	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout, 0, render_data.sets[resource_index], nullptr);
 	
 	// ----- temporal resolve "psuedo-pass"
 	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[0]);

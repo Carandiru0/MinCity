@@ -19,7 +19,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 //													  getLightFast()                getLight()
 // or define nothing at all b4 this header is included for default highest quality sampling
 
-// must have defined a :
+// **must** have defined a :
+// layout (constant_id = any) const float VolumeLength = 0.0f; // This length must be scaled by the voxel size. Pass it in getLight()
 // layout (binding = any) uniform sampler3D volumeMap[]; // at least array size of 2, with DD at index 0, COLOR at index 1
 
 // FRAGMENT - - - - In = xzy space (matching 3D textures width,depth,height)
@@ -139,8 +140,6 @@ void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in co
 	//lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions);
 }
 
-#define DISTANCE_SCALE (0.125f) // matches scale of a minivoxel....
-
 // main public functions
 #ifdef FAST_LIGHTMAP
 vec3 getLightFast(out vec3 light_color, out float attenuation, out float normalized_distance, in const vec3 uvw, in const float volume_length) 
@@ -151,7 +150,7 @@ vec3 getLightFast(out vec3 light_color, out float attenuation, out float normali
 	    
 	normalized_distance = light_direction_distance.a;
 
-	const float light_distance = light_direction_distance.a * volume_length * DISTANCE_SCALE; // denormalization and scaling to world coordinates
+	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
 	attenuation = 1.0f / (1.0f + light_distance*light_distance);  
 
@@ -164,7 +163,7 @@ vec3 getReflectionLightFast(out vec3 light_color, out float attenuation, in cons
 
 	getReflectionLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
 	    
-	const float light_distance = light_direction_distance.a * volume_length * DISTANCE_SCALE; // denormalization and scaling to world coordinates
+	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
 	attenuation = 1.0f / (1.0f + light_distance*light_distance);  
 
@@ -179,7 +178,7 @@ vec3 getLight(out vec3 light_color, out float attenuation, in const vec3 uvw, in
 
 	getLightMap(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
 	    
-	const float light_distance = light_direction_distance.a * volume_length * DISTANCE_SCALE; // denormalization and scaling to world coordinates
+	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
 	attenuation = 1.0f / (1.0f + light_distance*light_distance);  
 

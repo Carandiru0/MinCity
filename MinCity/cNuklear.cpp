@@ -381,7 +381,7 @@ cNuklear::cNuklear()
 	: _fontTexture(nullptr), _ctx(nullptr), _atlas(nullptr), _cmds(nullptr), _win(nullptr),
 	_bUniformSet(false), _bUniformAcquireRequired(false),
 	_bAcquireRequired(false),
-	_bGUIDirty(false), _bEditControlFocused(false),
+	_bGUIDirty{ false, false }, _bEditControlFocused(false),
 	_uiWindowEnabled(0), _iWindowQuitSelection(0), _iWindowSaveSelection(0), _iWindowLoadSelection(0),
 	_uiPauseProgress(0),
 	_bHintReset(false), _saveWindow{}, _loadWindow{},
@@ -614,7 +614,7 @@ void cNuklear::LoadGUITextures()
 	});
 }
 
-void  cNuklear::Upload(vk::CommandBuffer& __restrict cb_transfer,
+void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restrict cb_transfer,
 					   vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo)
 {	
 	static constexpr size_t const VERTICES_SZ = sizeof(VertexDecl::nk_vertex) * NK_MAX_VERTEX_COUNT;
@@ -623,7 +623,7 @@ void  cNuklear::Upload(vk::CommandBuffer& __restrict cb_transfer,
 	vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);	// eOneTimeSubmit = cb updated every frame
 	cb_transfer.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb_transfer, vkNames::CommandBuffer::OVERLAY_TRANSFER);
 
-	if (_bGUIDirty)
+	if (_bGUIDirty[resource_index])
 	{	
 		{
 			/* fill convert configuration */
@@ -660,8 +660,8 @@ void  cNuklear::Upload(vk::CommandBuffer& __restrict cb_transfer,
 			nk_convert(_ctx, _cmds, &vbuf, &ebuf, &config);
 #endif
 
-			MinCity::Vulkan.upload_BufferDeferred(vbo, cb_transfer, _stagingBuffer[0], _vertices, vbuf.needed, VERTICES_SZ);
-			MinCity::Vulkan.upload_BufferDeferred(ibo, cb_transfer, _stagingBuffer[1], _indices, ebuf.needed, INDICES_SZ);
+			MinCity::Vulkan.uploadBufferDeferred(vbo, cb_transfer, _stagingBuffer[0][resource_index], _vertices, vbuf.needed, VERTICES_SZ);
+			MinCity::Vulkan.uploadBufferDeferred(ibo, cb_transfer, _stagingBuffer[1][resource_index], _indices, ebuf.needed, INDICES_SZ);
 
 			{ // ## RELEASE ## //
 				static constexpr size_t const buffer_count(2ULL);
@@ -689,7 +689,7 @@ void  cNuklear::Upload(vk::CommandBuffer& __restrict cb_transfer,
 			_bUniformAcquireRequired = true; // flag that acquire operation needs to take place to complement previous release operation
 		}
 
-		_bGUIDirty = false;
+		_bGUIDirty[resource_index] = false;
 	}
 	// else is an empty cb but still submitted so normal flow continues (minimal overhead for ease of logical flow)
 
@@ -1295,6 +1295,10 @@ void cNuklear::draw_lut_window(tTime const& __restrict tNow, uint32_t const heig
 // this local time should not be passed to any child functions - only local to this function
 // except for _ctx->delta_time_seconds
 // ********************************************************************************************
+void cNuklear::SetGUIDirty()
+{
+	_bGUIDirty[0] = _bGUIDirty[1] = true; // both buffers must be reset so that they are in sync from frame to frame
+}
 void  cNuklear::UpdateGUI()
 {
 	tTime const tLocal(high_resolution_clock::now());
@@ -1307,7 +1311,7 @@ void  cNuklear::UpdateGUI()
 	nk_clear(_ctx); // ########## ONLY PLACE THIS IS CLEARED #########  //
 	_ctx->delta_time_seconds = fp_seconds(tLocal - tLocalLast).count(); // update internal timing of context 
 	_bEditControlFocused = false; // reset
-	_bGUIDirty = true; // signal upload is neccessary 
+	SetGUIDirty(); // signal upload is neccessary 
 
 	/* GUI */
 	static bool bLastPaused(true);

@@ -120,8 +120,6 @@ private:
 			// write-only position and packed color to gpu staging buffer
 			// stores are used instead of streaming, could potentially bbe a new load very soon
 			XMStoreFloat4A(_cache + index, XMVectorSetW(in, float(in_packed_color)));
-
-			const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Width, Height, Depth>* const __restrict>(this)->update_tracking(index);
 		}
 		else { // existing
 			

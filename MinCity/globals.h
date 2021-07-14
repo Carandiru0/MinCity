@@ -164,7 +164,6 @@ namespace Globals
 	static constexpr double const MAXZ_DEPTH = (167.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
-	static constexpr uint32_t const INTERVAL_LIGHT_UPDATE = 50;  // 50ms = 20fps maximum latency between lighting updates *DO NOT CHANGE* matches framerate of gifs and is a fluid viewing experience
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 42;	 // 42ms = 24fps maximum gui update interval when no input is flagging the gui to be updated
 	
 	static constexpr uint32_t const MIN_BLACK_LVL_EMISSIVE = 8;

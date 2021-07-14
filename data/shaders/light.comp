@@ -23,8 +23,7 @@ const vec3 group_size = ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
 
 layout (local_size_x = int(group_size.x), local_size_y = int(group_size.y), local_size_z = int(group_size.z)) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
 
-// SEED uses PING output, hardcoded, push constants not required for seed stage
-#ifndef SEED
+// SEED uses PING output, hardcoded, however SEED input requires pc.index_input
 layout (push_constant) restrict readonly uniform PushConstant {
 	layout(offset=0) int		current_step;		//  JFA
 	layout(offset=4) uint		index_output;		// __|_____________________________________________________________________
@@ -33,12 +32,11 @@ layout (push_constant) restrict readonly uniform PushConstant {
 	layout(offset=16) mat4		view;				//   |
 													// Filter
 } pc;
-#endif
 
 #define LIGHT 0
 #define OPACITY 1
 
-layout (binding = 0) uniform sampler3D seedMap;	// lightprobe map
+layout (binding = 0) uniform sampler3D seedMap[2];	// lightprobe map
 layout (binding = 1) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
 layout (binding = 2, rgba32f) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
 //////////////////////////////////////////////////////////////////////////////////
@@ -83,7 +81,8 @@ bool isLit( in const float sampled_packed_color )
 #ifdef SEED
 vec4 sampleInputVolume( in const ivec3 Location )
 {
-	return( texelFetch(seedMap, Location, 0) ); // best jfa result with texelFetch
+	return( texelFetch(seedMap[pc.index_input], Location, 0) ); // best jfa result with texelFetch
+	//return( mix(texelFetch(seedMap[1 - pc.index_input], Location, 0), texelFetch(seedMap[pc.index_input], Location, 0), 0.5f) ); // best jfa result with texelFetch
 }
 #else
 vec4 sampleInputVolume( in const ivec3 Location )

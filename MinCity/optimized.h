@@ -2,10 +2,6 @@
 
 #pragma intrinsic(memcpy)	// ensure intrinsics are used for un-aligned data
 #pragma intrinsic(memset)	// ensure intrinsics are used for un-aligned data
-// this is for pointers only, so compiler can optimize accordingly if underlying data is known to be aligned
-#pragma intrinsic(__builtin_assume_aligned)
-//#define __builtin_assume_aligned(type, c, alignment) { const_cast<type* __restrict& __restrict>(c) = static_cast<type* const __restrict>(::__builtin_assume_aligned(c, alignment)); }
-
 
 // ***********##############  use scalable_aligned_malloc / scalable_aligned_free to guarentee aligment ###################************* //
 // note: alignas with usage of new() does not guarentee alignment

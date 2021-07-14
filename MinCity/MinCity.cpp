@@ -683,7 +683,7 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld.Render(resource_index);
 	VoxelWorld.UpdateUniformStateLatest();
-	Vulkan.checkStaticCommandsDirty();
+	Vulkan.checkStaticCommandsDirty(resource_index);
 }
 
 void cMinCity::Render()
@@ -801,8 +801,10 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 {
 	ClipCursor(nullptr);
 
-	Vulkan.WaitDeviceIdle(); // huge memory leak bugfix
-	
+	// huge memory leak bugfix
+	Vulkan.WaitPresentIdle();
+	Vulkan.WaitDeviceIdle();
+
 	SAFE_DELETE(City);
 
 	Audio.CleanUp();
@@ -917,7 +919,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					size += info->Size;
 				}
 
-				num_hw_threads = hw_cores.size();
+				num_hw_threads = (int32_t)hw_cores.size();
 
 				bool const hyperthreaded = logical_processors.size() != hw_cores.size();
 

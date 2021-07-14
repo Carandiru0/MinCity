@@ -54,7 +54,7 @@ void main() {
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 
-layout (constant_id = 4) const float VolumeLength = 0.0f;
+layout (constant_id = 4) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
 layout (constant_id = 5) const float LightVolumeDimensions_X = 0.0f;
 layout (constant_id = 6) const float LightVolumeDimensions_Y = 0.0f;
 layout (constant_id = 7) const float LightVolumeDimensions_Z = 0.0f; 
