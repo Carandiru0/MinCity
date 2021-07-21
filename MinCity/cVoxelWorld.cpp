@@ -59,7 +59,7 @@ using namespace world;
 
 */
 
-static struct CameraEntity
+static inline struct CameraEntity
 {
 	static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
 
@@ -105,7 +105,7 @@ static struct CameraEntity
 	{}
 } oCamera;
 
-static alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
+static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
 {
 	Iso::Voxel* __restrict		 _protected;
 	tbb::queuing_rw_mutex		 _lock;
@@ -113,7 +113,7 @@ static alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected 
 	__declspec(safebuffers) __forceinline operator Iso::Voxel* const __restrict() const {
 		return(_protected);
 	}
-} _theGrid;
+} _theGrid{};
 
 static uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
 	UINT8_MAX - GROUND_HEIGHT_NOISE_STEP,
@@ -590,11 +590,8 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	// range is (-144,-144) TopLeft, to (144,144) BottomRight
 	//
 	// Clamp Camera Origin and update //
-	// big bugfix: must add previous fractional offset, otherwise results in choppy motion *do not change*
-	XMVECTOR const xmOrigin = SFM::clamp(XMVectorAdd(XMLoadFloat2A(&oCamera.Origin), XMLoadFloat2A(&oCamera.voxelFractionalGridOffset)),
-		_mm_set1_ps(Iso::MIN_VOXEL_FCOORD), _mm_set1_ps(Iso::MAX_VOXEL_FCOORD));
+	XMVECTOR const xmOrigin = SFM::clamp(XMLoadFloat2A(&oCamera.Origin), _mm_set1_ps(Iso::MIN_VOXEL_FCOORD), _mm_set1_ps(Iso::MAX_VOXEL_FCOORD));
 	
-		
 	point2D_t voxelIndex(v2_to_p2D(xmOrigin));
 
 	point2D_t const visibleRadius(p2D_half(point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z))); // want radius, hence the half value
@@ -613,13 +610,9 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	// Convert Fractional component from GridSpace
 	XMVECTOR const xmFract(SFM::sfract(xmOrigin));  // FOR REALLY SMOOTH SCROLLING //
 
-	XMStoreFloat2A(&oCamera.voxelFractionalGridOffset, xmFract); // shaders - for correction of grid and camera fractional difference *note its already negated just add it to correct
+	XMStoreFloat2A(&oCamera.voxelFractionalGridOffset, xmFract); // store fractional offset of camera origin for later *note its already negated just add it to correct offset*
 
-	// big bugfix: must remove fractional offset so any internal or external usage of the world origin does not "double add" the fractional offset
-	// the fractional offset is manually added to the 3d camera origin and target
-	// this prevents an object translation having the fractional offset in-accurately added to its own origin
-	// if both were added this results in choppy motion *do not change*
-	XMStoreFloat2A(&oCamera.Origin, XMVectorSubtract(xmOrigin, xmFract));
+	XMStoreFloat2A(&oCamera.Origin, xmOrigin);
 
 #ifndef NDEBUG
 	static XMVECTOR DebugVariable;
@@ -804,14 +797,6 @@ namespace world
 	XMVECTOR const __vectorcall getOrigin()
 	{
 		return(XMLoadFloat2A(&oCamera.Origin));
-	}
-	XMVECTOR const __vectorcall getOriginFractionalGridOffsetXY()
-	{
-		return(XMLoadFloat2A(&oCamera.voxelFractionalGridOffset));
-	}
-	XMVECTOR const __vectorcall getOriginFractionalGridOffsetXZ()
-	{
-		return(XMVectorSet(oCamera.voxelFractionalGridOffset.x, 0.0f, oCamera.voxelFractionalGridOffset.y, 0.0f));
 	}
 	v2_rotation_t const& getAzimuth()
 	{
@@ -1725,9 +1710,9 @@ namespace world
 // todo!
 
 // PREVENT REDUNDANT RELOADS BY USING XMGLOBALCONST for XMVECTORF32 for applicable variables
-XMGLOBALCONST inline XMVECTORF32 const _voxelGridToLocal{ Volumetric::Allocation::VOXEL_GRID_VISIBLE_X, Volumetric::Allocation::VOXEL_GRID_VISIBLE_Z };
-XMGLOBALCONST inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z, Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z };
-XMGLOBALCONST inline XMVECTORF32 const _visibleLight{ 2.0f, 1.0f, 2.0f, 1.0f }; // for scaling model extents to account for potential lighting radius
+//XMGLOBALCONST inline XMVECTORF32 const _voxelGridToLocal{ Volumetric::Allocation::VOXEL_GRID_VISIBLE_X, Volumetric::Allocation::VOXEL_GRID_VISIBLE_Z };
+//XMGLOBALCONST inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z, Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z };
+//XMGLOBALCONST inline XMVECTORF32 const _visibleLight{ 2.0f, 1.0f, 2.0f, 1.0f }; // for scaling model extents to account for potential lighting radius
 
 static struct voxelRender // ** static container, all methods and members must be static inline ** //
 {
@@ -1751,7 +1736,7 @@ static struct voxelRender // ** static container, all methods and members must b
 		// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
 		XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
 
-		if (XMVector4GreaterOrEqual(xmIndex, XMVectorZero()))
+		if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
 		{
 			// **** HASH FORMAT 32bits available //
 
@@ -1782,7 +1767,7 @@ static struct voxelRender // ** static container, all methods and members must b
 		// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
 		XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
 
-		if (XMVector4GreaterOrEqual(xmIndex, XMVectorZero()))
+		if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
 		{
 			// **** HASH FORMAT 32bits available //
 
@@ -1876,7 +1861,7 @@ static struct voxelRender // ** static container, all methods and members must b
 		typedef struct alignas(16) __declspec(novtable) sRenderFuncBlockChunk {
 
 		private:
-			point2D_t const 						voxelStart;
+			XMVECTOR const 							voxelStart;
 			Iso::Voxel const* const __restrict		theGrid;
 			tbb::atomic<VOXELGROUND*>& __restrict	voxelGround;
 			tbb::atomic<VOXELROAD*>& __restrict		voxelRoad;
@@ -1888,7 +1873,7 @@ static struct voxelRender // ** static container, all methods and members must b
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
 			__forceinline explicit __vectorcall sRenderFuncBlockChunk(
-				point2D_t const voxelStart_,
+				FXMVECTOR const voxelStart_,
 				Iso::Voxel const* const __restrict theGrid_,
 				tbb::atomic<VOXELGROUND*> & __restrict voxelGround_,
 				tbb::atomic<VOXELROAD*> & __restrict voxelRoad_,
@@ -1931,7 +1916,7 @@ static struct voxelRender // ** static container, all methods and members must b
 						// Now inside screenspacve coordinates
 						// Rendering is FRONT to BACK only (checked)
 						point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
-						XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)));
+						XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(p2D_to_v2(voxelIndex), voxelStart)); // make relative to render start position
 
 						if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
 								
@@ -1983,16 +1968,19 @@ static struct voxelRender // ** static container, all methods and members must b
 
 		} const RenderFuncBlockChunk;
 
-#ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
-		tTime const tGridStart(high_resolution_clock::now());
-#endif
+		// *****************************************************************************************************************//
+		XMVECTOR const xmVoxelStart(XMVectorAdd(p2D_to_v2(voxelStart), XMLoadFloat2A(&oCamera.voxelFractionalGridOffset))); // *bugfix major: the only place the fractional offset needs to be applied.
+																															// all voxel positions rendered are relative to voxelStart
+#ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION																					// geometry shader resolves uv's from this position aswell 
+		tTime const tGridStart(high_resolution_clock::now());																// smooth movement from the camera's point of view is enabled by this offset.
+#endif																														// all voxels, opacitymap, light emitters, everything -derive there position from this singular source.
 		{
 			tbb::queuing_rw_mutex::scoped_lock lock(_theGrid._lock, false); // read-only grid access
 
 			tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 			tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 				voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-				RenderFuncBlockChunk(voxelStart, _theGrid, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
+				RenderFuncBlockChunk(xmVoxelStart, _theGrid, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
 			);
 		}
 		// ####################################################################################################################
@@ -2678,11 +2666,11 @@ namespace world
 	}
 	XMVECTOR const XM_CALLCONV cVoxelWorld::getOrigin() const // World Space (-x,-y) ... (x,y) - not swizzled
 	{
-		return(world::getOrigin());
+		return(XMLoadFloat2A(&oCamera.Origin));
 	}
 	v2_rotation_t const& cVoxelWorld::getAzimuth() const
 	{
-		return(world::getAzimuth());
+		return(oCamera.Azimuth);
 	}
 	float const	cVoxelWorld::getZoomFactor() const
 	{
@@ -3574,7 +3562,6 @@ namespace world
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
 		//pack into vector for uniform buffer layout
-		_currentState.Uniform.aligned_data0 = getOriginFractionalGridOffsetXY(); // xy = fract grid offset
 		_currentState.Uniform.aligned_data0 = XMVectorSetZ(_currentState.Uniform.aligned_data0, (time_delta + time_delta_last) * 0.5f); // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
 		_currentState.Uniform.aligned_data0 = XMVectorSetW(_currentState.Uniform.aligned_data0, _currentState.time); // w = time
 
@@ -3584,13 +3571,10 @@ namespace world
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
 		// view matrix derived from eyePos
-		// the fractional offset here cancels out the "staircase" pattern that would be evident when scrolling - **important that the *target* gridoffset is used
-		// swizzle is ONLY for 2D vector to 3D vector conversion, placing x,y into x & z
-		// evrything is still in world transform where xyz = width, height, depth
-		XMVECTOR const xmOffset = getOriginFractionalGridOffsetXZ();
-		_currentState.Uniform.eyePos = XMVectorAdd(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder), xmOffset);
-		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(_currentState.Uniform.eyePos, xmOffset)); // target is always 0,0,0 (not including fractional grid offset)
-
+		// the fractional offset does not get applied here!
+		_currentState.Uniform.eyePos = SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder);
+		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0
+																						 // this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		// **panning is isolated to not affect raymarching uniformity**
 #ifdef PANNING_ENABLED
 		_currentState.pan = SFM::lerp(_lastState.pan, _targetState.pan, tRemainder);
@@ -3599,7 +3583,7 @@ namespace world
 #endif
 		
 		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(_currentState.Uniform.eyePos, _currentState.pan),
-												 XMVectorAdd(_currentState.pan, xmOffset), Iso::xmUp);
+												 _currentState.pan, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 		_currentState.Uniform.view = xmView;
 		_OpacityMap.pushViewMatrix(xmView);
 

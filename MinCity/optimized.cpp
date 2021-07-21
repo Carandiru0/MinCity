@@ -434,17 +434,17 @@ namespace internal_mem
 		static constexpr size_t const block_size = _cache_size;
 		static constexpr size_t const elements_per_block = block_size / element_size;	// cache size is always configured to be a multiple of element sizes, so there is never a remainder for elements per block
 
-		T* const __restrict cache((T* const __restrict)_streaming_cache);
+		T* const __restrict cache(std::assume_aligned<CACHE_LINE_BYTES>((T* const __restrict)_streaming_cache));
 
 // 4096 bytes / iteration
 		for (; bytes >= block_size; bytes -= block_size) {
 
-			_mm_mfence(); // isolates streaming loads from streaming stores
+			__faststorefence(); // isolates streaming loads from streaming stores
 
-			_mm_prefetch((const CHAR*)src, _MM_HINT_T0);
+			_mm_prefetch((const CHAR*)src, _MM_HINT_NTA);
 			__memcpy_aligned_stream_load(cache, src, block_size);
 
-			_mm_mfence(); // isolates streaming loads from streaming stores
+			__faststorefence(); // isolates streaming loads from streaming stores
 
 			_mm_prefetch((const CHAR*)cache, _MM_HINT_T0);
 			__memcpy_aligned_stream_store(dest, cache, block_size);
@@ -455,12 +455,14 @@ namespace internal_mem
 // residual block bytes, < 4096 bytes
 		if (bytes) {
 
-			_mm_mfence(); // isolates streaming loads from streaming stores
+			__faststorefence(); // isolates streaming loads from streaming stores
 
+			_mm_prefetch((const CHAR*)src, _MM_HINT_NTA);
 			__memcpy_aligned_stream_load(cache, src, bytes);
 
-			_mm_mfence(); // isolates streaming loads from streaming stores
+			__faststorefence(); // isolates streaming loads from streaming stores
 
+			_mm_prefetch((const CHAR*)cache, _MM_HINT_T0);
 			__memcpy_aligned_stream_store(dest, cache, bytes);
 
 		}

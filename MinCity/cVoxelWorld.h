@@ -73,7 +73,7 @@ namespace world
 		point2D_t const&			getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const&			getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
 		bool const					isHoveredVoxelIndexOk() const { return(_voxelIndexHoveredOk); } // if false there was a invalid voxelIndex since the hovered voxel index was last updated, eg.) use to detect when clicking on nothing
-		XMVECTOR const XM_CALLCONV	getOrigin() const; // World Space (-x,-y) ... (x,y) - not swizzled
+		XMVECTOR const __vectorcall	getOrigin() const; // World Space (-x,-y) ... (x,y) - not swizzled
 		v2_rotation_t const&		getAzimuth() const;
 		float const					getZoomFactor() const;
 		UniformState const& __vectorcall getCurrentState() const { return(_currentState); }
@@ -152,8 +152,6 @@ namespace world
 		void SetSpecializationConstants_VoxelTerrain_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelTerrain_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
-		void SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
-		void SetSpecializationConstants_VoxelRoad_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelRoad_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 

@@ -292,6 +292,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 #else // normal // centered window on screen
 		middle_point = p2D_sub(p2D_shiftr(max_resolution, 1), p2D_shiftr(framebuffer_size, 1));
+		middle_point.y = 0; // *bugfix: align to top of screen to av				oid issues with taskbar covering bottom area of window.
 #endif
 
 		glfwSetWindowPos(glfwwindow, middle_point.x, middle_point.y);

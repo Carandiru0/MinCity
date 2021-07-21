@@ -28,8 +28,7 @@ namespace world
 
 	// World Space (-x,-y) to (X, Y) Coordinates Only - (Camera Origin) - not swizzled
 	XMVECTOR const __vectorcall getOrigin();
-	XMVECTOR const __vectorcall getOriginFractionalGridOffsetXY();
-	XMVECTOR const __vectorcall getOriginFractionalGridOffsetXZ();
+
 	v2_rotation_t const& getAzimuth();
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only

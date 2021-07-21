@@ -19,9 +19,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #define GROUP_SIZE_XY 8
 #define GROUP_SIZE_Z 4
-const vec3 group_size = ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
 
-layout (local_size_x = int(group_size.x), local_size_y = int(group_size.y), local_size_z = int(group_size.z)) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
+layout (local_size_x = GROUP_SIZE_XY, local_size_y = GROUP_SIZE_XY, local_size_z = GROUP_SIZE_Z) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
 
 // SEED uses PING output, hardcoded, however SEED input requires pc.index_input
 layout (push_constant) restrict readonly uniform PushConstant {
@@ -37,16 +36,16 @@ layout (push_constant) restrict readonly uniform PushConstant {
 #define OPACITY 1
 
 layout (binding = 0) uniform sampler3D seedMap[2];	// lightprobe map
-layout (binding = 1) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
-layout (binding = 2, rgba32f) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
+layout (binding = 1) uniform sampler3D pingpongTexture[3]; // sampling the "ping"
+layout (binding = 2, rgba32f) writeonly restrict uniform image3D pingpongImage[3];	// storing the "pong", -only to be used with imageStore (writeonly)
 //////////////////////////////////////////////////////////////////////////////////
 layout (binding = 3) uniform sampler3D inTemporalDD[2];	// (distance & direction) lightmap history // only signed normalized values
 layout (binding = 4, rg16_snorm) writeonly restrict uniform image3D outTemporalDD[3]; // (distance & direction) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly) // only signed normalized values
-layout (binding = 5) uniform sampler3D inTemporalR[2];	// (reflection color) lightmap history
-layout (binding = 6, rgba8) writeonly restrict uniform image3D outTemporalR[3]; // (reflection color) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly)
-layout (binding = 7) uniform sampler3D inTemporalC[2];	// (color) lightmap history
-layout (binding = 8, rgba8) writeonly restrict uniform image3D outTemporalC[2]; // n temporal history volumes -only to be used with imageStore (writeonly)
-layout (binding = 9, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
+layout (binding = 5) uniform sampler3D inTemporalC[2];	// (color) lightmap history
+layout (binding = 6, rgba8) writeonly restrict uniform image3D outTemporalC[2]; // n temporal history volumes -only to be used with imageStore (writeonly)
+layout (binding = 7, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
+layout (binding = 8) uniform sampler3D inTemporalR[2];	// (reflection color) lightmap history
+layout (binding = 9, rgba8) writeonly restrict uniform image3D outTemporalR[3]; // (reflection color) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly)
 
 // "World Visible Volume"
 layout (constant_id = 0) const float WorldDimensions_Width = 0.0f;
@@ -73,16 +72,11 @@ bool isLit( in const float sampled_packed_color )
 	return( 0.0f != sampled_packed_color );
 }
 
-//void fetch( inout vec3 light_position, inout vec3 light_color, in const float area, in const vec3 voxel) { // interpolates light position
-//	
-//	light_position = fma(textureLod(volumeMap[LIGHT], (voxel + 0.5f) * InvLightVolumeDimensions, 0).xyz, area.xxx, light_position);
-//	light_color = fma(unpackColor(texelFetch(volumeMap[LIGHT], ivec3(voxel + 0.5f), 0).a), area.xxx, light_color); 
-//}
 #ifdef SEED
 vec4 sampleInputVolume( in const ivec3 Location )
 {
+	// seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 	return( texelFetch(seedMap[pc.index_input], Location, 0) ); // best jfa result with texelFetch
-	//return( mix(texelFetch(seedMap[1 - pc.index_input], Location, 0), texelFetch(seedMap[pc.index_input], Location, 0), 0.5f) ); // best jfa result with texelFetch
 }
 #else
 vec4 sampleInputVolume( in const ivec3 Location )
@@ -94,6 +88,7 @@ vec4 sampleInputVolume( in const ivec3 Location )
 
 // ###################################################################################################################################
 #if !defined(MIP)
+const vec3 group_size = ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
 
 shared vec4 warp_lds[GROUP_SIZE_XY][GROUP_SIZE_XY][GROUP_SIZE_Z];
 
@@ -191,7 +186,7 @@ void main()
 #endif
 
 #ifdef SEED
-	imageStore(pingpongImage[0], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp);
+	imageStore(pingpongImage[1], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp); // seed uses hard-coded output of 1 index for pingpong array. 1 = pivot
 #else
 	imageStore(pingpongImage[pc.index_output], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp);
 #endif
@@ -202,74 +197,82 @@ void main()
 
 // ###################################################################################################################################
 #if defined(MIP) // FILTER STEP
+#define index_last index_output
 
+float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location)
+{
+	return(distance(emitter_location, current_location));
+}
+float normalize_distance(in const float d) // normalized distance, [0.0f ... 1.0f]
+{
+	const float inv_max_distance = 1.0f/length(WorldDimensions);
+	return(d * inv_max_distance * 2.0f - 1.0f);
+}
+vec3 emitter_to_direction(in const vec3 emitter_location, in const vec3 current_location)
+{
+	return(normalize(emitter_location - current_location));
+}
 vec4 emitter_to_direction_distance(in const vec3 emitter_location, in const vec3 current_location)
 {
 	vec4 current_direction_distance;
 	current_direction_distance.xyz = emitter_location - current_location;
-	current_direction_distance.w = length(current_direction_distance.xyz);
-	current_direction_distance.xyz = current_direction_distance.xyz / current_direction_distance.w; // normalized
-		
-	const float inv_max_distance = 1.0f/length(WorldDimensions);
-	current_direction_distance.w = current_direction_distance.w * inv_max_distance * 2.0f - 1.0f; // normalized distance, expanded to [-1.0f...1.0f] to leverage full range of 16bit signed texture
-	current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;
+	current_direction_distance.w = length(current_direction_distance.xyz);							// optimized normalized direction + distance with one less sqrt
+	current_direction_distance.xyz = current_direction_distance.xyz / current_direction_distance.w; // <---normalized
 
 	return(current_direction_distance);
 }
 
-void blendDD( in const restrict sampler3D inputEmitter, inout vec4 current_direction_distance, in const vec3 current_location, in const ivec3 location )
-{
-	current_direction_distance += emitter_to_direction_distance(texelFetchOffset(inputEmitter, location, 0, ivec3(-1, 0, 0)).xyz, current_location);
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz);
-	current_direction_distance += emitter_to_direction_distance(texelFetchOffset(inputEmitter, location, 0, ivec3( 1, 0, 0)).xyz, current_location);
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz);
-
-	current_direction_distance += emitter_to_direction_distance(texelFetchOffset(inputEmitter, location, 0, ivec3( 0,-1, 0)).xyz, current_location);
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz);
-	current_direction_distance += emitter_to_direction_distance(texelFetchOffset(inputEmitter, location, 0, ivec3( 0, 1, 0)).xyz, current_location);
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz);
-
-	current_direction_distance += emitter_to_direction_distance(texelFetchOffset(inputEmitter, location, 0, ivec3( 0, 0,-1)).xyz, current_location);
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz);
-	current_direction_distance += emitter_to_direction_distance(texelFetchOffset(inputEmitter, location, 0, ivec3( 0, 0, 1)).xyz, current_location);
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz);
-
-	current_direction_distance.w *= (1.0f/7.0f); // 1 center sample + 6 neighbour samples
-}
-
 // smin removes discontuities (voronoi edges) by blending distance field data correctly
-void temporalBlendDD( in const restrict sampler3D inputTemporalDD, inout vec3 normal, inout float Distance, in const vec3 location )
+void temporalBlendDD( in const restrict sampler3D inputTemporalDD, inout vec3 direction, inout float dist, in const vec3 uvw )
 {
-	// input Distance, normal, are initialized to the locations first sample
+	// input Distance, Direction, are initialized to the locations first sample
 
-	// distance can leverage hw trilinear filtering safetly and accurately unlike direction
-	Distance = mix(Distance, textureLod(inputTemporalDD, location, 0).a, 0.5f);  // trilinear sample!
+	vec4 neighbour;
+	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(-1,0,0));
+	direction += normalize(neighbour.xyz);
+	direction = normalize(direction);
+	dist += neighbour.w;
 
-	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(-1,0,0)).xyz);
-	normal = normalize(normal);
+	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(1,0,0));
+	direction += normalize(neighbour.xyz);
+	direction = normalize(direction);
+	dist += neighbour.w;
 
-	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(1,0,0)).xyz);
-	normal = normalize(normal);
+	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,-1,0));
+	direction += normalize(neighbour.xyz);
+	direction = normalize(direction);
+	dist += neighbour.w;
 
-	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,-1,0)).xyz);
-	normal = normalize(normal);
+	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,1,0));
+	direction += normalize(neighbour.xyz);
+	direction = normalize(direction);
+	dist += neighbour.w;
 
-	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,1,0)).xyz);
-	normal = normalize(normal);
+	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,-1));
+	direction += normalize(neighbour.xyz);
+	direction = normalize(direction);
+	dist += neighbour.w;
 
-	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,-1)).xyz);
-	normal = normalize(normal);
+	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,1));
+	direction += normalize(neighbour.xyz);
+	direction = normalize(direction);
+	dist += neighbour.w;
 
-	normal += normalize(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,1)).xyz);
-	normal = normalize(normal);
+	dist *= (1.0f/7.0f); // 6 neighbour samples + 1 center sample
 }		
 
-void temporalBlendR( in const restrict sampler3D inputTemporalR, inout vec3 color, in const vec3 location )
+vec3 temporalBlendR( in const restrict sampler3D inputTemporalR, in vec3 color, in const vec3 uvw )
 {
 	// input color is initialized to the locations first sample
 
-	// color can leverage hw trilinear filtering safetly and accurately unlike direction
-	color = mix(color, textureLod(inputTemporalR, location, 0).rgb, 0.5f);  // trilinear sample!
+	color += textureLodOffset(inputTemporalR, uvw, 0, ivec3(-1,0,0)).rgb;
+	color += textureLodOffset(inputTemporalR, uvw, 0, ivec3(1,0,0)).rgb;
+	color += textureLodOffset(inputTemporalR, uvw, 0, ivec3(0,-1,0)).rgb;
+	color += textureLodOffset(inputTemporalR, uvw, 0, ivec3(0,1,0)).rgb;
+	color += textureLodOffset(inputTemporalR, uvw, 0, ivec3(0,0,-1)).rgb;
+	color += textureLodOffset(inputTemporalR, uvw, 0, ivec3(0,0,1)).rgb;
+
+	return(color * (1.0f/7.0f)); // 6 neighbour samples + 1 center sample
 }
 
 float attenuation(in const float d)
@@ -279,59 +282,54 @@ float attenuation(in const float d)
 
 const float VOX_SIZE = 0.0625f;
 
-void sampleC(inout vec3 color, in const vec3 location, in const float d0) 
+vec3 sampleC(in const restrict sampler3D inputC, in vec3 color, in const vec3 current_location, in const float d0) 
 {
-	const float max_volume_distance = length(VolumeDimensions);
-	const float volume_distance = d0 * max_volume_distance;
+	const float volume_distance = d0 * length(VolumeDimensions);
 
 	color = color * attenuation(d0 * length(WorldDimensions) * VOX_SIZE);
 
 	vec4 neighbour;
-	neighbour = textureLod(pingpongTexture[pc.index_input], 
-								    (gl_GlobalInvocationID.xyz + volume_distance * vec3(-1,0,0) /* + bn*/) * InvVolumeDimensions, 0);
-	color += unpackColor(neighbour.packed_color) * attenuation(distance(location, neighbour.emitter_location) * VOX_SIZE);
+	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(-1,0,0)) * InvVolumeDimensions, 0);
+	color += unpackColor(neighbour.packed_color) * attenuation(distance(current_location, neighbour.emitter_location) * VOX_SIZE);
 
-	neighbour = textureLod(pingpongTexture[pc.index_input], 
-								    (gl_GlobalInvocationID.xyz + volume_distance * vec3(1,0,0) /* + bn*/) * InvVolumeDimensions, 0);
-	color += unpackColor(neighbour.packed_color) * attenuation(distance(location, neighbour.emitter_location) * VOX_SIZE);
+	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(1,0,0)) * InvVolumeDimensions, 0);
+	color += unpackColor(neighbour.packed_color) * attenuation(distance(current_location, neighbour.emitter_location) * VOX_SIZE);
 
-	neighbour = textureLod(pingpongTexture[pc.index_input], 
-								    (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,-1,0) /* + bn*/) * InvVolumeDimensions, 0);
-	color += unpackColor(neighbour.packed_color) * attenuation(distance(location, neighbour.emitter_location) * VOX_SIZE);
+	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,-1,0)) * InvVolumeDimensions, 0);
+	color += unpackColor(neighbour.packed_color) * attenuation(distance(current_location, neighbour.emitter_location) * VOX_SIZE);
 
-	neighbour = textureLod(pingpongTexture[pc.index_input], 
-								    (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,1,0) /* + bn*/) * InvVolumeDimensions, 0);
-	color += unpackColor(neighbour.packed_color) * attenuation(distance(location, neighbour.emitter_location) * VOX_SIZE);
+	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,1,0)) * InvVolumeDimensions, 0);
+	color += unpackColor(neighbour.packed_color) * attenuation(distance(current_location, neighbour.emitter_location) * VOX_SIZE);
 
-	neighbour = textureLod(pingpongTexture[pc.index_input], 
-								    (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,0,-1) /* + bn*/) * InvVolumeDimensions, 0);
-	color += unpackColor(neighbour.packed_color) * attenuation(distance(location, neighbour.emitter_location) * VOX_SIZE);
+	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,0,-1)) * InvVolumeDimensions, 0);
+	color += unpackColor(neighbour.packed_color) * attenuation(distance(current_location, neighbour.emitter_location) * VOX_SIZE);
 
-	neighbour = textureLod(pingpongTexture[pc.index_input], 
-								    (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,0,1) /* + bn*/) * InvVolumeDimensions, 0);
-	color += unpackColor(neighbour.packed_color) * attenuation(distance(location, neighbour.emitter_location) * VOX_SIZE);
+	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(0,0,1)) * InvVolumeDimensions, 0);
+	color += unpackColor(neighbour.packed_color) * attenuation(distance(current_location, neighbour.emitter_location) * VOX_SIZE);
+
+	return(color);
 }
 
-void temporalBlendC( in const restrict sampler3D inputTemporalC, in const restrict sampler3D inputTemporalDD, inout vec3 color, in const vec3 location, in const float Distance )
+vec3 temporalBlendC( in const restrict sampler3D inputTemporalC, in const restrict sampler3D inputTemporalDD, in vec3 color, in const vec3 uvw, in const float d0 )
 {
 	// this is the correct physical way of blending colors of light, additive blending of adjacent light colors (no mixing)
 	// with additive blending light will accumulate to white in area's of bright mixed colors as it correctly should intensify with nearby lighting
 
-	float emission = attenuation(Distance);
+	float emission = attenuation(d0);
 
-	emission += attenuation(textureLodOffset(inputTemporalDD, location, 0, ivec3(-1,0,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, location, 0, ivec3(1,0,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,-1,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,1,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,-1)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, location, 0, ivec3(0,0,1)).a * 0.5f + 0.5f);
+	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(-1,0,0)).a * 0.5f + 0.5f);
+	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(1,0,0)).a * 0.5f + 0.5f);
+	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,-1,0)).a * 0.5f + 0.5f);
+	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,1,0)).a * 0.5f + 0.5f);
+	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,-1)).a * 0.5f + 0.5f);
+	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,1)).a * 0.5f + 0.5f);
 
-	color += textureLodOffset(inputTemporalC, location, 0, ivec3(-1,0,0)).rgb;
-	color += textureLodOffset(inputTemporalC, location, 0, ivec3(1,0,0)).rgb;
-	color += textureLodOffset(inputTemporalC, location, 0, ivec3(0,-1,0)).rgb;
-	color += textureLodOffset(inputTemporalC, location, 0, ivec3(0,1,0)).rgb;
-	color += textureLodOffset(inputTemporalC, location, 0, ivec3(0,0,-1)).rgb;
-	color += textureLodOffset(inputTemporalC, location, 0, ivec3(0,0,1)).rgb;
+	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(-1,0,0)).rgb;
+	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(1,0,0)).rgb;
+	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(0,-1,0)).rgb;
+	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(0,1,0)).rgb;
+	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(0,0,-1)).rgb;
+	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(0,0,1)).rgb;
 
 	// "One important note here is that we normalise pixel emissive on total number of rays, but pixel colour on the 
 	// total accumulated emissive. This means the colour value maintains it’s magnitude (or brightness) regardless 
@@ -343,7 +341,7 @@ void temporalBlendC( in const restrict sampler3D inputTemporalC, in const restri
 	color /= emission;
 	emission /= 7.0f;
 
-	color = emission * color;
+	return(emission * color);
 }
 
 //const vec3 fix_direction = normalize(vec3(1,0,-1));
@@ -357,71 +355,57 @@ void main()
 */
 
 	const ivec3 iLocation = ivec3(gl_GlobalInvocationID.xyz);
-	
-	// sample new, add to result, then new moves to 0. note: this volume gets pushed to front of "queue"
-	const warp_local warp = textureLod(pingpongTexture[pc.index_input], gl_GlobalInvocationID.xyz * InvVolumeDimensions, 0);
-	//const warp_local warp = texelFetch(pingpongTexture[pc.index_input], iLocation, 0);
+	const vec3 uvw = gl_GlobalInvocationID.xyz * InvVolumeDimensions;
 
-	const vec3 current_location = gl_GlobalInvocationID.xyz * InvVolumeDimensions * WorldDimensions;
+	// spatial interpolation
+	const warp_local last_warp = textureLod(pingpongTexture[pc.index_last], uvw, 0);
+	const warp_local current_warp = textureLod(pingpongTexture[pc.index_input], uvw, 0);
+
+	const vec3 current_location = uvw * WorldDimensions;
 
 	float t0, d0;
 	// #################################################################################################################
 	{	// distance & direction ###
 		
-		vec4 current_direction_distance = emitter_to_direction_distance(warp.emitter_location, current_location);
-		const vec4 original_direction_distance = current_direction_distance;
+		const vec4 last_direction_distance = emitter_to_direction_distance(last_warp.emitter_location, current_location);
+		vec4 current_direction_distance = emitter_to_direction_distance(current_warp.emitter_location, current_location);
 
-		//blendDD(pingpongTexture[pc.index_input], current_direction_distance, current_location, iLocation);
+		// temporal interpolation 
+		current_direction_distance.xyz = normalize(current_direction_distance.xyz + last_direction_distance.xyz);
+		current_direction_distance.w = mix(last_direction_distance.w, current_direction_distance.w, 0.5f);
+		current_direction_distance.w = normalize_distance(current_direction_distance.w);
+		const float original_distance = current_direction_distance.w;
 
-		temporalBlendDD(inTemporalDD[pc.index_filter], current_direction_distance.xyz, current_direction_distance.w, gl_GlobalInvocationID.xyz * InvVolumeDimensions);
-
-		imageStore(outTemporalDD[1 - pc.index_filter], iLocation, current_direction_distance);
+		temporalBlendDD(inTemporalDD[pc.index_filter], current_direction_distance.xyz, current_direction_distance.w, uvw);
 
 		// ### temporal supersampled output - result moves to output
 
-		// // get absolute difference (for vectors, the data, does not require usuage of abs)
+		// // get absolute difference (for vectors, the data, does not require usage of abs)
 		// see: https://homepages.inf.ed.ac.uk/rbf/HIPR2/pixsub.htm
 		{
-			//const vec3 diff_direction = abs(current_direction_distance.xyz - original_direction_distance.xyz);
-			//current_direction_distance.xyz = normalize(current_direction_distance.xyz - diff_direction);
-
-			const float diff_distance = current_direction_distance.w - original_direction_distance.w; // no abs is important
+			const float diff_distance = current_direction_distance.w - original_distance; // no abs is important
 			current_direction_distance.w = current_direction_distance.w - diff_distance;
 			d0 = current_direction_distance.w * 0.5f + 0.5f;
-			t0 = d0 / (original_direction_distance.w * 0.5f + 0.5f); // this parameter is only for *color*
+			t0 = d0 / (original_distance * 0.5f + 0.5f); // this parameter is only for *color*
 		}
 
+		imageStore(outTemporalDD[1 - pc.index_filter], iLocation, current_direction_distance);
+
+		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;
 		imageStore(outTemporalDD[2], iLocation, current_direction_distance);
 	}
 
 	{   // color ###
-
-		{ // reflection
-			vec3 current_reflect_color = unpackColor(warp.packed_color);
-			temporalBlendR(inTemporalR[pc.index_filter], current_reflect_color, gl_GlobalInvocationID.xyz * InvVolumeDimensions);
-			imageStore(outTemporalR[1 - pc.index_filter], iLocation, current_reflect_color.rgbb);
-
-			// ### temporal supersampled output - result moves to output
-
-			// this auto corrects too much temporal feedback from history frames (trails bug)
-			// its not introducing jitter (shaky light)
-			// has still a little temporal feedback but is limited unlike before
-			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
-			current_reflect_color = mix(unpackColor(warp.packed_color), current_reflect_color, t0);
-
-			imageStore(outTemporalR[2], iLocation, vec4(current_reflect_color.rgb, 1.0f));
-		}
+		const vec3 current_color = mix(unpackColor(last_warp.packed_color), unpackColor(current_warp.packed_color), 0.5f);
 
 		{ // light
 			// Input sample of blended area, see : 
 			// https://www.shadertoy.com/view/fdjXDD
-			vec3 current_color = unpackColor(warp.packed_color)
-			;
-			// d0 is currently normalized to range [0.0f ... 1.0f]
-			sampleC(current_color, current_location, d0);
 
-			temporalBlendC(inTemporalC[pc.index_filter], inTemporalDD[pc.index_filter], current_color, gl_GlobalInvocationID.xyz * InvVolumeDimensions, d0);
-			imageStore(outTemporalC[1 - pc.index_filter], iLocation, current_color.rgbb);
+			// d0 is currently normalized to range [0.0f ... 1.0f]
+			vec3 current_light_color = sampleC(pingpongTexture[pc.index_input], current_color, current_location, d0);
+
+			current_light_color = temporalBlendC(inTemporalC[pc.index_filter], inTemporalDD[pc.index_filter], current_light_color, uvw, d0);
 
 			// ### temporal supersampled output - result moves to output
 
@@ -429,9 +413,25 @@ void main()
 			// its not introducing jitter (shaky light)
 			// has still a little temporal feedback but is limited unlike before
 			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
-			current_color = mix(unpackColor(warp.packed_color), current_color, t0);
+			current_light_color = mix(current_color, current_light_color, t0);
 			
-			imageStore(outTemporalCFinal, iLocation, vec4(current_color.rgb, 1.0f));
+			imageStore(outTemporalC[1 - pc.index_filter], iLocation, current_light_color.rgbb);
+			imageStore(outTemporalCFinal, iLocation, vec4(current_light_color.rgb, 1.0f));
+		}
+
+		{ // reflection
+			vec3 current_reflect_color = temporalBlendR(inTemporalR[pc.index_filter], current_color, uvw);
+
+			// ### temporal supersampled output - result moves to output
+
+			// this auto corrects too much temporal feedback from history frames (trails bug)
+			// its not introducing jitter (shaky light)
+			// has still a little temporal feedback but is limited unlike before
+			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
+			current_reflect_color = mix(current_color, current_reflect_color, t0);
+
+			imageStore(outTemporalR[1 - pc.index_filter], iLocation, current_reflect_color.rgbb);
+			imageStore(outTemporalR[2], iLocation, vec4(current_reflect_color.rgb, 1.0f));
 		}
 	}
 

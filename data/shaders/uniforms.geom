@@ -149,7 +149,7 @@ void EmitVxlVertex(in const vec3 center, in const vec3 tangent)
 #endif
 #if !defined(BASIC)
 	// main uvw coord for light, common to terrain, road & normal voxels
-	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias - vec3(fract_offset().x, 0.0f, fract_offset().y)) * InvToIndex;
+	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
 	// final output must be xzy and transformed to eye/view space for fragment shader
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0

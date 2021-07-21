@@ -245,9 +245,9 @@ void main() {
 #endif
 
 #if defined(HEIGHT) || defined(ROAD) // terrain/road voxels only
-  Out.world_uv.xy = inUV.xy;
+  Out.world_uv.xy = inUV.xy; //  - mousebuffer voxelindex ID
 #elif defined(BASIC)
-  Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels
+  Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
 #endif
 
 #if !(defined(HEIGHT) || defined(ROAD) || defined(BASIC)) // voxels only

@@ -190,7 +190,7 @@ namespace Volumetric
 
 			SAFE_RELEASE_DELETE(ComputeLightDispatchBuffer);
 
-			for (uint32_t i = 0; i < ePingPongMap::_size(); ++i) {
+			for (uint32_t i = 0; i < 3; ++i) {
 				SAFE_RELEASE_DELETE(PingPongMap[i]);
 			}
 
@@ -253,7 +253,7 @@ namespace Volumetric
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightProbeMap.imageGPUIn[resource_index]->image(), vkNames::Image::LightProbeMap);
 			}
 			
-			for (uint32_t i = 0; i < ePingPongMap::_size(); ++i) { // ping and pong only
+			for (uint32_t i = 0; i < 3; ++i) {
 				PingPongMap[i] = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);
 
@@ -273,11 +273,11 @@ namespace Volumetric
 
 			for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
 				LightMapHistory[i].DistanceDirection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR16G16B16A16Snorm, false, true); // only signed normalized values
+					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR16G16B16A16Snorm, false, false); // only signed normalized values
 				LightMapHistory[i].Color = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, true);
+					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, false);
 				LightMapHistory[i].Reflection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, true);
+					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, false);
 
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].DistanceDirection->image(), vkNames::Image::LightMapHistory_DistanceDirection);
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].Color->image(), vkNames::Image::LightMapHistory_Color);
@@ -290,7 +290,7 @@ namespace Volumetric
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)OpacityMap->image(), vkNames::Image::OpacityMap);
 
 			FMT_LOG(TEX_LOG, "LightProbe Volumetric data: {:n} bytes", LightProbeMap.imageGPUIn[0]->size() + LightProbeMap.imageGPUIn[1]->size());
-			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[PING]->size() + PingPongMap[PONG]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size() + (LightMapHistory[0].DistanceDirection->size() + LightMapHistory[0].Color->size() + LightMapHistory[0].Reflection->size()) * TEMPORAL_VOLUMES);
+			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + PingPongMap[2]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size() + (LightMapHistory[0].DistanceDirection->size() + LightMapHistory[0].Color->size() + LightMapHistory[0].Reflection->size()) * TEMPORAL_VOLUMES);
 			FMT_LOG(TEX_LOG, "Opacitymap [GPU Resident Only] Volumetric data: {:n} bytes", OpacityMap->size());
 
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -309,8 +309,9 @@ namespace Volumetric
 				LightMap.Color->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);					// *only* read by fragment shaders
 				LightMap.Reflection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);				// *only* read by fragment shaders
 
-				PingPongMap[PING]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
-				PingPongMap[PONG]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
+				PingPongMap[0]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
+				PingPongMap[1]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
+				PingPongMap[2]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 
 				for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
 					LightMapHistory[i].DistanceDirection->setLayoutCompute(cb, vku::ACCESS_READWRITE);			// never changes
@@ -346,14 +347,18 @@ namespace Volumetric
 			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn[1]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, PingPongMap[ePingPongMap::PING]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearClamp, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, PingPongMap[ePingPongMap::PONG]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearClamp, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(1U, 2, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, PingPongMap[2]->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, PingPongMap[ePingPongMap::PING]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(2U, 1, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, PingPongMap[ePingPongMap::PONG]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(nullptr, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(2U, 2, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, PingPongMap[2]->imageView(), vk::ImageLayout::eGeneral);
 
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -369,32 +374,30 @@ namespace Volumetric
 			dsu.beginImages(4U, 2, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
-
 			dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
-
-			dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(6U, 1, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(6U, 2, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
-
-
-			dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(7U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(8U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(8U, 1, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(6U, 1, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
 			
-			dsu.beginImages(9U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(7U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
+
+			dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(8U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerLinearClamp, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
+
+			dsu.beginImages(9U, 0, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(9U, 1, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.beginImages(9U, 2, vk::DescriptorType::eStorageImage);
+			dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
 		}
 
 		__inline bool const renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
@@ -421,7 +424,7 @@ namespace Volumetric
 		voxelTexture3D										LightProbeMap;
 
 		vku::IndirectBuffer* __restrict						ComputeLightDispatchBuffer;
-		vku::TextureImageStorage3D*							PingPongMap[ePingPongMap::_size()];
+		vku::TextureImageStorage3D*							PingPongMap[3];
 		voxelLightmapSet									LightMap; // final output
 		voxelLightmapSet									LightMapHistory[TEMPORAL_VOLUMES];
 		vku::TextureImageStorage3D*							OpacityMap;
@@ -562,6 +565,7 @@ namespace Volumetric
 		// note: view matrix is manually updated outside of this function
 		// note: pushconstant filter index is manually updated outside of this function
 		PushConstants.index_input = index_input;
+		PushConstants.index_output = ((0 == index_input) ? 2 : 0); // treated as index_last for only filter stage in shader
 
 		constexpr size_t const begin(offsetof(UniformDecl::ComputeLightPushConstants, index_input));
 
@@ -619,23 +623,35 @@ namespace Volumetric
 
 				// grouping barriers as best as possible (down sample depth sets 2 aswell)
 				// set pipeline barriers only once before ping pong begins
-				LightMap.DistanceDirection->setLayoutCompute<true>(c.cb_render_light, vku::ACCESS_WRITEONLY);
-				LightMap.Color->setLayoutCompute<true>(c.cb_render_light, vku::ACCESS_WRITEONLY);
-				LightMap.Reflection->setLayoutCompute<true>(c.cb_render_light, vku::ACCESS_WRITEONLY);
-				LightProbeMap.imageGPUIn[0]->setLayoutCompute(c.cb_render_light, vku::ACCESS_READONLY);
-				LightProbeMap.imageGPUIn[1]->setLayoutCompute(c.cb_render_light, vku::ACCESS_READONLY);
+
+				{
+					static constexpr size_t const image_count(3ULL); // batched
+					std::array<vku::GenericImage* const, image_count> const images{ LightMap.DistanceDirection, LightMap.Color, LightMap.Reflection };
+
+					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY);
+				}
+
+				{ // bugfix: Must be set for both buffers, validation error.
+					static constexpr size_t const image_count(2ULL); // batched
+					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[0], LightProbeMap.imageGPUIn[1] };
+
+					vku::GenericImage::setLayout<image_count>(images, c.cb_render_light, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_READONLY);
+				}
 
 				// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
 				c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[0], nullptr);
 
-				// ##### SEED STAGE //
+				// Jump flooding runs in a specfic series from seed (1 + JFA) to jumpflooding (JFA) to finally (JFA + 1) being the last step.
+				
+				// (1 + JFA)
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
-
-				// SEED uses PING output, hardcoded, push constants not required for seed stage
 				renderSeed(c, render_data, resource_index);
 
-				// ###### JUMP FLOOD PROPOGATE STAGE //
-				uint32_t uPing(ePingPongMap::PING), uPong(ePingPongMap::PONG);
+				// ( JFA ) //
+				int32_t const pivot(1),
+							  direction((((int32_t)resource_index) << 1) - 1);
+
+				uint32_t uPing((uint32_t)pivot), uPong((uint32_t)(pivot + direction));
 
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
 
@@ -649,25 +665,27 @@ namespace Volumetric
 					step >>= 1;
 				} while (0 != step);
 
-				// bugfix: Extra JFA + 1 Step // Required for good result, removes errors as seen in Renderdoc comparison ***do not remove***
+				// (JFA + 1)
 				renderJFA(c, render_data, uPing, uPong, 1);
-				std::swap(uPing, uPong);
 
 				// Last step, filtering - temporal super-sampling, blending & antialiasing
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
 
-				renderFilter(c, render_data, uPing);
+				renderFilter(c, render_data, uPong);
 
-				LightProbeMap.imageGPUIn[!resource_index]->setLayout(c.cb_render_light, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_READONLY,
-																	 vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY);
+				{ // bugfix: Must be set for both buffers, validation error.
+					static constexpr size_t const image_count(2ULL); // batched
+					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[0], LightProbeMap.imageGPUIn[1] };
 
+					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY);
+				}
 				c.cb_render_light.end();
 
 				bRecorded[resource_index] = true;
 			}
 			else {
 				// Just update layouts that will be current after this compute cb is done.
-				LightProbeMap.imageGPUIn[resource_index]->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+				LightProbeMap.imageGPUIn[resource_index]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
 				LightProbeMap.imageGPUIn[!resource_index]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
 				LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
 				LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);

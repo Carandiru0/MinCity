@@ -296,17 +296,17 @@ void cVulkan::CreateComputeResources()
 				)
 			};
 			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume seed (lightprobes)
-			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
-			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 3, samplers); // 3d volume pingpong input
+			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 3); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (distance & direction)
 			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (distance & direction)
-			dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
-			dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
-			dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
-			dslm.image(8U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // temporal history volumes (color)
-			dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output
-
+			dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
+			dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // temporal history volumes (color)
+			dslm.image(7U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (color)
+			dslm.image(8U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
+			dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
+			
 			_comData.light.descLayout = dslm.createUnique(_device);
 		}
 
@@ -2037,10 +2037,12 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	s.cb.endRenderPass();
 
-	// required at this point, light:
-	MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->DistanceDirection->setLayoutFragmentFromCompute(s.cb, vku::ACCESS_WRITEONLY);
-	MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->Color->setLayoutFragmentFromCompute(s.cb, vku::ACCESS_WRITEONLY);
-	MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->Reflection->setLayoutFragmentFromCompute(s.cb, vku::ACCESS_WRITEONLY);
+	{ // required at this point, light:
+		static constexpr size_t const image_count(3ULL); // batched
+		std::array<vku::GenericImage* const, image_count> const images{ MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->DistanceDirection, MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->Color, MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->Reflection };
+
+		vku::GenericImage::setLayout<image_count>(images, s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
+	}
 
 	// prepare for usage in fragment shader (raymarching)
 	vku::TextureImageStorage3D

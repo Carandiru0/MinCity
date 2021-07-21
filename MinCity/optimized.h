@@ -1,10 +1,13 @@
 #pragma once
 
-#pragma intrinsic(memcpy)	// ensure intrinsics are used for un-aligned data
-#pragma intrinsic(memset)	// ensure intrinsics are used for un-aligned data
-
 // ***********##############  use scalable_aligned_malloc / scalable_aligned_free to guarentee aligment ###################************* //
 // note: alignas with usage of new() does not guarentee alignment
+#undef _mm_mfence
+#pragma intrinsic(__faststorefence) // https://docs.microsoft.com/en-us/cpp/intrinsics/faststorefence?view=msvc-160 -- The effect is comparable to but faster than the _mm_mfence intrinsic on all x64 platforms. Not faster than _mm_sfence.
+#pragma intrinsic(_mm_sfence)
+#pragma intrinsic(_mm_prefetch)
+#pragma intrinsic(memcpy)	// ensure intrinsics are used for un-aligned data
+#pragma intrinsic(memset)	// ensure intrinsics are used for un-aligned data
 
 #include <stdint.h>
 #include "Declarations.h"  // vertex declarations
@@ -198,29 +201,23 @@ PUBLIC_MEMFUNC __memcpy_aligned_16(T* const __restrict dest, T const* const __re
 
 INLINE_MEMFUNC __streaming_store(DirectX::XMFLOAT4A* const __restrict dest, FXMVECTOR const src)
 {
-	__builtin_assume_aligned(dest, 16ULL);
-	_mm_stream_ps((float* const __restrict)dest, src);
+	_mm_stream_ps((float* const __restrict)std::assume_aligned<16>(dest), src);
 }
 
 INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const&& __restrict src)
 {
-	__builtin_assume_aligned(dest, 32ULL);
-
 	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
-	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_vr, src.worldPos));
+	_mm256_stream_ps((float* const __restrict)std::assume_aligned<32>(dest), _mm256_set_m128(src.uv_vr, src.worldPos));
 }
 INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const* const __restrict src)
 {
-	__builtin_assume_aligned(dest, 32ULL);
-	__builtin_assume_aligned(src, 32ULL);
-
 	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
-	_mm256_stream_si256((__m256i* const __restrict)dest, _mm256_stream_load_si256((__m256i const* const __restrict)src));
+	_mm256_stream_si256((__m256i* const __restrict)std::assume_aligned<32>(dest), _mm256_stream_load_si256((__m256i const* const __restrict)std::assume_aligned<32>(src)));
 }
 
-INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* const __restrict dest, VertexDecl::VoxelDynamic const&& __restrict src)
+INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* __restrict dest, VertexDecl::VoxelDynamic const&& __restrict src)
 {
-	__builtin_assume_aligned(dest, 16ULL);
+	dest = std::assume_aligned<16>(dest);
 
 	_mm_stream_ps((float* const __restrict)dest, src.worldPos);
 	_mm_stream_ps(((float* const __restrict)dest) + 4, src.uv_vr);
