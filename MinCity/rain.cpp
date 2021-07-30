@@ -29,7 +29,7 @@ static constexpr float const SPEED_SCALE = 0.05f * Iso::MINI_VOX_STEP;
 static constexpr float const MAX_DROP_SPEED = 5.0f * SFM::GOLDEN_RATIO * SPEED_SCALE,
                              MIN_DROP_SPEED = SFM::GOLDEN_RATIO * SFM::GOLDEN_RATIO * SPEED_SCALE;
 
-inline std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>>	RainInstance::RainRows;  // vector memory is persistance across instances
+inline vector<Volumetric::xRow>	RainInstance::RainRows;  // vector memory is persistance across instances
 inline Imaging RainInstance::_imgRain[eRainImageType::COUNT]{ nullptr };   // only one global instance for rain is required, so only need one image                                                                                                                                                                                                                                 // only one shockwave instance is active at a time                                                                                                                                                                                                                                       // this improves performance and stability
 
 STATIC_INLINE_PURE void newDrop(uint8_t& __restrict rdrop_speed)

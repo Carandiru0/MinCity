@@ -25,8 +25,6 @@ The VOX File format is Copyright to their respectful owners.
 
 #include <Utility/stringconv.h>
 
- //std::vector<Volumetric::voxB::voxelDescPacked>	Volumetric::voxB::voxelModelBase::Voxels;
-
 /*
 1x4      | char       | chunk id
 4        | int        | num bytes of chunk content (N)
@@ -135,7 +133,7 @@ namespace voxB
 {
 STATIC_INLINE void ReadData( void* const __restrict DestStruct, uint8_t const* const __restrict pReadPointer, uint32_t const SizeOfDestStruct )
 {
-	memcpy(DestStruct, pReadPointer, SizeOfDestStruct);
+	memcpy_s(DestStruct, SizeOfDestStruct, pReadPointer, SizeOfDestStruct);
 }
 
 STATIC_INLINE bool const CompareTag( uint32_t const TagSz, uint8_t const * __restrict pReadPointer, char const* const& __restrict szTag )
@@ -399,18 +397,22 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 
 	if (uiNumModels == uiNumModelsLoaded)
 	{
-		std::vector<VoxelData> allVoxelData;
+		vector<VoxelData> allVoxelData;
 		allVoxelData.reserve(uiTotalNumVoxels); allVoxelData.resize(uiTotalNumVoxels);
 
 		{
 			VoxelData* __restrict pBuffer = allVoxelData.data();
+
+			uint32_t remaining_count((uint32_t const)allVoxelData.size());
+
 			// copy data into temporary memory buffer
 			for (uint32_t stack = 0; stack < uiNumModels; ++stack)
 			{
 				uint32_t const current_count(uiNumVoxelsPerStack[stack]);
 
-				memcpy(pBuffer, pVoxelRoot[stack], current_count * sizeof(VoxelData));
+				memcpy_s(pBuffer, remaining_count * sizeof(VoxelData), pVoxelRoot[stack], current_count * sizeof(VoxelData));
 				pBuffer += current_count;
+				remaining_count -= current_count;
 			}
 		}
 
@@ -429,7 +431,7 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 		}
 
 		// A VecVoxels has a separate std::vector<T> per thread
-		typedef tbb::enumerable_thread_specific< std::vector<voxelDescPacked> > VecVoxels;
+		typedef tbb::enumerable_thread_specific< vector<voxelDescPacked> > VecVoxels;
 
 		const struct FuncAdjacency {
 			uint32_t const						numVoxels,
@@ -483,11 +485,11 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 		// free temporary concatenated buffer
 		allVoxelData.resize(0); allVoxelData.shrink_to_fit();
 
-		std::vector<voxelDescPacked> culledVoxels;
+		vector<voxelDescPacked> culledVoxels;
 		culledVoxels.reserve(uiTotalNumVoxels);
 
 		// move from all voxels to culled voxels
-		uvec4_v xmMin(99999,99999,99999,0),
+		uvec4_v xmMin(UINT32_MAX, UINT32_MAX, UINT32_MAX,0),
 			    xmMax(0);
 
 		tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
@@ -641,13 +643,13 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 					XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(maxDimensions));
 
 					pDestMem->_Voxels = (voxelDescPacked const* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
-					memcpy((void* __restrict)pDestMem->_Voxels, pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
+					memcpy_s((void* __restrict)pDestMem->_Voxels, pDestMem->_numVoxels * sizeof(voxelDescPacked const), pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 					pDestMem->ComputeLocalAreaAndExtents();
 #ifdef VOX_DEBUG_ENABLED	
-FMT_LOG(VOX_LOG, "vox load ({:d}, {:d}, {:d}) " " mem usage {:d} bytes, {:d} voxels total", (headerChunk.dimensionX), (headerChunk.dimensionY), (headerChunk.dimensionZ), (pDestMem->_numVoxels * sizeof(voxelDescPacked)), pDestMem->_numVoxels);
+					FMT_LOG(VOX_LOG, "vox load ({:d}, {:d}, {:d}) " " mem usage {:d} bytes, {:d} voxels total", (headerChunk.dimensionX), (headerChunk.dimensionY), (headerChunk.dimensionZ), (pDestMem->_numVoxels * sizeof(voxelDescPacked)), pDestMem->_numVoxels);
 #endif		
-return(true);
+					return(true);
 				}
 
 			}
@@ -655,11 +657,11 @@ return(true);
 			FMT_LOG_FAIL(VOX_LOG, "unable to parse cache file: {:s}", stringconv::ws2s(path));
 		}
 		else {
-		FMT_LOG_FAIL(VOX_LOG, "unable to open or mmap cache file: {:s}", stringconv::ws2s(path));
+			FMT_LOG_FAIL(VOX_LOG, "unable to open or mmap cache file: {:s}", stringconv::ws2s(path));
 		}
 	}
 	else {
-	FMT_LOG_FAIL(VOX_LOG, "unable to open cache file: {:s}", stringconv::ws2s(path));
+		FMT_LOG_FAIL(VOX_LOG, "unable to open cache file: {:s}", stringconv::ws2s(path));
 	}
 
 	return(false);
@@ -837,7 +839,7 @@ static bool const ApplyVideoscreen(voxelModelBase const* const __restrict pVideo
 	pOwner->createState(); // Owner model uses State, create it
 
 	// A VecVoxels has a separate std::vector<T> per thread
-	typedef tbb::enumerable_thread_specific< std::vector<voxelDescPacked const*> > VecVoxels;
+	typedef tbb::enumerable_thread_specific< vector<voxelDescPacked const*> > VecVoxels;
 
 	struct FuncMatch {
 		voxelModelBase const* const __restrict Videoscreen;

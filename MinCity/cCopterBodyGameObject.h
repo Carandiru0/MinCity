@@ -28,10 +28,10 @@ namespace world
 		bool const			isLightsOn() const { return(_this.bLightsOn); }
 
 	public:
-#ifndef NDEBUG
-		// every child of this class should override to_string with approprate string
-		virtual std::string_view const to_string() const override { return("cCopterBodyGameObject"); }
-#endif
+		constexpr virtual types::game_object_t const to_type() const override {
+			return(types::game_object_t::CopterBodyGameObject);
+		}
+
 		bool const __vectorcall OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 		// typedef Volumetric::voxB::voxelState const(* const voxel_event_function)(void* const _this, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState);

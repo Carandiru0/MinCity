@@ -28,7 +28,7 @@ private:
 
 	void __vectorcall zoneArea(rect2D_t const area);
 private:
-	std::vector<sUndoVoxel, tbb::scalable_allocator<sUndoVoxel>>	_undoHistory;
+	vector<sUndoVoxel>	_undoHistory;
 	
 	point2D_t				_segmentVoxelIndex[2];
 	uint32_t				_activePoint;

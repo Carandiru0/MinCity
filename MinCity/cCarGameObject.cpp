@@ -9,6 +9,8 @@
 #include "cTrafficSignGameObject.h"
 #include "eTrafficLightState.h"
 
+using namespace world;
+
 BETTER_ENUM(ePrimaryColors, uint32_t const,
 
 	DEFAULT = cCarGameObject::MASK_COLOR_PRIMARY,
@@ -157,7 +159,7 @@ namespace world
 					if (Volumetric::eVoxelModels_Dynamic::CARS == FoundModelInstance->getModel().identity()._modelGroup) {
 
 						// car exists, is it moving ?
-						cCarGameObject const* const pGameObject = FoundModelInstance->getOwnerGameObject<cCarGameObject>();
+						world::cCarGameObject const* const pGameObject = FoundModelInstance->getOwnerGameObject<world::cCarGameObject>();
 						if (pGameObject) {
 
 							return(pGameObject->isStopped());  // this function only returns true when a car exists and it is not moving

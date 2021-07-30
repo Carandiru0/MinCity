@@ -12,10 +12,17 @@ namespace world
 	{
 	public:
 		TVoxelModelInstance* const getModelInstance() const { return(*Instance); }
+
+		// *mandatory overrides - every child of this class should override
+		constexpr virtual types::game_object_t const to_type() const {
+			return(types::game_object_t::NonUpdateable);
+		}
 #ifndef NDEBUG
-		// every child of this class should override to_string with approprate string
-		constexpr virtual std::string_view const to_string() const { return("tNonUpdateableGameObject"); }
+		std::string_view const to_string() const { return(to_type()._to_string()); }
 #endif
+		// *optional overrides
+		virtual size_t const exportData(vector<uint8_t>& out) const { return(0); };
+		virtual void importData(uint8_t const* const in, size_t const size) {};
 
 	public:
 		bool const operator==(tNonUpdateableGameObject const& src) const

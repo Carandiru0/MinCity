@@ -101,7 +101,7 @@ namespace Volumetric
 
 
 #ifdef VOXEL_ANIM_IMPLEMENTATION
-static std::vector< Volumetric::voxelAnimStateGroup* > _animations;
+static vector< Volumetric::voxelAnimStateGroup* > _animations;
 
 namespace Volumetric
 {

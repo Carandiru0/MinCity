@@ -9,7 +9,7 @@ namespace Volumetric
 		tCreation(now()), tDestruction{},
 		vLoc{}, fElevation(0.0f),
 		child(nullptr), 
-		owner_gameobject(nullptr), eOnRelease(nullptr)
+		owner_gameobject_type{}, owner_gameobject(nullptr), eOnRelease(nullptr)
 	{
 		XMStoreFloat2A(&vLoc, p2D_to_v2(voxelIndex));
 

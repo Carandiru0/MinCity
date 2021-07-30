@@ -785,7 +785,7 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 // the timestamp in mouse state is also derived from its own high_resolution_clock query
 // its safe to use tLocal here with tStamp
 // ********************************************************************************************
-static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindow* const __restrict win, std::vector<rect2D_t> const& __restrict activeWindowRects)
+static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindow* const __restrict win, vector<rect2D_t> const& __restrict activeWindowRects)
 {
 	tTime const tLocal(high_resolution_clock::now());
 	static tTime tLocalLast(tLocal);

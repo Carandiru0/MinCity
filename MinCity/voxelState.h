@@ -7,7 +7,7 @@ namespace Volumetric
 	{
 		typedef struct voxelStateGroup {
 
-			std::vector<struct voxelState*> groupedstates;
+			vector<struct voxelState*> groupedstates;
 
 			XMINT3 const	BoundsMin, BoundsMax;
 

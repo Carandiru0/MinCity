@@ -42,6 +42,10 @@ namespace world
 			COLOR_BLACK = 0x000001; // required since "0" is recognized as no pending color
 
 	public:
+		// overrides //
+		constexpr virtual types::game_object_t const to_type() const override {
+			return(types::game_object_t::TrafficSignGameObject);
+		}
 		// ALL derivatives of this class must call base function first in overriden methods, and check its return value
 		// typedef Volumetric::voxB::voxelState const(* const voxel_event_function)(void* const _this, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState);
 		static Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index);

@@ -36,7 +36,7 @@ public:
     __forceinline __declspec(noalias) virtual bool const __vectorcall op(FXMVECTOR const vDisplacement, float const t_, Volumetric::voxelShaderDesc&& __restrict out) const final;
 
 public:
-	static std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>> RainRows;
+	static vector<Volumetric::xRow> RainRows;
     static Imaging     _imgRain[eRainImageType::COUNT];
 
 private:

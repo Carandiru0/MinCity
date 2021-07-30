@@ -32,7 +32,7 @@ void cZoningTool::clearZoneHistory() // undo's current "road" from grid
 {
 	// undoing
 	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
-	for (std::vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
+	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
 	{
 		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
 	}

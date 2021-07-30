@@ -16,7 +16,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 static constexpr milliseconds const LIFETIME_ANIMATION = milliseconds(12000);
 
-inline std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>>	TornadoInstance::TornadoRows;  // vector memory is persistance across instances
+inline vector<Volumetric::xRow>	TornadoInstance::TornadoRows;  // vector memory is persistance across instances
 																																																										 // only one shockwave instance is active at a time
 																																																										 // this improves performance and stability
 																																																										 // by avoiding reallocation of vector

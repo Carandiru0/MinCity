@@ -25,10 +25,13 @@ namespace world
 		} cTrafficSignSet;
 
 	public:
-#ifndef NDEBUG
-		// every child of this class should override to_string with approprate string
-		virtual std::string_view const to_string() const override { return("cTrafficControlGameObject"); }
-#endif
+		// overrides //
+		constexpr virtual types::game_object_t const to_type() const override {
+			return(types::game_object_t::TrafficControlGameObject);
+		}
+		virtual size_t const exportData(vector<uint8_t>& out) const override;
+		virtual void importData(uint8_t const* const in, size_t const size) override;
+
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 		void Add(cTrafficSignGameObject* const& sign);
@@ -52,7 +55,7 @@ namespace world
 		
 		bool	 _turning_side[2];
 
-		using set_sign_pair = std::vector<cTrafficSignSet>;
+		using set_sign_pair = vector<cTrafficSignSet>;
 		set_sign_pair				_sign_pair;
 	public:
 		cTrafficControlGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_);

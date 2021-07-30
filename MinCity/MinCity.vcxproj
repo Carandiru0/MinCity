@@ -334,6 +334,7 @@
     <ClInclude Include="tbb.h" />
     <ClInclude Include="tornado.h" />
     <ClInclude Include="tTime.h" />
+    <ClInclude Include="types.h" />
     <ClInclude Include="UndoVoxel.h" />
     <ClInclude Include="volumetricOpacity.h" />
     <ClInclude Include="volumetricradialgrid.h" />
@@ -430,6 +431,7 @@
       <FloatingPointModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Precise</FloatingPointModel>
     </ClCompile>
     <ClCompile Include="tornado.cpp" />
+    <ClCompile Include="types.cpp" />
     <ClCompile Include="volumetricradialgrid.cpp" />
     <ClCompile Include="volumetricVisibility.cpp" />
     <ClCompile Include="voxBinary.cpp" />

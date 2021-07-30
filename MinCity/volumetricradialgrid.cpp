@@ -18,7 +18,7 @@ namespace Volumetric
 std::optional<tTime const> const sRadialGridInstance::Update(tTime const tNow)
 {			
 	if (isInvalidated()) {
-		Volumetric::radialgrid_generate(getRadius(), const_cast<std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>>& __restrict>(InstanceRows));
+		Volumetric::radialgrid_generate(getRadius(), const_cast<vector<Volumetric::xRow>& __restrict>(InstanceRows));
 		resetInvalidated();
 	}
 	
@@ -37,7 +37,7 @@ std::optional<tTime const> const sRadialGridInstance::Update(tTime const tNow)
 		vecRows.emplace_back( xRow(xn, -y) ); \
 } \
 
-NO_INLINE void radialgrid_generate(float const radius, std::vector<xRow, tbb::scalable_allocator<xRow>>& __restrict vecRows)
+NO_INLINE void radialgrid_generate(float const radius, vector<xRow>& __restrict vecRows)
 {
 	static constexpr float const step(Iso::MINI_VOX_STEP);
 	float  error(-radius),

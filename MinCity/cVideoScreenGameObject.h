@@ -22,10 +22,9 @@ namespace world
 	class cVideoScreenGameObject : public tNonUpdateableGameObject<Volumetric::voxelModelInstance_Static>, public type_colony<cVideoScreenGameObject>
 	{
 	public:
-#ifndef NDEBUG
-		// every child of this class should override to_string with approprate string
-		virtual std::string_view const to_string() const override { return("cVideoScreenGameObject"); }
-#endif
+		constexpr virtual types::game_object_t const to_type() const override {
+			return(types::game_object_t::VideoScreenGameObject);
+		}
 
 		void setSequence(uint32_t const index);
 

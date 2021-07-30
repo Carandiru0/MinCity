@@ -239,7 +239,7 @@ namespace Volumetric
 		__forceinline __declspec(noalias) virtual bool const __vectorcall op(FXMVECTOR const, float const, Volumetric::voxelShaderDesc&& __restrict) const = 0;
 
 		__vectorcall sRadialGridInstance( FXMVECTOR const xmWorldCoordOrigin, float const Radius, fp_seconds const tLife,
-										  std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>> const& __restrict Rows )
+										  vector<Volumetric::xRow> const& __restrict Rows )
 			: Scale(1.0f), InvScale(1.0f), StepScale(1.0f),  CurrentRadius(Radius), InvCurrentRadius(1.0f/Radius),
 				tLife(tLife), tLastUpdate(zero_time_point),
 				tLocal(zero_time_duration), tDelta(zero_time_duration), Invalidated(true),
@@ -252,7 +252,7 @@ namespace Volumetric
 		}
 			
 	public:
-		std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>> const& __restrict InstanceRows;
+		vector<Volumetric::xRow> const& __restrict InstanceRows;
 #ifdef DEBUG_RANGE
 		float RangeMin, RangeMax;
 #endif
@@ -281,7 +281,7 @@ namespace Volumetric
 	//using voxel_op = bool const (*__vectorcall const)(FXMVECTOR const, float const, Volumetric::RadialGridInstance const* const __restrict, Volumetric::RadialGridInstance::voxelShaderDesc&& __restrict); // signature for all valid template params
 
 	// public declarations only 
-	NO_INLINE void radialgrid_generate(float const radius, std::vector<xRow, tbb::scalable_allocator<xRow>>& __restrict vecRows);
+	NO_INLINE void radialgrid_generate(float const radius, vector<xRow>& __restrict vecRows);
 	__forceinline STATIC_INLINE_PURE bool const __vectorcall isRadialGridNotVisible(FXMVECTOR const vOrigin, float const fRadius);
 
 	template<uint32_t const Options = eRadialGridRenderOptions::NO_OPTIONS>
@@ -703,7 +703,7 @@ namespace Volumetric
 		fp_seconds const tLocal(radialGrid->getLocalTime());
 		
 		// Fastest way to iterate over a vector! (in parallel as isolated random access)
-		std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>> const& __restrict Rows(radialGrid->InstanceRows);
+		vector<Volumetric::xRow> const& __restrict Rows(radialGrid->InstanceRows);
 		VoxelThreadBatch batchedVoxels;
 
 		tbb::affinity_partitioner part;

@@ -46,7 +46,6 @@ void cCity::Update(tTime const tNow)
 {
 	// bad idea ?
 
-	/*
 	using iter_delta = std::vector<deltaGrowth>::const_iterator;
 
 	static tTime tLast(zero_time_point);
@@ -119,7 +118,7 @@ void cCity::Update(tTime const tNow)
 
 		tLast = tNow;
 	}
-	*/
+	
 }
 
 

@@ -27,7 +27,7 @@ public:
 private:
 	float const PatternModSeedScaled;
 public:
-	static std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>> ExplosionRows;
+	static vector<Volumetric::xRow> ExplosionRows;
 
 } ExplosionInstance;
 

@@ -7,6 +7,7 @@
 #include "voxelKonstants.h"
 #include "voxelState.h"
 #include <Random/superrandom.hpp>
+#include "types.h"
 
 // forward decl
 namespace Volumetric
@@ -29,7 +30,7 @@ namespace Volumetric
 	public:
 		uint32_t const											      getHash() const { return(hashID); }
 		XMVECTOR const __vectorcall									  getLocation() const { return(XMLoadFloat2A(&vLoc)); }
-		XMVECTOR const __vectorcall									  getLocation3D() const { return(XMVectorSetY(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat2A(&vLoc)), fElevation)); }
+		XMVECTOR const __vectorcall									  getLocation3D() const { return(XMVectorSet(vLoc.x, fElevation, vLoc.y, 0.0f)); }
 		float const __vectorcall									  getElevation() const { return(fElevation); } // additional "height above ground"
 		
 		point2D_t const	__vectorcall								  getVoxelIndex() const { return(v2_to_p2D(getLocation())); }	// returns voxel index occupied by the origin of this instance
@@ -48,9 +49,19 @@ namespace Volumetric
 		TGameObject* const getOwnerGameObject() const {
 			return( static_cast<TGameObject* const>(owner_gameobject) );
 		}
+		uint32_t const getOwnerGameObjectType() const {
+			return(owner_gameobject_type);
+		}
 		template<typename TGameObject>
 		void setOwnerGameObject(TGameObject* const& owner_, release_event_function const eventHandler) {
-			owner_gameobject = static_cast<void* const>(owner_);
+			if (owner_) {
+				owner_gameobject_type = owner_->to_type();
+				owner_gameobject = static_cast<void* const>(owner_);
+			}
+			else {
+				owner_gameobject_type = world::types::game_object_t::NoOwner;
+				owner_gameobject = nullptr;
+			}
 			eOnRelease = eventHandler;
 		}
 
@@ -71,6 +82,7 @@ namespace Volumetric
 
 		voxelModelInstanceBase*								child;
 
+		uint32_t											owner_gameobject_type;
 		void*												owner_gameobject;
 		release_event_function								eOnRelease;
 	protected:

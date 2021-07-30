@@ -28,6 +28,7 @@
 
 // (1)
 #include <tbb/tbb.h>
+#include "types.h"
 
 // (2)
 #include "Globals.h"

@@ -32,9 +32,10 @@ BETTER_ENUM(eEvent, uint32_t const,
 
 BETTER_ENUM(eExclusivity, uint32_t const,
 
-	MAIN = 0,
+	DEFAULT = 0,
 	SAVING = (1 << 0),
-	LOADING = (1 << 1)
+	LOADING = (1 << 1),
+	NEW = (1 << 2)
 
 );
 

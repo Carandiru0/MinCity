@@ -9,19 +9,20 @@
 #include <vector>
 #include <Utility/stringconv.h>
 #include <density.h>	// https://github.com/centaurean/density - Density, fastest compression/decompression library out there with simple interface. must reproduce license file. attribution.
+#include "cNonUpdateableGameObject.h"
 
 namespace fs = std::filesystem;
 
 static inline struct {
-	std::vector<std::string>	cityname;		// indices
-	std::vector<std::wstring>	cityfile;		// match
+	vector<std::string>	cityname;		// indices
+	vector<std::wstring>	cityfile;		// match
 } _loadList;
 
 // ## LOADING
 // this file contains the class methods of cVoxelWorld for loading, seperated due to cVoxelWorld.cpp size/length complexity
 namespace world
 {
-	std::vector<std::string> const& cVoxelWorld::getLoadList() const
+	vector<std::string> const& cVoxelWorld::getLoadList() const
 	{
 		return(_loadList.cityname);
 	}
@@ -61,7 +62,7 @@ namespace world
 	
 	STATIC_INLINE void ReadData(void* const __restrict DestStruct, uint8_t const* const __restrict pReadPointer, uint32_t const SizeOfDestStruct)
 	{
-		memcpy(DestStruct, pReadPointer, SizeOfDestStruct);
+		memcpy_s(DestStruct, SizeOfDestStruct, pReadPointer, SizeOfDestStruct);
 	}
 
 	STATIC_INLINE bool const CompareTag(uint32_t const TagSz, uint8_t const* __restrict pReadPointer, char const* const& __restrict szTag)
@@ -141,7 +142,7 @@ namespace world
 								// read thumbnail image
 								constexpr uint32_t const offscreen_image_size(offscreen_thumbnail_width * offscreen_thumbnail_height * sizeof(uint32_t));
 
-								memcpy(&load_thumbnail->block[0], pReadPointer, offscreen_image_size);
+								memcpy_s(&load_thumbnail->block[0], offscreen_image_size, pReadPointer, offscreen_image_size);
 								
 								return(true);
 							}
@@ -232,6 +233,8 @@ namespace world
 
 							if (!result.state) {
 
+								InitializeRandomNumberGenerators(headerChunk.secure_seed); // use the seed the city was saved with for program (deterministic random state) now
+
 								MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
 
 								cVoxelWorld::GridSnapshotLoad((Iso::Voxel const* const __restrict)outDecompressed);
@@ -239,9 +242,120 @@ namespace world
 
 								MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(70));
 
-								for (size_t voxel = 0; voxel < voxel_count; ++voxel) {
+								{
+									vector<model_state_instance_static> data_models_static;
+									{ // do all static //
 
-									// todo
+										size_t const count(*((size_t const* const)pReadPointer));
+										pReadPointer += sizeof(size_t);
+
+										data_models_static.reserve(count); data_models_static.resize(count);
+
+										size_t const bytes(sizeof(model_state_instance_static) * count);
+										memcpy_s(data_models_static.data(), bytes, pReadPointer, bytes); // file access using memory-mapped io. secure version of memcpy_s
+										pReadPointer += bytes;
+									}
+
+									vector<model_state_instance_dynamic> data_models_dynamic;
+									{ // do all dynamic //
+
+										size_t const count(*((size_t const* const)pReadPointer));
+										pReadPointer += sizeof(size_t);
+
+										data_models_dynamic.reserve(count); data_models_dynamic.resize(count);
+
+										size_t const bytes(sizeof(model_state_instance_dynamic) * count);
+										memcpy_s(data_models_dynamic.data(), bytes, pReadPointer, bytes); // file access using memory-mapped io. secure version of memcpy_s
+										pReadPointer += bytes;
+									}
+
+									vector<model_root_index> data_rootIndex;
+									{ // do all voxelRootIndices //
+
+										size_t const count(*((size_t const* const)pReadPointer));
+										pReadPointer += sizeof(size_t);
+
+										data_rootIndex.reserve(count); data_rootIndex.resize(count);
+
+										size_t const bytes(sizeof(model_root_index) * count);
+										memcpy_s(data_rootIndex.data(), bytes, pReadPointer, bytes); // file access using memory-mapped io. secure version of memcpy_s
+										pReadPointer += bytes;
+									}
+
+									MinCity::VoxelWorld.upload_model_state(data_rootIndex, data_models_static, data_models_dynamic);
+								}
+								
+								{ // load gameobject specific data //
+
+									// read total / all gameobjects data size
+									int64_t bytes_all((int64_t )*((size_t const* const)pReadPointer));
+									pReadPointer += sizeof(size_t);
+
+									uint32_t zero_count(0);
+
+									while (bytes_all && zero_count < file_delim_zero_count) {
+
+										if (*pReadPointer) { // non-zero value?
+
+											zero_count = 0; // reset consecutive zero count
+
+											// read owner hash
+											uint32_t const hash(*((uint32_t const* const)pReadPointer));
+											pReadPointer += sizeof(uint32_t);
+											bytes_all -= sizeof(uint32_t);
+
+											if (hash) {
+												// read gameobject data size
+												uint32_t const bytes(*((uint32_t const* const)pReadPointer));
+												pReadPointer += sizeof(uint32_t);
+												bytes_all -= sizeof(uint32_t);
+
+												if (bytes) {
+													
+													// only need base //
+													bool bDynamic(true); // default to dynamic
+													Volumetric::voxelModelInstanceBase* instance(nullptr);
+
+													instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash); // search dynamic
+													if (!instance) {
+														instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(hash); // search static
+														bDynamic = false;
+													}
+													
+													// we hae the world model instance associated with this hash. (loaded before in upload_model_state(), into the actual voxelworld)
+													if (instance) {
+
+														if (bDynamic) {
+															tNonUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic>* const pGameObject = instance->getOwnerGameObject< tNonUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic> >();
+															// read gameobject data
+															pGameObject->importData(pReadPointer, bytes);
+														}
+														else {
+															tNonUpdateableGameObject<Volumetric::voxelModelInstance_Static>* const pGameObject = instance->getOwnerGameObject< tNonUpdateableGameObject<Volumetric::voxelModelInstance_Static> >();
+															// read gameobject data
+															pGameObject->importData(pReadPointer, bytes);
+														}
+														
+													}
+													pReadPointer += bytes; // advance
+													bytes_all -= bytes;
+												}
+												else {
+													++pReadPointer; // continue to next byte if errornous
+													--bytes_all;
+												}
+											}
+											else {
+												++pReadPointer; // continue to next byte if errornous
+												--bytes_all;
+											}
+										}
+										else {
+											++pReadPointer; // advance
+											--bytes_all;
+											++zero_count;
+										}
+									}
 								}
 								MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(100));
 							}

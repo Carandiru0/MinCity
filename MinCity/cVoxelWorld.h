@@ -10,6 +10,7 @@
 #include "eVoxelModels.h"
 #include "voxelModelInstance.h"
 #include "world.h"
+#include "data.h"
 
 #include <optional>
 #include "volumetricOpacity.h"
@@ -38,6 +39,22 @@ BETTER_ENUM(eMouseButtonState, uint32_t const,
 
 namespace world
 {
+	using mapRootIndex = tbb::concurrent_unordered_map<uint32_t const, point2D_t>;
+	using mapVoxelModelInstancesStatic = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
+	using mapVoxelModelInstancesDynamic = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
+
+	struct model_state {
+		mapRootIndex const& __restrict					hshVoxelModelRootIndex;
+		mapVoxelModelInstancesStatic const& __restrict	hshVoxelModelInstances_Static;
+		mapVoxelModelInstancesDynamic const& __restrict	hshVoxelModelInstances_Dynamic;
+
+		explicit model_state(mapRootIndex const& __restrict hshVoxelModelRootIndex_,
+							 mapVoxelModelInstancesStatic const& __restrict hshVoxelModelInstances_Static_,
+							 mapVoxelModelInstancesDynamic const& __restrict hshVoxelModelInstances_Dynamic_)
+			: hshVoxelModelRootIndex(hshVoxelModelRootIndex_), hshVoxelModelInstances_Static(hshVoxelModelInstances_Static_), hshVoxelModelInstances_Dynamic(hshVoxelModelInstances_Dynamic_)
+		{}
+	};
+
 	// if "condition (true/false)" of equal type, enable tempolate instantion of function
 	template< bool cond, typename U >
 	using resolvedType  = typename std::enable_if< cond, U >::type;
@@ -118,7 +135,7 @@ namespace world
 		void LoadWorld();
 		bool const PreviewWorld(std::string_view const szCityName, CityInfo&& __restrict info, ImagingMemoryInstance* const __restrict load_thumbnail) const; // load_thumbnail is expected to be created already, of BGRA format and equal to thumbnail dimensions
 		void RefreshLoadList();
-		std::vector<std::string> const& getLoadList() const;
+		vector<std::string> const& getLoadList() const;
 		// ##################
 
 		void OnKey(int32_t const key, bool const down, bool const ctrl = false);
@@ -208,8 +225,8 @@ namespace world
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
 
 
-		bool const hideVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex, std::vector<Iso::voxelIndexHashPair, tbb::scalable_allocator<Iso::voxelIndexHashPair>>* const pRecordHidden = nullptr);
-		bool const hideVoxelModelInstancesAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex, std::vector<Iso::voxelIndexHashPair, tbb::scalable_allocator<Iso::voxelIndexHashPair>>* const pRecordHidden = nullptr);
+		bool const hideVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden = nullptr);
+		bool const hideVoxelModelInstancesAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden = nullptr);
 
 		bool const destroyVoxelModelInstanceAt(point2D_t const voxelIndex, uint32_t const hashTypes); // concurrency safe //
 		bool const destroyVoxelModelInstancesAt(rect2D_t voxelArea, uint32_t const hashTypes); // concurrency safe
@@ -327,12 +344,19 @@ namespace world
 
 		} hashArea;
 
-		tbb::concurrent_queue<hashArea>																_queueWatchedInstances,
-																									_queueCleanUpInstances;
-		tbb::concurrent_unordered_map<uint32_t const, point2D_t>									_hshVoxelModelRootIndex;	// from registered hash of root voxel
-		tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>		_hshVoxelModelInstances_Static;	// from registered hash of root voxel
-		tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>		_hshVoxelModelInstances_Dynamic;	// from registered hash of root voxel
+		tbb::concurrent_queue<hashArea>		_queueWatchedInstances,
+											_queueCleanUpInstances;
+		mapRootIndex						_hshVoxelModelRootIndex;	// from registered hash of root voxel
+		mapVoxelModelInstancesStatic		_hshVoxelModelInstances_Static;	// from registered hash of root voxel
+		mapVoxelModelInstancesDynamic		_hshVoxelModelInstances_Dynamic;	// from registered hash of root voxel
 		
+	private:
+		void create_game_object(uint32_t const hash, uint32_t const gameobject_type);
+	public:
+		void upload_model_state(vector<model_root_index> const& __restrict data_rootIndex, vector<model_state_instance_static> const& __restrict data_models_static, vector<model_state_instance_dynamic> const& __restrict data_models_dynamic);
+		world::model_state const download_model_state() const {
+			return(world::model_state( _hshVoxelModelRootIndex, _hshVoxelModelInstances_Static, _hshVoxelModelInstances_Dynamic ));
+		}
 	public:
 		cVoxelWorld();
 

@@ -445,20 +445,27 @@ NO_INLINE std::filesystem::path const cMinCity::getUserFolder()
 
 void cMinCity::OnNew()
 {
+	async_long_task::wait_for_all(milliseconds(async_long_task::beats::frame));
+	m_eExclusivity = eExclusivity::NEW;
+
 	SAFE_DELETE(City);
 	City = new cCity(m_szCityName);
 
 	FMT_LOG(GAME_LOG, "New");
+
+	m_eExclusivity = eExclusivity::DEFAULT;
 }
 void cMinCity::OnLoad()
 {
 	static int64_t _task_id_load(0);
 
+	async_long_task::wait_for_all(milliseconds(async_long_task::beats::frame));
+	m_eExclusivity = eExclusivity::LOADING;
+
 	DispatchEvent(eEvent::PAUSE_PROGRESS); // reset progress here!
 
 	async_long_task::wait<background>(_task_id_load, "load"); // wait 1st on any loading task to complete before creating a new loading task
 
-	m_eExclusivity = eExclusivity::LOADING;
 	_task_id_load = async_long_task::enqueue<background>([&] {
 
 		DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1));
@@ -477,6 +484,9 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 {
 	static int64_t _task_id_save(0);
 
+	async_long_task::wait_for_all(milliseconds(async_long_task::beats::frame));
+	m_eExclusivity = eExclusivity::SAVING;
+
 	DispatchEvent(eEvent::PAUSE_PROGRESS); // reset progress here!
 
 	// must be done in main thread:
@@ -484,7 +494,6 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 
 	async_long_task::wait<background>(_task_id_save, "save"); // wait 1st on any saving task to complete before creating a new saving task
 
-	m_eExclusivity = eExclusivity::SAVING;
 	_task_id_save = async_long_task::enqueue<background>([&, bShutdownAfter] {
 
 		DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1));
@@ -678,8 +687,8 @@ void cMinCity::UpdateWorld()
 
 void cMinCity::StageResources(uint32_t const resource_index)
 {
-	[[unlikely]] if (eExclusivity::MAIN != m_eExclusivity)
-		return;
+	//[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity)
+	//	return;
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld.Render(resource_index);
@@ -730,7 +739,7 @@ void cMinCity::ProcessEvents()
 			}
 			break;
 		case eEvent::REVERT_EXCLUSIVITY:
-			m_eExclusivity = eExclusivity::MAIN;
+			m_eExclusivity = eExclusivity::DEFAULT;
 			break;
 		case eEvent::REFRESH_LOADLIST:
 			VoxelWorld.RefreshLoadList();
@@ -801,6 +810,8 @@ void cMinCity::OnFocusRestored()
 __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 {
 	ClipCursor(nullptr);
+
+	async_long_task::cancel_all();
 
 	// huge memory leak bugfix
 	Vulkan.WaitPresentIdle();

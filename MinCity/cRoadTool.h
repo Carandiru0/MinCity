@@ -43,9 +43,9 @@ private:
 	void autotileRoadHistory();
 	void decorateRoadHistory();
 private:
-	std::vector<sUndoVoxel, tbb::scalable_allocator<sUndoVoxel>>							_undoHistory; 
-	std::vector<uint32_t, tbb::scalable_allocator<uint32_t>>								_undoSignage;		// newly adding signage because of new road
-	std::vector<Iso::voxelIndexHashPair, tbb::scalable_allocator<Iso::voxelIndexHashPair>>	_undoExistingSignage; // existing signage that interferes with new road
+	vector<sUndoVoxel>				_undoHistory; 
+	vector<uint32_t>				_undoSignage;		// newly adding signage because of new road
+	vector<Iso::voxelIndexHashPair>	_undoExistingSignage; // existing signage that interferes with new road
 
 	point2D_t			_segmentVoxelIndex[2];
 	uint32_t			_activePoint;

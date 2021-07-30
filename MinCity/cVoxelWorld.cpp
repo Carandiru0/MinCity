@@ -31,11 +31,13 @@
 
 #include "cRemoteUpdateGameObject.h"
 #include "cBuildingGameObject.h"
+#include "cTrafficSignGameObject.h"
 #include "cTrafficControlGameObject.h"
 #include "cPoliceCarGameObject.h"
 #include "cCarGameObject.h"
 #include "cCopterGameObject.h"
 #include "cTestGameObject.h"
+#include "cSignageGameObject.h"
 #include "ImageAnimation.h"
 #include "Adjacency.h"
 #include "eDirection.h"
@@ -1392,9 +1394,9 @@ namespace world
 
 		// note that vector indices != direction value after first round of finding a valid quadrant
 		// so at no point assume they are equal, it only coindentally starts out that way
-		std::vector<uint32_t, tbb::scalable_allocator<uint32_t>> enabledDirections({  eDirection::NW, eDirection::N, eDirection::NE,
-																					  eDirection::E, eDirection::SE, eDirection::S,
-																					  eDirection::SW, eDirection::W });
+		vector<uint32_t> enabledDirections({  eDirection::NW, eDirection::N,  eDirection::NE,
+											  eDirection::E,  eDirection::SE, eDirection::S,
+											  eDirection::SW, eDirection::W });
 		random_shuffle(enabledDirections.begin(), enabledDirections.end()); // adds more randomization at a very low cost
 
 		bool bInvalidDirection(false);
@@ -1404,12 +1406,12 @@ namespace world
 			uint32_t direction;
 
 			bool bIsEnabledDirection(false);
-			std::vector<uint32_t>::iterator iterCurrent;
+			vector<uint32_t>::iterator iterCurrent;
 
 			do {
 				uint32_t const pending_direction = (uint32_t const)PsuedoRandomNumber32(0, enabledDirections.size() - 1);
 
-				for (std::vector<uint32_t>::iterator iter = enabledDirections.begin(); iter != enabledDirections.end(); ++iter) {
+				for (vector<uint32_t>::iterator iter = enabledDirections.begin(); iter != enabledDirections.end(); ++iter) {
 					if (pending_direction == *iter) {
 						iterCurrent = iter; // for *potential* erasure
 						direction = pending_direction;
@@ -1487,7 +1489,7 @@ namespace world
 									NBR_L					NBR_B
 												NBR_BL
 			*/
-			std::vector<point2D_t, tbb::scalable_allocator<point2D_t>> history; // this is an optimization, rather than using std::unordered_set and finding "dups" every iteration
+			vector<point2D_t> history; // this is an optimization, rather than using std::unordered_set and finding "dups" every iteration
 																							// just an iteratable vector to be used when search has finished to reset "discovered" state of any visited voxels
 																							// algorithm complexity is linear in case of vector (no find (due to "discoverable" flag being used, clean up at end of search)
 																							//						is exponential in case of unordered_set (find during search for every iteration + clean up at end of search)
@@ -2201,6 +2203,121 @@ namespace world
 		DebugStorageBuffer = new vku::StorageBuffer(MinCity::Vulkan.getDevice(), MinCity::Vulkan.getMemProps(), sizeof(UniformDecl::DebugStorageBuffer), false, vk::BufferUsageFlagBits::eTransferDst);
 		DebugStorageBuffer->upload(MinCity::Vulkan.getDevice(), MinCity::Vulkan.getMemProps(), MinCity::Vulkan.transientPool(), MinCity::Vulkan.graphicsQueue(), init_debug_buffer);
 #endif
+	}
+
+	void cVoxelWorld::create_game_object(uint32_t const hash, uint32_t const gameobject_type)
+	{
+		// safe to mix dynamic and static //
+		switch (gameobject_type)
+		{
+		case types::game_object_t::BuildingGameObject:
+			cBuildingGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]);
+			break;
+		case types::game_object_t::TestGameObject:
+			cTestGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
+			break;
+		case types::game_object_t::TrafficSignGameObject:
+			cTrafficSignGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
+			break;
+		case types::game_object_t::TrafficControlGameObject:
+			cTrafficControlGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]);
+			break;
+		case types::game_object_t::SignageGameObject:
+			cSignageGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
+			break;
+		}
+
+	}
+
+	void cVoxelWorld::upload_model_state(vector<model_root_index> const& __restrict data_rootIndex, vector<model_state_instance_static> const& __restrict data_models_static, vector<model_state_instance_dynamic> const& __restrict data_models_dynamic)
+	{
+		// clear all voxel model instance containers
+		_queueWatchedInstances.clear();
+		_queueCleanUpInstances.clear();
+		_hshVoxelModelRootIndex.clear();
+		_hshVoxelModelInstances_Static.clear();
+		_hshVoxelModelInstances_Dynamic.clear();
+
+		// clear *all* game object colonies
+		cBuildingGameObject::clear();
+		cCarGameObject::clear();
+		cPoliceCarGameObject::clear();
+		cCopterPropGameObject::clear();
+		cCopterBodyGameObject::clear();
+		cRemoteUpdateGameObject::clear();
+		cTestGameObject::clear();
+		cTrafficControlGameObject::clear();
+		cTrafficSignGameObject::clear();
+		cSignageGameObject::clear();
+		
+		{ // do all root indices
+			for (size_t i = 0; i < data_rootIndex.size(); ++i) {
+				_hshVoxelModelRootIndex.emplace(data_rootIndex[i].hash, data_rootIndex[i].voxelIndex);
+			}
+		}
+
+		{ // do all static
+			for (size_t i = 0; i < data_models_static.size(); ++i) {
+
+				uint32_t const hash(data_models_static[i].hash);
+
+				mapRootIndex::const_iterator const iter(_hshVoxelModelRootIndex.find(hash));
+
+				if (_hshVoxelModelRootIndex.cend() != iter) {
+
+					using voxelModelStatic = Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC>;
+					// get model
+					voxelModelStatic const* const __restrict voxelModel = Volumetric::getVoxelModel<false>(data_models_static[i].identity._modelGroup, data_models_static[i].identity._index);
+					if (voxelModel) {
+						Volumetric::voxelModelInstance_Static* pInstance = Volumetric::voxelModelInstance_Static::create(*voxelModel, hash, iter->second);
+						if (pInstance) {
+							// keep in unordered map container
+							_hshVoxelModelInstances_Static[hash] = pInstance;
+							// create associated game object
+							create_game_object(hash, data_models_static[i].gameobject_type);
+
+							// set additional varying data
+							pInstance->setElevation(data_models_static[i].elevation);
+							// * static location is derived from voxelIndex
+						}
+					}
+
+				}
+			}
+		}
+
+		{ // do all dynamic
+			for (size_t i = 0; i < data_models_dynamic.size(); ++i) {
+
+				uint32_t const hash(data_models_dynamic[i].hash);
+
+				mapRootIndex::const_iterator const iter(_hshVoxelModelRootIndex.find(hash));
+
+				if (_hshVoxelModelRootIndex.cend() != iter) {
+
+					using voxelModelDynamic = Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC>;
+					// get model
+					voxelModelDynamic const* const __restrict voxelModel = Volumetric::getVoxelModel<true>(data_models_dynamic[i].identity._modelGroup, data_models_dynamic[i].identity._index);
+					if (voxelModel) {
+						Volumetric::voxelModelInstance_Dynamic* pInstance = Volumetric::voxelModelInstance_Dynamic::create(*voxelModel, hash, iter->second);
+						if (pInstance) {
+							// keep in unordered map container
+							_hshVoxelModelInstances_Dynamic[hash] = pInstance;
+							// create associated game object
+							create_game_object(hash, data_models_dynamic[i].gameobject_type);
+
+							// set additional varying data
+							pInstance->setElevation(data_models_dynamic[i].elevation);
+							pInstance->setPitch(v2_rotation_t(data_models_dynamic[i].pitch.x, data_models_dynamic[i].pitch.y, data_models_dynamic[i].pitch.z));
+							pInstance->setLocationAzimuth(XMLoadFloat2(&data_models_dynamic[i].location), v2_rotation_t(data_models_dynamic[i].azimuth.x, data_models_dynamic[i].azimuth.y, data_models_dynamic[i].azimuth.z));
+						}
+					}
+
+				}
+			}
+		}
+
+
 	}
 
 	// private specializations of placeXXXInstanceAt
@@ -3648,7 +3765,7 @@ namespace world
 
 		[[likely]] if (!bFirstUpdate) {
 
-			[[unlikely]] if (eExclusivity::MAIN != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
+			[[unlikely]] if (eExclusivity::DEFAULT != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
 				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
 
 #ifdef GIF_MODE
@@ -4311,7 +4428,7 @@ namespace world
 	}
 	
 	// hides (unsets root/owner) so that instance of the specific model type
-	bool const cVoxelWorld::hideVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex, std::vector<Iso::voxelIndexHashPair, tbb::scalable_allocator<Iso::voxelIndexHashPair>>* const pRecordHidden)
+	bool const cVoxelWorld::hideVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden)
 	{
 		uint32_t existing(0);
 
@@ -4370,7 +4487,7 @@ namespace world
 		return(existing);
 	}
 
-	bool const cVoxelWorld::hideVoxelModelInstancesAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex, std::vector<Iso::voxelIndexHashPair, tbb::scalable_allocator<Iso::voxelIndexHashPair>>* const pRecordHidden)
+	bool const cVoxelWorld::hideVoxelModelInstancesAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden)
 	{
 		bool bExisting(false);
 

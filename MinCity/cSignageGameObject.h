@@ -22,6 +22,10 @@ namespace world
 	class cSignageGameObject : public tNonUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic>, public type_colony<cSignageGameObject>
 	{
 	public:
+		// overrides //
+		constexpr virtual types::game_object_t const to_type() const override {
+			return(types::game_object_t::SignageGameObject);
+		}
 		// ALL derivatives of this class must call base function first in overriden methods, and check its return value
 		// typedef Volumetric::voxB::voxelState const(* const voxel_event_function)(void* const _this, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState);
 		static Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index);

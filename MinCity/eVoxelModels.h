@@ -35,7 +35,7 @@ extern tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::ST
 
 namespace Volumetric
 {
-	// groups //
+	// groups // *if groups are added, getModelGroupFromModelGroupID() must be updated
 
 	// #### Same Order #### //// STATIC
 	BETTER_ENUM(eVoxelModels_Static, int32_t const,
@@ -152,6 +152,70 @@ namespace Volumetric
 			DynamicNamed(eVoxelModels_Dynamic::NAMED),
 			DynamicMisc(eVoxelModels_Dynamic::MISC); // last
 	} // end ns
+
+	// helper //
+	STATIC_INLINE ModelGroup const* const getModelGroupFromModelGroupID(int32_t const modelGroupID) {
+
+		if (modelGroupID < 0) { // dynamic
+
+			switch (modelGroupID) {
+
+			case eVoxelModels_Dynamic::EMPTY:
+				return(&isolated_group::DynamicEmpty);
+			case eVoxelModels_Dynamic::CARS:
+				return(&isolated_group::DynamicCars);
+			case eVoxelModels_Dynamic::NAMED:
+				return(&isolated_group::DynamicNamed);
+			case eVoxelModels_Dynamic::MISC: // last
+				return(&isolated_group::DynamicMisc);
+			}
+		}
+		else { // static 
+
+			switch (modelGroupID) {
+
+			case eVoxelModels_Static::EMPTY:
+				return(&isolated_group::StaticEmpty);
+			case eVoxelModels_Static::BUILDING_RESIDENTAL:
+				return(&isolated_group::Residential);
+			case eVoxelModels_Static::BUILDING_COMMERCIAL:
+				return(&isolated_group::Commercial);
+			case eVoxelModels_Static::BUILDING_INDUSTRIAL:
+				return(&isolated_group::Industrial);
+			case eVoxelModels_Static::NAMED:
+				return(&isolated_group::StaticNamed);
+			case eVoxelModels_Static::MISC: // last
+				return(&isolated_group::StaticMisc);
+			}
+		}
+
+		return(nullptr); // *return must be checked by caller
+	}
+
+	// slower, general purpose //
+	template<bool const Dynamic>
+	STATIC_INLINE auto const* const __restrict getVoxelModel(int32_t const modelGroupID, uint32_t const index) {
+
+		ModelGroup const* const pModelGroup(getModelGroupFromModelGroupID(modelGroupID));
+
+		if (pModelGroup) {
+
+			if constexpr (Dynamic) { // dynamic
+				return(&_dynamicModels[pModelGroup->offset + index]);
+			}
+			else { // static
+				return(&_staticModels[pModelGroup->offset + index]);
+			}
+		}
+		
+		// not valid/found ?
+		if constexpr (Dynamic) { // dynamic
+			return((Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC> const* const)nullptr); // *return must be checked by caller
+		}
+		else {
+			return((Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> const* const)nullptr);
+		}
+	}
 
 	// static specializations //
 	template<>

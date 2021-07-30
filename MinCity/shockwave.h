@@ -23,7 +23,7 @@ public:
 	
 	__forceinline __declspec(noalias) virtual bool const __vectorcall op(FXMVECTOR const vDisplacement, float const t_, Volumetric::voxelShaderDesc&& __restrict out) const final;
 public:
-	static std::vector<Volumetric::xRow, tbb::scalable_allocator<Volumetric::xRow>> ShockwaveRows;
+	static vector<Volumetric::xRow> ShockwaveRows;
 
 } ShockwaveInstance;
 

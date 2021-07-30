@@ -3,6 +3,7 @@
 #include "voxelModelInstance.h"
 #include "cTrafficSignGameObject.h"
 #include "eTrafficLightState.h"
+#include "cVoxelWorld.h"
 
 namespace world
 {
@@ -128,6 +129,59 @@ namespace world
 		_sign_pair = std::move(src._sign_pair);
 		
 		return(*this);
+	}
+
+	size_t const cTrafficControlGameObject::exportData(vector<uint8_t>& out) const
+	{
+		struct {
+			uint32_t	hash[4];
+			uint32_t    sign_count;
+		} data{};
+
+		uint32_t count(0);
+
+		for (uint32_t sign = 0; sign < _sign_count; ++sign) {
+			if (_signs[sign]) {
+
+				if (_signs[sign]->getModelInstance()) {
+					data.hash[sign] = _signs[sign]->getModelInstance()->getHash();
+					++count;
+				}
+			}
+		}
+
+		data.sign_count = count;
+
+		size_t const bytes(sizeof(data));
+		out.reserve(bytes); out.resize(bytes);
+		memcpy(out.data(), &data, bytes);
+
+		return(bytes);	}
+
+	void cTrafficControlGameObject::importData(uint8_t const* const in, size_t const size)
+	{
+		struct {
+			uint32_t	hash[4];
+			uint32_t    sign_count;
+		} data{};
+
+		size_t const bytes(sizeof(data));
+		if (size == bytes) { // validated?
+			memcpy(&data, in, bytes);
+
+			for (uint32_t sign = 0; sign < data.sign_count; ++sign) {
+
+				auto * const pSignModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(data.hash[sign]);
+				if (pSignModelInstance) {
+
+					cTrafficSignGameObject* const pSign = pSignModelInstance->getOwnerGameObject<cTrafficSignGameObject>();
+
+					if (pSign) {
+						Add(pSign);
+					}
+				}
+			}
+		}
 	}
 
 	void cTrafficControlGameObject::deduce_sign_pairs()

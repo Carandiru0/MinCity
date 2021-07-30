@@ -9,10 +9,9 @@ namespace world
 	class tUpdateableGameObject : public tNonUpdateableGameObject<TVoxelModelInstance>
 	{
 	public:
-#ifndef NDEBUG
-		// every child of this class should override to_string with approprate string
-		virtual std::string_view const to_string() const override { return("tUpdateableGameObject"); }
-#endif
+		constexpr virtual types::game_object_t const to_type() const {
+			return(types::game_object_t::Updateable);
+		}
 	public:
 		bool const operator==(tUpdateableGameObject const& src) const
 		{

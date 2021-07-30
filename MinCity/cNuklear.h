@@ -189,7 +189,7 @@ private:
 #ifdef DEBUG_LIGHT_PROPAGATION
 	struct nk_image const*		_debugLightImage;
 #endif
-	std::vector<rect2D_t>		_activeWindowRects;
+	vector<rect2D_t>			_activeWindowRects;
 
 	point2D_t					_frameBufferSize;
 	float						_frameBufferAspect;

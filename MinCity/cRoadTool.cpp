@@ -157,7 +157,7 @@ void __vectorcall cRoadTool::ReleaseAction(FXMVECTOR const xmMousePos)
 void cRoadTool::commitRoadHistory() // commits current "road" to grid
 {
 	// using history (only voxel indices) to acquire the voxel from the grid, unset the pending bit, then update the voxel in the grid
-	for (std::vector<sUndoVoxel>::const_iterator commitVoxel = _undoHistory.cbegin(); commitVoxel != _undoHistory.cend(); ++commitVoxel)
+	for (vector<sUndoVoxel>::const_iterator commitVoxel = _undoHistory.cbegin(); commitVoxel != _undoHistory.cend(); ++commitVoxel)
 	{
 		point2D_t const voxelIndex(commitVoxel->voxelIndex);
 		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
@@ -171,7 +171,7 @@ void cRoadTool::commitRoadHistory() // commits current "road" to grid
 	}
 
 	// destroy all instances of signage that were hidden
-	for (std::vector<Iso::voxelIndexHashPair>::const_iterator destroyInstance = _undoExistingSignage.cbegin(); destroyInstance != _undoExistingSignage.cend(); ++destroyInstance)
+	for (vector<Iso::voxelIndexHashPair>::const_iterator destroyInstance = _undoExistingSignage.cbegin(); destroyInstance != _undoExistingSignage.cend(); ++destroyInstance)
 	{
 		MinCity::VoxelWorld.destroyVoxelModelInstance(destroyInstance->hash); // doesn't need to be immediate
 	}
@@ -216,7 +216,7 @@ void cRoadTool::clearRoadHistory() // undo's current "road" from grid
 	_undoSignage.clear();
 
 	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
-	for (std::vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
+	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
 	{
 		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
 	}
@@ -832,15 +832,15 @@ typedef struct ROAD_SEGMENT {
 	
 } ROAD_SEGMENT;
 
-static std::vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(std::vector<ROAD_SEGMENT>::const_iterator const start, std::vector<ROAD_SEGMENT>::const_iterator const end,
-												                             int32_t const currentHeightStep, int32_t& __restrict targetHeightStep)
+static vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(vector<ROAD_SEGMENT>::const_iterator const start, vector<ROAD_SEGMENT>::const_iterator const end,
+												                        int32_t const currentHeightStep, int32_t& __restrict targetHeightStep)
 {
 	static constexpr int32_t const SAMPLE_COUNT(16);
 
-	std::vector<ROAD_SEGMENT>::const_iterator target(end);
+	vector<ROAD_SEGMENT>::const_iterator target(end);
 
 	// first priority target are nodes
-	for (std::vector<ROAD_SEGMENT>::const_iterator i = start; i != end; ++i) {
+	for (vector<ROAD_SEGMENT>::const_iterator i = start; i != end; ++i) {
 		if (i->node) {
 			target = i;
 			targetHeightStep = target->h0;
@@ -850,7 +850,7 @@ static std::vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(std
 
 	// second priority target are smoothed average deviations
 	int32_t sum(0), counter(0);
-	for (std::vector<ROAD_SEGMENT>::const_iterator i = start; i != end; ++i) {
+	for (vector<ROAD_SEGMENT>::const_iterator i = start; i != end; ++i) {
 		
 		int32_t heightstep(0);
 		
@@ -998,7 +998,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 	else
 		return(false);
 
-	std::vector<ROAD_SEGMENT, tbb::scalable_allocator<ROAD_SEGMENT>> segments;
+	vector<ROAD_SEGMENT> segments;
 
 	ROAD_SEGMENT currentSegment{};
 	int32_t intersection_index(-1), intersection_remaining(0);
@@ -1325,8 +1325,8 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 	uint32_t target_count(0);
 
-	std::vector<ROAD_SEGMENT>::const_iterator iter(segments.cbegin());
-	std::vector<ROAD_SEGMENT>::const_iterator target(segments.cend());
+	vector<ROAD_SEGMENT>::const_iterator iter(segments.cbegin());
+	vector<ROAD_SEGMENT>::const_iterator target(segments.cend());
 
 	ptrdiff_t target_to_start(0);
 
@@ -1345,7 +1345,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 #endif
 
 			int32_t pending_targetHeightStep(0);
-			std::vector<ROAD_SEGMENT>::const_iterator const pending_target = findTargetRoadSegment(iter, segments.cend(), currentHeightStep, pending_targetHeightStep);
+			vector<ROAD_SEGMENT>::const_iterator const pending_target = findTargetRoadSegment(iter, segments.cend(), currentHeightStep, pending_targetHeightStep);
 
 			if (segments.cend() != pending_target) {
 
@@ -1578,7 +1578,7 @@ static auto const __vectorcall autotile(point2D_t const currentPoint, uint32_t c
 
 void cRoadTool::autotileRoadHistory()
 {
-	for (std::vector<sUndoVoxel>::const_reverse_iterator iter = _undoHistory.crbegin(); iter != _undoHistory.crend(); ++iter)
+	for (vector<sUndoVoxel>::const_reverse_iterator iter = _undoHistory.crbegin(); iter != _undoHistory.crend(); ++iter)
 	{
 		point2D_t const voxelIndex(iter->voxelIndex);
 
@@ -1611,8 +1611,8 @@ void cRoadTool::autotileRoadHistory()
 }
 
 static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel const& __restrict oVoxel,
-								       std::vector<sUndoVoxel, tbb::scalable_allocator<sUndoVoxel>>& __restrict undoHistory,
-								       std::vector<uint32_t, tbb::scalable_allocator<uint32_t>>& __restrict undoSignage,
+								       vector<sUndoVoxel>& __restrict undoHistory,
+								       vector<uint32_t>& __restrict undoSignage,
 									   int64_t const seed)
 {
 	static constexpr int32_t const XING_OFFSET = Iso::SEGMENT_SIDE_WIDTH + 1;
@@ -1794,7 +1794,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso::Voxel const& __restrict oVoxel, 
 											   bool const lamp_post_side, bool& lamp_post_swapped_for_sign,
 											   int64_t const seed,
-											   std::vector<sUndoVoxel, tbb::scalable_allocator<sUndoVoxel>>& __restrict undoHistory)
+											   vector<sUndoVoxel>& __restrict undoHistory)
 {
 	static constexpr int32_t const LAMP_POST_OFFSET = Iso::SEGMENT_SIDE_WIDTH + 1;
 
@@ -1862,8 +1862,8 @@ void cRoadTool::decorateRoadHistory()
 {
 	static constexpr uint32_t const LAMP_POST_INTERVAL(Iso::ROAD_SEGMENT_WIDTH << 1);
 
-	std::vector<sUndoVoxel, tbb::scalable_allocator<sUndoVoxel>>	undoHistory; // any modifications to voxel grid ground while decorating get's appended to main _undoHistory
-																				 // *after* iterations of current road history elements
+	vector<sUndoVoxel>	undoHistory; // any modifications to voxel grid ground while decorating get's appended to main _undoHistory
+									 // *after* iterations of current road history elements
 
 	bool lamp_post_side(false),
 		 lamp_post_swapped_for_sign(false);
@@ -1872,7 +1872,7 @@ void cRoadTool::decorateRoadHistory()
 	uint32_t segment_count(0);
 	uint32_t intersection_count(0);
 
-	for (std::vector<sUndoVoxel>::const_iterator iter = _undoHistory.cbegin(); iter != _undoHistory.cend(); ++iter)
+	for (vector<sUndoVoxel>::const_iterator iter = _undoHistory.cbegin(); iter != _undoHistory.cend(); ++iter)
 	{
 		point2D_t const voxelIndex(iter->voxelIndex);
 

@@ -2,6 +2,8 @@
 #include "eDirection.h"
 #include "cPoliceCarGameObject.h"
 
+using namespace world;
+
 static constexpr int32_t const PURSUIT_CHANCE = 33;
 
 namespace light_state

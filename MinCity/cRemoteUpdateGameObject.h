@@ -14,10 +14,10 @@ namespace world
 	class cRemoteUpdateGameObject : public tUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic>, public type_colony<cRemoteUpdateGameObject>
 	{
 	public:
-#ifndef NDEBUG
-		// every child of this class should override to_string with approprate string
-		virtual std::string_view const to_string() const override { return("cRemoteUpdateGameObject"); }
-#endif
+		constexpr virtual types::game_object_t const to_type() const override {
+			return(types::game_object_t::RemoteUpdateGameObject);
+		}
+
 		//static Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index);
 		//Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const;
 
