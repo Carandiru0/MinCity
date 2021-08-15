@@ -8,8 +8,10 @@
 #include <Noise/supernoise.hpp>
 #include <Random/superrandom.hpp>
 #include <Imaging/Imaging/Imaging.h>
+#include <Utility/bit_volume.h>
 #include "cNuklear.h"
 #include "cPostProcess.h"
+#include "adjacency.h"
 
 #define V2_ROTATION_IMPLEMENTATION
 #include "voxelAlloc.h"
@@ -107,15 +109,33 @@ static inline struct CameraEntity
 	{}
 } oCamera;
 
-static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
+tbb::queuing_rw_mutex _theLock; // for _theGrid
+constinit static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
 {
 	Iso::Voxel* __restrict		 _protected;
-	tbb::queuing_rw_mutex		 _lock;
-
+	
 	__declspec(safebuffers) __forceinline operator Iso::Voxel* const __restrict() const {
 		return(_protected);
 	}
 } _theGrid{};
+constinit static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
+{
+	Iso::miniVoxel const** __restrict	 _protected;
+
+	__declspec(safebuffers) __forceinline operator Iso::miniVoxel const** const __restrict() const {
+		return(_protected);
+	}
+} _theTemp{};
+static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
+{
+	tbb::concurrent_vector<Iso::miniVoxel> voxels;	// actual memory that is pointed to by a Iso::miniVoxel
+
+	using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
+	volume
+		* __restrict last = nullptr,
+		* __restrict now = nullptr;
+} _mini;
+
 
 static uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
 	UINT8_MAX - GROUND_HEIGHT_NOISE_STEP,
@@ -803,6 +823,127 @@ namespace world
 	v2_rotation_t const& getAzimuth()
 	{
 		return(oCamera.Azimuth);
+	}
+	
+	static Iso::miniVoxel const* const __restrict __vectorcall getMiniVoxelAt(point2D_t voxelIndex) // no bounds checking required! (bounds checking is done prior)
+	{
+		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+
+		// Check bounds
+		if ((voxelIndex.x | voxelIndex.y) >= 0) {
+
+			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
+
+				return(*(_theTemp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+			}
+		}
+
+		return(nullptr);
+	}
+	static bool const __vectorcall setMiniVoxelAt(point2D_t voxelIndex, Iso::miniVoxel const* const&& __restrict newData)
+	{
+		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+
+		// Check bounds
+		if ((voxelIndex.x | voxelIndex.y) >= 0) {
+
+			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
+
+				// Update Voxel
+				*(_theTemp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
+				return(true);
+			}
+		}
+
+		return(false);
+	}
+	static uint32_t const __vectorcall encode_adjacency(ivec4_v const xmIndex)
+	{
+		ivec4_t iIndex;
+		xmIndex.xyzw(iIndex);
+
+		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
+		//	left = voxB::BIT_ADJ_LEFT,
+		//	right = voxB::BIT_ADJ_RIGHT,
+		//	front = voxB::BIT_ADJ_FRONT,
+		//	back = voxB::BIT_ADJ_BACK,
+		//	above = voxB::BIT_ADJ_ABOVE
+
+		uint32_t adjacent(0);
+
+
+		if (iIndex.x - 1 >= 0) {
+			adjacent |= _mini.last->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
+		}
+		if (iIndex.x + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X) {
+			adjacent |= _mini.last->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
+		}
+		if (iIndex.z - 1 >= 0) {
+			adjacent |= _mini.last->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
+		}
+		if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
+			adjacent |= _mini.last->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+		}
+		if (iIndex.y - 1 >= 0) {
+			adjacent |= _mini.last->read_bit(iIndex.x, iIndex.y - 1, iIndex.z) << Volumetric::adjacency::above;
+		}
+		return(adjacent);
+	}
+
+	void __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
+	{
+		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+
+		[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
+			&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
+		{
+			uvec4_v const uvIndex = SFM::floor_to_u32(XMVectorAdd(xmIndex, _mm_set1_ps(0.5f)));
+			uvec4_t uiIndex;
+			uvIndex.xyzw(uiIndex);
+
+			size_t const index(_mini.now->get_index(uiIndex.x, uiIndex.y, uiIndex.z));
+
+			if (!_mini.now->read_bit(index)) {  // filter out, if already set, nothing get added
+
+				_mini.now->set_bit(index); // the "current" volume is always updated.... 
+
+				if (_mini.last->read_bit(index)) { // however the voxel is only added if the "last" volume also matches for this "bit" 
+													 // this hides the temporal difference in adjacency, giving the artifact free rendering with current/correct adjacency data.
+													 // this adds a frame of latency to achieve, any changes are delayed by one frame. 
+
+					uint8_t const alpha((color >> 24) & 0xFF);
+					bool const transparent(0xFF != alpha);
+
+					uint32_t const adjacency(encode_adjacency(ivec4_v(uvIndex)));				
+
+					// Build hash //
+					uint32_t hash(0);
+
+					// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
+					hash |= adjacency;
+					// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
+
+					hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
+					hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
+
+					uint32_t flags;
+					if (emissive) {
+						flags |= Iso::mini::emissive;
+					}
+					if (transparent) {
+						flags |= Iso::mini::transparent;
+					}
+
+					XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
+					XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+
+					setMiniVoxelAt(voxelIndex, std::forward<Iso::miniVoxel const* const&&>(
+						&(*_mini.voxels.emplace_back(xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash, color, flags, getMiniVoxelAt(voxelIndex)))));
+				}
+			}
+		}
 	}
 
 	Iso::Voxel const * const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex)
@@ -1720,7 +1861,80 @@ static struct voxelRender // ** static container, all methods and members must b
 {
 	// this construct significantly improves throughput of voxels, by batching the streaming stores //
 	// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
+	using miniVoxelLocalBatch = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::GROUND>;
+	using miniVoxelThreadBatch = tbb::enumerable_thread_specific<
+		miniVoxelLocalBatch,
+		tbb::cache_aligned_allocator<VoxelLocalBatch>,
+		tbb::ets_key_per_instance >;
 
+	static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
+
+
+	STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
+		Iso::miniVoxel const&& __restrict oVoxel,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+		miniVoxelLocalBatch& __restrict localMini,
+		miniVoxelLocalBatch& __restrict localMiniTrans)
+	{
+		if (Iso::mini::transparent == (oVoxel.flags & Iso::mini::transparent)) {
+
+			localMiniTrans.emplace_back(
+				voxels_trans,
+
+				std::forward<VertexDecl::VoxelDynamic const&&>(oVoxel.data)
+			);
+		}
+		else {
+
+			localMini.emplace_back(
+				voxels_dynamic,
+
+				std::forward<VertexDecl::VoxelDynamic const&&>(oVoxel.data)
+			);
+		}
+
+		if (Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive)) {
+
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(oVoxel.data.worldPos, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+
+			Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & oVoxel.color);
+		}
+
+		Iso::miniVoxel const* next(oVoxel.next);
+		while (next) {
+
+			if (Iso::mini::transparent == (next->flags & Iso::mini::transparent)) {
+
+				localMiniTrans.emplace_back(
+					voxels_trans,
+
+					std::forward<VertexDecl::VoxelDynamic const&&>(next->data)
+				);
+			}
+			else {
+
+				localMini.emplace_back(
+					voxels_dynamic,
+
+					std::forward<VertexDecl::VoxelDynamic const&&>(next->data)
+				);
+			}
+
+			if (Iso::mini::emissive == (next->flags & Iso::mini::emissive)) {
+
+				XMVECTOR const xmIndex(XMVectorMultiplyAdd(next->data.worldPos, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & next->color);
+			}
+
+			next = next->next;
+		}
+		
+	}
+
+	// this construct significantly improves throughput of voxels, by batching the streaming stores //
+	// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
 	using VoxelLocalBatch = sBatched<VertexDecl::VoxelNormal, eStreamingBatchSize::GROUND>;
 	using VoxelThreadBatch = tbb::enumerable_thread_specific<
 		VoxelLocalBatch,
@@ -1793,11 +2007,12 @@ static struct voxelRender // ** static container, all methods and members must b
 	}
 
 
-	template<bool const Dynamic, bool const UPDATE_OPACITY, typename VOXELBUFFER_3D, typename VOXELBUFFER_TRANS_3D>
+	template<bool const Dynamic>
 	STATIC_INLINE void XM_CALLCONV RenderModel(uint8_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
 		Iso::Voxel const& __restrict oVoxel,
-		tbb::atomic<VOXELBUFFER_3D*>& __restrict voxels,
-		tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxels_trans)
+		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
 	{
 		auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
 		auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
@@ -1805,22 +2020,19 @@ static struct voxelRender // ** static container, all methods and members must b
 		if (FoundModelInstance) {
 			// visibility too agressive culling light emission from models, so extents are doubled on xz axis
 			//if (Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMVectorMultiply(_visibleLight, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents)))) {
-				FoundModelInstance->Render<UPDATE_OPACITY>(xmVoxelOrigin, voxelIndex, oVoxel, voxels, voxels_trans);
+				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 			//}
 		}
 	}
 
-	template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y,
-		bool const UPDATE_OPACITY = true,
-		bool const RENDER_DYNAMIC = true,
-		typename VOXELGROUND, typename VOXELROAD, typename VOXELSTATIC, typename VOXELDYNAMIC>
-		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
-			tbb::atomic<VOXELGROUND*>& __restrict voxelGround,
-			tbb::atomic<VOXELROAD*>& __restrict voxelRoad,
-			tbb::atomic<VOXELROAD*>& __restrict voxelRoadTrans,
-			tbb::atomic<VOXELSTATIC*>& __restrict voxelStatic,
-			tbb::atomic<VOXELDYNAMIC*>& __restrict voxelDynamic,
-			tbb::atomic<VOXELDYNAMIC*>& __restrict voxelTrans)
+	template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y>
+	static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
 	{
 		point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 
@@ -1863,32 +2075,37 @@ static struct voxelRender // ** static container, all methods and members must b
 		typedef struct alignas(16) __declspec(novtable) sRenderFuncBlockChunk {
 
 		private:
-			XMVECTOR const 							voxelStart;
-			Iso::Voxel const* const __restrict		theGrid;
-			tbb::atomic<VOXELGROUND*>& __restrict	voxelGround;
-			tbb::atomic<VOXELROAD*>& __restrict		voxelRoad;
-			tbb::atomic<VOXELROAD*>& __restrict		voxelRoadTrans;
-			tbb::atomic<VOXELSTATIC*>& __restrict	voxelStatic;
-			tbb::atomic<VOXELDYNAMIC*>& __restrict	voxelDynamic;
-			tbb::atomic<VOXELDYNAMIC*>& __restrict	voxelTrans;
+			XMVECTOR const 									voxelStart;
+			Iso::Voxel const* const __restrict				theGrid;
+			Iso::miniVoxel const* const* const __restrict	theTemp;
+
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoad;
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoadTrans;
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
 
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
 			__forceinline explicit __vectorcall sRenderFuncBlockChunk(
 				FXMVECTOR const voxelStart_,
 				Iso::Voxel const* const __restrict theGrid_,
-				tbb::atomic<VOXELGROUND*> & __restrict voxelGround_,
-				tbb::atomic<VOXELROAD*> & __restrict voxelRoad_,
-				tbb::atomic<VOXELROAD*>& __restrict voxelRoadTrans_,
-				tbb::atomic<VOXELSTATIC*> & __restrict voxelStatic_,
-				tbb::atomic<VOXELDYNAMIC*> & __restrict voxelDynamic_,
-				tbb::atomic<VOXELDYNAMIC*> & __restrict voxelTrans_)
-				: voxelStart(voxelStart_),
-				voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_),
-				theGrid(theGrid_)
+				Iso::miniVoxel const* const* const __restrict theTemp_,
+				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelGround_,
+				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelRoad_,
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
+				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelStatic_,
+				tbb::atomic<VertexDecl::VoxelDynamic*> & __restrict voxelDynamic_,
+				tbb::atomic<VertexDecl::VoxelDynamic*> & __restrict voxelTrans_)
+				: voxelStart(voxelStart_), theGrid(theGrid_), theTemp(theTemp_),
+				voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
 			{}
 
 			void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
+
+				miniVoxelLocalBatch& __restrict localMini(batchedMini.local());
+				miniVoxelLocalBatch& __restrict localMiniTrans(batchedMiniTrans.local());
 
 				VoxelLocalBatch& __restrict localGround(batchedGround.local());
 				VoxelLocalBatch& __restrict localRoad(batchedRoad.local());
@@ -1907,8 +2124,15 @@ static struct voxelRender // ** static container, all methods and members must b
 					Iso::Voxel const* __restrict pVoxel = theGrid + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
 					_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
 
+					Iso::miniVoxel const* const* __restrict pMiniVoxels = theTemp + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
+
 					for (; x < x_end; ++x)
 					{
+						point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
+
+						Iso::miniVoxel const* const __restrict pMiniVoxel(*pMiniVoxels);
+						++pMiniVoxels; // sequentially access for best cache prediction
+
 						Iso::Voxel const oVoxel(*pVoxel);
 						++pVoxel; // sequentially access for best cache prediction
 
@@ -1917,11 +2141,14 @@ static struct voxelRender // ** static container, all methods and members must b
 						// Add the offset of the world origin calculated
 						// Now inside screenspacve coordinates
 						// Rendering is FRONT to BACK only (checked)
-						point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
 						XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(p2D_to_v2(voxelIndex), voxelStart)); // make relative to render start position
 
 						if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
-								
+							
+							if (nullptr != pMiniVoxel) {
+								RenderMiniVoxels(voxelIndex, std::forward<Iso::miniVoxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
+							}
+
 							// ***Ground always exists*** //
 							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
 
@@ -1947,21 +2174,20 @@ static struct voxelRender // ** static container, all methods and members must b
 						if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
 						{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-							RenderModel<false, UPDATE_OPACITY>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelTrans);
+							RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 #endif
 						} // root
 						// a voxel in the grid can have a static model and dynamic model simultaneously
-						if constexpr (RENDER_DYNAMIC) {
+						if (Iso::isOwnerAny(oVoxel, Iso::DYNAMIC_HASH)) { // only if there are dynamic hashes which this voxel owns
+							for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
+								if (Iso::isOwner(oVoxel, i)) {
 
-							if (Iso::isOwnerAny(oVoxel, Iso::DYNAMIC_HASH)) { // only if there are dynamic hashes which this voxel owns
-								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
-									if (Iso::isOwner(oVoxel, i)) {
-
-										RenderModel<true, UPDATE_OPACITY>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelDynamic, voxelTrans);
-									}
+									RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 								}
 							}
 						}
+						
+
 					} // for
 
 				} // for
@@ -1971,22 +2197,31 @@ static struct voxelRender // ** static container, all methods and members must b
 		} const RenderFuncBlockChunk;
 
 		// *****************************************************************************************************************//
-		XMVECTOR const xmVoxelStart(XMVectorAdd(p2D_to_v2(voxelStart), XMLoadFloat2A(&oCamera.voxelFractionalGridOffset))); // *bugfix major: the only place the fractional offset needs to be applied.
+		XMVECTOR const xmVoxelStart(XMVectorAdd(p2D_to_v2(voxelStart), XMLoadFloat2A(&oCamera.voxelFractionalGridOffset))); // *bugfix major: fractional offset needs to be applied.
 																															// all voxel positions rendered are relative to voxelStart
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION																					// geometry shader resolves uv's from this position aswell 
 		tTime const tGridStart(high_resolution_clock::now());																// smooth movement from the camera's point of view is enabled by this offset.
 #endif																														// all voxels, opacitymap, light emitters, everything -derive there position from this singular source.
 		{
-			tbb::queuing_rw_mutex::scoped_lock lock(_theGrid._lock, false); // read-only grid access
+			tbb::queuing_rw_mutex::scoped_lock lock(_theLock, false); // read-only grid access
 
 			tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 			tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 				voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-				RenderFuncBlockChunk(xmVoxelStart, _theGrid, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
+				RenderFuncBlockChunk(xmVoxelStart, _theGrid, _theTemp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
 			);
 		}
 		// ####################################################################################################################
 		// ensure all batches are output and cleared for next trip
+		for (auto i = batchedMini.begin(); i != batchedMini.end(); ++i) {
+			i->out(voxelDynamic);
+		}
+		batchedMini.clear();
+		for (auto i = batchedMiniTrans.begin(); i != batchedMiniTrans.end(); ++i) {
+			i->out(voxelTrans);
+		}
+		batchedMiniTrans.clear();
+
 		for (auto i = batchedGround.begin(); i != batchedGround.end(); ++i) {
 			i->out(voxelGround);
 		}
@@ -2185,8 +2420,19 @@ namespace world
 
 		// create world grid memory
 		{
-			_theGrid._protected = (Iso::Voxel* const __restrict)__memalloc_large(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, 64);
+			_theGrid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
+			_theTemp._protected = (Iso::miniVoxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::miniVoxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
+
+			_mini.voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+
+			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
+			_mini.now = volume::create();
+			_mini.last = volume::create();
+
+			clearMiniVoxels();
+
 			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(_theGrid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
+			FMT_LOG(VOX_LOG, "mini grid voxel allocation: {:n} bytes", (size_t)(sizeof(_theTemp[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
 		}
 		
 		GenerateGround();
@@ -2713,7 +2959,7 @@ namespace world
 		Iso::Voxel* __restrict gridSnapshot = (Iso::Voxel * __restrict)scalable_malloc(gridSz);
 
 		{
-			tbb::queuing_rw_mutex::scoped_lock lock(_theGrid._lock, false); // read-only access
+			tbb::queuing_rw_mutex::scoped_lock lock(_theLock, false); // read-only access
 			memcpy(gridSnapshot, _theGrid, gridSz);
 		}
 
@@ -2730,7 +2976,7 @@ namespace world
 		static constexpr size_t const gridSz(sizeof(Iso::Voxel) * size_t(voxel_count));
 
 		// internally memory for the grid uses VirtualAlloc2 / VirtualFree for it's data
-		Iso::Voxel* const __restrict theGrid = (Iso::Voxel* const __restrict)__memalloc_large(gridSz);
+		Iso::Voxel* const __restrict theGrid = (Iso::Voxel* const __restrict)scalable_aligned_malloc(gridSz, CACHE_LINE_BYTES);
 
 		memcpy(theGrid, new_grid, gridSz);
 
@@ -2742,12 +2988,12 @@ namespace world
 			// to be thread safe. This lock has very little contention put on it from this side, however if the lock is already 
 			// obtained by RenderGrid the wait this function will have is high (time for RenderGrid to complete)
 
-			tbb::queuing_rw_mutex::scoped_lock lock(_theGrid._lock, true); // write access
+			tbb::queuing_rw_mutex::scoped_lock lock(_theLock, true); // write access
 			oldGrid = (Iso::Voxel*)_InterlockedExchangePointer((PVOID * __restrict)&_theGrid._protected, theGrid);
 		}
 		// free the old grid's large allocation
 		if (oldGrid) {
-			__memfree_large(oldGrid, gridSz);
+			scalable_aligned_free(oldGrid);
 		}
 	}
 
@@ -2911,19 +3157,30 @@ namespace world
 		};
 
 
-		// mapped clears //
-		// bugfix: tried running the clears in parallel, causes flickering voxel models
-		__memclr_aligned_32<true>(MappedVoxels_Terrain_Start, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
-		__memclr_aligned_32<true>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
-		__memclr_aligned_32<true>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
-		__memclr_aligned_32<true>(MappedVoxels_Static_Start, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
-		__memclr_aligned_16<true>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
-		__memclr_aligned_16<true>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
-
+		// mapped clears // parallel = higher bandwidth achieved //
+		tbb::parallel_invoke(
+			[&] {
+				__memclr_stream<32>(MappedVoxels_Terrain_Start, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
+			},
+			[&] {
+				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
+			},
+			[&] {
+				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
+			},
+			[&] {
+				__memclr_stream<32>(MappedVoxels_Static_Start, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
+			},
+			[&] {
+				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
+			},
+			[&] {
+				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
+			});
+		
 		__streaming_store_fence(); // ensure "streaming" clears are coherent
 
-
-
+		// GRID RENDER //
 		voxelRender::RenderGrid<Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z>(
 			oCamera.voxelIndex_TopLeft,
 			MappedVoxels_Terrain,
@@ -3092,7 +3349,7 @@ namespace world
 		
 		
 		// Update stagingBuffere inside this thread (no two memory regions are overlapping while mapped across threads)
-		_OpacityMap.commit(resource_index); // copy lightbuffer from cpu friendly read-write normal memory to potentially write combined (writeonly) buffer
+		_OpacityMap.commit(resource_index, MinCity::hardware_concurrency()); // copy lightbuffer from cpu friendly read-write normal memory to potentially write combined (writeonly) buffer
 
 
 		///
@@ -3688,19 +3945,21 @@ namespace world
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
 		// view matrix derived from eyePos
-		// the fractional offset does not get applied here!
-		_currentState.Uniform.eyePos = SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder);
-		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0
-																						 // this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder)); 
+		XMVECTOR const xmFract(XMVectorSet(oCamera.voxelFractionalGridOffset.x, 0.0f, oCamera.voxelFractionalGridOffset.y, 0.0f));
+
+		_currentState.Uniform.eyePos = XMVectorAdd(xmEyePos, xmFract); // apply fractionsl offset to uniform only.
+		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+
 		// **panning is isolated to not affect raymarching uniformity**
 #ifdef PANNING_ENABLED
 		_currentState.pan = SFM::lerp(_lastState.pan, _targetState.pan, tRemainder);
 #else
 		_currentState.pan = XMVectorZero();
 #endif
-		
-		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(_currentState.Uniform.eyePos, _currentState.pan),
-												 _currentState.pan, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+
+		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(xmEyePos, _currentState.pan),  // normal view matrix
+															 _currentState.pan, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 		_currentState.Uniform.view = xmView;
 		_OpacityMap.pushViewMatrix(xmView);
 
@@ -3714,8 +3973,9 @@ namespace world
 		// Get current projection matrix after update of frustum and in turn projection
 		_currentState.Uniform.proj = _Visibility.getProjectionMatrix();
 
-		_currentState.Uniform.viewProj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);  // matrices can not be interpolated effectively they must be recalculated
+		_currentState.Uniform.viewproj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);			// matrices can not be interpolated effectively they must be recalculated
 																										// from there base components
+
 	}
 	void __vectorcall cVoxelWorld::UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate) // fixed timestep state
 	{
@@ -3976,6 +4236,8 @@ namespace world
 
 
 				// City Update //
+				// bugged todo : 
+				/*
 				MinCity::City->Update(tNow);
 
 				// TESTING //
@@ -3992,6 +4254,7 @@ namespace world
 						tLast = tNow;
 					}
 				}
+				*/
 
 			} // end !Paused //
 		}
@@ -3999,6 +4262,22 @@ namespace world
 		{ // ### ONLOADED EVENT must be triggered here !! //
 			OnLoaded(tNow);
 		}
+	}
+
+	// voxel painting
+	void cVoxelWorld::clearMiniVoxels()
+	{
+		__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::miniVoxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+
+		_mini.voxels.clear();
+
+		// last_volume becomes volume,
+		// volume is now cleared
+		std::swap(_mini.last, _mini.now);
+		__memclr_stream<CACHE_LINE_BYTES>(_mini.now->data(), _mini.now->size());
+		// volume is now current for write-only access
+		// last_volume is now current for read-only access
+		// *until the next clear
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4725,9 +5004,6 @@ namespace world
 
 		// _currentVoxelIndexPixMap is released auto-magically - virtual memory
 
-		// cleanup all game object vectors
-		cTestGameObject::clear();
-
 		// cleanup all registered instances
 		for (auto& Instance : _hshVoxelModelInstances_Dynamic) {
 
@@ -4784,6 +5060,22 @@ namespace world
 		}
 
 		supernoise::blue.Release();
+
+		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
+
+		if (_mini.now) {
+			volume::destroy(_mini.now);
+		}
+		if (_mini.last) {
+			volume::destroy(_mini.last);
+		}
+
+		if (_theGrid._protected) {
+			scalable_aligned_free(_theGrid._protected);
+		}
+		if (_theTemp._protected) {
+			scalable_aligned_free(_theTemp._protected);
+		}
 
 #ifdef DEBUG_STORAGE_BUFFER
 		SAFE_RELEASE_DELETE(DebugStorageBuffer);

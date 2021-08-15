@@ -13,6 +13,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #define ISOVOXEL_H
 #include <Math/point2D_t.h>
 #include <Utility/unroll.h>
+#include "Declarations.h"
 
 namespace Iso
 {
@@ -535,7 +536,35 @@ namespace Iso
 		return(getRealHeight((float)uiMaxHeightStep));  // half-voxel offset is exact
 	}
 
+	// for voxel painting //
+	namespace mini
+	{
+		static constexpr uint32_t const
+			no_flags = 0,
+			emissive = (1 << 0),
+			transparent = (1 << 1);
 
+	} // end ns
+	typedef struct sMiniVoxel
+	{
+		VertexDecl::VoxelDynamic data;
+
+		uint32_t color;
+		uint32_t flags;
+
+		sMiniVoxel const* __restrict next;
+
+		sMiniVoxel()
+			: data{}, next{ nullptr }, color{}, flags{}
+		{}
+		__forceinline explicit __vectorcall sMiniVoxel(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, FXMVECTOR orient_reserved_, uint32_t const hash, uint32_t const color_, uint32_t const flags_, sMiniVoxel const* __restrict next_) noexcept
+			: data(worldPos_, uv_vr_, orient_reserved_, hash), color(color_), flags(flags_), next(next_)
+		{}
+		sMiniVoxel(sMiniVoxel const&) = default;
+		sMiniVoxel& operator=(sMiniVoxel const&) = default;
+		sMiniVoxel(sMiniVoxel&&) noexcept = default;
+		sMiniVoxel& operator=(sMiniVoxel&&) noexcept = default;
+	} miniVoxel;
 
 
 	// helper struct (last) //

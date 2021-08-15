@@ -40,7 +40,7 @@ void main() {
 	const vec3 volume_translation = mix(vec3(-0.5f), vec3(0.0f), eyeDir * 0.5f + 0.5f) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f);
 	
 	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewProj * vec4(fma(inPos.xyz, VolumeScale, volume_translation), 1.0f);	
+	gl_Position = u._viewproj * vec4(fma(inPos.xyz, VolumeScale, volume_translation), 1.0f);	
 }
 
 /*

@@ -26,11 +26,11 @@ namespace world
 
 	public:
 		// overrides //
-		constexpr virtual types::game_object_t const to_type() const override {
+		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::TrafficControlGameObject);
 		}
-		virtual size_t const exportData(vector<uint8_t>& out) const override;
-		virtual void importData(uint8_t const* const in, size_t const size) override;
+		virtual size_t const exportData(vector<uint8_t>& out) const override final;
+		virtual void importData(uint8_t const* const in, size_t const size) override final;
 
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 

@@ -8,7 +8,10 @@
 #include "cVoxelWorld.h"
 #include "IsoVoxel.h"
 #include "voxelAlloc.h"
-#include "optimized.h"
+
+#include <Utility/mem.h>
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
 
 // for the texture indices used in large texture array
 #include "../Data/Shaders/texturearray.glsl"
@@ -207,7 +210,7 @@ void cVulkan::CreateNuklearResources()
 
 	vku::DescriptorSetLayoutMaker	dslm;
 	dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
-	dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, imageCount, samplers.data());
+	dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, (uint32_t)imageCount, samplers.data());
 
 	_nkData.descLayout = dslm.createUnique(_device);
 
@@ -438,6 +441,7 @@ void cVulkan::CreateVolumetricResources()
 	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::REPEAT>());  // fog
 	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
 	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
+	dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1); // writeonly visibility, volumetrics output
 #ifdef DEBUG_VOLUMETRIC
 	dslm.buffer(10U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 #endif	
@@ -1861,14 +1865,15 @@ void cVulkan::barrierOffscreenBuffer(vk::CommandBuffer& cb) const
 void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out) const	// *** only safe to call after the atomic flag returned from enableOffscreenCopy is cleared ***
 {
 	point2D_t const framebufferSz(MinCity::getFramebufferSize());
-
+	size_t const size(size_t(framebufferSz.x) * size_t(framebufferSz.y) * sizeof(uint32_t));
+	size_t const block_size(size & (MinCity::hardware_concurrency() - 1));
 	{
 		uint32_t const* const __restrict gpu_read_back = reinterpret_cast<uint32_t const* const __restrict>(_offscreenBuffer.map());
 
 		// copy entire framebuffer to output
 		// 200 to 400 us faster than standard memcpy - hopefully this works for all frameBuffer sizes
 		// frameBufferSizes are guaranteed to have a granularity of 8 (bugfix in GLFW)
-		__memcpy_aligned_32_stream_threaded((uint8_t* const __restrict)mem_out, (uint8_t const* const __restrict)gpu_read_back, size_t(framebufferSz.x) * size_t(framebufferSz.y) * sizeof(uint32_t));
+		__memcpy_threaded<32>((uint8_t* const __restrict)mem_out, (uint8_t const* const __restrict)gpu_read_back, size, size / MinCity::hardware_concurrency());
 
 		_offscreenBuffer.unmap();
 	}

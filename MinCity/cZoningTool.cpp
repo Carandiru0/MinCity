@@ -22,7 +22,43 @@ STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped()
 
 	return(hoverVoxel);
 }
+STATIC_INLINE_PURE rect2D_t const __vectorcall orientAreaToRect(point2D_t const start_pt, point2D_t const end_pt)
+{
+	// minimum = top left, maximum = bottom right
+	return(rect2D_t(p2D_min(start_pt, end_pt), p2D_max(start_pt, end_pt)));
+}
 
+void cZoningTool::paint()
+{
+	if (_activePoint > 1) { // have starting & ending index?
+
+		static constexpr uint32_t const color(0x0089E944);  // abgr - rgba backwards
+
+		rect2D_t const area(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
+				
+		// make relative to world origin (gridspace to worldspace transform)
+		XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+
+		point2D_t voxelIndex{};
+		for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
+
+			for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
+
+				XMVECTOR xmVoxelOrigin = p2D_to_v2(voxelIndex);
+				xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVoxelOrigin);
+				xmVoxelOrigin = XMVectorSetY(xmVoxelOrigin, -10.0f);
+
+				xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, xmWorldOrigin);
+
+				world::addVoxel(xmVoxelOrigin, voxelIndex, color, true);
+				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(0.0f, 0.0f, Iso::MINI_VOX_STEP, 0.0f)), voxelIndex, color, true);
+				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(Iso::MINI_VOX_STEP, 0.0f, 0.0f, 0.0f)), voxelIndex, color, true);
+				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(Iso::MINI_VOX_STEP, 0.0f, Iso::MINI_VOX_STEP, 0.0f)), voxelIndex, color, true);
+			}
+		}
+
+	}
+}
 void cZoningTool::commitZoneHistory() // commits current "road" to grid
 {
 	_undoHistory.clear();
@@ -96,12 +132,6 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 	}	
 }
 
-static rect2D_t const __vectorcall orientAreaToRect(point2D_t const start_pt, point2D_t const end_pt)
-{
-	// minimum = top left, maximum = bottom right
-	return(rect2D_t(p2D_min(start_pt, end_pt), p2D_max(start_pt, end_pt)));
-}
-
 void __vectorcall cZoningTool::zoneArea(rect2D_t const area)
 {
 	point2D_t voxelIndex{};
@@ -128,7 +158,7 @@ void __vectorcall cZoningTool::zoneArea(rect2D_t const area)
 
 void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
 {
-	static constexpr milliseconds const LIMIT(20);	// 20ms low-latency response, throttling input dragging updates to acceptable performance level
+	static constexpr milliseconds const LIMIT(18);	// 18ms low-latency response, throttling input dragging updates to acceptable performance level
 	static tTime tLast{};
 
 	tTime const tNow(now());
@@ -144,7 +174,8 @@ void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR 
 
 			zoneArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
 
-			_segmentVoxelIndex[_activePoint] = clampedEndPoint;
+			_segmentVoxelIndex[1] = clampedEndPoint;
+			++_activePoint;
 		}
 	}
 }
@@ -157,6 +188,8 @@ void __vectorcall cZoningTool::PressAction(FXMVECTOR const xmMousePos)
 
 	if (0 != _activePoint) { // new
 		_activePoint = 0;
+		_segmentVoxelIndex[0] = point2D_t{};
+		_segmentVoxelIndex[1] = point2D_t{};
 	}
 	_segmentVoxelIndex[_activePoint++].v = origin.v;
 

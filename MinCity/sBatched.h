@@ -1,5 +1,6 @@
 #pragma once
 #include <tbb/tbb.h>
+#include "Declarations.h"
 
 // ##################### MAJOR THREADING CONSTANTS **************************** //
 
@@ -42,6 +43,7 @@ struct sBatched
 		uint32_t const count(Count);
 
 		T* __restrict outStream = atomic_mem_ptr.fetch_and_add<tbb::release>(count);
+#pragma loop( ivdep )
 		for (uint32_t i = 0; i < count; ++i) {
 			__streaming_store(outStream, std::forward<T const&& __restrict>(data_set[i]));
 			++outStream;
@@ -62,7 +64,7 @@ struct sBatched
 	__SAFE_BUF __inline void __vectorcall out(T*& __restrict mem_ptr)
 	{
 		uint32_t const count(Count);
-
+#pragma loop( ivdep )
 		for (uint32_t i = 0; i < count; ++i) {
 			__streaming_store(mem_ptr, std::forward<T const&& __restrict>(data_set[i]));
 			++mem_ptr;

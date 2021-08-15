@@ -29,7 +29,7 @@ namespace supernoise
 			// capture first channel for usage outside of gpu texture scope (cpu only)
 			_blueNoise1D = (float* const)scalable_aligned_malloc(BLUENOISE_DIMENSION_SZ * BLUENOISE_DIMENSION_SZ * sizeof(float), 16);
 
-			__memclr_aligned_16<BLUENOISE_DIMENSION_SZ* BLUENOISE_DIMENSION_SZ>(_blueNoise1D);
+			memset(_blueNoise1D, 0, BLUENOISE_DIMENSION_SZ * BLUENOISE_DIMENSION_SZ * sizeof(float));
 
 			{
 				float* __restrict pOutBytes(_blueNoise1D);

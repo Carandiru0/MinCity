@@ -9,7 +9,7 @@ namespace world
 	class tUpdateableGameObject : public tNonUpdateableGameObject<TVoxelModelInstance>
 	{
 	public:
-		constexpr virtual types::game_object_t const to_type() const {
+		constexpr virtual types::game_object_t const to_type() const override {
 			return(types::game_object_t::Updateable);
 		}
 	public:

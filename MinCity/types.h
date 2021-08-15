@@ -3,14 +3,22 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#ifndef _ITERATOR_DEBUG_LEVEL
+#define _ITERATOR_DEBUG_LEVEL 0
+#endif
+
 #include <vector>
 #include <tbb/tbb.h>
+#include <Utility/scalable_aligned_allocator.h>
+
 #ifdef vector
 #undef vector
 #endif
 
 template<typename T>
 using vector = std::vector<T, tbb::scalable_allocator<T>>;
+template<typename T, size_t const alignment = alignof(T)>
+using vector_aligned = std::vector<T, tbb::scalable_aligned_allocator<T, alignment>>;
 
 #include "betterenums.h"
 

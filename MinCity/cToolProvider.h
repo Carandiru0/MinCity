@@ -14,7 +14,8 @@ public:
 
 	void setActivatedTool(uint32_t const uiToolType, std::optional<uint32_t const> uiSubTool = std::nullopt);
 
-	void Load();
+	void Paint();
+
 private:
 	cAbstractToolMethods*		_ActivatedTool;
 	cRoadTool					_RoadTool;

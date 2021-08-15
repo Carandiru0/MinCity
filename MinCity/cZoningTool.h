@@ -12,6 +12,8 @@ public:
 	}
 	virtual void deactivate() final;
 	virtual void activate() final;
+	
+	virtual void paint() final;
 
 	uint32_t const getActivatedSubTool() final { return(_ActivatedSubTool); }
 	virtual void setActivatedSubTool(uint32_t const subtool) final { _ActivatedSubTool = subtool;  }

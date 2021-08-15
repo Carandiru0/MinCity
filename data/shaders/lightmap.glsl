@@ -29,8 +29,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // *********************************************** private usage : //                 
 
 //#ifdef FAST_LIGHTMAP
-// iq's awesome smoothstep based sampling 
-// https://www.shadertoy.com/view/MlS3Dc - ultrasmooth subpixel sampling   
 void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -111,14 +109,22 @@ void lightmap_internal_sampleNaturalNeighbour(out vec4 light_direction_distance,
 
 	w = 1.0f / w;
 	light_direction_distance = light_direction_distance * w;
-	light_color = light_color * w;			//oversaturates when w*w is used on regular voxels
+	light_color = light_color * w;		
+}
+
+// for sampling specifically direction and distance only.
+void lightmap_internal_fetch_direction_distance( out vec4 light_direction_distance, in const vec3 uvw) {
+	
+	light_direction_distance = textureLod(volumeMap[DD], uvw, 0);
+	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 }
 
 
 // ********************************************* public usage : //
-
-
 #ifdef FAST_LIGHTMAP
+// iq's awesome smoothstep based sampling (rndC)
+// https://www.shadertoy.com/view/MlS3Dc - ultrasmooth subpixel sampling
+
 void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// rndC sampling
@@ -131,16 +137,23 @@ void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 ligh
 }
 #endif
 
+void getLightMap( out vec4 light_direction_distance, in const vec3 uvw ) 
+{
+	// linear sampling only (intended to not add non-linearity to sampling for direction & distance)
+	lightmap_internal_fetch_direction_distance(light_direction_distance, uvw);
+}
+
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions);
+	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions);
 
 	// nn sampling
-	//lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions);
+	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions);
 }
 
-// main public functions
+// main public functions:
+
 #ifdef FAST_LIGHTMAP
 vec3 getLightFast(out vec3 light_color, out float attenuation, out float normalized_distance, in const vec3 uvw, in const float volume_length) 
 {
@@ -186,6 +199,14 @@ vec3 getLight(out vec3 light_color, out float attenuation, in const vec3 uvw, in
 	return(normalize(light_direction_distance.xyz));
 }
 
+vec3 getLight_DirectionDistance(in const vec3 uvw, out float d) // returns direction & distance only
+{
+	vec4 light_direction_distance; 
 
+	getLightMap(light_direction_distance, uvw); // .zw = xz normalized visible uv coords
+	d = light_direction_distance.w;
+
+	return(normalize(light_direction_distance.xyz));
+}
 
 #endif // _LIGHTMAP_GLSL

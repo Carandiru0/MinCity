@@ -647,6 +647,12 @@ void cMinCity::UpdateWorld()
 		bWasPaused = false;
 	}
 
+	// always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
+	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE)));
+	
+	// clearing voxel queue required b4 any voxels are added by addVoxel() method
+	VoxelWorld.clearMiniVoxels();
+
 	static duration tAccumulate(nanoseconds(0));
 	{   // variable time step intended to not be used outside of this scope
 		// Accunmulate actual time per frame
@@ -665,19 +671,17 @@ void cMinCity::UpdateWorld()
 
 		VoxelWorld.Update(m_tNow, fixed_delta_duration, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
-	
+	// fractional amount for render path (uniform shader variables)
+	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(fixed_delta_duration)); // always update everyframe
+
 	Audio.Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
 
-	// always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
-	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE)));
+	UserInterface.Paint(); // must be done after all updates to VoxelWorld
 	
 	if (bInputDelta) {  
 		Nuklear.UpdateGUI(); // gui requires critical timing (always on, never pause gui)
 		tLastGUI = tCriticalNow;
 	}
-	
-	// fractional amount for render path
-	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(fixed_delta_duration)); // always update everyframe
 
 	//---------------------------------------------------------------------------------------------------------------------------------------//
 	tLast = tCriticalNow;
@@ -687,8 +691,14 @@ void cMinCity::UpdateWorld()
 
 void cMinCity::StageResources(uint32_t const resource_index)
 {
-	//[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity)
-	//	return;
+	// resources uploaded to the gpu only change if exclusiity is not taken away from default
+	// prevents threading errors while doing simultaneous tasks accessing the same data in a write(staging) and read/write(saving & loading) condition
+	// instead the currently used state of resources on the gpu is re-used; does not change
+	[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity) {
+		_mm_pause();
+		Sleep(1);
+		return;
+	}
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld.Render(resource_index);
@@ -800,10 +810,19 @@ void cMinCity::OnFocusLost()
 {	
 	m_bFocused = false;
 	ClipCursor(nullptr);
+
+	if (eExclusivity::DEFAULT == m_eExclusivity) {
+		m_eExclusivity = eExclusivity::STANDBY;
+	}
+
 }
 void cMinCity::OnFocusRestored()
 {
 	m_bFocused = true;
+	if (eExclusivity::STANDBY == m_eExclusivity) {
+		m_eExclusivity = eExclusivity::DEFAULT;
+	}
+
 	SetForegroundWindow(glfwGetWin32Window(g_glfwwindow));  // enable foreground window for the now foreground process
 }
 
@@ -1093,6 +1112,13 @@ __declspec(noinline) void cMinCity::CriticalInit()
 
 	int32_t const num_hw_threads(SetupEnvironment());
 	
+	if (num_hw_threads > 0) { // successfully optimized to hardware "real" core count
+		m_hwCoreCount = (size_t)num_hw_threads;
+	}
+	else { // automatic (fallback)
+		m_hwCoreCount = std::max(m_hwCoreCount, (size_t)std::thread::hardware_concurrency()); // can return 0 on failure, so keep the highest core count. default of 1 is set for m_hwCoreCount.
+	}
+
 	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads);
 }
 __declspec(noinline) void cMinCity::CriticalCleanup()

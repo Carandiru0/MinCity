@@ -5,6 +5,11 @@
 #include <atomic>
 #include "ComputeLightConstants.h"
 
+#include <Imaging/Imaging/Imaging.h>
+#include <Utility/mem.h>
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
+
 typedef tbb::enumerable_thread_specific< XMFLOAT3A > Bounds; // per thread instance
 
 // 3D Version ################################################################################################ //
@@ -24,7 +29,7 @@ public:
 	uvec4_v const   getCurrentVolumeExtentsMax() const { return(uvec4_v(_max_extents)); } // returns the extent maximum, (xyz, light space)
 
 	// methods //
-	__declspec(safebuffers) void __vectorcall clear_memory() {
+	__declspec(safebuffers) void __vectorcall clear() {
 		// no need to clear main write-combined gpu staging buffer, it is fully replaced by _cache when comitted
 
 		// reset bounds
@@ -32,13 +37,13 @@ public:
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
 
 		// clear internal memory
-		__memclr_aligned_32<LightWidth * LightHeight * LightDepth, true>(_internal);
+		__memclr_stream<CACHE_LINE_BYTES>(_internal, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
 
 		// clear internal cache
-		__memclr_aligned_stream(_cache, LightWidth * LightHeight * LightDepth);
+		__memclr_stream<CACHE_LINE_BYTES>(_cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
 	}
 
-	__declspec(safebuffers) void __vectorcall commit(vku::GenericBuffer const& __restrict stagingBuffer) {
+	__declspec(safebuffers) void __vectorcall commit(vku::GenericBuffer const& __restrict stagingBuffer, size_t const hw_concurrency) {
 
 		XMVECTOR xmMax(XMVectorZero());
 		{ // maximum
@@ -70,7 +75,9 @@ public:
 
 		// copy internal cache to write-combined memory (staging buffer) using streaming stores
 		// this fully replaces the volume for the stagingBuffer irregardless of current light bounds min & max (important) (this effectively reduces the need to clear the gpu - writecombined *staging* buffer)
-		__memcpy_aligned_32_stream_threaded(stagingBuffer.map(), _cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A)); // faster copy with 32 - guarnteed that size is multiple of XMFLOAT4A (16) x2 (32) - due to the entire volume using a size that is always an even number. Otherwise this would be 1 off and the _16 would have to be used
+		size_t const size(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
+		__memcpy_threaded<32>(stagingBuffer.map(), _cache, size, 
+						      size / hw_concurrency); // faster copy with 32 - guarnteed that size is multiple of XMFLOAT4A (16) x2 (32) - due to the entire volume using a size that is always an even number. Otherwise this would be 1 off and the _16 would have to be used
 		stagingBuffer.unmap();
 	}
 
@@ -186,15 +193,15 @@ private:
 
 	// there is no bounds checking, values are expected to be within bounds esxcept handling of -1 +1 for seededing X & Z Axis for seeding puposes.
 public:
-	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const resolvedColor) const	// 3D emplace
+	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
 		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Width, Height, Depth>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		// floor to ints
-		ivec4_v const xmIndex(SFM::round_to_i32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))));
-		ivec4_t iIndex;
-		xmIndex.xyzw(iIndex);
+		uvec4_v const xmIndex(SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))));
+		uvec4_t uiIndex;
+		xmIndex.xyzw(uiIndex);
 
 		// slices ordered by Z 
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -202,26 +209,28 @@ public:
 		// slices ordered by Y: <---- USING Y
 		// (y * xMax * zMax) + (z * xMax) + x;
 
-		uint32_t const index((iIndex.y * LightWidth * LightDepth) + (iIndex.z * LightWidth) + iIndex.x);
+		uint32_t const index((uiIndex.y * LightWidth * LightDepth) + (uiIndex.z * LightWidth) + uiIndex.x);
+
+		// *must convert from srgb to linear
+
 
 		// swizzle position to remap position to texture matched xzy rather than xyz
-		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), index, resolvedColor);
+		//seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), index, SFM::srgb_to_linear_rgba(srgbColor));
+ 		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), index, ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conersion
 	}
-	// other types::
-	// todo
 	
 	lightBuffer3D()
-		: _internal(nullptr), _maximum{}, _minimum(_xmWorldLimitMax)
+		: _internal(nullptr), _cache(nullptr), _maximum{}, _minimum(_xmWorldLimitMax)
 	{
 		writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth>::clear_tracking();
 
 		//_internal = (std::atomic_uint32_t* __restrict)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
 		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
-		__memclr_aligned_32<LightWidth * LightHeight * LightDepth, true>(_internal);
 
 		//_cache = (XMFLOAT4A*)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
 		_cache = (XMFLOAT4A*)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
-		__memclr_aligned_stream(_cache, LightWidth * LightHeight * LightDepth);
+
+		clear();
 	}
 	~lightBuffer3D()
 	{

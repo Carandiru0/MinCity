@@ -12,7 +12,14 @@ cUserInterface::cUserInterface()
 void cUserInterface::Initialize()
 {
 	_tools = new cToolProvider();
-	_tools->Load();
+}
+
+void cUserInterface::Paint()
+{
+	if (_tools) {
+
+		_tools->Paint();
+	}
 }
 
 uint32_t const cUserInterface::getActivatedToolType() const

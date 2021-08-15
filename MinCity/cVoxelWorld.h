@@ -15,6 +15,7 @@
 #include <optional>
 #include "volumetricOpacity.h"
 #include "volumetricVisibility.h"
+
 #include "cBlueNoise.h"
 
 // forward decls:
@@ -124,6 +125,8 @@ namespace world
 		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
 			vku::DynamicVertexBuffer* const* const& __restrict vbo, vku::UniformBuffer& __restrict ubo);
 		void AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
+
+		
 																																					// Order of operations, *each operation is dependent on previous operation*
 		void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdate = false);		//			0
 		void __vectorcall UpdateUniformState(float const tRemainder);																				//			1
@@ -233,6 +236,7 @@ namespace world
 		void destroyVoxelModelInstance(uint32_t const hash);  // concurrency safe
 		void destroyImmediatelyVoxelModelInstance(uint32_t const hash);  // not concurrency safe *** (public) // typically instances destroy themselves asynchronously, this is for special purposes
 
+		void clearMiniVoxels();
 		void CleanUp();
 
 		size_t const numRootIndices() const { return(_hshVoxelModelRootIndex.size()); }
@@ -290,8 +294,8 @@ namespace world
 
 		Buffers						_buffers;
 
-		Volumetric::voxelOpacity	_OpacityMap;
-		Volumetric::voxelVisibility _Visibility;
+		Volumetric::voxelOpacity		_OpacityMap;
+		Volumetric::voxelVisibility		_Visibility;
 
 		uint32_t					_mouseState;
 		XMFLOAT2A					_vMouse;

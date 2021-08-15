@@ -22,7 +22,7 @@ namespace world
 	class cVideoScreenGameObject : public tNonUpdateableGameObject<Volumetric::voxelModelInstance_Static>, public type_colony<cVideoScreenGameObject>
 	{
 	public:
-		constexpr virtual types::game_object_t const to_type() const override {
+		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::VideoScreenGameObject);
 		}
 

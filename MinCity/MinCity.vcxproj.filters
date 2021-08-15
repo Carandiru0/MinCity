@@ -138,9 +138,6 @@
     <ClInclude Include="IsoCamera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="optimized.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="debug.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -234,7 +231,7 @@
     <ClInclude Include="ImageAnimation.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Adjacency.h">
+    <ClInclude Include="adjacency.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="data.h">
@@ -360,9 +357,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="volumetricVisibility.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="optimized.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Debug.cpp">

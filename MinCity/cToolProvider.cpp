@@ -10,10 +10,12 @@ cToolProvider::cToolProvider()
 
 }
 
-void cToolProvider::Load()
+void cToolProvider::Paint()
 {
+	if (nullptr != _ActivatedTool) {
+		_ActivatedTool->paint();
+	}
 }
-
 
 void cToolProvider::setActivatedTool(uint32_t const uiToolType, std::optional<uint32_t const> uiSubTool)
 {

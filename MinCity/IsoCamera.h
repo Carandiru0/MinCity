@@ -1,5 +1,6 @@
 #pragma once
 #include <Math/superfastmath.h>
+#include <Math/v2_rotation_t.h>
 #include "IsoVoxel.h"
 
 // https://en.wikipedia.org/wiki/Isometric_video_game_graphics#/media/File:Graphical_projection_comparison.png

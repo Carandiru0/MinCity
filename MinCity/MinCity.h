@@ -33,9 +33,10 @@ BETTER_ENUM(eEvent, uint32_t const,
 BETTER_ENUM(eExclusivity, uint32_t const,
 
 	DEFAULT = 0,
-	SAVING = (1 << 0),
-	LOADING = (1 << 1),
-	NEW = (1 << 2)
+	STANDBY = (1 << 0),
+	SAVING = (1 << 1),
+	LOADING = (1 << 2),
+	NEW = (1 << 3)
 
 );
 
@@ -77,6 +78,7 @@ public:
 	static __inline bool const			isPaused() { return(m_bPaused); }
 	static __inline bool const			isFocused() { return(m_bFocused); }
 	static __inline bool const			isGraduallyStartingUp() { return(m_bGradualStartingUp); }
+	static __inline size_t const		hardware_concurrency() { return(m_hwCoreCount); }
 
 	static __inline uint32_t const		getExclusivity() { return(m_eExclusivity); }
 
@@ -146,6 +148,7 @@ private:
 										m_bFocused,
 										m_bGradualStartingUp;
 
+	static size_t						m_hwCoreCount;
 	static std::string					m_szCityName;
 	// Event container:
 	static tbb::concurrent_queue<std::pair<uint32_t, void*>> m_events;
@@ -180,6 +183,7 @@ inline bool						cMinCity::m_bRunning = false;		// state is set in cMinCity::Ini
 inline bool						cMinCity::m_bPaused = false;		// state refers to a "live pause" of the rendering and updates affected by the pause
 inline bool						cMinCity::m_bFocused = false;		// start time of app is safetly swapped, so at no given point of time is it errornous
 inline bool						cMinCity::m_bGradualStartingUp = true;	// start time of app will reset during very first call of Update()
+inline size_t					cMinCity::m_hwCoreCount = 1;
 inline std::string				cMinCity::m_szCityName = "";
 inline cCity*					cMinCity::City(nullptr);
 inline tbb::concurrent_queue<std::pair<uint32_t, void*>> cMinCity::m_events;

@@ -31,6 +31,8 @@ public: // no data inside abstract tool - only methods
 	virtual void deactivate() = 0;
 	virtual void activate() = 0;
 
+	virtual void paint() {} // optional
+
 	virtual uint32_t const getActivatedSubTool() { return(SUBTOOL_RESERVED_NOT_IMPLEMENTED); } // optional
 	virtual void setActivatedSubTool(uint32_t const subtool) {} // optional
 

@@ -61,6 +61,9 @@ namespace world
 	void smoothRect(rect2D_t voxelArea);
 	void recomputeGroundOcclusion(rect2D_t voxelArea);
 
+	// voxel painting (minivoxels)
+	void __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, bool const emissive);	// color is abgr (rgba backwards)
+
 	// Random & Search //
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area);
 	point2D_t const __vectorcall getRandomVisibleVoxelIndex();

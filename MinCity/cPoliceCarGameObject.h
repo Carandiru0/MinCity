@@ -34,7 +34,7 @@ namespace world
 		static constexpr float const
 			INV_LIGHT_SWITCH_INTERVAL = 1.0f / LIGHT_SWITCH_INTERVAL.count();
 	public:
-		constexpr virtual types::game_object_t const to_type() const override {
+		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::PoliceCarGameObject);
 		}
 

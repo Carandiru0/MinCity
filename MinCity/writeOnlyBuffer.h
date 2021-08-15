@@ -1,9 +1,11 @@
 #pragma once
 #include <stdint.h>
 #include <tbb/tbb.h>
-#include "optimized.h"
 #include <Random/superrandom.hpp>
 
+#include <Utility/mem.h>
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
 // #define these options to 1 befote include of this header to enable
 
 #ifndef OPTION_TRACKING_SLICE_MAX

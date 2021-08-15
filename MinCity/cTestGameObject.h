@@ -20,7 +20,7 @@ namespace world
 			MASK_GLASS_COLOR = 0xffffff, 
 			MASK_BULB_COLOR = 0x19ffff;
 	public:
-		constexpr virtual types::game_object_t const to_type() const override {
+		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::TestGameObject);
 		}
 

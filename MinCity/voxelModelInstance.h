@@ -6,6 +6,7 @@
 #include "IsoVoxel.h"
 #include "voxelKonstants.h"
 #include "voxelState.h"
+#include "Declarations.h"
 #include <Random/superrandom.hpp>
 #include "types.h"
 
@@ -119,11 +120,11 @@ namespace Volumetric
 	public:
 		__inline bool const Validate() const;
 	public:
-		template<bool const UPDATE_OPACITY, typename VOXELBUFFER_3D, typename VOXELBUFFER_TRANS_3D>
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t voxelIndex,
 			Iso::Voxel const&__restrict oVoxel,
-			VOXELBUFFER_3D& __restrict voxels,
-			VOXELBUFFER_TRANS_3D& __restrict voxels_trans) const;
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 		__inline Volumetric::voxB::voxelState const XM_CALLCONV OnVoxel(voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const;
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
@@ -152,16 +153,17 @@ namespace Volumetric
 		}
 		return(true);
 	}
-	template<bool const Dynamic> template<bool const UPDATE_OPACITY, typename VOXELBUFFER_3D, typename VOXELBUFFER_TRANS_3D>
+	template<bool const Dynamic>
 	__inline void XM_CALLCONV voxelModelInstance<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
 		Iso::Voxel const&__restrict oVoxel,
-		VOXELBUFFER_3D& __restrict voxels,
-		VOXELBUFFER_TRANS_3D& __restrict voxels_trans) const
+		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
 	{
-		model.Render<UPDATE_OPACITY>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels, voxels_trans);
+		model.Render(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
 		if (child) {
 			// safe down cast
-			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render<UPDATE_OPACITY>(xmVoxelOrigin, voxelIndex, oVoxel, voxels, voxels_trans);
+			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 		}
 	}
 	template<bool const Dynamic>

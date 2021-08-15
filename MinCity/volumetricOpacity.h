@@ -6,6 +6,7 @@
 #include <vku/vku_addon.hpp>
 #include "IsoCamera.h"
 #include <Math/v2_rotation_t.h>
+#include <Utility/scalable_aligned_allocator.h>
 #include "voxelAlloc.h"
 
 #ifndef NDEBUG
@@ -171,14 +172,14 @@ namespace Volumetric
 		}
 #endif
 		// Main Methods //
-		void commit(uint32_t const resource_index) const { // this method will quickly [map, copy, unmap] to gpu write-combined stagingBuffer, no reads of this buffer of any kind
+		void commit(uint32_t const resource_index, size_t const hw_concurrency) const { // this method will quickly [map, copy, unmap] to gpu write-combined stagingBuffer, no reads of this buffer of any kind
 														   // private write-combined memory copy - no *reading* *warning* *severe* *performance degradation if one reads from a write-combined gpu buffer*
-			const_cast<volumetricOpacity<Width, Height, Depth>* __restrict>(this)->MappedVoxelLights.commit(LightProbeMap.stagingBuffer[resource_index]);
+			const_cast<volumetricOpacity<Width, Height, Depth>* __restrict>(this)->MappedVoxelLights.commit(LightProbeMap.stagingBuffer[resource_index], hw_concurrency);
 		}
 
 		void clear() const { // happens before a comitt, does not require stagingbuffer to clear, all safe memory
 
-			const_cast<volumetricOpacity<Width, Height, Depth>* __restrict>(this)->MappedVoxelLights.clear_memory();
+			const_cast<volumetricOpacity<Width, Height, Depth>* __restrict>(this)->MappedVoxelLights.clear();
 		}
 
 		void release() {
@@ -270,6 +271,7 @@ namespace Volumetric
 
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.DistanceDirection->image(), vkNames::Image::LightMap_DistanceDirection);
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Color->image(), vkNames::Image::LightMap_Color);
+			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Reflection->image(), vkNames::Image::LightMap_Reflection);
 
 			for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
 				LightMapHistory[i].DistanceDirection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
@@ -281,6 +283,7 @@ namespace Volumetric
 
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].DistanceDirection->image(), vkNames::Image::LightMapHistory_DistanceDirection);
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].Color->image(), vkNames::Image::LightMapHistory_Color);
+				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].Reflection->image(), vkNames::Image::LightMapHistory_Reflection);
 			}
 
 			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,

@@ -170,7 +170,7 @@ vec3 anamorphicFlare(in const vec2 uv)
 //const vec3 gui_punk = vec3( 937.254e-3f, 23.594e-3f, 411.764e-3f );
 //const vec3 gui_bleed = vec3( 349.019e-3f, 200e-3f, 635.294e-3f );
 
-const vec3 gui_green = vec3(266.666e-3f, 913.725e-3f, 537.254e-3f);
+const vec3 gui_green = vec3(266.666e-3f, 913.725e-3f, 537.254e-3f); // 0x0089E944  - abgr
 const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
 	
 //const vec3 gui_bleed = vec3(1.0f, 545.098e-3f, 152.941e-3f);
@@ -249,8 +249,8 @@ void main() {
 #elif defined(SMAA_PASS_0)  // blur downsampled horizontally + anamorphic reduction													
 	vec3 color = textureLod(blurMap[0], In.uv, 0).rgb;
 	expandAA(blurMap[0], color, In.uv); // <----- keeps things a little bit sharper
-	color = mix( color, blur(blurMap[0], In.uv, InvScreenResDimensions, vec2(1,0)), 0.5f);
-	color = mix( color, blur(blurMap[0], In.uv, InvScreenResDimensions, vec2(3,0)), 0.5f);
+//	color = mix( color, blur(blurMap[0], In.uv, InvScreenResDimensions, vec2(1,0)), 0.5f);
+//	color = mix( color, blur(blurMap[0], In.uv, InvScreenResDimensions, vec2(3,0)), 0.5f);
 	imageStore(outBlur[1], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));
 
 	anamorphicReduction(In.uv);
@@ -258,8 +258,8 @@ void main() {
 #elif defined (SMAA_PASS_1)   // blur downsampled vertically	           
 	vec3 color = textureLod(blurMap[1], In.uv, 0).rgb;
 	expandAA(blurMap[1], color, In.uv); // <----- keeps things a little bit sharper
-	color = mix( color, blur(blurMap[1], In.uv, InvScreenResDimensions, vec2(0,1)), 0.5f);
-	color = mix( color, blur(blurMap[1], In.uv, InvScreenResDimensions, vec2(0,3)), 0.5f);
+//	color = mix( color, blur(blurMap[1], In.uv, InvScreenResDimensions, vec2(0,1)), 0.5f);
+//	color = mix( color, blur(blurMap[1], In.uv, InvScreenResDimensions, vec2(0,3)), 0.5f);
 	imageStore(outBlur[0], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));
 
 	return; // output of pixel shader not used

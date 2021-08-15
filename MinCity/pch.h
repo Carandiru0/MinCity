@@ -8,12 +8,13 @@
 #define WIN32_LEAN_AND_MEAN	// Exclude rarely-used stuff from Windows headers
 #endif
 
-#include "targetver.h"
-
 #define NOMINMAX
+#define _SECURE_SCL 0 
 #define _ITERATOR_DEBUG_LEVEL 0
 #define _SILENCE_CXX17_UNCAUGHT_EXCEPTION_DEPRECATION_WARNING
 #define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+
+#include "targetver.h"
 
 // not using, want random seed at startup
 //#define PROGRAM_KEY_SEED (0xC70CC609)
@@ -39,7 +40,9 @@
 #include <Math/superfastmath.h>
 #include <Math/DirectXCollision.aligned.h>
 // (5)
-#include "optimized.h"
+#include <Utility/mem.h>
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
 
 // (6)
 #include <string_view>

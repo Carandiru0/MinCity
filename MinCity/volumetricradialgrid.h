@@ -361,7 +361,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 					XMVectorSet(0.0f, 0.0f, 0.0f, fUniformDistance) // Uniform/voxel float parameter (instead of usual COLOR used by voxels in models
 				));
 
-				// Build hash //
+
 				// Build hash //
 				uint32_t hash(0);
 
@@ -376,7 +376,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 					(radialGrid->getRotation() + desc.rotation));
 				// pitch is not supported but input is compliant here so shader behaves properly
 				// voxelradialgrid support only azimuth
-				XMVECTOR const xmR(XMVectorAdd(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), XMVectorRotateRight<2>(vR.v2())));
+				XMVECTOR const xmR(XMVectorAdd(XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), XMVectorRotateRight<2>(vR.v2())));
 
 				// begin render radial grid voxel (add to vertex buffer )
 				// critical to increment voxelDynamicRow whn finished, propogates 
@@ -691,11 +691,11 @@ namespace Volumetric
 		*/
 		return(false); // todo proper
 	}
-	
-	using VoxelThreadBatch = tbb::enumerable_thread_specific<
-		VoxelLocalBatch,
-		tbb::cache_aligned_allocator<VoxelLocalBatch>,
-		tbb::ets_key_per_instance >;
+
+	namespace local
+	{
+		extern __declspec(selectany) inline thread_local VoxelLocalBatch voxels{};
+	} // end ns
 
 	template<uint32_t const Options>
 	STATIC_INLINE void renderRadialGrid( Volumetric::RadialGridInstance const* const __restrict radialGrid, tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict pVoxelsOut)
@@ -704,14 +704,11 @@ namespace Volumetric
 		
 		// Fastest way to iterate over a vector! (in parallel as isolated random access)
 		vector<Volumetric::xRow> const& __restrict Rows(radialGrid->InstanceRows);
-		VoxelThreadBatch batchedVoxels;
 
 		tbb::affinity_partitioner part;
 		tbb::parallel_for(
 			tbb::blocked_range<xRow const* __restrict>(Rows.data(), Rows.data() + Rows.size(), eThreadBatchGrainSize::RADIAL),
 			[&](tbb::blocked_range<xRow const* __restrict> rows) {
-
-				VoxelLocalBatch& __restrict localVoxels(batchedVoxels.local());
 
 				xRow const* __restrict pCurRow(rows.begin());
 				xRow const* __restrict pLastRow(rows.end());
@@ -719,29 +716,29 @@ namespace Volumetric
 
 					// statically evaluated @ compile time
 					if constexpr (eRadialGridRenderOptions::CULL_EXPANDING == (eRadialGridRenderOptions::CULL_EXPANDING & Options)) {								// expanding volumes ie explosion
-						renderVoxelRow_CullExpanding<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, localVoxels);
+						renderVoxelRow_CullExpanding<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, local::voxels);
 					}
 					else if constexpr (eRadialGridRenderOptions::CULL_INNERCIRCLE_GROWING == (eRadialGridRenderOptions::CULL_INNERCIRCLE_GROWING & Options)) { // growing volume with inside skippped as it grows ie shockwave
-						renderVoxelRow_CullInnerCircleGrowing<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, localVoxels);
+						renderVoxelRow_CullInnerCircleGrowing<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, local::voxels);
 					}
 					else if constexpr (eRadialGridRenderOptions::CULL_CHECKERBOARD == (eRadialGridRenderOptions::CULL_CHECKERBOARD & Options)) {
 
 						if (0 == ((pCurRow - rows.begin()) & 1)) {
-							renderVoxelRow_CheckerEven<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, localVoxels);
+							renderVoxelRow_CheckerEven<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, local::voxels);
 						}
 						else {
-							renderVoxelRow_CheckerOdd<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, localVoxels);
+							renderVoxelRow_CheckerOdd<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, local::voxels);
 						}
 					}
 					else {
-						renderVoxelRow_Brute<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, localVoxels);
+						renderVoxelRow_Brute<Options>(pCurRow, tLocal, radialGrid, pVoxelsOut, local::voxels);
 					}
 
 				}
 
 				// ####################################################################################################################
 				// ensure all batches are  output (residual/remainder)
-				localVoxels.out(pVoxelsOut);
+				local::voxels.out(pVoxelsOut);
 				// ####################################################################################################################
 			}
 		, part);

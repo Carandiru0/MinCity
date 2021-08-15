@@ -11,6 +11,8 @@ class no_vtable cUserInterface : no_copy
 public:
 	void Initialize();
 
+	void Paint();
+
 	uint32_t const getActivatedToolType() const;
 	uint32_t const getActivatedSubToolType() const;
 	void setActivatedTool(uint32_t const uiToolType, std::optional<uint32_t const> uiSubTool = std::nullopt);

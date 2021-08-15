@@ -1,7 +1,9 @@
 #pragma once
 #include <stdint.h>
 
-#include "optimized.h"
+#include <Utility/mem.h>
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
 
 #include "betterenums.h"
 

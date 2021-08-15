@@ -29,7 +29,7 @@ namespace world
 
 		void				setLightsOn(bool const bOn) { _this.bLightsOn = bOn; }
 	public:
-		constexpr virtual types::game_object_t const to_type() const override {
+		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::CopterPropGameObject);
 		}
 

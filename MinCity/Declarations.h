@@ -1,6 +1,10 @@
 #pragma once
 
 #include <Math/superfastmath.h>
+#include <Utility/mem.h>
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
+
 #pragma warning( disable : 4166 ) // __vectorcall ctor
 
 namespace VertexDecl
@@ -31,13 +35,14 @@ namespace VertexDecl
 			worldPos = std::move(relegate.worldPos);
 			uv_vr = std::move(relegate.uv_vr);
 		}
+	
+		VoxelNormal(VoxelNormal const&) = default;
 	private:
-		VoxelNormal(VoxelNormal const&) = delete;
 		VoxelNormal& operator=(VoxelNormal const&) = delete;
 	};
 	struct __declspec(novtable) alignas(16) VoxelDynamic : public VoxelNormal {
 
-		XMVECTOR	orient_reserved;						//x=cos,y=sin for y axis orientation, z = specific, w = specific ie.) transparency
+		XMVECTOR	orient_reserved;						//x=cos,y=sin for azimuth, z=cos,w=sin for pitch 
 
 		__forceinline explicit __vectorcall VoxelDynamic(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, FXMVECTOR orient_reserved_, uint32_t const hash) noexcept
 			: VoxelNormal(worldPos_, uv_vr_, hash), orient_reserved(orient_reserved_)
@@ -51,8 +56,9 @@ namespace VertexDecl
 			((VoxelNormal* const)this)->operator=(std::forward<VoxelDynamic&&>(relegate));
 			orient_reserved = std::move(relegate.orient_reserved);
 		}
+	
+		VoxelDynamic(VoxelDynamic const&) = default;
 	private:
-		VoxelDynamic(VoxelDynamic const&) = delete;
 		VoxelDynamic& operator=(VoxelDynamic const&) = delete;
 	};
 
@@ -77,13 +83,13 @@ namespace UniformDecl
 	// BUFFER alignment should not be explicity specified on struct, rather use alignment rules of Vulkan spec and do ordering of struct members manually
 
 	struct __declspec(novtable) VoxelSharedUniform {
-		XMMATRIX    viewProj;
+		XMMATRIX    viewproj;
 		XMMATRIX	view;
 		XMMATRIX	inv_view;
 		XMMATRIX	proj;
 		XMVECTOR	eyePos;
 		XMVECTOR	eyeDir;
-		XMVECTOR	aligned_data0;	// .xy = fract offset, .z = time, .w = frame time delta
+		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
 		XMVECTOR	aligned_data1;	// .x = max light distance
 		uint32_t	frame; // must be last
 	};
@@ -133,6 +139,28 @@ namespace UniformDecl
 	} TextureShaderPushConstants;
 
 } // end ns UniformDecl
+
+// special functions for declaration streaming
+INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const&& __restrict src)
+{
+	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
+	_mm256_stream_ps((float* const __restrict)std::assume_aligned<32>(dest), _mm256_set_m128(src.uv_vr, src.worldPos));
+}
+INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* __restrict dest, VertexDecl::VoxelDynamic const&& __restrict src)
+{
+	dest = std::assume_aligned<16>(dest);
+
+	_mm_stream_ps((float* const __restrict)dest, src.worldPos);
+	_mm_stream_ps(((float* const __restrict)dest) + 4, src.uv_vr);
+	_mm_stream_ps(((float* const __restrict)dest) + 8, src.orient_reserved);
+
+	/* bug, read access violation - not the correct alignment!
+	// Base Class VertexDecl::VoxelNormal works with __m256 (fits size), 8 floats total / element
+	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_vr, src.worldPos));
+	// Derived Class VertexDecl::VoxelDynamic remainder works with __m128 (fits size), 4 floats total / ele
+	_mm_stream_ps(((float* const __restrict)dest) + 8, src.orient_reserved);
+	*/
+}
 
 
 

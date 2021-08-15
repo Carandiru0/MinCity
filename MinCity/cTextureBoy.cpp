@@ -76,7 +76,7 @@ void cTextureBoy::ImagingSequenceToTexture(ImagingSequence const* const image, v
 	ImagingSequenceInstance const* const images(image->images);
 	for (uint32_t frame = 0 ; frame < count ; ++frame) {
 
-		__memcpy_aligned_32_stream(flat + image_offset, images[frame].block, image_size);
+		memcpy(flat + image_offset, images[frame].block, image_size);
 		image_offset += image_size;
 			
 	}

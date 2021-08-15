@@ -43,7 +43,7 @@ namespace world
 
 	public:
 		// overrides //
-		constexpr virtual types::game_object_t const to_type() const override {
+		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::TrafficSignGameObject);
 		}
 		// ALL derivatives of this class must call base function first in overriden methods, and check its return value

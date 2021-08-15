@@ -159,7 +159,7 @@ void EmitVxlVertex(in const vec3 center, in const vec3 tangent)
 	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));
 #endif																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
 	
-	gl_Position = u._viewProj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
+	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	EmitVertex();
 }
 

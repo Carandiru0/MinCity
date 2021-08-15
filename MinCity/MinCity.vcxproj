@@ -120,13 +120,13 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__AVX2__;__AVX__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_HAS_EXCEPTIONS=0;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__AVX2__;__AVX__;__FMA__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_HAS_EXCEPTIONS=0;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <AdditionalIncludeDirectories>X:\nuklear-master;X:\Vulkan\glfw\include;$(VULKAN_SDK)\Include;X:\Vulkan\Vookoo\include;X:\fmt;X:\FMOD\api\core\inc;C:\Documents\Visual Studio 2017\Projects;X:\density-master\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <BrowseInformation>false</BrowseInformation>
+      <BrowseInformation>true</BrowseInformation>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
@@ -140,6 +140,7 @@
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <StringPooling>true</StringPooling>
       <SupportJustMyCode>true</SupportJustMyCode>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -200,7 +201,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>
       </SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__x86_64__;__AVX2__;__AVX__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_HAS_EXCEPTIONS=0;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__x86_64__;__AVX2__;__AVX__;__FMA__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_HAS_EXCEPTIONS=0;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>X:\nuklear-master;X:\Vulkan\glfw\include;$(VULKAN_SDK)\Include;X:\Vulkan\Vookoo\include;X:\fmt;X:\FMOD\api\core\inc;C:\Documents\Visual Studio 2017\Projects;X:\density-master\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -268,7 +269,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Documents\Visual Studio 2017\Projects\Utility\async_long_task.h" />
-    <ClInclude Include="Adjacency.h" />
+    <ClInclude Include="adjacency.h" />
     <ClInclude Include="cAIMover.h" />
     <ClInclude Include="betterenums.h" />
     <ClInclude Include="cAbstractToolMethods.h" />
@@ -321,7 +322,6 @@
     <ClInclude Include="nk_custom.h" />
     <ClInclude Include="nk_include.h" />
     <ClInclude Include="nk_style.h" />
-    <ClInclude Include="optimized.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="performance.h" />
     <ClInclude Include="rain.h" />
@@ -395,23 +395,6 @@
     <ClCompile Include="liveshader.cpp" />
     <ClCompile Include="loadworld.cpp" />
     <ClCompile Include="MinCity.cpp" />
-    <ClCompile Include="optimized.cpp">
-      <DebugInformationFormat Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">ProgramDatabase</DebugInformationFormat>
-      <SDLCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-      </SDLCheck>
-      <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
-      <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Disabled</InlineFunctionExpansion>
-      <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Speed</FavorSizeOrSpeed>
-      <OmitFramePointers Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</OmitFramePointers>
-      <EnableFiberSafeOptimizations Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableFiberSafeOptimizations>
-      <BasicRuntimeChecks Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-      </BasicRuntimeChecks>
-      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</BufferSecurityCheck>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <ControlFlowGuard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ControlFlowGuard>
-      <RuntimeTypeInfo Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</RuntimeTypeInfo>
-      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/Ob3 %(AdditionalOptions)</AdditionalOptions>
-    </ClCompile>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

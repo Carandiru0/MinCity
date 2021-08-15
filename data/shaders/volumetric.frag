@@ -73,7 +73,7 @@ layout (input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput i
 layout (binding = 2) uniform sampler2D noiseMap;	// bluenoise
 layout (binding = 3) uniform sampler2D fogMap;	// dynamic fog
 layout (binding = 4) uniform sampler3D volumeMap[4];	// LightMap (direction & distance), (light color), (color reflection), OpacityMap
-layout (binding = 5, rgba8) writeonly restrict uniform image2D outImage[2]; // reflection & volumetric writeonly access
+layout (binding = 5, rgba8) writeonly restrict uniform image2D outImage[2]; // reflection, volumetric    *writeonly access
 
 //layout (constant_id = 0) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 1) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
@@ -401,9 +401,9 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const 
 				
 				stored_reflection = mix(stored_reflection, reflection(voxel, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p * InvVolumeDimensions, dt),
 										reflection_avg);
-				reflection_avg *= 0.5f; // averaging reflections if passing thru transparent voxels.
+				reflection_avg *= 0.5f; // averaging reflections if passing thru transparent voxels. (decreasing magnitude averaging)
 
-				if (opacity_sample >= 0.0f) {
+				if (opacity_sample >= 0.0f) { // looks better (transparency) with >= vs >
 					break;	// hit reflected *opaque surface*
 				}
 			}

@@ -1,5 +1,6 @@
 #pragma once
 #include <Math/point2D_t.h>
+#include "betterenums.h"
 
 // "voxelindices" are the (0,0) to (X,Y) integral representation of Grid Space
 // To transform to ScreenSpace, it must be transformed to Isometric World Space relative to the
@@ -67,3 +68,26 @@ namespace world
 		NBR_BL(6),
 		NBR_L(7);
 } // end namespace
+
+namespace Volumetric
+{
+	// for voxelModel.h
+	namespace voxB
+	{
+		// match inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
+		static constexpr uint32_t const
+			BIT_ADJ_LEFT = (1 << 4),				// ""														""
+			BIT_ADJ_RIGHT = (1 << 3),				// ""														""
+			BIT_ADJ_FRONT = (1 << 2),				// ""														""
+			BIT_ADJ_BACK = (1 << 1),				// ""														""
+			BIT_ADJ_ABOVE = (1 << 0);				// USED DURING RUNTIME TO CULL FACES
+	} // end ns
+
+	BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to the above bit shift values
+		left = 4,
+		right = 3,
+		front = 2,
+		back = 1,
+		above = 0
+	);
+} // end ns

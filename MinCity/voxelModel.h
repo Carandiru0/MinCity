@@ -20,6 +20,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "voxelState.h"
 #include "voxelScreen.h"
 #include "voxLink.h"
+#include "adjacency.h"
 
 #include "sBatched.h"
 
@@ -60,16 +61,7 @@ namespace voxB
 		{}
 			
 	} voxCoord;
-	
-	// match inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
-	static constexpr uint32_t const 
-		BIT_ADJ_LEFT = (1 << 4),				// ""														""
-		BIT_ADJ_RIGHT = (1 << 3),				// ""														""
-		BIT_ADJ_FRONT = (1 << 2),				// ""														""
-		BIT_ADJ_BACK = (1 << 1),				// ""														""
-		BIT_ADJ_ABOVE = (1 << 0);				// USED DURING RUNTIME TO CULL FACES
-
-	
+		
 	typedef struct voxelNormal
 	{
 		union
@@ -251,7 +243,7 @@ namespace voxB
 		uint32_t const	_index;
 	};
 	
-	typedef struct alignas(16) voxelModelBase
+	typedef struct voxelModelBase
 	{		
 		voxelDescPacked const* __restrict   _Voxels;		// Finalized linear array of voxels (constant readonly memory)
 		
@@ -294,6 +286,7 @@ namespace voxB
 		voxelModelIdent<Dynamic> const& identity() const { return(_identity);}
 	private:
 		voxelModelIdent<Dynamic> const _identity;
+
 	public:
 		constexpr bool const isDynamic() const { return(Dynamic); }
 		
@@ -301,8 +294,10 @@ namespace voxB
 		: voxelModelBase(Dynamic), _identity(std::forward<voxelModelIdent<Dynamic>&&>(identity))
 		{}
 
-		template<bool UPDATE_OPACITY, typename VOXELBUFFER_3D, typename VOXELBUFFER_TRANS_3D>
-		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, tbb::atomic<VOXELBUFFER_3D*>& __restrict voxels, tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxels_trans) const;
+		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 	};
 		
 	XMGLOBALCONST inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 1.0f, 0.5f, 0.5f }; // **** note Y is not centered on origin of model, instead its at the bottom of model
@@ -321,65 +316,55 @@ namespace voxB
 		return(xmPlotGridSpace);
 	}
 
-	template<bool const Dynamic> template<bool const UPDATE_OPACITY, typename VOXELBUFFER_3D, typename VOXELBUFFER_TRANS_3D>
-	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
-		Iso::Voxel const&__restrict oVoxel,
-		voxelModelInstance<Dynamic> const& instance,
-		tbb::atomic<VOXELBUFFER_3D*>& __restrict voxels,
-		tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxels_trans) const
+	namespace local
 	{
-		
-		//#####INLINE STRUCT######################################################################################################################//
+		using VoxelLocalBatchNormal = sBatched<VertexDecl::VoxelNormal, eStreamingBatchSize::MODEL>;
+		using VoxelLocalBatchDynamic = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::MODEL>;
 
-		using VoxelLocalBatch = sBatched<VOXELBUFFER_3D, eStreamingBatchSize::MODEL>;
-		using VoxelThreadBatch = tbb::enumerable_thread_specific<
-			VoxelLocalBatch,
-			tbb::cache_aligned_allocator<VoxelLocalBatch>,
-			tbb::ets_key_per_instance >;
-		using VoxelTransLocalBatch = sBatched<VOXELBUFFER_TRANS_3D, eStreamingBatchSize::MODEL>;
-		using VoxelTransThreadBatch = tbb::enumerable_thread_specific<
-			VoxelTransLocalBatch,
-			tbb::cache_aligned_allocator<VoxelTransLocalBatch>,
-			tbb::ets_key_per_instance >;
+		extern __declspec(selectany) inline thread_local VoxelLocalBatchNormal voxels_static{};
+		extern __declspec(selectany) inline thread_local VoxelLocalBatchDynamic voxels_dynamic{};
+		extern __declspec(selectany) inline thread_local VoxelLocalBatchDynamic voxels_trans{};
+	} // end ns
 
-		VoxelThreadBatch batchedVoxels;  // not using the global atomic pointer, so this remains / is local to this model instance only
-		VoxelTransThreadBatch batchedVoxels_trans;
-
+	template<bool const Dynamic>
+	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		Iso::Voxel const& __restrict oVoxel,
+		voxelModelInstance<Dynamic> const& instance,
+		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+	{
 		typedef struct __declspec(novtable) sRenderFuncBlockChunk {
 
 		private:
 			XMVECTOR const						xmVoxelOrigin, xmUV;
 			voxB::voxelDescPacked const* const __restrict voxelsIn;
-			tbb::atomic<VOXELBUFFER_3D*>& __restrict voxelsOut;
-			tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxelsOut_trans;
-			VoxelThreadBatch& __restrict		batchedVoxels;
-			VoxelTransThreadBatch& __restrict	batchedVoxels_trans;
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans;
 			Iso::Voxel const& __restrict		rootVoxel;
-			voxelModelInstance<Dynamic> const&  instance;
+			voxelModelInstance<Dynamic> const& instance;
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 			PerformanceType& PerformanceCounters;
 #endif		
 
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
-
-			__forceinline explicit __vectorcall sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmUV_,
+			__forceinline explicit sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmUV_,
 				voxB::voxelDescPacked const* const __restrict voxelsIn_,
-				tbb::atomic<VOXELBUFFER_3D*>& __restrict voxelsOut_,
-				tbb::atomic<VOXELBUFFER_TRANS_3D*>& __restrict voxelsOut_trans_,
-				VoxelThreadBatch& __restrict batchedVoxels_,
-				VoxelTransThreadBatch& __restrict batchedVoxels_trans_,
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static_,
+				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic_,
+				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans_,
 				Iso::Voxel const& __restrict rootVoxel_,
 				voxelModelInstance<Dynamic> const& __restrict instance_
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceType& PerformanceCounters_
 #endif
 			) // add in ground height from root voxel passed in, total area encompassing the model has been averaged / flat //
-				: 
+				:
 				xmVoxelOrigin(XMVectorSubtract(xmVoxelOrigin_, XMVectorSet(0.0f, instance_.getElevation(), 0.0f, 0.0f))),
 				xmUV(xmUV_),
-				voxelsIn(voxelsIn_), voxelsOut(voxelsOut_), voxelsOut_trans(voxelsOut_trans_),
-				batchedVoxels(batchedVoxels_), batchedVoxels_trans(batchedVoxels_trans_),
+				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
 				rootVoxel(rootVoxel_),
 				instance(instance_)
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -395,9 +380,6 @@ namespace voxB
 				tTime const tStartOp = high_resolution_clock::now();
 				++local_perf.operations;
 #endif
-				VoxelLocalBatch& __restrict localVoxels(batchedVoxels.local());
-				VoxelTransLocalBatch& __restrict localVoxelsTrans(batchedVoxels_trans.local());
-
 				uint32_t const // pull out into registers from memory
 					vxl_begin(r.begin()),
 					vxl_end(r.end());
@@ -406,7 +388,7 @@ namespace voxB
 				uint32_t const flags(instance.getFlags());
 
 				auto const& __restrict model(instance.getModel());
-				
+
 				float const YDimension((float)model._maxDimensions.y);
 
 				XMVECTOR const maxDimensionsInv(XMLoadFloat3A(&model._maxDimensionsInv)), maxDimensions(uvec4_v(model._maxDimensions).v4f());
@@ -417,7 +399,7 @@ namespace voxB
 				uint32_t prefetch_count(PREFETCH_ELEMENTS);
 				_mm_prefetch((const CHAR*)pVoxelsIn, _MM_HINT_T0);
 
-				#pragma loop( ivdep )
+#pragma loop( ivdep )
 				for (uint32_t vxl = vxl_begin; vxl < vxl_end; ++vxl) {
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 					tTime const tStartIter = high_resolution_clock::now();
@@ -437,7 +419,7 @@ namespace voxB
 
 					if constexpr (Dynamic) {
 						voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
-						
+
 						xmAzimuth = instance_dynamic.getAzimuth().v2();
 						xmPitch = instance_dynamic.getPitch().v2();
 
@@ -459,7 +441,7 @@ namespace voxB
 						uint32_t hash(0);
 						hash |= voxel.getAdjacency();					//           0000 0000 0001 1111
 						hash |= (voxel.getOcclusion() << 5);			//           0000 1111 111x xxxx
-												
+
 						bool Emissive(false), Transparent(false);
 						if (nullptr != model._State) {
 
@@ -485,27 +467,27 @@ namespace voxB
 							// these are not world coordinates! good for sampling view locked/aligned volumes such as the lightmap
 
 							// Make All voxels relative to voxel root origin // inversion neccessary //
-							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)voxel.getColor())); // srgb is passed to vertex shader which converts it to srgb faster than here with cpu
+							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)voxel.getColor())); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 							if (!Transparent) {
-								
+
 								if constexpr (Dynamic) {
 
-									localVoxels.emplace_back(
-										voxelsOut,
-											xmStreamOut,
-											xmUVs,
-											XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch),
-											hash
-										);
+									local::voxels_dynamic.emplace_back(
+										voxels_dynamic,
+										xmStreamOut,
+										xmUVs,
+										XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch),
+										hash
+									);
 								}
 								else {
-									localVoxels.emplace_back(
-										voxelsOut,
-											xmStreamOut,
-											xmUVs,
-											hash 
-										);
+									local::voxels_static.emplace_back(
+										voxels_static,
+										xmStreamOut,
+										xmUVs,
+										hash
+									);
 								}
 
 							}
@@ -515,37 +497,35 @@ namespace voxB
 
 								if constexpr (Dynamic) {
 
-									localVoxelsTrans.emplace_back(
-										voxelsOut_trans,
-											xmStreamOut,
-											xmUVs,
-											XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch),
-											hash
-										);
+									local::voxels_trans.emplace_back(
+										voxels_trans,
+										xmStreamOut,
+										xmUVs,
+										XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch),
+										hash
+									);
 								}
 								else { // sneaky override for *static* transparent voxels
-									
-									localVoxelsTrans.emplace_back(
-										voxelsOut_trans,  
-											xmStreamOut,
-											xmUVs,
-											XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f),  // bugfix: BIG bug: (first paramete must be equal to 1.0f, second 0.0f) - was rotated, now transparency adjacency works & solves problem with hidden voxels at 0.0f rotation
-											hash 
-										);
+
+									local::voxels_trans.emplace_back(
+										voxels_trans,
+										xmStreamOut,
+										xmUVs,
+										XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f),  // bugfix: BIG bug: (first paramete must be equal to 1.0f, second 0.0f) - was rotated, now transparency adjacency works & solves problem with hidden voxels at 0.0f rotation
+										hash
+									);
 								}
-								
+
 							}
 						}
-						if constexpr (UPDATE_OPACITY) {
 
-							if (Emissive) {										  // crash prevented at beginning of function
+						if (Emissive) {										  // crash prevented at beginning of function
 
-								// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
-								// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
-								// and is in the fragment shaderrecieved swizzled in xzy form
-								VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, SFM::srgb_to_linear_rgba(voxel.getColor())); // must convert from srgb to linear
-								
-							}
+							// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
+							// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
+							// and is in the fragment shaderrecieved swizzled in xzy form
+							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, voxel.getColor());
+
 						}
 					}
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -555,8 +535,14 @@ namespace voxB
 
 				// ####################################################################################################################
 				// ensure all batches are  output (residual/remainder)
-				localVoxels.out(voxelsOut);
-				localVoxelsTrans.out(voxelsOut_trans);
+				if constexpr (Dynamic) {
+					local::voxels_dynamic.out(voxels_dynamic);
+				}
+				else {
+					local::voxels_static.out(voxels_static);
+				}
+				
+				local::voxels_trans.out(voxels_trans);
 				// ####################################################################################################################
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -568,8 +554,18 @@ namespace voxB
 		} const RenderFuncBlockChunk;
 
 		//##########################################################################################################################################//
-		tbb::atomic<VOXELBUFFER_3D*> pVoxelsOut = voxels.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
-		tbb::atomic<VOXELBUFFER_TRANS_3D*> pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxelsTransparent);
+
+		[[maybe_unused]] tbb::atomic<VertexDecl::VoxelNormal*> pVoxelsOutStatic;
+		[[maybe_unused]] tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutDynamic;
+
+		if constexpr (Dynamic) {
+			pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+		}
+		else {
+			pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+		}
+		tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxelsTransparent);
+
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceType PerformanceCounters;
 #endif
@@ -588,8 +584,7 @@ namespace voxB
 			RenderFuncBlockChunk(xmVoxelOrigin, 
 				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
 				_Voxels, 
-				pVoxelsOut, pVoxelsOutTrans, 
-				batchedVoxels, batchedVoxels_trans,
+				pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
 				oVoxel,
 				instance
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -598,12 +593,6 @@ namespace voxB
 			)
 			, part
 		);
-
-		// ####################################################################################################################
-		// ensure all batches are  cleared for next trip
-		batchedVoxels.clear();
-		batchedVoxels_trans.clear();
-		// ####################################################################################################################
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceResult& result(getDebugVariableReference(PerformanceResult, DebugLabel::PERFORMANCE_VOXEL_SUBMISSION));
