@@ -52,3 +52,5 @@ desktop.ini
 *.iobj
 *.iobj
 *.exp
+*.exp
+*.iobj
