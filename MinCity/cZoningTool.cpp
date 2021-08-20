@@ -3,6 +3,9 @@
 #include "cVoxelWorld.h"
 #include "cBuildingGameObject.h"
 #include "MinCity.h"
+#include "gui.h"
+
+static constexpr float const GUI_HEIGHT = -10.0f;
 
 cZoningTool::cZoningTool()
 	: _ActivatedSubTool(eSubTool_Zoning::RESIDENTIAL), _segmentVoxelIndex{}, _activePoint(1) // must be non-zero
@@ -39,6 +42,103 @@ void cZoningTool::paint()
 		// make relative to world origin (gridspace to worldspace transform)
 		XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 
+		XMVECTOR xmOrigin;
+		point2D_t origin;
+		uint32_t length(0);
+
+		// line from tl to tr (x axis)
+		origin = area.left_top();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		length = (area.right - area.left) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
+		gui::draw_x_line(length, xmOrigin, origin, color, true);
+
+		// line from bl to br (x axis)
+		origin = area.left_bottom();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		// same length = (area.right - area.left) << 1;
+		gui::draw_x_line(length + 1, xmOrigin, origin, color, true);
+
+		static constexpr fp_seconds const
+			interval = fp_seconds(1.0f / 24.0f), // seconds = 1/fps; 0.042s, 42ms per frame		
+			total = fp_seconds(seconds(5));
+
+		static struct {
+			tTime tLast{ now() };
+			fp_seconds accumulator{};
+			fp_seconds total_accumulated{};
+		} timing;
+
+		float transition(0.0f);
+
+		tTime const tNow(now());
+		fp_seconds const fTDelta(tNow - timing.tLast);
+		if ((timing.accumulator += fTDelta) >= interval) {
+
+			if ((timing.total_accumulated += timing.accumulator) >= total) {
+
+				timing.total_accumulated -= total;
+			}
+
+			timing.accumulator -= interval;
+		}
+		timing.tLast = tNow;
+
+		std::string str("1234567890 !@#$%^&()_-+=:;.,`~[] abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+		str += ' ';
+		gui::add_vertical_bar(str, timing.total_accumulated / total);
+		str += ' ';
+		gui::add_horizontal_bar(str, timing.total_accumulated / total);
+
+		origin = area.left_bottom();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_string(xmOrigin, origin, color, true, str.data());
+
+		origin = area.left_top();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_horizontal_progress_bar(length, timing.total_accumulated / total, xmOrigin, origin, color, true);
+
+		origin = area.left_bottom();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 4.0f);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_vertical_progress_bar(20, timing.total_accumulated / total, xmOrigin, origin, color, true);
+
+		// line from tl to bl (z axis)
+		origin = area.left_top();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		length = (area.bottom - area.top) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
+		gui::draw_z_line(length, xmOrigin, origin, color, true);
+
+		// line from tr to br (z axis)
+		origin = area.right_top();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		// same length = (area.bottom - area.top) << 1;
+		gui::draw_z_line(length, xmOrigin, origin, color, true);
+
+		/*
 		point2D_t voxelIndex{};
 		for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
 
@@ -56,10 +156,10 @@ void cZoningTool::paint()
 				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(Iso::MINI_VOX_STEP, 0.0f, Iso::MINI_VOX_STEP, 0.0f)), voxelIndex, color, true);
 			}
 		}
-
+		*/
 	}
 }
-void cZoningTool::commitZoneHistory() // commits current "road" to grid
+void cZoningTool::commitZoneHistory() // commits current "zone" to grid
 {
 	_undoHistory.clear();
 }

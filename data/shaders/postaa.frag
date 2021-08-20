@@ -181,6 +181,7 @@ const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
 const float LUT_SCALE = (LUT_SIZE_STANDARD - 1.0f) / LUT_SIZE_STANDARD;
 const float LUT_OFFSET = 1.0f / (2.0f * LUT_SIZE_STANDARD);
 
+#ifdef HDR
 // sRGB to bt.2020 wide gamut
 vec3 bt709_to_bt2020(in const vec3 color)
 {
@@ -227,7 +228,7 @@ vec3 PQ(in const vec3 color, in const float display_max_nits)
 
     return ( pow((c1 + c2 * y) / (1.0f + c3 * y), vec3(m2)) );
 }
-
+#endif
 
 void main() {
 
@@ -281,8 +282,8 @@ void main() {
 	// this results in very smooth antialiasing
 	// scale the luminance back by how much it has changed
 	// its so bright it bleeds
+	const float luminance = dot(color, LUMA);
 	{
-		const float luminance = dot(color, LUMA);
 		const vec3 reference_color = color;
 		
 		expandBlurAA(temporalColorMap, color, In.uv, (1.0f - luminance));
@@ -301,7 +302,7 @@ void main() {
 		color = textureLod(lutMap, color * LUT_SCALE + LUT_OFFSET, 0).rgb;
 		
 		// BLOOM // // *BEST APPLIED ONLY HERE* bloom after the 3D lut is applied (expanding output range) and before any HDR transforms.
-		color += textureLod(blurMap[0], In.uv, 0).rgb;
+		color += textureLod(blurMap[0], In.uv, 0).rgb * luminance; // times original luminance anti-aliases the bloom, looks sharper.
 	}
 #ifdef HDR
 	{ // 2.) HDR
@@ -321,8 +322,8 @@ void main() {
 		// this actually doesn't ruin the blue noise, mixing by luminance two different blue noises seems to isolate quite well, being
 		// one blue noise to "darker" colors and the othe blue noise to "brighter" colors isoloating very well 
 		const uint frame = In.odd_frame;
-		const float luminance = dot(color, LUMA);
-		color = mix(color - noise_dual_dither[frame], color + noise_dual_dither[1U - frame], luminance); // shade dithering by luminance
+		const float luma = dot(color, LUMA);
+		color = mix(color - noise_dual_dither[frame], color + noise_dual_dither[1U - frame], luma); // shade dithering by luminance
 
 		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
 		color += clamp(anamorphicFlare(In.uv) - noise_dual_dither[1U - frame], 0.0f, 1.0f);

@@ -26,11 +26,11 @@ namespace Iso
 	constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= TRUE_ISOMETRIC;
 	constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= TRUE_ISOMETRIC_ANGLES;
 
-	XMGLOBALCONST inline XMVECTORF32 const
+	read_only inline XMVECTORF32 const
 		xmEyePt_Iso = { ISOMETRIC_PERSPECTIVE_USED.x, ISOMETRIC_PERSPECTIVE_USED.y, ISOMETRIC_PERSPECTIVE_USED.z, 0.0f },
 		xmUp = { 0.0f, 1.0f, 0.0f, 0.0f };
 
-	XMGLOBALCONST inline v2_rotation_t const
+	read_only_no_constexpr inline v2_rotation_t const
 		AzimuthIsometric(ISOMETRIC_ANGLES_USED.y);
 
 	constexpr float const

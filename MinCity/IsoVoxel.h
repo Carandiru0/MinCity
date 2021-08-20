@@ -82,7 +82,7 @@ namespace Iso
 		INVERSE_WORLD_GRID_FSIZE = 1.0f / WORLD_GRID_FSIZE,
 		INVERSE_MAX_VOXEL_COORD = 1.0f / (MAX_VOXEL_FCOORD);		// -- good for normalization in range -1.0f...1.0f
 
-	XMGLOBALCONST inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD, (float)SCREEN_VOXELS_Y, MAX_VOXEL_FCOORD }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
+	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD, (float)SCREEN_VOXELS_Y, MAX_VOXEL_FCOORD }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
 	static constexpr int32_t const
 		VIRTUAL_SCREEN_VOXELS = SCREEN_VOXELS_XZ * MINIVOXEL_FACTOR;
@@ -91,8 +91,8 @@ namespace Iso
 		GRID_VOXELS_START_XZ_OFFSET = (VIRTUAL_SCREEN_VOXELS / MINIVOXEL_FACTOR) >> 1;		// matches the origin of world and volumetric unit cube
 
 	// perfect alignment with 3d texture and volume rendering, finally
-	XMGLOBALCONST inline point2D_t const GRID_OFFSET(-GRID_VOXELS_START_XZ_OFFSET, -GRID_VOXELS_START_XZ_OFFSET);
-	XMGLOBALCONST inline XMVECTORF32 const
+	read_only_no_constexpr inline point2D_t const GRID_OFFSET{ -GRID_VOXELS_START_XZ_OFFSET, -GRID_VOXELS_START_XZ_OFFSET };
+	read_only inline XMVECTORF32 const
 		GRID_OFFSET_X_Z{ -GRID_VOXELS_START_XZ_OFFSET, 0.0f, -GRID_VOXELS_START_XZ_OFFSET };
 
 	// ####### Desc bits:
@@ -539,33 +539,35 @@ namespace Iso
 	// for voxel painting //
 	namespace mini
 	{
-		static constexpr uint32_t const
-			no_flags = 0,
-			emissive = (1 << 0),
-			transparent = (1 << 1);
+		static constexpr uint8_t const // *these numbers are how many bits to shift.
+			emissive_bit = 0;
+		static constexpr uint8_t const // *these numbers are the mask
+			emissive = (1 << emissive_bit);
+
+		typedef struct Voxel
+		{
+			uvec4_t					index; // .w = color
+			XMFLOAT3A				position;
+			Voxel const* __restrict next;
+			uint8_t					flags;
+
+			Voxel()
+				: position{}, index{}, next{ nullptr }, flags{}
+			{}
+			__forceinline explicit __vectorcall Voxel(FXMVECTOR worldPos_, uvec4_v const index_, uint32_t const color_, uint8_t const flags_, Voxel const* __restrict next_) noexcept
+				: flags(flags_), next(next_)
+			{
+				XMStoreFloat3A(&position, worldPos_);
+				index_.xyzw(index);
+				index.w = color_;
+			}
+			Voxel(Voxel const&) = default;
+			Voxel& operator=(Voxel const&) = default;
+			Voxel(Voxel&&) noexcept = default;
+			Voxel& operator=(Voxel&&) noexcept = default;
+		} voxel;
 
 	} // end ns
-	typedef struct sMiniVoxel
-	{
-		VertexDecl::VoxelDynamic data;
-
-		uint32_t color;
-		uint32_t flags;
-
-		sMiniVoxel const* __restrict next;
-
-		sMiniVoxel()
-			: data{}, next{ nullptr }, color{}, flags{}
-		{}
-		__forceinline explicit __vectorcall sMiniVoxel(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, FXMVECTOR orient_reserved_, uint32_t const hash, uint32_t const color_, uint32_t const flags_, sMiniVoxel const* __restrict next_) noexcept
-			: data(worldPos_, uv_vr_, orient_reserved_, hash), color(color_), flags(flags_), next(next_)
-		{}
-		sMiniVoxel(sMiniVoxel const&) = default;
-		sMiniVoxel& operator=(sMiniVoxel const&) = default;
-		sMiniVoxel(sMiniVoxel&&) noexcept = default;
-		sMiniVoxel& operator=(sMiniVoxel&&) noexcept = default;
-	} miniVoxel;
-
 
 	// helper struct (last) //
 	typedef struct sVoxelIndexHashPair // for general usage of associating a voxel (index) with an instance (hash)

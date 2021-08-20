@@ -300,7 +300,7 @@ namespace voxB
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 	};
 		
-	XMGLOBALCONST inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 1.0f, 0.5f, 0.5f }; // **** note Y is not centered on origin of model, instead its at the bottom of model
+	read_only inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 1.0f, 0.5f, 0.5f }; // **** note Y is not centered on origin of model, instead its at the bottom of model
 	STATIC_INLINE_PURE XMVECTOR XM_CALLCONV getMiniVoxelGridIndex(FXMVECTOR maxDimensions, FXMVECTOR maxDimensionsInv,
 		FXMVECTOR xmVoxelRelativeModelPosition)
 	{
@@ -321,9 +321,9 @@ namespace voxB
 		using VoxelLocalBatchNormal = sBatched<VertexDecl::VoxelNormal, eStreamingBatchSize::MODEL>;
 		using VoxelLocalBatchDynamic = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::MODEL>;
 
-		extern __declspec(selectany) inline thread_local VoxelLocalBatchNormal voxels_static{};
-		extern __declspec(selectany) inline thread_local VoxelLocalBatchDynamic voxels_dynamic{};
-		extern __declspec(selectany) inline thread_local VoxelLocalBatchDynamic voxels_trans{};
+		extern __declspec(selectany) inline thread_local constinit VoxelLocalBatchNormal voxels_static{};
+		extern __declspec(selectany) inline thread_local constinit VoxelLocalBatchDynamic voxels_dynamic{};
+		extern __declspec(selectany) inline thread_local constinit VoxelLocalBatchDynamic voxels_trans{};
 	} // end ns
 
 	template<bool const Dynamic>

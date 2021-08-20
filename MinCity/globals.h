@@ -118,7 +118,7 @@ extern void debug_out_nuklear_off();
 #define FMT_LOG_WARN(category, message, ...) {  (fmt::print(fg(fmt::color::orange),  ("[{:s}] " message "\n"), category, __VA_ARGS__)); }
 #define FMT_LOG_FAIL(category, message, ...) {  (fmt::print(fg(fmt::color::red),  (INVERSE_ANSI"[FAIL] " INVERSE_ANSI_OFF" [{:s}] " message "\n"), category, __VA_ARGS__)); }
 #define FMT_BOOL_SZ(boolean) ((boolean) ? "true" : "false")
-
+// log catergories //
 #define NULL_LOG ""
 #define INFO_LOG "INFO"
 #define GAME_LOG "GAME"
@@ -127,6 +127,11 @@ extern void debug_out_nuklear_off();
 #define TEX_LOG "TEX"
 #define AUDIO_LOG "AUDIO"
 
+// helper types
+#define read_only constexpr extern const __declspec(selectany)
+#define read_only_no_constexpr extern const __declspec(selectany)
+
+// relative paths //
 namespace Globals
 {
 #define _S * const 

@@ -694,7 +694,7 @@ namespace Volumetric
 
 	namespace local
 	{
-		extern __declspec(selectany) inline thread_local VoxelLocalBatch voxels{};
+		extern __declspec(selectany) inline thread_local constinit VoxelLocalBatch voxels{};
 	} // end ns
 
 	template<uint32_t const Options>

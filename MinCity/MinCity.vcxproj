@@ -126,7 +126,8 @@
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <AdditionalIncludeDirectories>X:\nuklear-master;X:\Vulkan\glfw\include;$(VULKAN_SDK)\Include;X:\Vulkan\Vookoo\include;X:\fmt;X:\FMOD\api\core\inc;C:\Documents\Visual Studio 2017\Projects;X:\density-master\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <BrowseInformation>true</BrowseInformation>
+      <BrowseInformation>
+      </BrowseInformation>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
@@ -313,6 +314,7 @@
     <ClInclude Include="eVoxelModels.h" />
     <ClInclude Include="explosion.h" />
     <ClInclude Include="globals.h" />
+    <ClInclude Include="gui.h" />
     <ClInclude Include="ImageAnimation.h" />
     <ClInclude Include="lightBuffer3D.h" />
     <ClInclude Include="IsoCamera.h" />
@@ -349,6 +351,7 @@
     <ClInclude Include="voxel_range2d.h" />
     <ClInclude Include="voxLink.h" />
     <ClInclude Include="voxelScreen.h" />
+    <ClInclude Include="vxlmono.h" />
     <ClInclude Include="world.h" />
     <ClInclude Include="writeOnlyBuffer.h" />
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vkNames.h" />

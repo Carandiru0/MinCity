@@ -89,7 +89,7 @@ __vectorcall sRainInstance::sRainInstance(FXMVECTOR const WorldCoordOrigin, floa
 }
 
 // voxel_op_fnRain
-XMGLOBALCONST inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getWidth()), float(Volumetric::voxelOpacity::getDepth()), 0.0f, 0.0f };
+read_only inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getWidth()), float(Volumetric::voxelOpacity::getDepth()), 0.0f, 0.0f };
 __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMVECTOR const vDisplacement, float const tLocal, Volumetric::voxelShaderDesc&& __restrict out) const
 {
     static constexpr float const Inv255 = 1.0f / 255.0f;

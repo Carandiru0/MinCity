@@ -110,7 +110,7 @@ static inline struct CameraEntity
 } oCamera;
 
 tbb::queuing_rw_mutex _theLock; // for _theGrid
-constinit static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
+static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
 {
 	Iso::Voxel* __restrict		 _protected;
 	
@@ -118,22 +118,21 @@ constinit static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous 
 		return(_protected);
 	}
 } _theGrid{};
-constinit static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
+static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
 {
-	Iso::miniVoxel const** __restrict	 _protected;
+	Iso::mini::Voxel const** __restrict	 _protected;
 
-	__declspec(safebuffers) __forceinline operator Iso::miniVoxel const** const __restrict() const {
+	__declspec(safebuffers) __forceinline operator Iso::mini::Voxel const** const __restrict() const {
 		return(_protected);
 	}
 } _theTemp{};
 static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
 {
-	tbb::concurrent_vector<Iso::miniVoxel> voxels;	// actual memory that is pointed to by a Iso::miniVoxel
+	tbb::concurrent_vector<Iso::mini::Voxel> voxels;	// actual memory that is pointed to by a Iso::mini::voxel
 
 	using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 	volume
-		* __restrict last = nullptr,
-		* __restrict now = nullptr;
+		* __restrict bits = nullptr;
 } _mini;
 
 
@@ -825,7 +824,7 @@ namespace world
 		return(oCamera.Azimuth);
 	}
 	
-	static Iso::miniVoxel const* const __restrict __vectorcall getMiniVoxelAt(point2D_t voxelIndex) // no bounds checking required! (bounds checking is done prior)
+	static Iso::mini::Voxel const* const __restrict __vectorcall getMiniVoxelAt(point2D_t voxelIndex) // no bounds checking required! (bounds checking is done prior)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
 		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
@@ -841,7 +840,7 @@ namespace world
 
 		return(nullptr);
 	}
-	static bool const __vectorcall setMiniVoxelAt(point2D_t voxelIndex, Iso::miniVoxel const* const&& __restrict newData)
+	static bool const __vectorcall setMiniVoxelAt(point2D_t voxelIndex, Iso::mini::Voxel const* const&& __restrict newData)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
 		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
@@ -859,38 +858,6 @@ namespace world
 
 		return(false);
 	}
-	static uint32_t const __vectorcall encode_adjacency(ivec4_v const xmIndex)
-	{
-		ivec4_t iIndex;
-		xmIndex.xyzw(iIndex);
-
-		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
-		//	left = voxB::BIT_ADJ_LEFT,
-		//	right = voxB::BIT_ADJ_RIGHT,
-		//	front = voxB::BIT_ADJ_FRONT,
-		//	back = voxB::BIT_ADJ_BACK,
-		//	above = voxB::BIT_ADJ_ABOVE
-
-		uint32_t adjacent(0);
-
-
-		if (iIndex.x - 1 >= 0) {
-			adjacent |= _mini.last->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
-		}
-		if (iIndex.x + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X) {
-			adjacent |= _mini.last->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
-		}
-		if (iIndex.z - 1 >= 0) {
-			adjacent |= _mini.last->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
-		}
-		if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
-			adjacent |= _mini.last->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
-		}
-		if (iIndex.y - 1 >= 0) {
-			adjacent |= _mini.last->read_bit(iIndex.x, iIndex.y - 1, iIndex.z) << Volumetric::adjacency::above;
-		}
-		return(adjacent);
-	}
 
 	void __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
 	{
@@ -903,45 +870,16 @@ namespace world
 			uvec4_t uiIndex;
 			uvIndex.xyzw(uiIndex);
 
-			size_t const index(_mini.now->get_index(uiIndex.x, uiIndex.y, uiIndex.z));
+			size_t const index(_mini.bits->get_index(uiIndex.x, uiIndex.y, uiIndex.z));
 
-			if (!_mini.now->read_bit(index)) {  // filter out, if already set, nothing get added
+			if (!_mini.bits->read_bit(index)) {  // filter out, if already set, nothing get added
 
-				_mini.now->set_bit(index); // the "current" volume is always updated.... 
+				_mini.bits->set_bit(index); // the "current" volume is always updated.... 
 
-				if (_mini.last->read_bit(index)) { // however the voxel is only added if the "last" volume also matches for this "bit" 
-													 // this hides the temporal difference in adjacency, giving the artifact free rendering with current/correct adjacency data.
-													 // this adds a frame of latency to achieve, any changes are delayed by one frame. 
+				uint8_t const flags((emissive << Iso::mini::emissive_bit));
 
-					uint8_t const alpha((color >> 24) & 0xFF);
-					bool const transparent(0xFF != alpha);
-
-					uint32_t const adjacency(encode_adjacency(ivec4_v(uvIndex)));				
-
-					// Build hash //
-					uint32_t hash(0);
-
-					// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
-					hash |= adjacency;
-					// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
-
-					hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
-					hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
-
-					uint32_t flags;
-					if (emissive) {
-						flags |= Iso::mini::emissive;
-					}
-					if (transparent) {
-						flags |= Iso::mini::transparent;
-					}
-
-					XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
-					XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
-
-					setMiniVoxelAt(voxelIndex, std::forward<Iso::miniVoxel const* const&&>(
-						&(*_mini.voxels.emplace_back(xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash, color, flags, getMiniVoxelAt(voxelIndex)))));
-				}
+				setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
+					&(*_mini.voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
 			}
 		}
 	}
@@ -1869,20 +1807,74 @@ static struct voxelRender // ** static container, all methods and members must b
 
 	static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
 
+	static uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex)
+	{
+		ivec4_t iIndex;
+		ivec4_v(xmIndex).xyzw(iIndex);
 
-	STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
-		Iso::miniVoxel const&& __restrict oVoxel,
+		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
+		//	left = voxB::BIT_ADJ_LEFT,
+		//	right = voxB::BIT_ADJ_RIGHT,
+		//	front = voxB::BIT_ADJ_FRONT,
+		//	back = voxB::BIT_ADJ_BACK,
+		//	above = voxB::BIT_ADJ_ABOVE
+
+		uint32_t adjacent(0);
+
+		if (iIndex.x - 1 >= 0) {
+			adjacent |= _mini.bits->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
+		}
+		if (iIndex.x + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X) {
+			adjacent |= _mini.bits->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
+		}
+		if (iIndex.z - 1 >= 0) {
+			adjacent |= _mini.bits->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
+		}
+		if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
+			adjacent |= _mini.bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+		}
+		if (iIndex.y + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y) {
+			adjacent |= _mini.bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
+		}
+		return(adjacent);
+	}
+
+	STATIC_INLINE void XM_CALLCONV RenderMiniVoxel(point2D_t const& __restrict voxelIndex,
+		Iso::mini::Voxel const&& __restrict oVoxel,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
 		miniVoxelLocalBatch& __restrict localMini,
 		miniVoxelLocalBatch& __restrict localMiniTrans)
 	{
-		if (Iso::mini::transparent == (oVoxel.flags & Iso::mini::transparent)) {
+		uint32_t const color(oVoxel.index.w);
+		uint8_t const alpha((color >> 24) & 0xFF);
+		bool const transparent(0xFF != alpha);
+		bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
+
+		uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
+
+		// Build hash //
+		uint32_t hash(0);
+
+		// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
+		hash |= adjacency;
+		// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
+
+		hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
+		hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
+
+		XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
+		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+
+		XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
+		XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+
+		if (transparent) {
 
 			localMiniTrans.emplace_back(
 				voxels_trans,
 
-				std::forward<VertexDecl::VoxelDynamic const&&>(oVoxel.data)
+				xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
 			);
 		}
 		else {
@@ -1890,43 +1882,28 @@ static struct voxelRender // ** static container, all methods and members must b
 			localMini.emplace_back(
 				voxels_dynamic,
 
-				std::forward<VertexDecl::VoxelDynamic const&&>(oVoxel.data)
+				xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
 			);
 		}
 
-		if (Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive)) {
+		if (emissive) {
 
-			XMVECTOR const xmIndex(XMVectorMultiplyAdd(oVoxel.data.worldPos, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-
-			Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & oVoxel.color);
+			Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
 		}
+	}
+	STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
+		Iso::mini::Voxel const&& __restrict oVoxel,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+		miniVoxelLocalBatch& __restrict localMini,
+		miniVoxelLocalBatch& __restrict localMiniTrans)
+	{
+		RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(oVoxel), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
 
-		Iso::miniVoxel const* next(oVoxel.next);
+		Iso::mini::Voxel const* next(oVoxel.next);
 		while (next) {
 
-			if (Iso::mini::transparent == (next->flags & Iso::mini::transparent)) {
-
-				localMiniTrans.emplace_back(
-					voxels_trans,
-
-					std::forward<VertexDecl::VoxelDynamic const&&>(next->data)
-				);
-			}
-			else {
-
-				localMini.emplace_back(
-					voxels_dynamic,
-
-					std::forward<VertexDecl::VoxelDynamic const&&>(next->data)
-				);
-			}
-
-			if (Iso::mini::emissive == (next->flags & Iso::mini::emissive)) {
-
-				XMVECTOR const xmIndex(XMVectorMultiplyAdd(next->data.worldPos, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-
-				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & next->color);
-			}
+			RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*next), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
 
 			next = next->next;
 		}
@@ -2077,7 +2054,7 @@ static struct voxelRender // ** static container, all methods and members must b
 		private:
 			XMVECTOR const 									voxelStart;
 			Iso::Voxel const* const __restrict				theGrid;
-			Iso::miniVoxel const* const* const __restrict	theTemp;
+			Iso::mini::Voxel const* const* const __restrict	theTemp;
 
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoad;
@@ -2091,7 +2068,7 @@ static struct voxelRender // ** static container, all methods and members must b
 			__forceinline explicit __vectorcall sRenderFuncBlockChunk(
 				FXMVECTOR const voxelStart_,
 				Iso::Voxel const* const __restrict theGrid_,
-				Iso::miniVoxel const* const* const __restrict theTemp_,
+				Iso::mini::Voxel const* const* const __restrict theTemp_,
 				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelGround_,
 				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelRoad_,
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
@@ -2124,13 +2101,13 @@ static struct voxelRender // ** static container, all methods and members must b
 					Iso::Voxel const* __restrict pVoxel = theGrid + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
 					_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
 
-					Iso::miniVoxel const* const* __restrict pMiniVoxels = theTemp + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
+					Iso::mini::Voxel const* const* __restrict pMiniVoxels = theTemp + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
 
 					for (; x < x_end; ++x)
 					{
 						point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
 
-						Iso::miniVoxel const* const __restrict pMiniVoxel(*pMiniVoxels);
+						Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
 						++pMiniVoxels; // sequentially access for best cache prediction
 
 						Iso::Voxel const oVoxel(*pVoxel);
@@ -2146,7 +2123,7 @@ static struct voxelRender // ** static container, all methods and members must b
 						if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
 							
 							if (nullptr != pMiniVoxel) {
-								RenderMiniVoxels(voxelIndex, std::forward<Iso::miniVoxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
+								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
 							}
 
 							// ***Ground always exists*** //
@@ -2421,13 +2398,12 @@ namespace world
 		// create world grid memory
 		{
 			_theGrid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
-			_theTemp._protected = (Iso::miniVoxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::miniVoxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
+			_theTemp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 
 			_mini.voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 
 			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
-			_mini.now = volume::create();
-			_mini.last = volume::create();
+			_mini.bits = volume::create();
 
 			clearMiniVoxels();
 
@@ -4267,17 +4243,9 @@ namespace world
 	// voxel painting
 	void cVoxelWorld::clearMiniVoxels()
 	{
-		__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::miniVoxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-
+		__memclr_stream<CACHE_LINE_BYTES>(_mini.bits->data(), _mini.bits->size());
+		__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 		_mini.voxels.clear();
-
-		// last_volume becomes volume,
-		// volume is now cleared
-		std::swap(_mini.last, _mini.now);
-		__memclr_stream<CACHE_LINE_BYTES>(_mini.now->data(), _mini.now->size());
-		// volume is now current for write-only access
-		// last_volume is now current for read-only access
-		// *until the next clear
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -5063,11 +5031,8 @@ namespace world
 
 		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 
-		if (_mini.now) {
-			volume::destroy(_mini.now);
-		}
-		if (_mini.last) {
-			volume::destroy(_mini.last);
+		if (_mini.bits) {
+			volume::destroy(_mini.bits);
 		}
 
 		if (_theGrid._protected) {
