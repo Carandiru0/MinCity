@@ -22,10 +22,11 @@ constexpr duration const zero_duration = duration{ std::chrono::nanoseconds(0) }
 
 static_assert(std::chrono::treat_as_floating_point<fp_seconds::rep>::value, "Rep required to be floating point");
 
-static constexpr size_t const FRAME_UPDATE_INTERVAL_US = 33333ULL; // in microseconds (maximizes precision)
-static constexpr nanoseconds const fixed_delta_duration = microseconds(FRAME_UPDATE_INTERVAL_US);
-static constexpr nanoseconds const fixed_delta_x2_duration = microseconds(FRAME_UPDATE_INTERVAL_US<<1ULL);
+static constexpr size_t const FRAME_UPDATE_INTERVAL_NS = 33333333ULL; // in nanoseconds (maximizes precision)
+static constexpr nanoseconds const fixed_delta_duration = nanoseconds(FRAME_UPDATE_INTERVAL_NS);
+static constexpr nanoseconds const fixed_delta_x2_duration = nanoseconds(FRAME_UPDATE_INTERVAL_NS<<1ULL);
 
+static inline constexpr nanoseconds const delta() { return(fixed_delta_duration); }
 #endif 
 
 

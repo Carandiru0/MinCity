@@ -623,7 +623,7 @@ void cMinCity::UpdateWorld()
 		tLast{ zero_time_point },
 		tLastGUI{ zero_time_point };
 
-	duration tDeltaFixedStep(fixed_delta_duration);
+	duration tDeltaFixedStep(delta());
 	tTime tNow{ high_resolution_clock::now() };
 	tTime const 
 		tCriticalNow(tNow),
@@ -662,17 +662,17 @@ void cMinCity::UpdateWorld()
 	}
 
 	// add to fixed timestamp n fixed steps, while also removing the fixed step from the accumulator
-	while (tAccumulate >= fixed_delta_duration) {
+	while (tAccumulate >= delta()) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
-		m_tCriticalNow += fixed_delta_duration;
+		m_tCriticalNow += delta();
 
-		tAccumulate -= fixed_delta_duration;
+		tAccumulate -= delta();
 
-		VoxelWorld.Update(m_tNow, fixed_delta_duration, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
+		VoxelWorld.Update(m_tNow, delta(), bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
 	// fractional amount for render path (uniform shader variables)
-	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(fixed_delta_duration)); // always update everyframe
+	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(delta())); // always update everyframe
 
 	Audio.Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
 

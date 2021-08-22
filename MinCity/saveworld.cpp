@@ -168,6 +168,7 @@ namespace world
 			if (!result.state) {
 
 				MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
+
 				//write file header
 				voxelWorldDesc const header{ { 'C', '1', 'T', 'Y' }, GetSecureSeed(), uint32_t(szCityName.length()), result.bytesWritten, voxel_count };
 

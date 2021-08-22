@@ -10,7 +10,7 @@ namespace Volumetric
 		static constexpr float const BASE_ZOOM_LEVEL = 17.79837387625f;	// do not change, calculated from Golden Ratio
 
 		static tTime tLast(critical_now());
-		static fp_seconds tLastDelta(fixed_delta_duration);
+		static fp_seconds tLastDelta(delta());
 		static float LastZoomFactor(ZoomFactor);
 
 		point2D_t const framebufferSz(MinCity::getFramebufferSize());
@@ -35,7 +35,7 @@ namespace Volumetric
 		tTime const tNow(critical_now());
 		fp_seconds const tDelta(tNow - tLast);
 
-		float const smoothzoom = SFM::lerp(LastZoomFactor, ZoomFactor, tDelta / (fp_seconds(fixed_delta_duration) + tLastDelta));
+		float const smoothzoom = SFM::lerp(LastZoomFactor, ZoomFactor, tDelta / (fp_seconds(delta()) + tLastDelta));
 
 		if (ZoomFactor != LastZoomFactor) {
 

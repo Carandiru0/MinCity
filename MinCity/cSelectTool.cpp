@@ -31,13 +31,13 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 			XMVECTOR const xmLoc(instance->getLocation());
 			float fElevation = instance->getElevation();
 
-			float const delta(fp_seconds(fixed_delta_duration).count());
+			float const tDelta(fp_seconds(delta()).count());
 
 			switch (key)
 			{
 			case GLFW_KEY_UP:
 				if (down) { // pressed
-					XMVECTOR xmDisplacement = XMVectorSet(0.0f, delta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
+					XMVECTOR xmDisplacement = XMVectorSet(0.0f, tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
 					// orient displacement in direction of camera
 					xmDisplacement = v2_rotate(xmDisplacement, azimuth);
 					instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
@@ -45,7 +45,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				break;
 			case GLFW_KEY_DOWN:
 				if (down) { // pressed
-					XMVECTOR xmDisplacement = XMVectorSet(0.0f, -delta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
+					XMVECTOR xmDisplacement = XMVectorSet(0.0f, -tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
 					// orient displacement in direction of camera
 					xmDisplacement = v2_rotate(xmDisplacement, azimuth);
 					instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));;
@@ -55,10 +55,10 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				if (down) { // pressed
 
 					if (ctrl) {
-						instance->setAzimuth(instance->getAzimuth() + delta * ROTATE_SELECTION_SPEED);
+						instance->setAzimuth(instance->getAzimuth() + tDelta * ROTATE_SELECTION_SPEED);
 					}
 					else {
-						XMVECTOR xmDisplacement = XMVectorSet(-delta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
+						XMVECTOR xmDisplacement = XMVectorSet(-tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
 						// orient displacement in direction of camera
 						xmDisplacement = v2_rotate(xmDisplacement, azimuth);
 						instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
@@ -69,10 +69,10 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				if (down) { // pressed
 
 					if (ctrl) {
-						instance->setAzimuth(instance->getAzimuth() - delta * ROTATE_SELECTION_SPEED);
+						instance->setAzimuth(instance->getAzimuth() - tDelta * ROTATE_SELECTION_SPEED);
 					}
 					else {
-						XMVECTOR xmDisplacement = XMVectorSet(delta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
+						XMVECTOR xmDisplacement = XMVectorSet(tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
 						// orient displacement in direction of camera
 						xmDisplacement = v2_rotate(xmDisplacement, azimuth);
 						instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
@@ -81,13 +81,13 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				break;
 			case GLFW_KEY_PAGE_UP:
 				if (down) { // pressed
-					fElevation += delta * MOVE_SELECTION_SPEED;
+					fElevation += tDelta * MOVE_SELECTION_SPEED;
 					instance->setElevation(fElevation);
 				}
 				break;
 			case GLFW_KEY_PAGE_DOWN:
 				if (down) { // pressed
-					fElevation -= delta * MOVE_SELECTION_SPEED;
+					fElevation -= tDelta * MOVE_SELECTION_SPEED;
 					instance->setElevation(fElevation);
 				}
 				break;

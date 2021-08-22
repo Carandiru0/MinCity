@@ -35,7 +35,7 @@ namespace world
 
 		uint32_t const hash(instance_->getHash());
 
-		HashSetSeed((int32_t)hash);
+		SetSeed((int32_t)hash);
 
 		int32_t const interval = PsuedoRandomNumber(CITY_LIGHTS_RANGE_BEGIN, CITY_LIGHTS_RANGE_END);  // unique interval for light changes per building instance
 

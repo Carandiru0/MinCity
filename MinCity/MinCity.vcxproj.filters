@@ -330,6 +330,12 @@
     <ClInclude Include="vxlmono.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="money_t.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="prices.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

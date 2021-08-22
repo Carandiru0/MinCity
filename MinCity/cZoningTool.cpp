@@ -4,6 +4,7 @@
 #include "cBuildingGameObject.h"
 #include "MinCity.h"
 #include "gui.h"
+#include "prices.h"
 
 static constexpr float const GUI_HEIGHT = -10.0f;
 
@@ -12,16 +13,17 @@ cZoningTool::cZoningTool()
 {
 
 }
+
 STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped()
 {
 	point2D_t const hoverVoxel(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-	//point2D_t hoverVoxelSnapped(
-	//	SFM::roundToMultipleOf<false>(hoverVoxel.x, (int32_t)Iso::ROAD_SEGMENT_WIDTH),
-	//	SFM::roundToMultipleOf<false>(hoverVoxel.y, (int32_t)Iso::ROAD_SEGMENT_WIDTH)
-	//);
+	point2D_t hoverVoxelSnapped(
+		SFM::roundToMultipleOf<false>(hoverVoxel.x, (int32_t)Iso::ROAD_SEGMENT_WIDTH + 1),
+		SFM::roundToMultipleOf<false>(hoverVoxel.y, (int32_t)Iso::ROAD_SEGMENT_WIDTH + 1)
+	);
 
-	//hoverVoxelSnapped = p2D_add(hoverVoxelSnapped, p2D_muls(p2D_sgn(p2D_sub(hoverVoxel, hoverVoxelSnapped)), SEGMENT_SIDE_WIDTH));
+	//hoverVoxelSnapped = p2D_add(hoverVoxelSnapped, p2D_muls(p2D_sgn(p2D_sub(hoverVoxel, hoverVoxelSnapped)), Iso::SEGMENT_SIDE_WIDTH));
 
 	return(hoverVoxel);
 }
@@ -29,6 +31,31 @@ STATIC_INLINE_PURE rect2D_t const __vectorcall orientAreaToRect(point2D_t const 
 {
 	// minimum = top left, maximum = bottom right
 	return(rect2D_t(p2D_min(start_pt, end_pt), p2D_max(start_pt, end_pt)));
+}
+
+void cZoningTool::setActivatedSubTool(uint32_t const subtool)
+{ 
+	_ActivatedSubTool = subtool; 
+
+	switch (_ActivatedSubTool)
+	{
+	case eSubTool_Zoning::RESIDENTIAL:
+		setCost(ePrices::RESIDENTIAL);
+		break;
+	case eSubTool_Zoning::COMMERCIAL:
+		setCost(ePrices::COMMERCIAL);
+		break;
+	case eSubTool_Zoning::INDUSTRIAL:
+		setCost(ePrices::INDUSTRIAL);
+		break;
+	default:
+		setCost(ePrices::ZERO);
+		break;
+	}
+}
+void cZoningTool::setCost(int64_t const cost)
+{
+	_cost = cost;
 }
 
 void cZoningTool::paint()
@@ -39,6 +66,9 @@ void cZoningTool::paint()
 
 		rect2D_t const area(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
 				
+		// calculate area cost
+		money_t const total_cost(_cost.amount * area.width() * area.height());
+
 		// make relative to world origin (gridspace to worldspace transform)
 		XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 
@@ -91,18 +121,35 @@ void cZoningTool::paint()
 		}
 		timing.tLast = tNow;
 
-		std::string str("1234567890 !@#$%^&()_-+=:;.,`~[] abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+		/*
+		std::string str("");
+		str += ' ';
+		gui::add_bouncing_arrow(str, timing.total_accumulated / total);
+		
+		static int32_t barcode_seed(1);
+
+		static constexpr fp_seconds const barcode_interval{ fp_seconds(milliseconds(500)) };
+		static fp_seconds barcode_accumulator{};
+		if ((barcode_accumulator += delta()) >= barcode_interval) {
+
+			barcode_seed = PsuedoRandomNumber();
+			barcode_accumulator -= barcode_interval;
+		}
+		str += ' ';
+		gui::add_barcode(str, 8, barcode_seed);
+		
 		str += ' ';
 		gui::add_vertical_bar(str, timing.total_accumulated / total);
 		str += ' ';
 		gui::add_horizontal_bar(str, timing.total_accumulated / total);
+		*/
 
 		origin = area.left_bottom();
 		xmOrigin = p2D_to_v2(origin);
 		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
-		gui::draw_string(xmOrigin, origin, color, true, str.data());
+		gui::draw_string(xmOrigin, origin, color, true, "${:d}", total_cost.amount);
 
 		origin = area.left_top();
 		xmOrigin = p2D_to_v2(origin);

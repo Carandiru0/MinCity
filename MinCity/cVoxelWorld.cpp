@@ -669,7 +669,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	}
 
 	if (MinCity::isPaused() && MinCity::isFocused()) {
-		rotateCamera(fp_seconds(fixed_delta_duration).count()); // *** slow turntable rotation using delta directly is ok here
+		rotateCamera(fp_seconds(delta()).count()); // *** slow turntable rotation using delta directly is ok here
 	}
 	return(xmOrigin);
 }
@@ -3444,7 +3444,7 @@ namespace world
 			
 			for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
 				
-				static constexpr fp_seconds const target_frametime(fp_seconds(fixed_delta_duration) * 4.0f);
+				static constexpr fp_seconds const target_frametime(fp_seconds(delta()) * 4.0f);
 
 				uint32_t const has_frames(_textureShader[shader].input->extent().depth - 1);
 
@@ -4243,9 +4243,16 @@ namespace world
 	// voxel painting
 	void cVoxelWorld::clearMiniVoxels()
 	{
-		__memclr_stream<CACHE_LINE_BYTES>(_mini.bits->data(), _mini.bits->size());
-		__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-		_mini.voxels.clear();
+		tbb::parallel_invoke(
+			[&] {
+				__memclr_stream<CACHE_LINE_BYTES>(_mini.bits->data(), _mini.bits->size());
+			},
+			[&] {
+				__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			},
+			[&] {
+				_mini.voxels.clear();
+			});
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)

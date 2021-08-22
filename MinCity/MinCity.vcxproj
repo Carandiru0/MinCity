@@ -321,11 +321,13 @@
     <ClInclude Include="IsoVoxel.h" />
     <ClInclude Include="liveshader.hpp" />
     <ClInclude Include="MinCity.h" />
+    <ClInclude Include="money_t.h" />
     <ClInclude Include="nk_custom.h" />
     <ClInclude Include="nk_include.h" />
     <ClInclude Include="nk_style.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="performance.h" />
+    <ClInclude Include="prices.h" />
     <ClInclude Include="rain.h" />
     <ClInclude Include="RedirectIO.h" />
     <ClInclude Include="RenderInfo.h" />

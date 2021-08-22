@@ -1686,7 +1686,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 		world::cTrafficSignGameObject* pTrafficSignGameObject[4]{ nullptr };
 		uint32_t traffic_signs(0);
 
-		HashSetSeed(seed); // so each traffic sign has different chance of having extra signage, this is placed here
+		SetSeed(seed); // so each traffic sign has different chance of having extra signage, this is placed here
 
 		bool bExistingXing(false);
 
@@ -1829,7 +1829,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 
 		if (!lamp_post_swapped_for_sign) {
 
-			HashSetSeed(seed);
+			SetSeed(seed);
 			if (PsuedoRandomNumber32(0, 100) < ROAD_SIGNAGE_CHANCE) {
 
 				// place road sign - uses rotation only, want centered on road

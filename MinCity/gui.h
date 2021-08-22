@@ -4,6 +4,7 @@
 #include <Math/superfastmath.h>
 #include <fmt/fmt.h>
 #include <string>
+#include <Random/superrandom.hpp>
 #include "vxlmono.h"
 
 // declarations :
@@ -30,11 +31,13 @@ namespace gui
 
 	STATIC_INLINE_PURE void __vectorcall add_vertical_bar(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t);
+	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t);
+	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed);
 
 	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const bars, float const t, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive = false);
 	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const bars, float const t, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive = false);
 
-	STATIC_INLINE_PURE void __vectorcall add_scanning_bar(std::string& str, float const t);
+	
 } // end ns
 
 
@@ -233,8 +236,8 @@ namespace gui
 
 		while ((character = *pChars)) {
 
-			// is uppercase letter
-			if (internal::is_uppercase_style(character)) { // (filled space or just blank space)
+			// is uppercase letter (requires additional spacing
+			if (last_character && internal::is_uppercase_style(character)) { // (filled space or just blank space)
 				xmLocation = XMVectorAdd(xmLocation, internal::xmX); // space width of one voxel (blank space)
 				++string_width;
 
@@ -245,17 +248,19 @@ namespace gui
 			}
 
 			character = character & 0x7F; // clamp character to maximum of data set
-			if (character <= ' ') {		  // & minimum of data set
-				// is a space or unrecognized character
-				if (!std::isupper(last_character)) { // (filled space or just blank space)
-					internal::draw_character(xmLocation, voxelIndex, color, emissive, 0x5e);
-				}
-				xmLocation = XMVectorAdd(xmLocation, internal::xmX); // space width of one voxel (blank space)
-				++string_width;
+			if (character <= ' ') {	      // & minimum of data set
+				// is a space or unrecognized character and not the 1st character
+				if (last_character) {
+					if (!internal::is_uppercase_style(last_character)) { // (filled space or just blank space)
+						internal::draw_character(xmLocation, voxelIndex, color, emissive, 0x5e);
+					}
+					xmLocation = XMVectorAdd(xmLocation, internal::xmX); // space width of one voxel (blank space)
+					++string_width;
 
-				if (0 == --mini_length) {
-					++voxelIndex.x; // next voxel of minivoxels
-					mini_length = internal::mini_voxel_length; // reset
+					if (0 == --mini_length) {
+						++voxelIndex.x; // next voxel of minivoxels
+						mini_length = internal::mini_voxel_length; // reset
+					}
 				}
 			}
 			else {
@@ -284,9 +289,11 @@ namespace gui
 			// characters in sequential order of animation
 			0x20, 0x29, 0x28, 0x27, 0x26, 0x23, 0x22
 		};
+		static constexpr uint32_t const count(_countof(positions));
+		static constexpr float const fcount((float)count);
 
-		float const amount = SFM::lerp(0.0f, float(_countof(positions)), SFM::clamp(t, 0.0f, 1.0f));	// spreads out better
-		uint32_t const position = SFM::floor_to_u32(SFM::min(amount, _countof(positions) - 1));
+		float const amount = SFM::lerp(0.0f, fcount, SFM::clamp(t, 0.0f, 1.0f));	// spreads out better
+		uint32_t const position = SFM::floor_to_u32(SFM::min(amount, fcount - 1.0f));
 
 		str += positions[position];
 	}
@@ -297,18 +304,20 @@ namespace gui
 			// characters in sequential order of animation
 			0x20, 0x5e, 0x5c, 0x3e, 0x3c, 0x3b, 0x22
 		};
+		static constexpr uint32_t const count(_countof(positions));
+		static constexpr float const fcount((float)count);
 
-		float const amount = SFM::lerp(0.0f, float(_countof(positions)), SFM::clamp(t, 0.0f, 1.0f));	// spreads out better
-		uint32_t const position = SFM::floor_to_u32(SFM::min(amount, _countof(positions) - 1));
+		float const amount = SFM::lerp(0.0f, fcount, SFM::clamp(t, 0.0f, 1.0f));	// spreads out better
+		uint32_t const position = SFM::floor_to_u32(SFM::min(amount, fcount - 1.0f));
 
 		str += positions[position];
 	}
 
 	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const length, float const t, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive)
 	{
-		float tRemaining(((float)length / internal::font_height_max) * t);
+		float tRemaining(((float)length / internal::font_height_max) * SFM::clamp(t, 0.0f, 1.0f));
 
-		while (tRemaining >= 0.0f) {
+		while (tRemaining > 0.0f) {
 			std::string szBar("");
 			add_vertical_bar(szBar, tRemaining);
 
@@ -322,9 +331,9 @@ namespace gui
 	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const length, float const t, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive)
 	{
 		std::string szBar("");
-		float tRemaining(((float)length / internal::font_width_max) * t);
+		float tRemaining(((float)length / internal::font_width_max) * SFM::clamp(t, 0.0f, 1.0f));
 
-		while (tRemaining >= 0.0f) {
+		while (tRemaining > 0.0f) {
 			add_horizontal_bar(szBar, tRemaining);
 			--tRemaining;
 		}
@@ -332,38 +341,40 @@ namespace gui
 		return( draw_string(xmLocation, voxelIndex, color, emissive, szBar) );
 	}
 
-	STATIC_INLINE_PURE void __vectorcall add_scanning_bar(std::string& str, float const t)
+	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t)
 	{
-		static constexpr uint32_t const position_count(16);	// FULL(1) + TRANSITION(5) + EMPTY(1)
-		static constexpr fp_seconds const interval = fp_seconds(1.0f / 24.0f * (24.0f / (float)position_count)); // seconds = 1/fps; 0.042s, 42ms per frame		 
-
-		static struct {
-			tTime tLast{ zero_time_point };
-			fp_seconds accumulator{};
-			uint32_t position{};
-		} timing;
-
-		tTime const tNow(now());
-		fp_seconds const fTDelta(tNow - timing.tLast);
-		if ((timing.accumulator += fTDelta) >= interval) {
-
-			timing.position = (timing.position + 1) & (position_count - 1); // addition with automatic wrap-around to zero if next position is greater than position_count
-
-			timing.accumulator -= interval;
-		}
-		timing.tLast = tNow;
-
-		static constexpr char const positions0[position_count] = {
+		static constexpr char const positions[] = {
 			// characters in sequential order of animation
-			0x5f, 0x5f, 0x60, 0x7b, 0x7c, 0x7d, 0x7e, 0x7e, 0x7e, 0x7e, 0x7d, 0x7c, 0x7b, 0x60, 0x5f, 0x5f
+			0x5f, 0x60, 0x7e, 0x60, 0x5f
 		};
-		static constexpr char const positions1[position_count] = { // 7b '{' and 7d '}' need to be doubled to properly escape this special character. (fmt) https://fmt.dev/7.1.2/syntax.html
+		static constexpr uint32_t const count(_countof(positions));
+		static constexpr float const fcount((float)count);
+
+		float const amount = SFM::lerp(0.0f, fcount, SFM::clamp(t, 0.0f, 1.0f));	// spreads out better
+		uint32_t const position = SFM::floor_to_u32(SFM::min(amount, fcount - 1.0f));
+
+		str += positions[position];
+	}
+
+	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed)
+	{
+		static constexpr char const positions[] = {
 			// characters in sequential order of animation
-			0x00, 0x00, 0x00, 0x7b, 0x00, 0x7d, 0x00, 0x00, 0x00, 0x00, 0x7d, 0x00, 0x7b, 0x00, 0x00, 0x00	
+			0x7b, 0x7c, 0x7d
 		};
-		str += positions0[timing.position];
-		if (positions1[timing.position]) {
-			str += positions1[timing.position];
+		static constexpr uint32_t const count(_countof(positions));
+
+		SetSeed(seed);
+		for (uint32_t i = 0; i < length; ++i) {
+
+			uint32_t const position = PsuedoRandomNumber(0, count - 1);
+			if (position & 1) {
+				str += positions[position];
+			}
+			else { // must double to escape '{' and '}' special characters to "{{" and "}}"
+				str += positions[position];
+				str += positions[position];
+			}
 		}
 	}
 } // end ns

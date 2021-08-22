@@ -3,7 +3,7 @@
 #include "cCity.h"
 #include <Random/superrandom.hpp>
 
-static constexpr fp_seconds const		EPSILON = fp_seconds(fixed_delta_duration); 
+static constexpr fp_seconds const		EPSILON = fp_seconds(delta()); 
 static constexpr milliseconds const		UPDATE_INTERVAL = milliseconds(250);
 static constexpr fp_seconds const		MAX_POP_DELTA_LIFE = duration_cast<fp_seconds>(minutes(5));
 static constexpr fp_seconds const		MAX_CASH_DELTA_LIFE = duration_cast<fp_seconds>(seconds(30));
