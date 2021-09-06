@@ -44,7 +44,6 @@ namespace world
 		static Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index);
 		Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const;
 
-		static void Initialize(tTime const& __restrict tNow);
 		static void UpdateAll(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 	protected:
 		void setInitialState(cCarGameObject::state&& initialState);

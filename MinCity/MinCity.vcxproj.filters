@@ -494,6 +494,9 @@
     <ClCompile Include="types.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="cAbstractToolMethods.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\Data\Shaders\uniforms.vert">

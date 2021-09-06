@@ -1684,7 +1684,7 @@ void  cNuklear::UpdateGUI()
 			if (bNewCity) {
 				
 				std::string const szCityName( szEdit );
-				size_t const checkedLength( SFM::min(szCityName.length(), szLength) );
+				size_t const checkedLength( SFM::min(szCityName.length(), (size_t)szLength) );
 
 				nk_text_animated(_ctx, s, 0.3f, _fonts[eNK_FONTS::SMALL], _fonts[eNK_FONTS::ENCRYPT_SMALL], _saveWindow.thumbnail_text_state,
 					szCityName.substr(0, checkedLength), 

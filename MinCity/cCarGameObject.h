@@ -46,7 +46,7 @@ namespace world
 			CAR_IDLE_MAX = seconds(30); // close to 2 full intersection sequences
 
 		static constexpr uint32_t const
-			MAX_CARS = 100;
+			TILES_PER_CAR = 6;
 
 		static constexpr float const
 			MIN_SPEED = 36.0f;
@@ -92,7 +92,6 @@ namespace world
 		static Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index);
 		Volumetric::voxB::voxelState const OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const;
 
-		static void Initialize(tTime const& __restrict tNow);
 		static void UpdateAll(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 	protected:
 		void setInitialState(state&& initialState);
@@ -216,6 +215,9 @@ namespace world
 	template<typename T>
 	STATIC_INLINE void cCarGameObject::CreateCar(int32_t carModelIndex)
 	{
+		if (0 == MinCity::VoxelWorld.getRoadVisibleCount())
+			return;
+
 		rect2D_t const area(MinCity::VoxelWorld.getVisibleGridBounds());
 
 		point2D_t const randomVoxelIndex = world::getRandomVoxelIndexInArea(area);

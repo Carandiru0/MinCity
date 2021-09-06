@@ -61,8 +61,8 @@ layout (constant_id = 1) const float VolumeDimensions_Y = 0.0f;
 #if defined(HEIGHT) // terrain
 layout(location = 0) out streamOut
 {
-	writeonly flat vec3	right, forward;
-	flat vec3 up;
+	writeonly flat vec3	right, forward; flat vec3 up; // needs r/w
+	writeonly flat uint adjacency;
 	writeonly flat vec2	world_uv;
 #ifndef BASIC
 	writeonly flat vec3    ambient;
@@ -116,15 +116,18 @@ layout (constant_id = 4) const int MINIVOXEL_FACTOR = 1;
 
 #define SHIFT_OCCLUSION 5U
 #define SHIFT_EMISSION 8U
-const uint MASK_HEIGHTSTEP = 0x0FU;		/*			 0000 0000 0000 1111 */
+#define SHIFT_HEIGHTSTEP 12U
+const uint MASK_ADJACENCY = 0x1FU;		/*			 0000 0000 0001 1111 */
 const uint MASK_OCCLUSION = 0xE0U;		/*           0000 0000 111x xxxx */ 
 const uint MASK_EMISSION = 0x100U;		/*           0000 0001 xxxx xxxx */
+const uint MASK_HEIGHTSTEP = 0xF000U;	/*			 1111 000x xxxx xxxx */
 #if defined(DYNAMIC) && defined(TRANS)  
 #define SHIFT_TRANSPARENCY 9U
-const uint MASK_TRANSPARENCY = 0x600U;	/*			 0000 011x xxxx xxxx */
+const uint MASK_TRANSPARENCY = 0x600U;	/*			 xxxx 011x xxxx xxxx */
 #endif
 
 #if defined(ROAD)  
+#undef MASK_ADJACENCY // not used for roads //
 #undef MASK_OCCLUSION // not used for roads //
 #undef MASK_EMISSION
 #define SHIFT_ROAD_HEIGHTSTEP_BEGIN 9U
@@ -167,9 +170,9 @@ const uint OCCLUSION_SHADING_CORNER = (1U << 0U),
 		   OCCLUSION_SHADING_SIDE_LEFT = (1U << 1U),
 		   OCCLUSION_SHADING_SIDE_RIGHT = (1U << 2U);
 
-#define AO_DARKNESS 2.5f  // excellent ao curve values
-const vec4 ao_curve = vec4(0.5f, 0.4233f, 0.415f, 0.4f) * AO_DARKNESS;
-const float inv_max_occlusion_count = 1.0f / 8.1f; // 0 - 8 inclusive, 8 neighbours checked
+// excellent ao curve values
+const vec4 ao_curve = vec4(0.5f, 0.4233f, 0.415f, 0.4f) * 2.0f;
+const float inv_max_occlusion_count = 1.0f / 8.0f; // 0 - 8 inclusive, 8 neighbours checked
 
 // https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
 //function vertexAO(side1, side2, corner) {
@@ -240,7 +243,7 @@ void main() {
 
   const uint hash = floatBitsToUint(inWorldPos.w);
  
-#if !(defined(HEIGHT) || defined(ROAD)) // voxels only
+#if !(defined(ROAD)) // not road
   Out.adjacency = (hash & MASK_ADJACENCY);
 #endif
 
@@ -280,7 +283,7 @@ void main() {
 
 #if defined(HEIGHT) // terrain
   {
-	const float heightstep = max(VOX_SIZE, float(hash & MASK_HEIGHTSTEP));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
+	const float heightstep = max(VOX_SIZE, float(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP)));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
 	Out.up.y *= heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE;
   }
 	const float voxel_height = Out.up.y * float(MINIVOXEL_FACTOR);  // range [0.0f ... VolumeDimensions_Y]

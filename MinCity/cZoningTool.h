@@ -23,6 +23,7 @@ public:
 	void __vectorcall ReleaseAction(FXMVECTOR const xmMousePos) final;
 	void __vectorcall ClickAction(FXMVECTOR const xmMousePos) final;
 	void __vectorcall DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart) final;
+	void __vectorcall MouseMoveAction(FXMVECTOR const xmMousePos) final;
 
 	void setCost(int64_t const cost);
 private:

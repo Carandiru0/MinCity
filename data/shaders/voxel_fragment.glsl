@@ -55,6 +55,7 @@ readonly layout(location = 0) in streamIn   // in/out to pixel shader (all membe
 #define _emission i_extra_1
 #define _uv_texture special.xyz
 #define _color special.xyz
+#define _time f_extra_0
 #undef i_extra_2
 #undef i_extra_3
 #undef i_extra_4
@@ -63,8 +64,6 @@ readonly layout(location = 0) in streamIn   // in/out to pixel shader (all membe
 #ifdef TRANS  
 #define _transparency f_extra_2
 #define _inv_weight_maximum f_extra_3
-#define _time f_extra_0
-
 #endif // TRANS
 
 #ifdef ROAD

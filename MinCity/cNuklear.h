@@ -9,7 +9,6 @@
 #include <Imaging/Imaging/Imaging.h>
 #include <vector>
 #include "nk_custom.h" // safe to include here in header, only exposes public structs and methods
-#include <unordered_map>
 
 BETTER_ENUM(eNK_FONTS, uint32_t const,
 

@@ -63,7 +63,7 @@ public:
 		if (valid() && rhs.valid()) {
 			int64_t const amount_(amount);
 
-			amount = SFM::max(0, amount - rhs.amount);	 // remove n money
+			amount = SFM::max(0i64, amount - rhs.amount);	 // remove n money
 			Hash(amount);
 
 			rhs.amount += amount_ - amount;  // add n money

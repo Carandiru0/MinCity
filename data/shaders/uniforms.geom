@@ -26,6 +26,7 @@ layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far s
 readonly layout(location = 0) in streamIn
 {
 	flat vec3	right, forward, up;
+	flat uint   adjacency;
 	flat vec2	world_uv;
 #ifndef BASIC
 	flat vec3    ambient;
@@ -95,7 +96,7 @@ layout (constant_id = 7) const float HALF_TEXEL_OFFSET_V = 0.0f;
 layout (constant_id = 8) const float ROAD_WIDTH = 0.0f;
 #endif
 
-#ifndef HEIGHT
+#ifndef ROAD
 const uint BIT_ADJ_ABOVE = (1<<0),				
 		   BIT_ADJ_BACK = (1<<1),				
 		   BIT_ADJ_FRONT = (1<<2),				
@@ -103,29 +104,25 @@ const uint BIT_ADJ_ABOVE = (1<<0),
 		   BIT_ADJ_LEFT = (1<<4);
 #endif
 
-// terrain vxl
-#if defined(HEIGHT) || defined(ROAD)
-
+#if defined(ROAD)
+// road only
 #if !defined(IsNotAdjacent)
 #define GEO_FLATTEN [[flatten]]
-#define IsNotAdjacent(adjacent) ( true )  //adjacency flag not used (yet) for terrain or roads
-#endif
-
-#if !defined(IsVisible)
-#define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) >= 0.0f )	
+#define IsNotAdjacent(adjacent) ( true )  //adjacency flag not used (yet) for roads
 #endif
 
 #else
-// vxl
+// vxl & terrain vxl
 #if !defined(IsNotAdjacent)
 #define GEO_FLATTEN [[dont_flatten]]
 #define IsNotAdjacent(adjacent) ( 0 == (In[0].adjacency & adjacent) )
 #endif
+
+#endif
+
 #if !defined(IsVisible)
 #define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) >= 0.0f )
 #endif
-
-#endif // vxl
 
 vec3 PerQuad(in vec3 normal)
 {
@@ -300,11 +297,12 @@ void main() {
 	Out._color = In[0].color;
 #endif
 
-#ifdef TRANS
-
 #ifdef _time
 	Out._time = time();
 #endif
+
+#ifdef TRANS
+
 #ifdef _transparency
 	Out._transparency = In[0].extra.z; // transparency
 #endif
@@ -325,8 +323,8 @@ void main() {
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {
 #define _normal right
 		const vec3 normal = PerQuad(_normal);
-		[[dont_flatten]]
-		if ( IsVisible(normal) ) {
+		
+		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, up, forward, normal);
 		}
 #undef _normal
@@ -335,8 +333,8 @@ void main() {
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_LEFT) ) {
 #define _normal -right              
 		const vec3 normal = PerQuad(_normal);
-		[[dont_flatten]]
-		if ( IsVisible(normal) ) {
+		
+		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, forward, up, normal); 
 		}
 #undef _normal
@@ -346,8 +344,8 @@ void main() {
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_FRONT) ) {
 #define _normal -forward
 		const vec3 normal = PerQuad(_normal);
-		[[dont_flatten]]
-		if ( IsVisible(normal) ) {
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, up, right, normal);
 		}
 #undef _normal
@@ -356,8 +354,8 @@ void main() {
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BACK) ) {
 #define _normal forward
 		const vec3 normal = PerQuad(_normal);
-		[[dont_flatten]]
-		if ( IsVisible(normal) ) {
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, up, normal);
 		}
 #undef _normal
@@ -371,8 +369,8 @@ void main() {
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_ABOVE) ) {
 #define _normal -up
 		const vec3 normal = PerQuad(_normal);
-		[[dont_flatten]]
-		if ( IsVisible(normal) ) {
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, forward, normal);			
 		}
 #undef _normal

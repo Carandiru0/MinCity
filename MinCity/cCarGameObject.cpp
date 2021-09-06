@@ -943,21 +943,26 @@ void cCarGameObject::setInitialState(state&& initialState)
 
 // STATIC METHODS : //
 
-void cCarGameObject::Initialize(tTime const& __restrict tNow)
-{
-	reserve(MAX_CARS);
-}
 void cCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 #ifndef GIF_MODE
-	if (size() < MAX_CARS) {
+	
+	static tTime tLastAttempt(zero_time_point);
 
-		static tTime tLastCreation(zero_time_point);
+	if (tNow - tLastAttempt > milliseconds(CAR_CREATE_INTERVAL)) {
 
-		if (tNow - tLastCreation > milliseconds(CAR_CREATE_INTERVAL)) {
-			CreateCar();
-			tLastCreation = tNow;
+		uint32_t const road_tiles_visible(MinCity::VoxelWorld.getRoadVisibleCount());
+
+		uint32_t const maximum_cars((road_tiles_visible / TILES_PER_CAR) >> 1); // half of the maximum road length that is visible
+
+		if (size() < maximum_cars) {
+
+			if (PsuedoRandom5050()) {
+				CreateCar();
+			}
 		}
+
+		tLastAttempt = tNow;
 	}
 
 	auto it = begin();

@@ -48,25 +48,25 @@ vec3 rndC(in vec3 voxel) // good function, works with any texture sampling that 
  
 	return(voxel - 0.5f);  // returns in same unit as input, voxels
 }
-vec2 rndC(in vec2 voxel) // good function, works with any texture sampling that uses interpolation
+vec2 rndC(in vec2 pixel) // good function, works with any texture sampling that uses interpolation
 {
-    voxel = voxel + 0.5f;
-    const vec2 ivoxel = floor( voxel );
-    const vec2 fvoxel = fract( voxel );
+    pixel = pixel + 0.5f;
+    const vec2 ipixel = floor( pixel );
+    const vec2 fpixel = fract( pixel );
     
-	voxel = ivoxel + fvoxel*fvoxel*(3.0f-2.0f*fvoxel); 
+	pixel = ipixel + fpixel*fpixel*(3.0f-2.0f*fpixel); 
  
-	return(voxel - 0.5f);  // returns in same unit as input, voxels
+	return(pixel - 0.5f);  // returns in same unit as input, pixels
 }
-float rndC(in float voxel) // good function, works with any texture sampling that uses interpolation
+float rndC(in float pixel) // good function, works with any texture sampling that uses interpolation
 {
-    voxel = voxel + 0.5f;
-    const float ivoxel = floor( voxel );
-    const float fvoxel = fract( voxel );
+    pixel = pixel + 0.5f;
+    const float ipixel = floor( pixel );
+    const float fpixel = fract( pixel );
     
-	voxel = ivoxel + fvoxel*fvoxel*(3.0f-2.0f*fvoxel); 
+	pixel = ipixel + fpixel*fpixel*(3.0f-2.0f*fpixel); 
  
-	return(voxel - 0.5f);  // returns in same unit as input, voxels
+	return(pixel - 0.5f);  // returns in same unit as input, pixels
 }
 
 // Ken Perlin suggests an improved version of the smoothstep() function, 
@@ -83,6 +83,22 @@ float smootherstep(in const float edge0, in const float edge1, in float x)
 float smoothremap(in const float lower_bound, in const float upper_bound, in const float value)
 {
 	return( smoothstep(lower_bound, upper_bound, value) );
+}
+
+// iq - https://www.iquilezles.org/www/articles/functions/functions.htm
+// desmos - https://www.desmos.com/calculator/gopau2jnlb
+float cubicPulse( in float x, in const float c, in const float w )
+{
+    x = abs(x - c);
+	x = max(0.0f, x - w); // removed branch
+    x /= w;
+    return( x*x*(3.0f-2.0f*x) );
+}
+// iq - https://www.iquilezles.org/www/articles/functions/functions.htm
+// desmos - https://www.desmos.com/calculator/gopau2jnlb
+float parabola( in const float x, in const float k )
+{
+    return( pow( 4.0f*x*(1.0f-x), k ) );
 }
 
 // triangle wave
@@ -215,9 +231,6 @@ float packColor(in const vec3 pushed) {
 vec3 toSRGB(vec3 linearRGB)
 {
     const bvec3 cutoff = lessThan(linearRGB, vec3(0.0031308f));
-    vec3 higher = 1.055f*pow(linearRGB, vec3(1.0f/2.4f)) - 0.055f;
-    vec3 lower = linearRGB * vec3(12.92f);
-
     return mix(1.055f*pow(linearRGB, vec3(1.0f/2.4f)) - 0.055f, linearRGB * 12.92f, cutoff);
 }
 

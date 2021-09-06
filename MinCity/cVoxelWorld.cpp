@@ -155,116 +155,10 @@ static uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
 };
 
 // ####### Private Init methods
-
-// Grid Space Coordinates (0,0) to (X,Y) Only		
-STATIC_INLINE Iso::Voxel const* const __restrict getNeighbour(point2D_t const& __restrict voxelIndex, point2D_t const& __restrict relativeOffset)
+static void ComputeGroundAdjacencyOcclusion()
 {
-	// at this point, function expects voxelIndex to be in (0,0) => (WORLD_GRID_SIZE, WORLD_GRID_SIZE) range
-	point2D_t const voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
-
-	// this function will also return the owning voxel
-	// if zero,zero is passed in for the relative offset
-
-	// Check bounds
-	if ((voxelNeighbour.x | voxelNeighbour.y) >= 0) {
-
-		if (voxelNeighbour.x < Iso::WORLD_GRID_SIZE && voxelNeighbour.y < Iso::WORLD_GRID_SIZE) {
-
-			return((_theGrid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
-		}
-	}
-
-	return(nullptr);
-}
-
-static void ComputeGroundOcclusion()
-{
-	point2D_t voxelIndex(Iso::WORLD_GRID_SIZE - 1, Iso::WORLD_GRID_SIZE - 1);
-
-	// Traverse Heigh Generated Grid	
-
-	while (voxelIndex.y >= 0)
-	{
-		voxelIndex.x = Iso::WORLD_GRID_SIZE - 1;
-
-		while (voxelIndex.x >= 0)
-		{
-			Iso::Voxel* const theGrid = (_theGrid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x));
-
-			// Get / Copy current voxel from external SRAM
-			Iso::Voxel oVoxel(*theGrid);
-
-			//if (isGroundOnly(oVoxel))
-			{
-				Iso::Voxel const* __restrict pNeighbour(nullptr);
-				uint32_t const curVoxelHeightStep(Iso::getHeightStep(oVoxel));
-				uint8_t OcclusionShading(0);
-				
-				// old layout: //
-				/*
-
-										  [NBR_TL]
-							   [NBR_L]				   [NBR_T]
-					NBR_BL					VOXEL					NBR_TR
-								NBR_B					NBR_R
-											NBR_BR
-
-				*/
-				// Therefore the neighbours of a voxel, follow same isometric layout/order //
-				/*
-
-										  [NBR_TR]
-							   [NBR_T]				   [NBR_R]
-					NBR_TL					VOXEL					NBR_BR
-								NBR_L					NBR_B
-											NBR_BL
-				*/
-
-				// Side Left = NBR_T (ao.x)
-				pNeighbour = ::getNeighbour(voxelIndex, ADJACENT[NBR_T]);
-				if (nullptr != pNeighbour) {
-					
-					if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
-						OcclusionShading |= Iso::OCCLUSION_SHADING_SIDE_LEFT;
-					}
-				}
-				
-				
-				// Corner = NBR_TR (ao.y)
-				pNeighbour = ::getNeighbour(voxelIndex, ADJACENT[NBR_TR]);
-				if (nullptr != pNeighbour) {
-					
-					if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
-						OcclusionShading |= Iso::OCCLUSION_SHADING_CORNER;
-					}
-				}
-				
-				// Side Right = NBR_R (ao.z)
-				pNeighbour = ::getNeighbour(voxelIndex, ADJACENT[NBR_R]);
-				if (nullptr != pNeighbour) {
-					
-					if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
-						OcclusionShading |= Iso::OCCLUSION_SHADING_SIDE_RIGHT;
-					}
-				}
-				
-
-				// finally, if no flags were set on occlusion, flag as such
-				if (0 == OcclusionShading) {
-					Iso::clearOcclusion(oVoxel);
-				}
-				else {	// other wise save computed ao shading
-					Iso::setOcclusion(oVoxel, OcclusionShading);
-				}
-			}
-
-			// Update current voxel in external SRAM
-			*theGrid = oVoxel;
-
-			--voxelIndex.x;
-		}
-		--voxelIndex.y;
-	}
+	// entire grid
+	recomputeGroundAdjacencyOcclusion(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
 }
 
 static uint32_t const RenderNoiseImagePixel(float const u, float const v, supernoise::interpolator::functor const& interp)
@@ -426,7 +320,7 @@ void cVoxelWorld::GenerateGround()
 	ImagingDelete(imageNoise);
 
 	// Compute visibility and ambient occlusion based on neighbour occupancy
-	ComputeGroundOcclusion();
+	ComputeGroundAdjacencyOcclusion();
 }
 
 static void UpdateFollow(tTime const& __restrict tNow)
@@ -859,7 +753,7 @@ namespace world
 		return(false);
 	}
 
-	void __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, bool const emissive) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
+	void __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
 	{
 		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
@@ -874,9 +768,7 @@ namespace world
 
 			if (!_mini.bits->read_bit(index)) {  // filter out, if already set, nothing get added
 
-				_mini.bits->set_bit(index); // the "current" volume is always updated.... 
-
-				uint8_t const flags((emissive << Iso::mini::emissive_bit));
+				_mini.bits->set_bit(index); // the "current" volume is always updated.... 8
 
 				setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
 					&(*_mini.voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
@@ -901,7 +793,7 @@ namespace world
 		return(nullptr);
 	}
 	Iso::Voxel const * const __restrict __vectorcall getVoxelAt(FXMVECTOR const Location)
-	{																																														//          	equal same voxel	
+	{	//          	equal same voxel	
 		// still in Grid Space (-x,-y) to (X, Y) Coordinates 
 		return(getVoxelAt(v2_to_p2D(Location)));
 	}
@@ -1228,12 +1120,27 @@ namespace world
 		}
 	}
 
+	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
 		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
 
-		return(::getNeighbour(voxelIndex, relativeOffset));
+		point2D_t const voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
+
+		// this function will also return the owning voxel
+		// if zero,zero is passed in for the relative offset
+
+		// Check bounds
+		if ((voxelNeighbour.x | voxelNeighbour.y) >= 0) {
+
+			if (voxelNeighbour.x < Iso::WORLD_GRID_SIZE && voxelNeighbour.y < Iso::WORLD_GRID_SIZE) {
+
+				return((_theGrid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
+			}
+		}
+
+		return(nullptr);
 	}
 
 	static void smoothRow(point2D_t start, int32_t width)  // iterates from start.x to start.x + width (Left 2 Right)
@@ -1359,7 +1266,7 @@ namespace world
 		smoothRow(voxelArea.left_bottom(), width_height.x);
 	}
 
-	void recomputeGroundOcclusion(rect2D_t voxelArea)
+	void __vectorcall recomputeGroundAdjacencyOcclusion(rect2D_t voxelArea)
 	{
 		// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
 		voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
@@ -1383,6 +1290,7 @@ namespace world
 					Iso::Voxel const* __restrict pNeighbour(nullptr);
 					uint32_t const curVoxelHeightStep(Iso::getHeightStep(oVoxel));
 					uint8_t OcclusionShading(0);
+					uint8_t Adjacency(0);
 
 					// old layout: //
 					/*
@@ -1407,17 +1315,23 @@ namespace world
 					// Side Left = NBR_T (ao.x)
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_T]);
 					if (nullptr != pNeighbour) {
-						
-						if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
+						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
+						if (neighbourHeightStep > curVoxelHeightStep) {
 							OcclusionShading |= Iso::OCCLUSION_SHADING_SIDE_LEFT;
 						}
-					}
 
+						// adjacency
+						if (neighbourHeightStep >= curVoxelHeightStep) {
+
+							Adjacency |= (1 << Volumetric::adjacency::back);
+						}
+
+					}
 
 					// Corner = NBR_TR (ao.y)
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_TR]);
 					if (nullptr != pNeighbour) {
-						
+
 						if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
 							OcclusionShading |= Iso::OCCLUSION_SHADING_CORNER;
 						}
@@ -1426,9 +1340,15 @@ namespace world
 					// Side Right = NBR_R (ao.z)
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_R]);
 					if (nullptr != pNeighbour) {
-						
-						if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
+						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
+						if (neighbourHeightStep > curVoxelHeightStep) {
 							OcclusionShading |= Iso::OCCLUSION_SHADING_SIDE_RIGHT;
+						}
+
+						// adjacency
+						if (neighbourHeightStep >= curVoxelHeightStep) {
+
+							Adjacency |= (1 << Volumetric::adjacency::right);
 						}
 					}
 
@@ -1441,6 +1361,38 @@ namespace world
 						Iso::setOcclusion(oVoxel, OcclusionShading);
 					}
 
+
+					// Side Left = NBR_L (ao.z)
+					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_L]);
+					if (nullptr != pNeighbour) {
+						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
+
+						// adjacency
+						if (neighbourHeightStep >= curVoxelHeightStep) {
+
+							Adjacency |= (1 << Volumetric::adjacency::left);
+						}
+					}
+
+					// Side Front = NBR_B (ao.z)
+					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_B]);
+					if (nullptr != pNeighbour) {
+						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
+
+						// adjacency
+						if (neighbourHeightStep >= curVoxelHeightStep) {
+
+							Adjacency |= (1 << Volumetric::adjacency::front);
+						}
+					}
+
+					if (0 == Adjacency) {
+						Iso::clearAdjacency(oVoxel);
+					}
+					else {
+						Iso::setAdjacency(oVoxel, Adjacency);
+					}
+
 					setVoxelAt(voxelIterate, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 				}
 
@@ -1449,6 +1401,11 @@ namespace world
 
 			++voxelIterate.y;
 		}
+	}
+
+	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex)
+	{
+		recomputeGroundAdjacencyOcclusion(rect2D_t{ voxelIndex, voxelIndex });
 	}
 
 	// Random //
@@ -1795,8 +1752,14 @@ namespace world
 //XMGLOBALCONST inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z, Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z };
 //XMGLOBALCONST inline XMVECTORF32 const _visibleLight{ 2.0f, 1.0f, 2.0f, 1.0f }; // for scaling model extents to account for potential lighting radius
 
-static struct voxelRender // ** static container, all methods and members must be static inline ** //
+constinit static struct voxelRender // ** static container, all methods and members must be static inline ** //
 {
+	constinit static struct
+	{
+		uint32_t road_tiles_visible;
+
+	} inline render_state{};
+
 	// this construct significantly improves throughput of voxels, by batching the streaming stores //
 	// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
 	using miniVoxelLocalBatch = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::GROUND>;
@@ -1846,46 +1809,52 @@ static struct voxelRender // ** static container, all methods and members must b
 		miniVoxelLocalBatch& __restrict localMini,
 		miniVoxelLocalBatch& __restrict localMiniTrans)
 	{
-		uint32_t const color(oVoxel.index.w);
-		uint8_t const alpha((color >> 24) & 0xFF);
-		bool const transparent(0xFF != alpha);
-		bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
-
-		uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
-
-		// Build hash //
-		uint32_t hash(0);
-
-		// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
-		hash |= adjacency;
-		// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
-
-		hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
-		hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
-
+		// required for voxels w/light, voxels w/o light & lights (hidden voxel)
 		XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
 		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+		uint32_t const color(oVoxel.index.w);
 
-		XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
-		XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+		bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
 
-		if (transparent) {
+		if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
+			
+			uint8_t const alpha((color >> 24) & 0xFF);
+			bool const transparent(0xFF != alpha);
 
-			localMiniTrans.emplace_back(
-				voxels_trans,
+			uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
 
-				xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
-			);
+			// Build hash //
+			uint32_t hash(0);
+
+			// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
+			hash |= adjacency;
+			// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
+
+			hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
+			hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
+
+			XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
+			XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+
+			if (transparent) {
+
+				localMiniTrans.emplace_back(
+					voxels_trans,
+
+					xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
+				);
+			}
+			else {
+
+				localMini.emplace_back(
+					voxels_dynamic,
+
+					xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
+				);
+			}
 		}
-		else {
 
-			localMini.emplace_back(
-				voxels_dynamic,
-
-				xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
-			);
-		}
-
+		// if voxel is hidden then its just a light
 		if (emissive) {
 
 			Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
@@ -1935,9 +1904,10 @@ static struct voxelRender // ** static container, all methods and members must b
 
 			// Build hash //
 			uint32_t groundHash(0);
-			groundHash |= Iso::getHeightStep(oVoxel);			//				000R 1111   // msb is reserved (5th bit)
+			groundHash |= Iso::getAdjacency(oVoxel);			//				0001 1111
 			groundHash |= (Iso::getOcclusion(oVoxel) << 5);		//				111x xxxx
 			groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
+			groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
 
 			XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 
@@ -1966,10 +1936,10 @@ static struct voxelRender // ** static container, all methods and members must b
 
 			// Build hash //
 			uint32_t roadHash(0);
-			roadHash |= Iso::getHeightStep(oVoxel);							//			     	                      000R 1111   // msb is reserved (5th bit)
-			roadHash |= (Iso::getOcclusion(oVoxel) << 5);					//		     		                      111x xxxx
-			roadHash |= (Iso::isEmissive(oVoxel) << 8);						//                           0000 0001	  xxxx xxxx
-			roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);		// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
+			// not used roadHash |= Iso::getHeightStep(oVoxel);									//			     	                      000R 1111   // msb is reserved (5th bit)
+			// not used roadHash |= (Iso::getOcclusion(oVoxel) << 5);							//		     		                      111x xxxx
+			roadHash |= (Iso::isEmissive(oVoxel) << 8);								//                           0000 0001	  xxxx xxxx
+			roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);	// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
 
 			XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 
@@ -1980,6 +1950,8 @@ static struct voxelRender // ** static container, all methods and members must b
 					xmUVs,
 					roadHash
 				);
+
+			++render_state.road_tiles_visible; // *this state is only valid when RenderGrid() is complete.
 		}
 	}
 
@@ -2011,6 +1983,8 @@ static struct voxelRender // ** static container, all methods and members must b
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
 	{
+		render_state.road_tiles_visible = 0; // reset
+
 		point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 
 		// Traverse Grid
@@ -2717,10 +2691,6 @@ namespace world
 		// rain!!!
 		_activeRain = new sRainInstance(XMVectorZero(), 128.0f);
 
-		// Initialize Car/Traffic simulation
-		::cCarGameObject::Initialize(tNow);
-		::cPoliceCarGameObject::Initialize(tNow);
-
 #ifdef GIF_MODE
 
 #define STAGE
@@ -2977,6 +2947,11 @@ namespace world
 
 namespace world
 {
+	uint32_t const cVoxelWorld::getRoadVisibleCount() const // *do not call inside of RenderGrid(), state is undefined! Ok for game logic, etc.
+	{
+		return(voxelRender::render_state.road_tiles_visible);
+	}
+
 	rect2D_t const cVoxelWorld::getVisibleGridBounds() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
 		point2D_t const gridBounds(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z);

@@ -86,6 +86,7 @@ namespace world
 
 	public:
 		// Accesssors //
+		uint32_t const				getRoadVisibleCount() const; // can be accessed in any function not in the internal RenderGrid()
 		rect2D_t const				getVisibleGridBounds() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		rect2D_t const				getVisibleGridBoundsClamped() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const&			getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
@@ -536,8 +537,8 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 					smoothRect(vWorldArea);
 
 					// go around perimeter doing lerp between border
-					// optionally recompute occlusion for area as height of voxels has changed
-					recomputeGroundOcclusion(vWorldArea);
+					// *required* recompute adjacency & occlusion for area as height of voxels has changed
+					recomputeGroundAdjacencyOcclusion(vWorldArea);
 				}
 				// root is special
 

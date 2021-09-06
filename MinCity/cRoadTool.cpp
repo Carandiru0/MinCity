@@ -911,9 +911,14 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 	point2D_t const currentPoint, uint32_t const currentDirection,
 	int32_t const groundHeightStep, Iso::Voxel& __restrict oVoxel)
 {
+	point2D_t mini(INT32_MAX), maxi(INT32_MIN);
+
 	// move ground under road up to match
 	{
 		Iso::setHeightStep(oVoxel, groundHeightStep);
+
+		mini = p2D_min(mini, currentPoint);
+		maxi = p2D_max(maxi, currentPoint);
 	}
 	// surrounding ground under road
 	for (int32_t offset = 1; offset <= Iso::SEGMENT_SIDE_WIDTH; ++offset) {
@@ -932,9 +937,15 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 				oSideVoxel = oVoxel;
 				Iso::setType(oSideVoxel, Iso::TYPE_GROUND);
 				world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
+
+				mini = p2D_min(mini, sidePoint[side]);
+				maxi = p2D_max(maxi, sidePoint[side]);
 			}
 		} // for side
 	}//for offset
+
+	// ** required for any changes in terrain height ** //
+	world::recomputeGroundAdjacencyOcclusion(rect2D(mini, maxi));
 }
 
 static auto const checkAdjacentInlineForRoadHeightEnd(point2D_t const currentPoint, uint32_t const encoded_direction) {
@@ -1725,6 +1736,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 					// make ground match height of road where traffic sign will be placed
 					Iso::setHeightStep(oXingVoxel, Iso::getHeightStep(oVoxel));
 					world::setVoxelAt(xingPoint[xing], std::forward<Iso::Voxel const&& __restrict>(oXingVoxel));
+					world::recomputeGroundAdjacencyOcclusion(xingPoint[xing]);
 
 					world::cTrafficSignGameObject* const pGameObject = MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cTrafficSignGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(
 						xingPoint[xing],
@@ -1817,6 +1829,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 		// make ground match height of road where lamp/sign will be placed
 		Iso::setHeightStep(oSideVoxel, Iso::getHeightStep(oVoxel));
 		world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
+		world::recomputeGroundAdjacencyOcclusion(sidePoint[side]);
 
 		if (bNSEW) {
 			rotation = lamp_post_side ? rotation : v2_rotation_constants::v180;
@@ -1932,97 +1945,88 @@ void cRoadTool::decorateRoadHistory()
 
 void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
 {
-	static constexpr milliseconds const LIMIT(20);	// 20ms low-latency response, throttling input dragging updates to acceptable performance level
-	static tTime tLast{};
-	
-	tTime const tNow(now());
+	if (0 != _activePoint) { // have starting index?
 
-	if (tNow - tLast >= LIMIT) {
-		tLast = tNow;
+		static point2D_t lastEndPoint;
+		point2D_t clampedEndPoint(getHoveredVoxelIndexSnapped().v);
 
-		if (0 != _activePoint) { // have starting index?
+		if (clampedEndPoint != lastEndPoint) {
+			lastEndPoint = clampedEndPoint;
 
-			static point2D_t lastEndPoint;
-			point2D_t clampedEndPoint(getHoveredVoxelIndexSnapped().v);
+			clearRoadHistory();
 
-			if (clampedEndPoint != lastEndPoint) {
-				lastEndPoint = clampedEndPoint;
+			search_and_select_closest_road(clampedEndPoint);  // while dragging..... done b4 any new road is placed to exclude it from being selected
+			point2D_t const selectedEndPoint(_selected.origin);
+			if (!selectedEndPoint.isZero()) { // snapped to nearby road?
+				clampedEndPoint = selectedEndPoint;	// this prevents diagonal road as the axis are clamped next
+													// and the axis max will still be the same
+			}
 
-				clearRoadHistory();
+			{
+				point2D_t const abs_difference = p2D_abs(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));
 
-				search_and_select_closest_road(clampedEndPoint);  // while dragging..... done b4 any new road is placed to exclude it from being selected
-				point2D_t const selectedEndPoint(_selected.origin);
-				if (!selectedEndPoint.isZero()) { // snapped to nearby road?
-					clampedEndPoint = selectedEndPoint;	// this prevents diagonal road as the axis are clamped next
-														// and the axis max will still be the same
+				if (abs_difference.isZero())	// filter out changes with no length
+					return;
+
+				if (abs_difference.x > abs_difference.y) {
+
+					// lock on xaxis
+					clampedEndPoint.y = _segmentVoxelIndex[0].y;
 				}
+				else if (abs_difference.x < abs_difference.y) {
 
-				{
-					point2D_t const abs_difference = p2D_abs(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));
-
-					if (abs_difference.isZero())	// filter out changes with no length
-						return;
-
-					if (abs_difference.x > abs_difference.y) {
-
-						// lock on xaxis
-						clampedEndPoint.y = _segmentVoxelIndex[0].y;
-					}
-					else if (abs_difference.x < abs_difference.y) {
-
-						// lock on yaxis
-						clampedEndPoint.x = _segmentVoxelIndex[0].x;
-					}
-					else {
-						return;
-					}
-				}
-
-#if defined(DEBUG_AUTOTILE) || defined(DEBUG_ROAD_SEGMENTS)
-				FMT_LOG_DEBUG("-----------------------------------------------------------------\n NEW ENDPOINT:  ({:d},{:d})", clampedEndPoint.x, clampedEndPoint.y);
-#endif
-
-				if (CreateRoadSegments(_segmentVoxelIndex[0], clampedEndPoint)) {
-
-					if (!selectedEndPoint.isZero()) { // snapped to nearby road?
-
-						if (selectedEndPoint != clampedEndPoint) {  // there is another road section too draw, this should always be different
-
-							// no clamping of new enpoint required as previous clamped endpoint was limited on what ever axis locked, to the corresponding value in _selectedRoadIndex
-							// Only need to draw out the axis from that previous endpoint to the selected / snapped to endpoint selected by user
-							// this results in a L - road shape
-							point2D_t direction, newEndPoint;
-
-							// do overlap to produce the node (xing/corner)
-
-							// extend original road segment, so it will overlap the new road segment
-							// *bugfix - this must be last so original road direction is the last direction assigned to any voxels
-							// this overlap causes. Fixes jumpy behaviour when an intersection exists and retains correct road direction
-							direction = p2D_sgn(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));
-							newEndPoint = p2D_add(clampedEndPoint, p2D_muls(direction, Iso::SEGMENT_SIDE_WIDTH + 1));
-
-							CreateRoadSegments(clampedEndPoint, newEndPoint);
-
-							// new road segment
-							direction = p2D_sgn(p2D_sub(clampedEndPoint, selectedEndPoint));
-							newEndPoint = p2D_sub(selectedEndPoint, p2D_muls(direction, Iso::SEGMENT_SIDE_WIDTH + 1));
-
-							CreateRoadSegments(clampedEndPoint, newEndPoint);
-						}
-					}
-
-					// autotiling for any modified tiles, this leaves the undohistory unmodified (constant)
-					// but can change the grid's "road tile" with no further undo history needed for these changes
-					autotileRoadHistory();
-
-					// Add things to road, like road signs, lamp posts, and traffic control
-					decorateRoadHistory();
-
-					_segmentVoxelIndex[_activePoint].v = clampedEndPoint.v;
+					// lock on yaxis
+					clampedEndPoint.x = _segmentVoxelIndex[0].x;
 				}
 				else {
-					clearRoadHistory();
+					return;
 				}
+			}
+
+#if defined(DEBUG_AUTOTILE) || defined(DEBUG_ROAD_SEGMENTS)
+			FMT_LOG_DEBUG("-----------------------------------------------------------------\n NEW ENDPOINT:  ({:d},{:d})", clampedEndPoint.x, clampedEndPoint.y);
+#endif
+
+			if (CreateRoadSegments(_segmentVoxelIndex[0], clampedEndPoint)) {
+
+				if (!selectedEndPoint.isZero()) { // snapped to nearby road?
+
+					if (selectedEndPoint != clampedEndPoint) {  // there is another road section too draw, this should always be different
+
+						// no clamping of new enpoint required as previous clamped endpoint was limited on what ever axis locked, to the corresponding value in _selectedRoadIndex
+						// Only need to draw out the axis from that previous endpoint to the selected / snapped to endpoint selected by user
+						// this results in a L - road shape
+						point2D_t direction, newEndPoint;
+
+						// do overlap to produce the node (xing/corner)
+
+						// extend original road segment, so it will overlap the new road segment
+						// *bugfix - this must be last so original road direction is the last direction assigned to any voxels
+						// this overlap causes. Fixes jumpy behaviour when an intersection exists and retains correct road direction
+						direction = p2D_sgn(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));
+						newEndPoint = p2D_add(clampedEndPoint, p2D_muls(direction, Iso::SEGMENT_SIDE_WIDTH + 1));
+
+						CreateRoadSegments(clampedEndPoint, newEndPoint);
+
+						// new road segment
+						direction = p2D_sgn(p2D_sub(clampedEndPoint, selectedEndPoint));
+						newEndPoint = p2D_sub(selectedEndPoint, p2D_muls(direction, Iso::SEGMENT_SIDE_WIDTH + 1));
+
+						CreateRoadSegments(clampedEndPoint, newEndPoint);
+					}
+				}
+
+				// autotiling for any modified tiles, this leaves the undohistory unmodified (constant)
+				// but can change the grid's "road tile" with no further undo history needed for these changes
+				autotileRoadHistory();
+
+				// Add things to road, like road signs, lamp posts, and traffic control
+				decorateRoadHistory();
+
+				_segmentVoxelIndex[_activePoint].v = clampedEndPoint.v;
+			}
+			else {
+				clearRoadHistory();
 			}
 		}
 	}

@@ -33,6 +33,8 @@ public: // no data inside abstract tool - only methods
 
 	virtual void paint() {} // optional
 
+	static void __vectorcall draw_grid(rect2D_t const highlight_area, int32_t const division_size, int32_t const grid_radius); // common grid drawing for any tool that needs it.
+
 	virtual uint32_t const getActivatedSubTool() { return(SUBTOOL_RESERVED_NOT_IMPLEMENTED); } // optional
 	virtual void setActivatedSubTool(uint32_t const subtool) {} // optional
 

@@ -109,6 +109,19 @@ const float ROUGHNESS = 0.5f;
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
 #include "texturearray.glsl"
 
+float antialiasedGrid(in vec2 uv, in const float scale)
+{
+	// grid lines	
+	uv = mod(uv * scale, 0.5f);
+
+	// first way ----------------------------------	
+	vec2 sidesBL = abs(0.008f / (uv - 0.333f));
+	vec2 sidesTR = abs(0.008f / ((1.0 - uv) - 0.825f));
+	sidesTR = smoothstep(vec2(0), vec2(1), clamp(sidesBL + sidesTR, 0.0f, 1.0f));
+	float grid = sidesTR.x + sidesTR.y;
+	
+	return(smoothstep(0.0f, 1.0f, grid * GOLDEN_RATIO));	// final smoothing
+}
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
@@ -119,16 +132,35 @@ void main() {
 	float attenuation; 
 
 	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength);
-
-	const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(In._uv_texture.xy, 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
+																   // bugfix: y is flipped. simplest to correct here.
+	const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(vec2(In._uv_texture.x, 1.0f - In._uv_texture.y), 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 	         
-	outColor.rgb = lit( vec3(terrainHeight), light_color,
-						In._occlusion, min(1.0f, attenuation + In._emission),
-						0.0f/*In._emission * 20.0f*/, ROUGHNESS,  // emission disabled for terrain todo         
-						L, N, V);
+
+	vec3 color = lit( vec3(terrainHeight), light_color,
+					  In._occlusion, min(1.0f, attenuation + In._emission),
+					  0.0f, ROUGHNESS,  // emission for terrain voxels is specialized by modifying attenuation above. this is used for highlighting.
+					  L, N, V);
+
+	
+	float grid = antialiasedGrid(In._uv_texture.xy, 1024.0f);
+
+	// third way ------------------------------------
+	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
+	grid *= parabola(terrainHeight, 1.7f); /*smootherstep(1.0f, 0.0f, terrainHeight)*/ // fade out as height increases
+	grid *= 1.0f - attenuation; // modulate by the abscense of light
+	grid *= In._occlusion; // ambient occlusion
+ 
+	const float grid_luma = dot(clamp(color + grid, 0.0f, 1.0f), LUMA);
+	float luma = dot(color, LUMA);
+
+	luma = clamp(grid_luma / max(1.0f - luma, 1e-6f), 0.0f, 1.0f); // avoid division by zero, clamp result to 0.0 ... 1.0f range
+	
+	color = mix(color, grid.xxx * (1.0f - luma), grid);
+
+	outColor.rgb = color;
 }
 #elif defined(ROAD)  
 

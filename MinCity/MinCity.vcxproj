@@ -363,6 +363,7 @@
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_framework.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="cAbstractToolMethods.cpp" />
     <ClCompile Include="cAIMover.cpp" />
     <ClCompile Include="cAISkyMover.cpp" />
     <ClCompile Include="cAudio.cpp" />

@@ -178,10 +178,6 @@ void cPoliceCarGameObject::setInitialState(cCarGameObject::state&& initialState)
 
 // STATIC METHODS : //
 
-void cPoliceCarGameObject::Initialize(tTime const& __restrict tNow)
-{
-	reserve(MAX_CARS);
-}
 void cPoliceCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 #ifndef GIF_MODE

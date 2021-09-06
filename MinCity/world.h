@@ -1,5 +1,6 @@
 #pragma once
 #include <Math/point2D_t.h>
+#include <Math/v2_rotation_t.h>
 #include "IsoVoxel.h"
 
 namespace world
@@ -59,10 +60,12 @@ namespace world
 	void setVoxelsHeightAt(rect2D_t voxelArea, uint32_t const heightstep);
 	rect2D_t const voxelArea_grow(rect2D_t const voxelArea, point2D_t const grow);
 	void smoothRect(rect2D_t voxelArea);
-	void recomputeGroundOcclusion(rect2D_t voxelArea);
+	// Grid Space (-x,-y) to (X, Y) Coordinates Only
+	void __vectorcall recomputeGroundAdjacencyOcclusion(rect2D_t voxelArea);
+	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex);
 
 	// voxel painting (minivoxels)
-	void __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, bool const emissive);	// color is abgr (rgba backwards)
+	void __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
 
 	// Random & Search //
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area);

@@ -28,10 +28,7 @@ namespace Volumetric
 		VOXEL_MINIGRID_VISIBLE_Y = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_Y,
 		VOXEL_MINIGRID_VISIBLE_Z = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_Z,
 		VOXEL_MINIGRID_VISIBLE_TOTAL = (VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Y * VOXEL_MINIGRID_VISIBLE_Z) >> Volumetric::Allocation::VOXEL_RENDER_FACTOR_BITS,	// static voxels
-		
-		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = (VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Y * VOXEL_MINIGRID_VISIBLE_Z) >> (Volumetric::Allocation::VOXEL_RENDER_FACTOR_BITS + 1),	// dynamic voxels 
-
-		VOXEL_ATOMIC_STATE_RESERVE_SIZE = VOXEL_GRID_VISIBLE_TOTAL
+		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = (VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Y * VOXEL_MINIGRID_VISIBLE_Z) >> (Volumetric::Allocation::VOXEL_RENDER_FACTOR_BITS + 1)	// dynamic voxels 
 	);
 
 	read_only inline XMVECTORF32 const VOXEL_GRID_VISIBLE_XYZ{ (float)Allocation::VOXEL_GRID_VISIBLE_X, 1.0f, (float)Allocation::VOXEL_GRID_VISIBLE_Z };
@@ -50,20 +47,6 @@ namespace Volumetric
 	read_only inline XMVECTORF32 const _xmTransformToIndexBias{ (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f, 0.0f, (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f };
 	read_only inline XMVECTORF32 const _xmInverseVisibleXYZ{ Volumetric::INVERSE_MINIGRID_VISIBLE_X, Volumetric::INVERSE_MINIGRID_VISIBLE_Y, Volumetric::INVERSE_MINIGRID_VISIBLE_Z, 1.0f };
 
-	STATIC_INLINE_PURE XMVECTOR const XM_CALLCONV worldToNormalized(FXMVECTOR const voxel)
-	{
-		// change from -1 ... 1  >  0 ... 1, clamp to 0 ... 1
-		XMVECTOR const xmPointFive(_mm_set1_ps(0.5f));
-		return(SFM::saturate(SFM::__fma(XMVectorScale(voxel, Iso::INVERSE_MAX_VOXEL_COORD), xmPointFive, xmPointFive)));					
-	}
-
-	STATIC_INLINE_PURE XMVECTOR const XM_CALLCONV worldToVisibleGrid(FXMVECTOR const voxel)
-	{
-		return(XMVectorMultiply(worldToNormalized(voxel), VOXEL_GRID_VISIBLE_XYZ));					// scale by extents of visible volume
-	}
-
-	STATIC_INLINE_PURE XMVECTOR const XM_CALLCONV worldToVisibleMiniGrid(FXMVECTOR const voxel)
-	{
-		return(XMVectorMultiply(worldToNormalized(voxel), VOXEL_MINIGRID_VISIBLE_XYZ));				// scale by extents of visible volume
-	}
 }// end ns
+
+

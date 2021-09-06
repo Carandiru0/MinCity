@@ -7,26 +7,14 @@
 #include "prices.h"
 
 static constexpr float const GUI_HEIGHT = -10.0f;
+static inline v2_rotation_t const _offsetAngle{ v2_rotation_constants::v15 }; // starting offset for text alignment
 
 cZoningTool::cZoningTool()
-	: _ActivatedSubTool(eSubTool_Zoning::RESIDENTIAL), _segmentVoxelIndex{}, _activePoint(1) // must be non-zero
+	: _ActivatedSubTool(eSubTool_Zoning::RESIDENTIAL), _segmentVoxelIndex{}, _activePoint(1)  // must be non-zero
 {
 
 }
 
-STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped()
-{
-	point2D_t const hoverVoxel(MinCity::VoxelWorld.getHoveredVoxelIndex());
-
-	point2D_t hoverVoxelSnapped(
-		SFM::roundToMultipleOf<false>(hoverVoxel.x, (int32_t)Iso::ROAD_SEGMENT_WIDTH + 1),
-		SFM::roundToMultipleOf<false>(hoverVoxel.y, (int32_t)Iso::ROAD_SEGMENT_WIDTH + 1)
-	);
-
-	//hoverVoxelSnapped = p2D_add(hoverVoxelSnapped, p2D_muls(p2D_sgn(p2D_sub(hoverVoxel, hoverVoxelSnapped)), Iso::SEGMENT_SIDE_WIDTH));
-
-	return(hoverVoxel);
-}
 STATIC_INLINE_PURE rect2D_t const __vectorcall orientAreaToRect(point2D_t const start_pt, point2D_t const end_pt)
 {
 	// minimum = top left, maximum = bottom right
@@ -60,17 +48,19 @@ void cZoningTool::setCost(int64_t const cost)
 
 void cZoningTool::paint()
 {
-	if (_activePoint > 1) { // have starting & ending index?
+	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
 
-		static constexpr uint32_t const color(0x0089E944);  // abgr - rgba backwards
+	// make relative to world origin (gridspace to worldspace transform)
+	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+
+	if (_activePoint > 1) { // have starting & ending index?
 
 		rect2D_t const area(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
 				
+		//draw_grid(area, Iso::SEGMENT_SIDE_WIDTH, 120);
+
 		// calculate area cost
 		money_t const total_cost(_cost.amount * area.width() * area.height());
-
-		// make relative to world origin (gridspace to worldspace transform)
-		XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 
 		XMVECTOR xmOrigin;
 		point2D_t origin;
@@ -84,7 +74,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 
 		length = (area.right - area.left) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
-		gui::draw_x_line(length, xmOrigin, origin, color, true);
+		gui::draw_line(gui::axis::x, xmOrigin, origin, color, length, gui::flags::emissive);
 
 		// line from bl to br (x axis)
 		origin = area.left_bottom();
@@ -94,8 +84,74 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 
 		// same length = (area.right - area.left) << 1;
-		gui::draw_x_line(length + 1, xmOrigin, origin, color, true);
+		gui::draw_line(gui::axis::x, xmOrigin, origin, color, length + 1, gui::flags::emissive);
 
+		// line from tl to bl (z axis)
+		origin = area.left_top();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		length = (area.bottom - area.top) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
+		gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
+
+		// line from tr to br (z axis)
+		origin = area.right_top();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		// same length = (area.bottom - area.top) << 1;
+		gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
+
+		v2_rotation_t const view(world::getAzimuth() + _offsetAngle); // range is -XM_PI to XM_PI or -180 to 180 // offset angle represents the most optimal "angle" offset to switch the gui text.
+
+		if (view.angle() < -v2_rotation_constants::v90.angle()) {  // -180 to -90
+			origin = area.right_top();
+			xmOrigin = p2D_to_v2(origin);
+			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); // red
+			gui::draw_string(XMVectorNegate(gui::axis::x), xmOrigin, origin, 0x000000ff, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+		}
+		else if (view.angle() < 0.0f) { // -90 to 0
+			origin = area.right_bottom();
+			xmOrigin = p2D_to_v2(origin);
+			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); // blue-red
+			gui::draw_string(XMVectorNegate(gui::axis::z), xmOrigin, origin, 0x00ff00ff, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+		}
+		else if (view.angle() < v2_rotation_constants::v90.angle()) { // 0 to 90
+			origin = area.left_bottom();
+			xmOrigin = p2D_to_v2(origin);
+			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
+			gui::draw_string(gui::axis::x, xmOrigin, origin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+		}
+		else { // 90 to 180
+			origin = area.left_top();
+			xmOrigin = p2D_to_v2(origin);
+			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); // blue
+			gui::draw_string(gui::axis::z, xmOrigin, origin, 0x00ff0000, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+		}
+
+		// draw the current angle in the center of the square (for debugging)
+		v2_rotation_t const vangle(world::getAzimuth());
+		float const angle = XMConvertToDegrees(vangle.angle());
+		origin = area.center();
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
+		gui::draw_string(gui::axis::x, xmOrigin, origin, color, gui::flags::emissive, "{:.{}f}", angle, 1); // abgr - rgba backwards
+
+		/*
 		static constexpr fp_seconds const
 			interval = fp_seconds(1.0f / 24.0f), // seconds = 1/fps; 0.042s, 42ms per frame		
 			total = fp_seconds(seconds(5));
@@ -121,91 +177,35 @@ void cZoningTool::paint()
 		}
 		timing.tLast = tNow;
 
-		/*
-		std::string str("");
-		str += ' ';
-		gui::add_bouncing_arrow(str, timing.total_accumulated / total);
-		
-		static int32_t barcode_seed(1);
-
-		static constexpr fp_seconds const barcode_interval{ fp_seconds(milliseconds(500)) };
-		static fp_seconds barcode_accumulator{};
-		if ((barcode_accumulator += delta()) >= barcode_interval) {
-
-			barcode_seed = PsuedoRandomNumber();
-			barcode_accumulator -= barcode_interval;
-		}
-		str += ' ';
-		gui::add_barcode(str, 8, barcode_seed);
-		
-		str += ' ';
-		gui::add_vertical_bar(str, timing.total_accumulated / total);
-		str += ' ';
-		gui::add_horizontal_bar(str, timing.total_accumulated / total);
-		*/
-
-		origin = area.left_bottom();
-		xmOrigin = p2D_to_v2(origin);
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
-		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
-		gui::draw_string(xmOrigin, origin, color, true, "${:d}", total_cost.amount);
-
 		origin = area.left_top();
 		xmOrigin = p2D_to_v2(origin);
 		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
-		gui::draw_horizontal_progress_bar(length, timing.total_accumulated / total, xmOrigin, origin, color, true);
+		gui::draw_horizontal_progress_bar(gui::axis::x, xmOrigin, origin, color, length, timing.total_accumulated / total, gui::flags::emissive);
 
 		origin = area.left_bottom();
 		xmOrigin = p2D_to_v2(origin);
 		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 4.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
-		gui::draw_vertical_progress_bar(20, timing.total_accumulated / total, xmOrigin, origin, color, true);
-
-		// line from tl to bl (z axis)
-		origin = area.left_top();
-		xmOrigin = p2D_to_v2(origin);
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
-		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
-
-		length = (area.bottom - area.top) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
-		gui::draw_z_line(length, xmOrigin, origin, color, true);
-
-		// line from tr to br (z axis)
-		origin = area.right_top();
-		xmOrigin = p2D_to_v2(origin);
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
-		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
-
-		// same length = (area.bottom - area.top) << 1;
-		gui::draw_z_line(length, xmOrigin, origin, color, true);
-
-		/*
-		point2D_t voxelIndex{};
-		for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
-
-			for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
-
-				XMVECTOR xmVoxelOrigin = p2D_to_v2(voxelIndex);
-				xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVoxelOrigin);
-				xmVoxelOrigin = XMVectorSetY(xmVoxelOrigin, -10.0f);
-
-				xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, xmWorldOrigin);
-
-				world::addVoxel(xmVoxelOrigin, voxelIndex, color, true);
-				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(0.0f, 0.0f, Iso::MINI_VOX_STEP, 0.0f)), voxelIndex, color, true);
-				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(Iso::MINI_VOX_STEP, 0.0f, 0.0f, 0.0f)), voxelIndex, color, true);
-				world::addVoxel(XMVectorAdd(xmVoxelOrigin, XMVectorSet(Iso::MINI_VOX_STEP, 0.0f, Iso::MINI_VOX_STEP, 0.0f)), voxelIndex, color, true);
-			}
-		}
+		gui::draw_vertical_progress_bar(gui::axis::x, xmOrigin, origin, color, 20, timing.total_accumulated / total, gui::flags::emissive);
 		*/
 	}
+	else { // tool is active, however the user has not dragged or clicked the mouse to create an area
+
+		point2D_t const voxelIndex(MinCity::VoxelWorld.getHoveredVoxelIndex());
+
+		XMVECTOR xmVoxelOrigin = p2D_to_v2(voxelIndex);
+		xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVoxelOrigin);
+		xmVoxelOrigin = XMVectorSetY(xmVoxelOrigin, -10.0f);
+
+		xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, xmWorldOrigin);
+
+		world::addVoxel(xmVoxelOrigin, voxelIndex, color, Iso::mini::hidden | Iso::mini::emissive); // light only
+	}
 }
+
 void cZoningTool::commitZoneHistory() // commits current "zone" to grid
 {
 	_undoHistory.clear();
@@ -227,6 +227,31 @@ void cZoningTool::pushZoneHistory(UndoVoxel&& history)
 	_undoHistory.emplace_back(std::forward<UndoVoxel&&>(history));
 }
 
+void __vectorcall cZoningTool::PressAction(FXMVECTOR const xmMousePos)
+{
+	point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
+
+	clearZoneHistory();
+
+	if (0 != _activePoint) { // new
+		_activePoint = 0;
+		_segmentVoxelIndex[0] = point2D_t{};
+		_segmentVoxelIndex[1] = point2D_t{};
+	}
+	_segmentVoxelIndex[_activePoint++].v = origin.v;
+
+	// _segmentVoxelIndex[0] IS ALWAYS EQUAL TO BEGINNING POINT AFTER THIS POINT
+}
+void __vectorcall cZoningTool::ReleaseAction(FXMVECTOR const xmMousePos)
+{
+	[[likely]] if (0 != _activePoint) {
+
+		// _segmentVoxelIndex[1] IS ALWAYS EQUAL TO END POINT @ THIS POINT
+
+		commitZoneHistory();
+		_activePoint = 0;
+	}
+}
 void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 {
 	static uint32_t lastTool(0),
@@ -292,11 +317,13 @@ void __vectorcall cZoningTool::zoneArea(rect2D_t const area)
 			if (pVoxel) {
 				Iso::Voxel oVoxel(*pVoxel);
 
-				pushZoneHistory(UndoVoxel(voxelIndex, oVoxel));
+				if (Iso::isGroundOnly(oVoxel)) {
+					pushZoneHistory(UndoVoxel(voxelIndex, oVoxel));
 
-				Iso::setEmissive(oVoxel);
+					Iso::setEmissive(oVoxel);
 
-				world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+					world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+				}
 			}
 		}
 
@@ -305,19 +332,15 @@ void __vectorcall cZoningTool::zoneArea(rect2D_t const area)
 
 void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
 {
-	static constexpr milliseconds const LIMIT(18);	// 18ms low-latency response, throttling input dragging updates to acceptable performance level
-	static tTime tLast{};
+	if (0 != _activePoint) { // have starting index?
 
-	tTime const tNow(now());
+		static point2D_t lastEndPoint;
+		point2D_t const clampedEndPoint(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-	if (tNow - tLast >= LIMIT) {
-		tLast = tNow;
-
-		if (0 != _activePoint) { // have starting index?
+		if (clampedEndPoint != lastEndPoint) {
+			lastEndPoint = clampedEndPoint;
 
 			clearZoneHistory();
-
-			point2D_t clampedEndPoint(getHoveredVoxelIndexSnapped().v);
 
 			zoneArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
 
@@ -327,32 +350,39 @@ void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR 
 	}
 }
 
-void __vectorcall cZoningTool::PressAction(FXMVECTOR const xmMousePos)
+void __vectorcall cZoningTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 {
-	point2D_t origin(getHoveredVoxelIndexSnapped());
+	static point2D_t lastOrigin;
+	point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-	clearZoneHistory();
+	if (origin != lastOrigin) { // limited to delta of hovered mouse index. Never misses the action (important).
+		
+		{ // clear last highlight
+			Iso::Voxel const* const pVoxel(world::getVoxelAt(lastOrigin));
 
-	if (0 != _activePoint) { // new
-		_activePoint = 0;
-		_segmentVoxelIndex[0] = point2D_t{};
-		_segmentVoxelIndex[1] = point2D_t{};
+			if (pVoxel) {
+				Iso::Voxel oVoxel(*pVoxel);
+
+				Iso::clearEmissive(oVoxel);
+
+				world::setVoxelAt(lastOrigin, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+			}
+		}
+		lastOrigin = origin;
+
+		{ // set highlight
+			Iso::Voxel const* const pVoxel(world::getVoxelAt(origin));
+
+			if (pVoxel) {
+				Iso::Voxel oVoxel(*pVoxel);
+
+				Iso::setEmissive(oVoxel);
+
+				world::setVoxelAt(origin, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+			}
+		}
 	}
-	_segmentVoxelIndex[_activePoint++].v = origin.v;
-
-	// _segmentVoxelIndex[0] IS ALWAYS EQUAL TO BEGINNING POINT AFTER THIS POINT
 }
-void __vectorcall cZoningTool::ReleaseAction(FXMVECTOR const xmMousePos)
-{
-	[[likely]] if (0 != _activePoint) {
-
-		// _segmentVoxelIndex[1] IS ALWAYS EQUAL TO END POINT @ THIS POINT
-
-		commitZoneHistory();
-		_activePoint = 0;
-	}
-}
-
 
 // these functions should be defined last
 void cZoningTool::deactivate()
