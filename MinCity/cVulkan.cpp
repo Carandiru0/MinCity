@@ -320,8 +320,8 @@ void cVulkan::CreateComputeResources()
 
 		_comData.light.sets = dsm.create(_device, _fw.descriptorPool());
 
-		std::vector< vku::SpecializationConstant > constants_jfa;
-		MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants_jfa);
+		std::vector< vku::SpecializationConstant > constants;
+		MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants);
 
 		// SEED & JFA  //
 
@@ -332,7 +332,7 @@ void cVulkan::CreateComputeResources()
 
 		_comData.light.pipelineLayout = plm.createUnique(_device);
 		{
-			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_seed.comp.bin", constants_jfa };
+			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_seed.comp.bin", constants };
 
 			// Make a pipeline to use the vertex format and shaders.
 			vku::ComputePipelineMaker pm{};
@@ -343,7 +343,7 @@ void cVulkan::CreateComputeResources()
 			_comData.light.pipeline[eComputeLightPipeline::SEED] = pm.createUnique(_device, cache, *_comData.light.pipelineLayout);
 		}
 		{
-			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_jfa.comp.bin", constants_jfa };
+			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_jfa.comp.bin", constants };
 
 			// Make a pipeline to use the vertex format and shaders.
 			vku::ComputePipelineMaker pm{};
@@ -353,8 +353,10 @@ void cVulkan::CreateComputeResources()
 			auto& cache = _fw.pipelineCache();
 			_comData.light.pipeline[eComputeLightPipeline::JFA] = pm.createUnique(_device, cache, *_comData.light.pipelineLayout);
 		}
+
+		// FILTER //
 		{
-			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_mip.comp.bin", constants_jfa };
+			vku::ShaderModule const comp{ _device, SHADER_BINARY_DIR "light_mip.comp.bin", constants };
 
 			// Make a pipeline to use the vertex format and shaders.
 			vku::ComputePipelineMaker pm{};

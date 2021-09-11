@@ -34,7 +34,6 @@ const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 
 #define EPSILON 0.000000001f
-#define LIGHT_ABSORBTION 0.25f // how bright the volumetric light appears, % of light reflected by air/fog
 #define FOG_STRENGTH -0.08f // must be negative
 #define FOG_MAX_HEIGHT 80.0f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -80,7 +79,7 @@ layout (binding = 5, rgba8) writeonly restrict uniform image2D outImage[2]; // r
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 
-layout (constant_id = 4) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
+layout (constant_id = 4) const float VolumeLength = 0.0f; // <--- *beware this is scaled by voxel size, for lighting only
 layout (constant_id = 5) const float VolumeDimensions_X = 0.0f;
 layout (constant_id = 6) const float VolumeDimensions_Y = 0.0f;
 layout (constant_id = 7) const float VolumeDimensions_Z = 0.0f;
@@ -277,7 +276,7 @@ void integrate_opacity(inout float opacity, in const float new_opacity, in const
 }
 
 // volumetric light
-void vol_lit(out vec3 light_color, out float intensity, out float scattering, out float attenuation, out float emission, out float transparency, inout float opacity,
+void vol_lit(out vec3 light_color, out float scattering, out float attenuation, out float emission, out float transparency, inout float opacity,
 		     in const vec3 p, in const float dt)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
@@ -297,38 +296,27 @@ void vol_lit(out vec3 light_color, out float intensity, out float scattering, ou
 	integrate_opacity(opacity, max(0.0f, opacity_transparency), dt);
 	
 	attenuation = fetch_light_volumetric(light_color, scattering, transparency, p, opacity, dt);
-
-	// checked makes sense
-	intensity = attenuation * emission * (transparency + opacity);
-
 }
-
-//const float phaseFunction = 1.0f / (4.0f * PI);
-
-// rgb(0.222f,0.222f,1.0f) (far depth color) - royal blue (cooler)
-// rgb(0.80f,0.65f,1.0f) (near depth color) - royal purle (warmer) 
-//const vec3 royal_blue_purple = vec3(0.1776f,0.1443f,1.0f); // components are maximized (above combined)
 
 void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt)
 {
 	//#########################
 	vec3 light_color;
-	float intensity;
 	float scattering;
 	float attenuation;
 	float emission;
 	float transparency;
 	
-	vol_lit(light_color, intensity, scattering, attenuation, emission, transparency, opacity, p, dt);  // shadow march tried, kills framerate
+	vol_lit(light_color, scattering, attenuation, emission, transparency, opacity, p, dt);  // shadow march tried, kills framerate
 
 	
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
 	const float fogAmount = (voxel.tran) * (1.0f - exp2(((transparency + emission) * 0.5f + scattering * 100.0f) * FOG_STRENGTH));
-	const float lightAmount = (1.0f - opacity) * attenuation + emission;  // this is what brings out a volumetric glow *do not change*
+	const float lightAmount = attenuation + emission;  // this is what brings out a volumetric glow *do not change*
 
-	// this is balanced so that sigmaS remains conservative. Only emission or intensity can bring the level of sigmaS above 1.0f
-	const float sigmaS = fogAmount * lightAmount + fogAmount + intensity;
+	// this is balanced so that sigmaS remains conservative. Only emission can bring the level of sigmaS above 1.0f
+	const float sigmaS = fma(fogAmount, lightAmount, fogAmount) + lightAmount * emission; // this is what brings out a volumetric glow *do not change*
 	const float inv_sigmaE = 1.0f / max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------

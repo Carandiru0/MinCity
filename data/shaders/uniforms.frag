@@ -144,12 +144,11 @@ void main() {
 					  0.0f, ROUGHNESS,  // emission for terrain voxels is specialized by modifying attenuation above. this is used for highlighting.
 					  L, N, V);
 
-	
 	float grid = antialiasedGrid(In._uv_texture.xy, 1024.0f);
 
 	// third way ------------------------------------
 	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
-	grid *= parabola(terrainHeight, 1.7f); /*smootherstep(1.0f, 0.0f, terrainHeight)*/ // fade out as height increases
+	grid *= parabola(terrainHeight); // important
 	grid *= 1.0f - attenuation; // modulate by the abscense of light
 	grid *= In._occlusion; // ambient occlusion
  
@@ -158,9 +157,7 @@ void main() {
 
 	luma = clamp(grid_luma / max(1.0f - luma, 1e-6f), 0.0f, 1.0f); // avoid division by zero, clamp result to 0.0 ... 1.0f range
 	
-	color = mix(color, grid.xxx * (1.0f - luma), grid);
-
-	outColor.rgb = color;
+	outColor.rgb = mix(color, grid.xxx * (1.0f - luma), grid);
 }
 #elif defined(ROAD)  
 

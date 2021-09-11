@@ -340,6 +340,7 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(7, 1.0f / (float)LightDepth)); // should be inv depth
 			constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)LightHeight)); // should be inv height
 
+			constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::MINI_VOX_SIZE * 0.5f)); // should be minivoxsize * 0.5f
 		}
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const
@@ -530,8 +531,11 @@ namespace Volumetric
 	{
 		PushConstants.step = 0;
 		PushConstants.index_output = 0;
-		PushConstants.index_input = index_input;
-
+#ifdef NDEBUG // *bugfix: there is some strange disarity between release and debug builds. These are currently set where no black flicker occurs while scrolling view on voxel lights. @todo find whats actually causing this, this workaround however works for now.
+		PushConstants.index_input = index_input; 
+#else
+		PushConstants.index_input = 1 - index_input;
+#endif
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsJFA), reinterpret_cast<void const* const>(&PushConstants));
 
@@ -680,7 +684,7 @@ namespace Volumetric
 					static constexpr size_t const image_count(2ULL); // batched
 					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[0], LightProbeMap.imageGPUIn[1] };
 
-					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY);
+					vku::GenericImage::setLayout<image_count>(images, c.cb_render_light, vk::ImageLayout::eTransferDstOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY);
 				}
 				c.cb_render_light.end();
 
@@ -713,6 +717,15 @@ namespace Volumetric
 		// at this point, these are the new extents only if they have changed
 		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), current_min(MappedVoxelLights.getCurrentVolumeExtentsMin());
 		
+		{ // pad by one         // no modifications to .w component
+ 			__m128i const xmOne(uvec4_v(1, 0).v), xmZero(_mm_setzero_si128()), xmLimit(MappedVoxelLights.getVolumeExtentsLimit().v);
+
+			current_max.v = _mm_add_epi32(current_max.v, xmOne);
+			current_max.v = SFM::clamp(current_max.v, xmZero, xmLimit);
+			current_min.v = _mm_sub_epi32(current_min.v, xmOne);
+			current_min.v = SFM::clamp(current_min.v, xmZero, xmLimit);
+		}
+
 		// at this point, these compare the currently used extents, and the new extents that may be pending
 		{
 			uvec4_v const last_max(new_max_extents[resource_index]), last_min(new_min_extents[resource_index]);
@@ -764,7 +777,7 @@ namespace Volumetric
 			// does not shrink, it must be the maximum and minimum of both volumes to cover all of the space that may need to be cleared.
 			current_max.v = SFM::max(current_max.v, clear_max_max.v);
 			current_min.v = SFM::min(current_min.v, clear_min_min.v);
-			bRecorded[0] = bRecorded[1] = false; // both buffers must be reset so that they are in sync from frame to frame
+			bRecorded[resource_index] = false; // both buffers must be reset so that they are in sync from frame to frame
 		}
 		else { // this is less than zero due to post-decrement above
 
@@ -774,7 +787,7 @@ namespace Volumetric
 			// for all numbers less than zero that this condition will be true for
 			// the volume xtents are finally updated to the new volume extents.
 			if (-1 == ClearStage) { // only required to invalidate the command buffer on first iteration (second frame this condition will be true (above))
-				bRecorded[0] = bRecorded[1] = false; // both buffers must be reset so that they are in sync from frame to frame
+				bRecorded[resource_index] = false; // both buffers must be reset so that they are in sync from frame to frame
 			}
 		}
 

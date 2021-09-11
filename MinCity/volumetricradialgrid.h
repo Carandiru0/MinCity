@@ -376,7 +376,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 					(radialGrid->getRotation() + desc.rotation));
 				// pitch is not supported but input is compliant here so shader behaves properly
 				// voxelradialgrid support only azimuth
-				XMVECTOR const xmR(XMVectorAdd(XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), XMVectorRotateRight<2>(vR.v2())));
+				XMVECTOR const xmR(XMVectorAdd(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), XMVectorRotateRight<2>(vR.v2()))); // *bugfix pitch is xy, azimuth is zw
 
 				// begin render radial grid voxel (add to vertex buffer )
 				// critical to increment voxelDynamicRow whn finished, propogates 

@@ -25,8 +25,9 @@ struct alignas(CACHE_LINE_BYTES) lightBuffer3D : public writeonlyBuffer3D<XMFLOA
 	
 public:
 	// access - readonly
-	uvec4_v const   getCurrentVolumeExtentsMin() const { return(uvec4_v(_min_extents)); } // returns the extent minimum, (xyz, light space)
-	uvec4_v const   getCurrentVolumeExtentsMax() const { return(uvec4_v(_max_extents)); } // returns the extent maximum, (xyz, light space)
+	uvec4_v const __vectorcall		getCurrentVolumeExtentsMin() const { return(uvec4_v(_min_extents)); } // returns the extent minimum, (xyz, light space)
+	uvec4_v const __vectorcall		getCurrentVolumeExtentsMax() const { return(uvec4_v(_max_extents)); } // returns the extent maximum, (xyz, light space)
+	uvec4_v const __vectorcall		getVolumeExtentsLimit() const {	return(uvec4_v(LightWidth, LightHeight, LightDepth)); }
 
 	// methods //
 	__declspec(safebuffers) void __vectorcall clear() {
@@ -70,8 +71,8 @@ public:
 		// convert from world space to light space
 		//            &
 		// storing current minimum & maximum
-		uvec4_v(SFM::ceil_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMax)))).xyzw(_max_extents);
-		uvec4_v(SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMin)))).xyzw(_min_extents);
+		SFM::ceil_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMax))).xyzw(_max_extents);
+		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMin))).xyzw(_min_extents);
 
 		// copy internal cache to write-combined memory (staging buffer) using streaming stores
 		// this fully replaces the volume for the stagingBuffer irregardless of current light bounds min & max (important) (this effectively reduces the need to clear the gpu - writecombined *staging* buffer)
@@ -198,10 +199,8 @@ public:
 		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Width, Height, Depth>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
-		// floor to ints
-		uvec4_v const xmIndex(SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))));
 		uvec4_t uiIndex;
-		xmIndex.xyzw(uiIndex);
+		SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
 
 		// slices ordered by Z 
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -215,7 +214,6 @@ public:
 
 
 		// swizzle position to remap position to texture matched xzy rather than xyz
-		//seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), index, SFM::srgb_to_linear_rgba(srgbColor));
  		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), index, ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conersion
 	}
 	

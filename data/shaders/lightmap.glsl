@@ -165,7 +165,7 @@ vec3 getLightFast(out vec3 light_color, out float attenuation, out float normali
 
 	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
-	attenuation = 1.0f / (1.0f + light_distance*light_distance);  
+	attenuation = 1.0f / fma(light_distance, light_distance, 1.0f);  
 
 	// light direction is stored in view space natively in xzy format
 	return(normalize(light_direction_distance.xyz));
@@ -178,7 +178,7 @@ vec3 getReflectionLightFast(out vec3 light_color, out float attenuation, in cons
 	    
 	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
-	attenuation = 1.0f / (1.0f + light_distance*light_distance);  
+	attenuation = 1.0f / fma(light_distance, light_distance, 1.0f);  
 
 	// light direction is stored in view space natively in xzy format
 	return(normalize(light_direction_distance.xyz));
@@ -193,7 +193,7 @@ vec3 getLight(out vec3 light_color, out float attenuation, in const vec3 uvw, in
 	    
 	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
-	attenuation = 1.0f / (1.0f + light_distance*light_distance);  
+	attenuation = 1.0f / fma(light_distance, light_distance, 1.0f);  
 
 	// light direction is stored in view space natively in xzy format
 	return(normalize(light_direction_distance.xyz));

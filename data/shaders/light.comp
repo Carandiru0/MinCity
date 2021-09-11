@@ -62,6 +62,7 @@ layout (constant_id = 7) const float InvVolumeDimensions_Depth = 0.0f;
 layout (constant_id = 8) const float InvVolumeDimensions_Height = 0.0f;
 #define VolumeDimensions vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
 #define InvVolumeDimensions vec3(InvVolumeDimensions_Width, InvVolumeDimensions_Depth, InvVolumeDimensions_Height)
+layout (constant_id = 9) const float VOX_SIZE = 0.0f;
 
 #define emitter_location xyz
 #define packed_color a
@@ -73,10 +74,10 @@ bool isLit( in const float sampled_packed_color )
 }
 
 #ifdef SEED
-vec4 sampleInputVolume( in const ivec3 Location )
+// seed uses the source uploaded light, selecting the correct input based on the current frames resource index
+vec4 sampleInputVolume( in const ivec3 Location ) // best jfa result with texelFetch
 {
-	// seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-	return( texelFetch(seedMap[pc.index_input], Location, 0) ); // best jfa result with texelFetch
+	return texelFetch(seedMap[pc.index_input], Location, 0);
 }
 #else
 vec4 sampleInputVolume( in const ivec3 Location )
@@ -88,7 +89,7 @@ vec4 sampleInputVolume( in const ivec3 Location )
 
 // ###################################################################################################################################
 #if !defined(MIP)
-const vec3 group_size = ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
+const vec3 group_size = vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
 
 shared vec4 warp_lds[GROUP_SIZE_XY][GROUP_SIZE_XY][GROUP_SIZE_Z];
 
@@ -197,7 +198,6 @@ void main()
 
 // ###################################################################################################################################
 #if defined(MIP) // FILTER STEP
-#define index_last index_output
 
 float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location)
 {
@@ -228,37 +228,30 @@ void temporalBlendDD( in const restrict sampler3D inputTemporalDD, inout vec3 di
 	// input Distance, Direction, are initialized to the locations first sample
 
 	vec4 neighbour;
-	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(-1,0,0));
-	direction += normalize(neighbour.xyz);
-	direction = normalize(direction);
-	dist += neighbour.w;
 
-	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(1,0,0));
-	direction += normalize(neighbour.xyz);
-	direction = normalize(direction);
-	dist += neighbour.w;
+	neighbour = textureLod(inputTemporalDD, fma(vec3(-0.5f,0,0), InvVolumeDimensions, uvw), 0);
+	direction = normalize(normalize(neighbour.xyz) + direction);
+	dist = smin(dist, neighbour.w, 0.07f);
 
-	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,-1,0));
-	direction += normalize(neighbour.xyz);
-	direction = normalize(direction);
-	dist += neighbour.w;
+	neighbour = textureLod(inputTemporalDD, fma(vec3(0.5f,0,0), InvVolumeDimensions, uvw), 0);
+	direction = normalize(normalize(neighbour.xyz) + direction);
+	dist = smin(dist, neighbour.w, 0.07f);
 
-	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,1,0));
-	direction += normalize(neighbour.xyz);
-	direction = normalize(direction);
-	dist += neighbour.w;
+	neighbour = textureLod(inputTemporalDD, fma(vec3(0,-0.5f,0), InvVolumeDimensions, uvw), 0);
+	direction = normalize(normalize(neighbour.xyz) + direction);
+	dist = smin(dist, neighbour.w, 0.07f);
 
-	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,-1));
-	direction += normalize(neighbour.xyz);
-	direction = normalize(direction);
-	dist += neighbour.w;
+	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0.5f,0), InvVolumeDimensions, uvw), 0);
+	direction = normalize(normalize(neighbour.xyz) + direction);
+	dist = smin(dist, neighbour.w, 0.07f);
 
-	neighbour = textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,1));
-	direction += normalize(neighbour.xyz);
-	direction = normalize(direction);
-	dist += neighbour.w;
+	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0,-0.5f), InvVolumeDimensions, uvw), 0);
+	direction = normalize(normalize(neighbour.xyz) + direction);
+	dist = smin(dist, neighbour.w, 0.07f);
 
-	dist *= (1.0f/7.0f); // 6 neighbour samples + 1 center sample
+	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0,0.5f), InvVolumeDimensions, uvw), 0);
+	direction = normalize(normalize(neighbour.xyz) + direction);
+	dist = smin(dist, neighbour.w, 0.07f);
 }		
 
 vec3 temporalBlendR( in const restrict sampler3D inputTemporalR, in vec3 color, in const vec3 uvw )
@@ -279,8 +272,6 @@ float attenuation(in const float d)
 {
 	return(1.0f / fma(d, d, 1.0f));
 }
-
-const float VOX_SIZE = 0.0625f;
 
 vec3 sampleC(in const restrict sampler3D inputC, in vec3 color, in const vec3 current_location, in const float d0) 
 {
@@ -358,7 +349,6 @@ void main()
 	const vec3 uvw = gl_GlobalInvocationID.xyz * InvVolumeDimensions;
 
 	// spatial interpolation
-	const warp_local last_warp = textureLod(pingpongTexture[pc.index_last], uvw, 0);
 	const warp_local current_warp = textureLod(pingpongTexture[pc.index_input], uvw, 0);
 
 	const vec3 current_location = uvw * WorldDimensions;
@@ -367,12 +357,10 @@ void main()
 	// #################################################################################################################
 	{	// distance & direction ###
 		
-		const vec4 last_direction_distance = emitter_to_direction_distance(last_warp.emitter_location, current_location);
 		vec4 current_direction_distance = emitter_to_direction_distance(current_warp.emitter_location, current_location);
+		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;
 
 		// temporal interpolation 
-		current_direction_distance.xyz = normalize(current_direction_distance.xyz + last_direction_distance.xyz);
-		current_direction_distance.w = mix(last_direction_distance.w, current_direction_distance.w, 0.5f);
 		current_direction_distance.w = normalize_distance(current_direction_distance.w);
 		const float original_distance = current_direction_distance.w;
 
@@ -391,12 +379,12 @@ void main()
 
 		imageStore(outTemporalDD[1 - pc.index_filter], iLocation, current_direction_distance);
 
-		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;
+		
 		imageStore(outTemporalDD[2], iLocation, current_direction_distance);
 	}
 
 	{   // color ###
-		const vec3 current_color = mix(unpackColor(last_warp.packed_color), unpackColor(current_warp.packed_color), 0.5f);
+		const vec3 current_color = unpackColor(current_warp.packed_color); //mix(unpackColor(last_warp.packed_color), unpackColor(current_warp.packed_color), 0.5f);
 
 		{ // light
 			// Input sample of blended area, see : 

@@ -96,11 +96,16 @@ float cubicPulse( in float x, in const float c, in const float w )
 }
 // iq - https://www.iquilezles.org/www/articles/functions/functions.htm
 // desmos - https://www.desmos.com/calculator/gopau2jnlb
+// this parabola has a smoothstep like interpolation on both sides
 float parabola( in const float x, in const float k )
 {
     return( pow( 4.0f*x*(1.0f-x), k ) );
 }
-
+float parabola( in const float x ) // optimized version for k = 2
+{
+	const float y = 4.0f*x*(1.0f-x);
+    return( y*y );
+}
 // triangle wave
 float triangle_wave(in const float time) 
 {
