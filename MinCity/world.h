@@ -65,7 +65,8 @@ namespace world
 	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex);
 
 	// voxel painting (minivoxels)
-	void __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
+	bool const __vectorcall isVoxelVisible(FXMVECTOR const location);
+	bool const __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
 
 	// Random & Search //
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area);

@@ -7,11 +7,6 @@ layout(location = 0) out float outFullDepth;
 layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInputMS inputFullDepth;
 layout (binding = 1, r32f) writeonly restrict uniform image2D outHalfDepth;
 
-// Downscale Aspect Ratio aware scale of original framebuffer
-layout (constant_id = 0) const float DownScaleWidth = 1.0f;
-layout (constant_id = 1) const float DownScaleHeight = 1.0f;
-#define DownScale vec2(DownScaleWidth, DownScaleHeight)
-
 void main() {
 	
 	// multisampled depth resolve
@@ -26,9 +21,9 @@ void main() {
 	//depth += subgroupQuadSwapVertical(depth);
 	//depth *= 0.25f;
 
-	//if (gl_SubgroupInvocationID == subgroupQuadBroadcast(gl_SubgroupInvocationID, 0)) { // if downscale == 0.5f, doing this is ok, but not always the case in higher resolutions
-      imageStore(outHalfDepth, ivec2(gl_FragCoord.xy * DownScale), depth.xxxx);
-    //}
+	if (gl_SubgroupInvocationID == subgroupQuadBroadcast(gl_SubgroupInvocationID, 0)) { // downscale is always 50%, doing this is ok
+      imageStore(outHalfDepth, ivec2(gl_FragCoord.xy) >> 1, depth.xxxx);
+    }
 	
 }
 

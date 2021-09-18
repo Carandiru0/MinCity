@@ -406,12 +406,14 @@ else // already filled with opaque block
   imageStore(opacityMap, ivoxel, opacity.rrrr);
 #endif
 
+#ifdef DYNAMIC // dynamic voxels only
   // hole filling for rotated (xz) voxels (simplified and revised portion of novel oriented rect algorithm)
 #if defined(CLEAR) // erase
    imageStore(opacityMap, ivec3(ivoxel.x, ivoxel.y - 1, ivoxel.z), vec4(0));			// this is suprisingly coherent 
 #else																					// and works by layer, resulting in bugfix for hole filling.
    imageStore(opacityMap, ivec3(ivoxel.x, ivoxel.y - 1, ivoxel.z), opacity.rrrr);		// reflections on rotated models are no longer distorted.
 #endif
+#endif // dynamic 
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));

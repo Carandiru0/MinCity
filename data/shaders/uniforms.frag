@@ -236,11 +236,9 @@ void main() {
 	
 	road_segment.rgb = road_tile_luma * gui_bleed * road_segment.a;
 
-	vec3 color;
-
 	const float decal_luminance = road_segment.a * attenuation * attenuation;
 	float fresnelTerm;  // feedback from lit
-	color.rgb = lit( road_segment.rgb, light_color,	// todo roads need actual street lights for proper lighting or else too dark
+	vec3 color = lit( road_segment.rgb, light_color,	// todo roads need actual street lights for proper lighting or else too dark
 						1.0f, // occlusion
 						min(1.0f, attenuation + decal_luminance),
 						road_segment.a * 20.0f, ROUGHNESS, // emission, roughness   
@@ -248,7 +246,7 @@ void main() {
 						    
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, V, decal_luminance);
-	color.rgb = mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
+	color.rgb = mix(color.rgb, color.rgb + refract_color * road_segment.a, fresnelTerm) + road_segment.rgb;
 
 	outColor = applyTransparency(color, road_segment.a, weight);
 	// outColor = vec4(weight.xxx, 1.0f); 

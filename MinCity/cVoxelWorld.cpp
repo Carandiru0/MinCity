@@ -753,7 +753,11 @@ namespace world
 		return(false);
 	}
 
-	void __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
+	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation)
+	{
+		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, Iso::MINI_VOX_RADIUS));
+	}
+	bool const __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
 	{
 		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
@@ -768,12 +772,19 @@ namespace world
 
 			if (!_mini.bits->read_bit(index)) {  // filter out, if already set, nothing get added
 
-				_mini.bits->set_bit(index); // the "current" volume is always updated.... 8
+				if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, Iso::MINI_VOX_RADIUS)) { // visibility check //
 
-				setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
-					&(*_mini.voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
+					_mini.bits->set_bit(index);
+
+					setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
+						&(*_mini.voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
+
+					return(true); // visible
+				}
 			}
 		}
+
+		return(false); // not visible
 	}
 
 	Iso::Voxel const * const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex)
@@ -3887,6 +3898,8 @@ namespace world
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
 		//pack into vector for uniform buffer layout
+		_currentState.Uniform.aligned_data0 = XMVectorSetX(_currentState.Uniform.aligned_data0, oCamera.voxelFractionalGridOffset.x);
+		_currentState.Uniform.aligned_data0 = XMVectorSetY(_currentState.Uniform.aligned_data0, oCamera.voxelFractionalGridOffset.y);
 		_currentState.Uniform.aligned_data0 = XMVectorSetZ(_currentState.Uniform.aligned_data0, (time_delta + time_delta_last) * 0.5f); // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
 		_currentState.Uniform.aligned_data0 = XMVectorSetW(_currentState.Uniform.aligned_data0, _currentState.time); // w = time
 
@@ -3897,9 +3910,8 @@ namespace world
 
 		// view matrix derived from eyePos
 		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder)); 
-		XMVECTOR const xmFract(XMVectorSet(oCamera.voxelFractionalGridOffset.x, 0.0f, oCamera.voxelFractionalGridOffset.y, 0.0f));
 
-		_currentState.Uniform.eyePos = XMVectorAdd(xmEyePos, xmFract); // apply fractionsl offset to uniform only.
+		_currentState.Uniform.eyePos = xmEyePos;
 		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 
 		// **panning is isolated to not affect raymarching uniformity**

@@ -75,7 +75,7 @@ namespace Iso
 
 		MINI_VOX_SIZE = VOX_SIZE / MINIVOXEL_FACTORF,	// this value and shader value for mini-vox size need to always match
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
-		MINI_VOX_RADIUS = VOX_RADIUS / MINIVOXEL_FACTORF, // calculated "" ""  (currently 4.0f)
+		MINI_VOX_RADIUS = VOX_RADIUS / MINIVOXEL_FACTORF, // calculated "" ""
 
 		WORLD_GRID_FSIZE = (float)WORLD_GRID_SIZE,
 		WORLD_GRID_FHALFSIZE = (float)WORLD_GRID_HALFSIZE,

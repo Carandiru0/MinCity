@@ -58,6 +58,7 @@ readonly layout(location = 0) in streamIn
 	vec3				rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
+	flat vec3			fractional_offset;
 } In;
 
 #define OUT_REFLECT 0
@@ -143,6 +144,7 @@ bool bounced(in const float opacity)
 float fetch_opacity_texel( in const ivec3 p_scaled ) { // hit test for reflections - note if emissive, is also opaque
 							  
 	return (texelFetch(volumeMap[OPACITY], p_scaled, 0).r);
+	//return (textureLod(volumeMap[OPACITY], p_scaled * InvVolumeDimensions, 0).r);
 }
 
 
@@ -472,7 +474,7 @@ void main() {
 	float interval_remaining = interval_length;
 	// -------------------------------------------------------------------- //
 
-	vec3 p = In.eyePos.xyz + fma(dt, blue_noise, t_hit.x) * rd; // jittered offset
+	vec3 p = In.eyePos.xyz - In.fractional_offset * InvVolumeDimensions + fma(dt, blue_noise, t_hit.x) * rd; // jittered offset
 		
 	// inverted volume height fix (only place this needs to be done!)
 	// this is done so its not calculated everytime at texture sampling

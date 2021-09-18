@@ -210,18 +210,13 @@ namespace Volumetric
 		// this is the best way to build the frustum culling volume, as we can use the combined view projection matrix
 		// and this will result in a culling volume in world space coordinates !
 
-		// looks like it works just fine without having to normalize the planes //
-		_Plane[ePlane::P_NEAR]		= XMFLOAT4A{ vp._13,		   vp._23,			vp._33,			 vp._43 };
-		
-		_Plane[ePlane::P_FAR]		= XMFLOAT4A{ vp._14 - vp._13, vp._24 - vp._23, vp._34 - vp._33, vp._44 - vp._43 };
-		
-		_Plane[ePlane::P_RIGHT]		= XMFLOAT4A{ vp._14 - vp._11, vp._24 - vp._21, vp._34 - vp._31, vp._44 - vp._41 };
-
-		_Plane[ePlane::P_LEFT]		= XMFLOAT4A{ vp._14 + vp._11, vp._24 + vp._21, vp._34 + vp._31, vp._44 + vp._41 };
-
-		_Plane[ePlane::P_TOP]		= XMFLOAT4A{ vp._14 - vp._12, vp._24 - vp._22, vp._34 - vp._32, vp._44 - vp._42 };
-
-		_Plane[ePlane::P_BOTTOM]	= XMFLOAT4A{ vp._14 + vp._12, vp._24 + vp._22, vp._34 + vp._32, vp._44 + vp._42 };
+		// *BUGFIX - planes must be normalized. do NOT change. They work when not normalized, but at a higly reduced precision. Normalization is neccessary to maintain accuracy/precision. (As seen by usage of sphere frustum check function)		
+		XMStoreFloat4A(&_Plane[ePlane::P_NEAR],		XMPlaneNormalize(XMVectorSet(vp._13,  vp._23, vp._33, vp._43 )));
+		XMStoreFloat4A(&_Plane[ePlane::P_FAR],		XMPlaneNormalize(XMVectorSet(vp._14 - vp._13, vp._24 - vp._23, vp._34 - vp._33, vp._44 - vp._43)));
+		XMStoreFloat4A(&_Plane[ePlane::P_RIGHT],	XMPlaneNormalize(XMVectorSet(vp._14 - vp._11, vp._24 - vp._21, vp._34 - vp._31, vp._44 - vp._41)));
+		XMStoreFloat4A(&_Plane[ePlane::P_LEFT],		XMPlaneNormalize(XMVectorSet(vp._14 + vp._11, vp._24 + vp._21, vp._34 + vp._31, vp._44 + vp._41)));
+		XMStoreFloat4A(&_Plane[ePlane::P_TOP],		XMPlaneNormalize(XMVectorSet(vp._14 - vp._12, vp._24 - vp._22, vp._34 - vp._32, vp._44 - vp._42)));
+		XMStoreFloat4A(&_Plane[ePlane::P_BOTTOM],	XMPlaneNormalize(XMVectorSet(vp._14 + vp._12, vp._24 + vp._22, vp._34 + vp._32, vp._44 + vp._42)));
 	}
 
 } // end ns

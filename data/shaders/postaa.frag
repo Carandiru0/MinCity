@@ -183,7 +183,7 @@ const float LUT_OFFSET = 1.0f / (2.0f * LUT_SIZE_STANDARD);
 
 #ifdef HDR
 // sRGB to bt.2020 wide gamut
-vec3 bt709_to_bt2020(in const vec3 color)
+vec3 bt709_to_bt2020(in const vec3 color) // 2020
 {
 	// using 4 digits values, based of double precision values when rounded
 	// see: https://stackoverflow.com/questions/46132625/convert-from-linear-rgb-to-xyz
@@ -213,7 +213,7 @@ vec3 bt709_to_bt2020(in const vec3 color)
 	return(bt709_to_xyz_to_bt2020 * color);
 }
 
-vec3 PQ(in const vec3 color, in const float display_max_nits)
+vec3 PQ(in const vec3 color, in const float display_max_nits) // 2084
 {
     // Apply ST2084 curve
     const float m1 = 2610.0f / 4096.0f * 0.25f;

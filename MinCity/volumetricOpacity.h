@@ -9,14 +9,6 @@
 #include <Utility/scalable_aligned_allocator.h>
 #include "voxelAlloc.h"
 
-#ifndef NDEBUG
-
-#ifdef DEBUG_COMPUTE_LIGHT_UPLOAD
-#define DISABLE_OPTIMIZE_UPLOAD
-#endif
-
-#endif
-
 namespace Volumetric {
 	extern bool const isGraduallyStartingUp();
 } // end ns
@@ -824,13 +816,10 @@ namespace Volumetric
 			if (uvec4_v::any<3>(current_max != uvec4_v(last_max_extents[resource_index])) ||
 				uvec4_v::any<3>(current_min != uvec4_v(last_min_extents[resource_index]))) {
 
-#ifdef DISABLE_OPTIMIZE_UPLOAD
-				uvec4_t extents_max{ LightWidth, LightHeight, LightDepth, 0.0f }, extents_min{};
-#else
 				// update last used extents, at this point all 3 (extents_xxx, last_xxx_extents, current_xxx) will be equal
 				current_max.xyzw(last_max_extents[resource_index]);
 				current_min.xyzw(last_min_extents[resource_index]);
-#endif
+
 				vk::CommandBufferBeginInfo bi{}; // recorded once only
 				cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER_LIGHT);
 

@@ -17,18 +17,18 @@ namespace gui
 	// - [emissive] makes the minivoxels all lightsources.
 	 
 	// isometric diagonal line draws down-right (+X), // isometric vertical line draws up (-Y), // isometric diagonal line draws up-right (+Z)
-	STATIC_INLINE void __vectorcall draw_line(FXMVECTOR xmAxis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t length, uint32_t const flags = 0);
+	STATIC_INLINE void __vectorcall draw_line(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t length, uint32_t const flags = 0);
 	
-	template <typename... Args>
-	STATIC_INLINE uint32_t const __vectorcall draw_string(FXMVECTOR xmAxis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args);
+	template <bool const query_only = false, typename... Args>
+	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const;
 
 	STATIC_INLINE_PURE void __vectorcall add_vertical_bar(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed);
 
-	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(FXMVECTOR xmAxis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
-	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(FXMVECTOR xmAxis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
+	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
+	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
 
 	
 } // end ns
@@ -50,21 +50,44 @@ namespace gui
 
 	namespace axis
 	{
-		read_only inline XMVECTORF32 const
-			x{ Iso::MINI_VOX_STEP,  0.0f,  0.0f, 0.0f }, // isometric diagonal line draws down-right (+X)
-			y{ 0.0f, -Iso::MINI_VOX_STEP,  0.0f, 0.0f }, // isometric vertical line draws up (-Y) 
-			z{ 0.0f,  0.0f,  Iso::MINI_VOX_STEP, 0.0f }; // isometric diagonal line draws up-right (+Z)
+		read_only inline uint32_t const 
+			x  = 0, y  = 1, z  = 2,
+			xn = 3, yn = 4, zn = 5;
+
 	} // end ns
 
 	namespace internal
 	{
+		namespace axis
+		{
+			read_only inline XMVECTORF32 const v[] = {
+				/*x*/{ Iso::MINI_VOX_STEP,  0.0f,  0.0f, 0.0f }, // isometric diagonal line draws down-right (+X)
+				/*y*/{ 0.0f, -Iso::MINI_VOX_STEP,  0.0f, 0.0f }, // isometric vertical line draws up (-Y) 
+				/*z*/{ 0.0f,  0.0f,  Iso::MINI_VOX_STEP, 0.0f }, // isometric diagonal line draws up-right (+Z)
+				/*xn*/{ -Iso::MINI_VOX_STEP,  0.0f,  0.0f, 0.0f }, // isometric diagonal line draws down-right (+X)
+				/*yn*/{ 0.0f, Iso::MINI_VOX_STEP,  0.0f, 0.0f }, // isometric vertical line draws up (-Y) 
+				/*zn*/{ 0.0f,  0.0f, -Iso::MINI_VOX_STEP, 0.0f } // isometric diagonal line draws up-right (+Z)
+			};
+
+			read_only_no_constexpr inline point2D_t p[] = {
+				/*x*/{ 1, 0 },
+				/*y*/{ 0, 0 },
+				/*z*/{ 0, 1 },
+				/*xn*/{ -1, 0 },
+				/*yn*/{ 0, 0 },
+				/*zn*/{ 0, -1 }
+			};
+		}
 		static constexpr uint32_t const mini_voxel_length = 2;
 	} // end ns
 
-	STATIC_INLINE void __vectorcall draw_line(FXMVECTOR xmAxis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t length, uint32_t const flags) // [forward] or [up-right]
+	STATIC_INLINE void __vectorcall draw_line(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t length, uint32_t const flags) // [forward] or [up-right]
 	{
 		if (0 == length)
 			return;
+
+		XMVECTOR const xmAxis(internal::axis::v[axis].v);
+		point2D_t const ptAxis(internal::axis::p[axis]);
 
 		// 1st pixel
 		world::addVoxel(xmLocation, voxelIndex, color, flags);
@@ -81,7 +104,7 @@ namespace gui
 				xmLocation = XMVectorAdd(xmLocation, xmAxis); // ++z
 
 				if (0 == --mini_length) {
-					++voxelIndex.y; // next voxel of minivoxels
+					voxelIndex = p2D_add(voxelIndex, ptAxis); // next voxel of minivoxels
 					mini_length = internal::mini_voxel_length; // reset
 				}
 			}
@@ -123,8 +146,11 @@ namespace gui
 			return( std::isupper(c) );// (c & (1 << 5)); // isupper includes numbers....
 		}
 
-		STATIC_INLINE uint32_t const draw_character(FXMVECTOR xmAxis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags, char const character)
+		template <bool const query_only = false>
+		STATIC_INLINE auto draw_character(FXMVECTOR xmAxis, XMVECTOR const xmLocation, point2D_t const ptAxis, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags, char const character) -> std::pair<float const, uint32_t const> const
 		{
+			uint32_t visible(0), count(0);
+
 			uint32_t const offset(uint32_t(character - ' '));
 
 			uint8_t const* const chr(&vxlmono::data[vxlmono::lut[offset]]);
@@ -138,7 +164,7 @@ namespace gui
 			float yy(font_height_max);
 			for (uint32_t y = 0; y < font_height; ++y, --yy) {
 
-				XMVECTOR const xmOffset1D( SFM::__fma(_mm_set1_ps(yy), axis::y, xmLocation) );
+				XMVECTOR const xmOffset1D( SFM::__fma(_mm_set1_ps(yy), internal::axis::v[gui::axis::y], xmLocation) );
 
 				voxelOffset = voxelIndex;
 
@@ -152,13 +178,26 @@ namespace gui
 						while (space_width) {
 
 							XMVECTOR const xmOffset2D(SFM::__fma(_mm_set1_ps(xx - float(space_width)), xmAxis, xmOffset1D));
-							world::addVoxel(xmOffset2D, p2D_sub(voxelOffset, point2D_t((int32_t)space_width, 0)), 0); // fills in suitable empty space black
+
+							if constexpr (!query_only) {
+								visible += (uint32_t)world::addVoxel(xmOffset2D, p2D_sub(voxelOffset, point2D_t((int32_t)space_width, 0)), 0); // fills in suitable empty space black
+							}
+							else {
+								visible += (uint32_t)world::isVoxelVisible(xmOffset2D);
+							}
+							++count;
 							--space_width;
 						}
 
 						XMVECTOR const xmOffset2D(SFM::__fma(_mm_set1_ps(xx), xmAxis, xmOffset1D));
-						world::addVoxel(xmOffset2D, voxelOffset, color, flags);
 
+						if constexpr (!query_only) {
+							visible += (uint32_t)world::addVoxel(xmOffset2D, voxelOffset, color, flags);
+						}
+						else {
+							visible += (uint32_t)world::isVoxelVisible(xmOffset2D);
+						}
+						++count;
 						++character_width;
 					}
 					else if (character_width) { // bit is empty and there was a bit hit before
@@ -167,7 +206,7 @@ namespace gui
 					}
 
 					if (0 == --mini_length) {
-						++voxelOffset.x; // next voxel of minivoxels
+						voxelOffset = p2D_add(voxelOffset, ptAxis); // next voxel of minivoxels
 						mini_length = internal::mini_voxel_length; // reset
 					}
 				}
@@ -175,19 +214,22 @@ namespace gui
 				max_character_width = SFM::max(max_character_width, character_width);
 			}
 
-			return(max_character_width);
+			return{ ((float)visible / (float)count), max_character_width };
 		}
 	} // end ns
 
-	template <typename... Args>
-	STATIC_INLINE uint32_t const __vectorcall draw_string(FXMVECTOR xmAxis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args)
+	template <bool const query_only, typename... Args>
+	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const
 	{
 		std::string const str( fmt::format(fmt, args...) );
-
+		float visible(0.0f), count(0.0f);
 		char const* pChars = str.data();
 		uint32_t mini_length(internal::mini_voxel_length);
 		uint32_t string_width(0);
 		char character(0), last_character(0);
+
+		XMVECTOR const xmAxis(internal::axis::v[axis].v);
+		point2D_t const ptAxis(internal::axis::p[axis]);
 
 		while ((character = *pChars)) {
 
@@ -197,7 +239,7 @@ namespace gui
 				++string_width;
 
 				if (0 == --mini_length) {
-					++voxelIndex.x; // next voxel of minivoxels
+					voxelIndex = p2D_add(voxelIndex, ptAxis); // next voxel of minivoxels
 					mini_length = internal::mini_voxel_length; // reset
 				}
 			}
@@ -207,25 +249,30 @@ namespace gui
 				// is a space or unrecognized character and not the 1st character
 				if (last_character) {
 					if (!internal::is_uppercase_style(last_character)) { // (filled space or just blank space)
-						internal::draw_character(xmAxis, xmLocation, voxelIndex, color, flags, 0x5e);
+						auto const [visibility, character_width] = internal::draw_character<query_only>(xmAxis, xmLocation, ptAxis, voxelIndex, color, flags, 0x5e);
+						visible += visibility;
+						++count;
 					}
 					xmLocation = XMVectorAdd(xmLocation, xmAxis); // space width of one voxel (blank space)
 					++string_width;
 
 					if (0 == --mini_length) {
-						++voxelIndex.x; // next voxel of minivoxels
+						voxelIndex = p2D_add(voxelIndex, ptAxis); // next voxel of minivoxels
 						mini_length = internal::mini_voxel_length; // reset
 					}
 				}
 			}
 			else {
-				uint32_t const character_width = internal::draw_character(xmAxis, xmLocation, voxelIndex, color, flags, character);
+				auto const [visibility, character_width] = internal::draw_character<query_only>(xmAxis, xmLocation, ptAxis, voxelIndex, color, flags, character);
+				visible += visibility;
+				++count;
+
 				xmLocation = SFM::__fma(_mm_set1_ps((float)(character_width)), xmAxis, xmLocation); // character width of n voxels + 1 space
 				string_width += character_width;
 
 				for (uint32_t i = 0; i < character_width; ++i) {
 					if (0 == --mini_length) {
-						++voxelIndex.x; // next voxel of minivoxels
+						voxelIndex = p2D_add(voxelIndex, ptAxis); // next voxel of minivoxels
 						mini_length = internal::mini_voxel_length; // reset
 					}
 				}
@@ -235,7 +282,7 @@ namespace gui
 			++pChars;
 		}
 
-		return(string_width);
+		return{ (visible / count), string_width };
 	}
 
 	STATIC_INLINE_PURE void __vectorcall add_vertical_bar(std::string& str, float const t)  // number, fractional
@@ -268,7 +315,7 @@ namespace gui
 		str += positions[position];
 	}
 
-	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(FXMVECTOR xmAxis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
+	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
 	{
 		float tRemaining(((float)length / internal::font_height_max) * SFM::clamp(t, 0.0f, 1.0f));
 
@@ -276,14 +323,14 @@ namespace gui
 			std::string szBar("");
 			add_vertical_bar(szBar, tRemaining);
 
-			draw_string(xmAxis, xmLocation, voxelIndex, color, flags, szBar);
-			xmLocation = SFM::__fma(_mm_set1_ps(internal::font_height_max), axis::y, xmLocation);
+			draw_string(axis, xmLocation, voxelIndex, color, flags, szBar);
+			xmLocation = SFM::__fma(_mm_set1_ps(internal::font_height_max), internal::axis::v[gui::axis::y], xmLocation);
 			--tRemaining;
 		}
 
 		return(internal::font_width - 1);
 	}
-	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(FXMVECTOR xmAxis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
+	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
 	{
 		std::string szBar("");
 		float tRemaining(((float)length / internal::font_width_max) * SFM::clamp(t, 0.0f, 1.0f));
@@ -293,7 +340,9 @@ namespace gui
 			--tRemaining;
 		}
 
-		return( draw_string(xmAxis, xmLocation, voxelIndex, color, flags, szBar) );
+		auto const [visibility, width] = draw_string(axis, xmLocation, voxelIndex, color, flags, szBar);
+
+		return( width );
 	}
 
 	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t)

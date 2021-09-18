@@ -6,6 +6,7 @@
 #include "gui.h"
 #include "prices.h"
 
+static constexpr float const MIN_VISIBILITY = 0.95f;
 static constexpr float const GUI_HEIGHT = -10.0f;
 static inline v2_rotation_t const _offsetAngle{ v2_rotation_constants::v15 }; // starting offset for text alignment
 
@@ -50,13 +51,15 @@ void cZoningTool::paint()
 {
 	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
 
+	static bool bFindMaxVisibility(false);
+
 	// make relative to world origin (gridspace to worldspace transform)
 	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 
 	if (_activePoint > 1) { // have starting & ending index?
 
 		rect2D_t const area(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
-				
+
 		//draw_grid(area, Iso::SEGMENT_SIDE_WIDTH, 120);
 
 		// calculate area cost
@@ -107,39 +110,76 @@ void cZoningTool::paint()
 		gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
 
 		v2_rotation_t const view(world::getAzimuth() + _offsetAngle); // range is -XM_PI to XM_PI or -180 to 180 // offset angle represents the most optimal "angle" offset to switch the gui text.
+		point2D_t best_origin;
+		uint32_t axis;
 
 		if (view.angle() < -v2_rotation_constants::v90.angle()) {  // -180 to -90
-			origin = area.right_top();
-			xmOrigin = p2D_to_v2(origin);
-			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
-			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); // red
-			gui::draw_string(XMVectorNegate(gui::axis::x), xmOrigin, origin, 0x000000ff, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+			best_origin = area.right_top();
+			axis = gui::axis::xn;
 		}
 		else if (view.angle() < 0.0f) { // -90 to 0
-			origin = area.right_bottom();
-			xmOrigin = p2D_to_v2(origin);
-			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
-			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); // blue-red
-			gui::draw_string(XMVectorNegate(gui::axis::z), xmOrigin, origin, 0x00ff00ff, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+			best_origin = area.right_bottom();
+			axis = gui::axis::zn;
 		}
 		else if (view.angle() < v2_rotation_constants::v90.angle()) { // 0 to 90
-			origin = area.left_bottom();
-			xmOrigin = p2D_to_v2(origin);
-			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
-			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
-			gui::draw_string(gui::axis::x, xmOrigin, origin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+			best_origin = area.left_bottom();
+			axis = gui::axis::x;
 		}
 		else { // 90 to 180
-			origin = area.left_top();
-			xmOrigin = p2D_to_v2(origin);
-			xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-			xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
-			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); // blue
-			gui::draw_string(gui::axis::z, xmOrigin, origin, 0x00ff0000, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+			best_origin = area.left_top();
+			axis = gui::axis::z;
 		}
+
+		/*
+		if (bFindMaxVisibility) {
+
+			float visibility(0.0f);
+			{ // original
+				origin = p2D_add(best_origin, best_axis);
+				xmOrigin = p2D_to_v2(origin);
+				xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+				xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+				xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
+
+				auto const [original_visibility, width] = gui::draw_string<true>(xmAxis, xmOrigin, origin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+				visibility = original_visibility;
+			}
+
+			origin = best_origin;
+
+			do
+			{ // add
+				origin = p2D_add(origin, best_axis);
+				xmOrigin = p2D_to_v2(origin);
+				xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+				xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+				xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
+
+				auto const [adjacent_visibility, width] = gui::draw_string<true>(xmAxis, xmOrigin, origin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+				if (adjacent_visibility > visibility) {
+					visibility = adjacent_visibility;
+					best_origin = origin;
+				}
+				else {
+					break;
+				}
+
+			} while (true);
+
+			bFindMaxVisibility = false; // always reset
+		}*/
+
+		// actually draw the text
+		origin = best_origin;
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
+			
+		auto const [quadrant_visibility, width] = gui::draw_string(axis, xmOrigin, origin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+
+		// checking required next frame?
+		bFindMaxVisibility = (quadrant_visibility < MIN_VISIBILITY);
 
 		// draw the current angle in the center of the square (for debugging)
 		v2_rotation_t const vangle(world::getAzimuth());
@@ -149,7 +189,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
-		gui::draw_string(gui::axis::x, xmOrigin, origin, color, gui::flags::emissive, "{:.{}f}", angle, 1); // abgr - rgba backwards
+		gui::draw_string(gui::axis::x, xmOrigin, origin, color, gui::flags::emissive, "{:.{}f}", quadrant_visibility, 1); // abgr - rgba backwards
 
 		/*
 		static constexpr fp_seconds const

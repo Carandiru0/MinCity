@@ -732,11 +732,7 @@ void cVulkan::CreateDepthResolveResources()
 {
 	// Create two shaders, vertex and fragment. 
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" };
-
-	std::vector< vku::SpecializationConstant > constants;
-
-	MinCity::VoxelWorld.SetSpecializationConstants_DepthResolve_FS(constants);
-	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "depthresolve.frag.bin", constants };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "depthresolve.frag.bin" };
 
 	// Build a template for descriptor sets that use these shaders.
 	vku::DescriptorSetLayoutMaker	dslm;
