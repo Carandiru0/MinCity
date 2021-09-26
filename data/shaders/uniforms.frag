@@ -45,7 +45,6 @@ void main() {
 #endif
 
 #ifdef TRANS 
-#extension GL_KHR_shader_subgroup_arithmetic: enable
 #define OUT_FRESNEL
 #endif
 
@@ -144,11 +143,12 @@ void main() {
 					  0.0f, ROUGHNESS,  // emission for terrain voxels is specialized by modifying attenuation above. this is used for highlighting.
 					  L, N, V);
 
+	
 	float grid = antialiasedGrid(In._uv_texture.xy, 1024.0f);
 
 	// third way ------------------------------------
 	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
-	grid *= parabola(terrainHeight); // important
+	grid *= parabola(terrainHeight, 1.7f); /*smootherstep(1.0f, 0.0f, terrainHeight)*/ // fade out as height increases
 	grid *= 1.0f - attenuation; // modulate by the abscense of light
 	grid *= In._occlusion; // ambient occlusion
  
@@ -157,7 +157,9 @@ void main() {
 
 	luma = clamp(grid_luma / max(1.0f - luma, 1e-6f), 0.0f, 1.0f); // avoid division by zero, clamp result to 0.0 ... 1.0f range
 	
-	outColor.rgb = mix(color, grid.xxx * (1.0f - luma), grid);
+	color = mix(color, grid.xxx * (1.0f - luma), grid);
+
+	outColor.rgb = color;
 }
 #elif defined(ROAD)  
 
@@ -236,9 +238,11 @@ void main() {
 	
 	road_segment.rgb = road_tile_luma * gui_bleed * road_segment.a;
 
+	vec3 color;
+
 	const float decal_luminance = road_segment.a * attenuation * attenuation;
 	float fresnelTerm;  // feedback from lit
-	vec3 color = lit( road_segment.rgb, light_color,	// todo roads need actual street lights for proper lighting or else too dark
+	color.rgb = lit( road_segment.rgb, light_color,	// todo roads need actual street lights for proper lighting or else too dark
 						1.0f, // occlusion
 						min(1.0f, attenuation + decal_luminance),
 						road_segment.a * 20.0f, ROUGHNESS, // emission, roughness   
@@ -246,7 +250,7 @@ void main() {
 						    
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, V, decal_luminance);
-	color.rgb = mix(color.rgb, color.rgb + refract_color * road_segment.a, fresnelTerm) + road_segment.rgb;
+	color.rgb = mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
 
 	outColor = applyTransparency(color, road_segment.a, weight);
 	// outColor = vec4(weight.xxx, 1.0f); 
@@ -276,7 +280,7 @@ void main() {
 						    L, N, V );
 
 #else     
-#define SCROLL_SPEED 2.0f
+#define SCROLL_SPEED GOLDEN_RATIO
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
@@ -289,13 +293,8 @@ void main() {
 							             
 	// Apply specific transparecy effect for MinCity //
 
-	const float fresnel = pow(fresnelTerm, 5.0f);
-	 
 	// using occlusion for approx density to add some dynamics to refraction
-	const float density = 1.0f - (In._occlusion + normalize(subgroupInclusiveAdd(In._occlusion).xxx)).x * 0.5f;        
-	
-	const float diff = pow(density, 6.0f);  
-	const float subgroup_fresnel = smoothstep(0.0f, 0.25f, diff * (1.0f - fresnel));
+	const float density = 1.0f - In._occlusion;
 
 	vec3 refract_color;  
 	const float weight = refraction_color(refract_color, colorMap, V, density);                                                    
@@ -304,7 +303,7 @@ void main() {
 	const float accurate = InvVolumeDimensions_Z * (128.0f);                                                              
 	const float scanline = aaStep( accurate, mod(In.uv.z * VolumeDimensions_Z + mod(SCROLL_SPEED * In._time, VolumeDimensions_Z), accurate * 1.5f * 1.5f)) * (N.z * 0.5f + 0.5f);
 	
-	vec3 color = mix(lit_color * (1.0f - density), refract_color + lit_color * 4.0f, (subgroup_fresnel + fresnel));      
+	vec3 color = mix(lit_color * (1.0f - density), refract_color + lit_color, fresnelTerm * 2.0f);      
 
 	color *= min(1.0f, scanline + 0.5f);
 	  

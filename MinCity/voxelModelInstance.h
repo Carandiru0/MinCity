@@ -109,10 +109,10 @@ namespace Volumetric
 	public:
 		__inline voxB::voxelModel<Dynamic> const& __restrict		  getModel() const { return(model); }
 		uint32_t const												  getFlags() const { return(flags);}
-		bool const													  isHighlighted() const { return(highlighted); }
+		bool const													  isFaded() const { return(faded); }
 
 		uint32_t const												  getTransparency() const { return(transparency); } // use eVoxelTransparency enum
-		void														  setHighlighted(bool const highlighted_) { highlighted = highlighted_; }
+		void														  setFaded(bool const faded_) { faded = faded_; }
 
 		/// Transparency only has affect if loaded model has state groups defining the voxels that are transparent at load model time
 		void														  setTransparency(uint32_t const transparency_) { transparency = transparency_; } // use eVoxelTransparency enum
@@ -129,11 +129,11 @@ namespace Volumetric
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
-		bool												highlighted;
-		uint8_t												transparency;	// 4 distinct levels of transparency supported - see eVoxelTransparency enum - however all values between 0 - 255 will be correctly converted to transparency level that is closest
+		bool												faded;
+		uint32_t											transparency;	// 4 distinct levels of transparency supported - see eVoxelTransparency enum - however all values between 0 - 255 will be correctly converted to transparency level that is closest
 	public:
 		inline explicit voxelModelInstance(voxB::voxelModel<Dynamic> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
-			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), highlighted(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
+			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), faded(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
 		{}
 	};
 

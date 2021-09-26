@@ -2046,6 +2046,5 @@ void cRoadTool::deactivate()
 
 void cRoadTool::activate()
 {
-	MinCity::Vulkan.setMouseBufferMode(eMouseBufferMode::GROUND_VOXELS);
 }
 

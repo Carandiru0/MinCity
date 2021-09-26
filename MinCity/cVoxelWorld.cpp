@@ -705,6 +705,148 @@ void cVoxelWorld::OnMouseInactive()
 	}
 }
 
+void cVoxelWorld::clearOcclusionInstances()
+{
+	static constexpr uint32_t const
+		STATIC = 0,
+		DYNAMIC = 1;
+
+	{ // static
+		for (unordered_set<uint32_t>::const_iterator iter = _occlusion.fadedInstances[STATIC].cbegin(); iter != _occlusion.fadedInstances[STATIC].cend(); ++iter) {
+
+			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(*iter);
+
+			if (instance) {
+				instance->setFaded(false); // reset instance
+			}
+		}
+
+		_occlusion.fadedInstances[STATIC].clear(); // reset
+	}
+	{ // dynamic
+		for (unordered_set<uint32_t>::const_iterator iter = _occlusion.fadedInstances[DYNAMIC].cbegin(); iter != _occlusion.fadedInstances[DYNAMIC].cend(); ++iter) {
+
+			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(*iter);
+
+			if (instance) {
+				instance->setFaded(false); // reset instance
+			}
+		}
+
+		_occlusion.fadedInstances[DYNAMIC].clear(); // reset
+	}
+
+	_occlusion.state = Globals::UNLOADED;
+}
+void cVoxelWorld::setOcclusionInstances()
+{
+	static constexpr uint32_t const
+		STATIC = 0,
+		DYNAMIC = 1;
+
+	uint32_t hasOcclusion(Globals::UNLOADED);
+
+	{ // static
+		for (unordered_set<uint32_t>::const_iterator iter = _occlusion.fadedInstances[STATIC].cbegin(); iter != _occlusion.fadedInstances[STATIC].cend(); ++iter) {
+
+			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(*iter);
+
+			if (instance) {
+				instance->setFaded(true);
+				hasOcclusion = Globals::LOADED;
+			}
+		}
+	}
+	{ // dynamic
+		for (unordered_set<uint32_t>::const_iterator iter = _occlusion.fadedInstances[DYNAMIC].cbegin(); iter != _occlusion.fadedInstances[DYNAMIC].cend(); ++iter) {
+
+			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(*iter);
+
+			if (instance) {
+				instance->setFaded(true);
+				hasOcclusion = Globals::LOADED;
+			}
+		}
+	}
+
+	_occlusion.state = hasOcclusion;
+}
+void cVoxelWorld::updateMouseOcclusion()
+{
+	//FMT_NUKLEAR_DEBUG(true, "{:d} , {:d}   {:d} , {:d}  {:s}", _occlusion.groundVoxelIndex.x, _occlusion.groundVoxelIndex.y, _occlusion.occlusionVoxelIndex.x, _occlusion.occlusionVoxelIndex.y, (_lastOcclusionQueryValid ? "true" : "false"));
+
+	{
+		if (_lastOcclusionQueryValid) {
+
+			_occlusion.state = Globals::PENDING;
+		}
+		else {
+			_occlusion.state = Globals::UNLOADED;
+		}
+	}
+
+	if (_occlusion.state < 0) { // PENDING ?
+
+		clearOcclusionInstances(); //  always clear working correctly
+
+		if (_occlusion.occlusionVoxelIndex != _occlusion.groundVoxelIndex) { // if ground is occluded by some voxels...
+
+			point2D_t voxelIndex;
+
+			// hovered voxel on ground
+			voxelIndex = getHoveredVoxelIndex();
+			Iso::Voxel const* const pVoxelHovered = world::getVoxelAt(voxelIndex);
+
+			if (pVoxelHovered) {
+				Iso::Voxel const oHoveredVoxel(*pVoxelHovered);
+
+				// occlusion voxel not ground
+				voxelIndex = _occlusion.occlusionVoxelIndex;
+				Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+
+				if (pVoxel) {
+
+					Iso::Voxel const oVoxel(*pVoxel);
+
+					if (Iso::isOwnerAny(oVoxel)) {
+
+						for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+
+							if (Iso::isOwner(oVoxel, i)) {
+
+								// get hash, which should be the voxel model instance ID
+								uint32_t const hash = Iso::getHash(oVoxel, i);
+
+								if (0 != hash) {
+
+									// Check hash against bottom (exclusion)
+									bool excluded(true);
+
+									for (uint32_t j = Iso::STATIC_HASH; j < Iso::HASH_COUNT; ++j) {
+
+										if (Iso::getHash(oHoveredVoxel, j) == hash) {
+											excluded = false;
+											break;
+										}
+									}
+									
+									if (excluded) {
+										// add to set of unique instance hashes
+										uint32_t const set = (uint32_t const)(Iso::STATIC_HASH != i);
+										_occlusion.fadedInstances[set].emplace(hash);
+									}
+								}
+							}
+						}
+					}
+				}
+
+				// adjust instances to faded
+				setOcclusionInstances();
+			}
+		}
+	}
+}
 
 namespace world
 {
@@ -2245,8 +2387,8 @@ namespace world
 {
 	cVoxelWorld::cVoxelWorld()
 		:
-		_lastState{}, _currentState{}, _targetState{},
-		_vMouse{}, _voxelIndexHoveredOk(false),
+		_lastState{}, _currentState{}, _targetState{}, _occlusion{},
+		_vMouse{}, _lastOcclusionQueryValid(false),
 		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr), _textureShader{},
 		_blackbodyImage(nullptr),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
@@ -2963,7 +3105,7 @@ namespace world
 		return(voxelRender::render_state.road_tiles_visible);
 	}
 
-	rect2D_t const cVoxelWorld::getVisibleGridBounds() const // Grid Space (-x,-y) to (x, y) Coordinates Only
+	rect2D_t const __vectorcall cVoxelWorld::getVisibleGridBounds() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
 		point2D_t const gridBounds(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z);
 
@@ -2972,7 +3114,7 @@ namespace world
 		// ie.) randomVoxel functions depend on this
 		return(r2D_add(area, p2D_sub(oCamera.voxelIndex_Center, p2D_half(gridBounds))));
 	}
-	rect2D_t const cVoxelWorld::getVisibleGridBoundsClamped() const // Grid Space (-x,-y) to (x, y) Coordinates Only
+	rect2D_t const __vectorcall cVoxelWorld::getVisibleGridBoundsClamped() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
 		point2D_t const gridBounds(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z);
 		rect2D_t area(r2D_set_by_width_height(point2D_t{}, gridBounds));
@@ -2985,7 +3127,7 @@ namespace world
 
 		return(area);
 	}
-	point2D_t const& cVoxelWorld::getVisibleGridCenter() const // Grid Space (-x,-y) to (x, y) Coordinates Only
+	point2D_t const __vectorcall cVoxelWorld::getVisibleGridCenter() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
 		return(oCamera.voxelIndex_Center);
 	}
@@ -3828,12 +3970,12 @@ namespace world
 			static constexpr int32_t const MAX_VALUE(UINT16_MAX);
 			static constexpr float const INV_MAX_VALUE(1.0f / float(MAX_VALUE));
 
-			point2D_t const rawData = MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse));
+			point2D_t const rawData[2] = { MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse), 1), MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse), 0) };
 
-			if (!rawData.isZero()) { // bugfix for when mouse hovers out of grid bounds 
+			if (!rawData[0].isZero()) { // bugfix for when mouse hovers out of grid bounds 
 
 				// normalize from [0...65535] to [0.0f....1.0f] //
-				XMVECTOR xmVoxelIndex(p2D_to_v2(rawData));
+				XMVECTOR xmVoxelIndex(p2D_to_v2(rawData[0]));
 				xmVoxelIndex = XMVectorScale(xmVoxelIndex, INV_MAX_VALUE);
 
 				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
@@ -3841,18 +3983,41 @@ namespace world
 
 				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
-				if (!voxelIndex.isZero()) {
+				_voxelIndexHover.v = voxelIndex.v;
+				_occlusion.groundVoxelIndex.v = voxelIndex.v;
+			}
+			if (!rawData[1].isZero()) { // bugfix for when mouse hovers out of grid bounds 
 
-					_voxelIndexHover.v = voxelIndex.v;
-					_voxelIndexHoveredOk = true;
-				}
-				else {
-					_voxelIndexHoveredOk = false;
-				}
+				// normalize from [0...65535] to [0.0f....1.0f] //
+				XMVECTOR xmVoxelIndex(p2D_to_v2(rawData[1]));
+				xmVoxelIndex = XMVectorScale(xmVoxelIndex, INV_MAX_VALUE);
+
+				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
+				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set1_ps(Iso::WORLD_GRID_FSIZE), _mm_set1_ps(Iso::WORLD_GRID_FHALFSIZE));
+
+				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
+
+				//if (voxelIndex != _occlusion.groundVoxelIndex) {
+					if (voxelIndex != _occlusion.occlusionVoxelIndex) {
+						uvec4_v cmpTwo(2);
+						point2D_t const absDiff(p2D_abs(p2D_sub(_occlusion.groundVoxelIndex, voxelIndex)));
+						uvec4_v const cmpDiff(absDiff.v);
+
+						if (uvec4_v::all<2>(cmpDiff < cmpTwo)) { // update the hoverindex if within (+-)1 voxels of last recorded *known good* ground voxel index
+																 // this improves the latency of input and accuracy.
+							_voxelIndexHover.v = voxelIndex.v;
+						}
+						_occlusion.occlusionVoxelIndex.v = voxelIndex.v;
+					}
+					_lastOcclusionQueryValid = true;
+				//}
 			}
 			else {
-				_voxelIndexHoveredOk = false;
+				_lastOcclusionQueryValid = false;
 			}
+
+			// on rawData being zero, no changes to the voxelIndex hovered are made for both buffers
+
 		}
 #ifdef DEBUG_MOUSE_HOVER_VOXEL
 		{ // emiisive highlight add
@@ -3872,17 +4037,6 @@ namespace world
 		DebugVariable = tDelta;
 		setDebugVariable(microseconds, DebugLabel::HOVERVOXEL_US, DebugVariable);
 #endif
-	}
-
-	void __vectorcall cVoxelWorld::UpdateUniformStateLatest()
-	{
-		// This method is called at the last available point before the *current* uniform state is uploaded to the gpu
-		//
-		// eg.) 
-		//      both UpdateUniformStateTarget & UpdateUniformState are called before the resource staging in the main voxelkworld update()
-		//      This synchronizes usage of this value with the current frame so that Compute uses the same value as Rendering aswell.
-
-		// currently no uniforms need to be set here
 	}
 
 	void __vectorcall cVoxelWorld::UpdateUniformState(float const tRemainder)  // interpolated sub frame state also containing anything that needs to be updated every frame
@@ -3958,7 +4112,19 @@ namespace world
 		// move state to last target
 		UpdateUniformState(bFirstUpdate ? 1.0f : 0.0f);
 	}
-	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdate)
+	void cVoxelWorld::PreUpdate(bool const bPaused) // *** timing is unreliable in this function, do not use time in this function
+	{
+		// special input handling (required every frame) //
+		//if (!bPaused) { // only neccesary to query the voxel indices hovered by the mouse when active (not paused).
+
+			//if (_bMotionDelta || oCamera.Motion) {
+
+			HoverVoxel();
+			
+			//}
+		//}
+	}
+	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateFrame, bool const bFirstUpdateProgram)
 	{
 		tTime const tStart(start());
 
@@ -3975,21 +4141,20 @@ namespace world
 		/*XMVECTOR const xmOrigin =*/ UpdateCamera(tNow, tDelta);
 
 		//###########################################################//
-		UpdateUniformStateTarget(critical_now(), tStart, bFirstUpdate);
+		UpdateUniformStateTarget(critical_now(), tStart, bFirstUpdateProgram);
 		//###########################################################//
 		
 		// ***** Anything that uses uniform state updates AFTER
-		if (_bMotionDelta || oCamera.Motion) {
-
-			HoverVoxel();
-
-			_bMotionDelta = false; // must reset
-		}
-
-		[[likely]] if (!bFirstUpdate) {
+		_bMotionDelta = false; // must reset *here*
+		
+		[[likely]] if (!bFirstUpdateProgram) {
 
 			[[unlikely]] if (eExclusivity::DEFAULT != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
 				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
+
+			if (bFirstUpdateFrame) {
+				updateMouseOcclusion();
+			}
 
 #ifdef GIF_MODE
 			static constexpr float const SWING = 0.025f;
@@ -4220,8 +4385,11 @@ namespace world
 				*/
 
 			} // end !Paused //
+			else {
+				//clearOcclusionInstances();
+			}
 		}
-		else
+		else // first update program //
 		{ // ### ONLOADED EVENT must be triggered here !! //
 			OnLoaded(tNow);
 		}

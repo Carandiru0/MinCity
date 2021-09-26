@@ -1,7 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_quad: enable
-#extension GL_KHR_shader_subgroup_arithmetic: enable
 
 #define subgroup_quad_enabled
 #define fragment_shader
@@ -77,7 +76,7 @@ void main() {
 	                     In._emission, ROUGHNESS,
 						 L, N, V, reflect_color, fresnelTerm );
     
-	const float density = 1.0f - (In._passthru + normalize(subgroupInclusiveAdd(In._passthru).xxx)).x * 0.5f;
+	const float density = (1.0f - In._passthru);
 	       
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, V, density * (1.0f - fresnelTerm) * 0.5f);

@@ -384,7 +384,9 @@ namespace voxB
 					vxl_begin(r.begin()),
 					vxl_end(r.end());
 
-				bool const highlighted(instance.isHighlighted());
+				uint32_t const Transparency(instance.getTransparency());
+				bool const Faded(instance.isFaded());
+
 				uint32_t const flags(instance.getFlags());
 
 				auto const& __restrict model(instance.getModel());
@@ -442,21 +444,22 @@ namespace voxB
 						hash |= voxel.getAdjacency();					//           0000 0000 0001 1111
 						hash |= (voxel.getOcclusion() << 5);			//           0000 1111 111x xxxx
 
-						bool Emissive(false), Transparent(false);
+						bool Transparent(false), Emissive(false);
 						if (nullptr != model._State) {
 
 							voxB::voxelState state(model._State[vxl]);
-							voxel.Alpha = instance.getTransparency(); // only applicable if transparent voxel
+							voxel.Alpha = Transparency; // only applicable if transparent voxel
 
 							state = instance.OnVoxel(voxel, state, vxl);
 
 							if (state.Hidden)
 								continue;
-							Emissive = highlighted | state.Emissive | Iso::isEmissive(rootVoxel);			// dynamic emission state
-							Transparent = state.Transparent;
+							
+							Transparent = Faded | state.Transparent;
+							Emissive = (state.Emissive | Iso::isEmissive(rootVoxel)) & !Faded;			// dynamic emission state
 						}
 						else {
-							Emissive = highlighted | Iso::isEmissive(rootVoxel);		// static emission state
+							Emissive = Iso::isEmissive(rootVoxel);		// static emission state
 						}
 
 						hash |= (Emissive << 12);						// 0000 0000 0001 xxxx xxxx xxxx
@@ -557,14 +560,20 @@ namespace voxB
 
 		[[maybe_unused]] tbb::atomic<VertexDecl::VoxelNormal*> pVoxelsOutStatic;
 		[[maybe_unused]] tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutDynamic;
+		tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutTrans;
 
-		if constexpr (Dynamic) {
-			pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+		if (!instance.isFaded()) {
+			if constexpr (Dynamic) {
+				pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+			}
+			else {
+				pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+			}
+			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxelsTransparent);
 		}
 		else {
-			pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxels + _numVoxelsTransparent);
 		}
-		tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxelsTransparent);
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceType PerformanceCounters;

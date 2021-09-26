@@ -22,6 +22,9 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 layout(early_fragment_tests) in;
 
 layout(location = 0) out vec4 outColor;
+#ifdef MOUSE
+layout(location = 1) out vec2 outMouse;
+#endif
 
 const uint MAX_LAYERS = 255;
 
@@ -33,7 +36,9 @@ layout(std430, set=0, binding=2) restrict buffer subgroupMaximum { // reset ever
 void main() {
   
     outColor.a = 1.0f / 255.0f;
-
+#ifdef MOUSE
+    outMouse = vec2(0); // required for mouse occlusion query to discern transparency
+#endif
     // read last completed maximum transparency layer "depth" and output to color attachment
     // the current blend state causes this is add to the current value in the alpha channel of the destination color attachment
     // this is basically a counter that increments but is in the range of [0.0 ... 1.0]

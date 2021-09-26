@@ -526,7 +526,7 @@ namespace Volumetric
 #ifdef NDEBUG // *bugfix: there is some strange disarity between release and debug builds. These are currently set where no black flicker occurs while scrolling view on voxel lights. @todo find whats actually causing this, this workaround however works for now.
 		PushConstants.index_input = index_input; 
 #else
-		PushConstants.index_input = 1 - index_input;
+		PushConstants.index_input = index_input;
 #endif
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsJFA), reinterpret_cast<void const* const>(&PushConstants));

@@ -6,7 +6,7 @@ layout(location = 0) in vec4 inPos;
 
 writeonly layout(location = 0) out streamOut
 {
-	vec3				rd;
+	noperspective vec3	rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
 	flat vec3			fractional_offset;
@@ -32,7 +32,7 @@ void main() {
 	eyeDir = normalize(eyeDir);  
 	Out.eyeDir.xzy = eyeDir; // Out.eyeDir is flat, normalized and good to use normalized in fragment shader
 
-	Out.fractional_offset = vec3(fractional_offset(), 0.0f);
+	Out.fractional_offset = vec3(fractional_offset(), 0.0f) / VolumeDimensions.xzy;
 
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 	const vec3 VolumeScale = VolumeDimensions * 0.5f;

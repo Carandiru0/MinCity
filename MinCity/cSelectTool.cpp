@@ -110,13 +110,13 @@ void cSelectTool::clear_selection()
 		if (_selectedDynamic) {
 			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(_selectedInstanceHash);
 			if (instance) {
-				instance->setHighlighted(false);
+				//instance->setHighlighted(false);
 			}
 		}
 		else {
 			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(_selectedInstanceHash);
 			if (instance) {
-				instance->setHighlighted(false);
+				//instance->setHighlighted(false);
 			}
 		}
 
@@ -131,60 +131,54 @@ void __vectorcall cSelectTool::ClickAction(FXMVECTOR const xmMousePos)
 	clear_selection();
 
 	// indicate selection ...
-	if (MinCity::VoxelWorld.isHoveredVoxelIndexOk()) {
+	point2D_t const voxelIndex(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-		uint32_t const mouseBufferMode(MinCity::Vulkan.getMouseBufferMode());
-		point2D_t const voxelIndex(MinCity::VoxelWorld.getHoveredVoxelIndex());
+	Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
 
-		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+	if (pVoxel) {
 
-		if (pVoxel) {
+		Iso::Voxel const oVoxel(*pVoxel);
 
-			Iso::Voxel const oVoxel(*pVoxel);
+		if (Iso::isOwnerAny(oVoxel)) {
 
-			if (Iso::isOwnerAny(oVoxel)) {
+			uint32_t hash(0), index(0);
 
-				uint32_t hash(0), index(0);
+			for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
 
-				uint32_t const start(eMouseBufferMode::STATIC_VOXELS == (eMouseBufferMode::STATIC_VOXELS & mouseBufferMode) ? Iso::STATIC_HASH : Iso::DYNAMIC_HASH);
-				uint32_t const end(eMouseBufferMode::DYNAMIC_VOXELS == (eMouseBufferMode::DYNAMIC_VOXELS & mouseBufferMode) ? Iso::HASH_COUNT : Iso::DYNAMIC_HASH);
-				for (uint32_t i = start; i < end; ++i) {
+				if (Iso::isOwner(oVoxel, i)) {
 
-					if (Iso::isOwner(oVoxel, i)) {
+					// get hash, which should be the voxel model instance ID
+					hash = Iso::getHash(oVoxel, i);
+					index = i;
+				}
+			}
+			// will always select dynamic over static if both are enabled in mousebuffer mode
+			if (0 != hash) {
 
-						// get hash, which should be the voxel model instance ID
-						hash = Iso::getHash(oVoxel, i);
-						index = i;
+				if (Iso::STATIC_HASH == index) {
+					auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(hash);
+
+					if (instance) {
+						//instance->setHighlighted(true);
+
+						_selectedInstanceHash = hash;
+						_selectedVoxelIndex = voxelIndex;
+						_selectedDynamic = false;
 					}
 				}
-				// will always select dynamic over static if both are enabled in mousebuffer mode
-				if (0 != hash) {
+				else {
+					auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
 
-					if (Iso::STATIC_HASH == index) {
-						auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(hash);
+					if (instance) {
+						//instance->setHighlighted(true);
 
-						if (instance) {
-							instance->setHighlighted(true);
-
-							_selectedInstanceHash = hash;
-							_selectedVoxelIndex = voxelIndex;
-							_selectedDynamic = false;
-						}
+						_selectedInstanceHash = hash;
+						_selectedVoxelIndex = voxelIndex;
+						_selectedDynamic = true;
 					}
-					else {
-						auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
-
-						if (instance) {
-							instance->setHighlighted(true);
-
-							_selectedInstanceHash = hash;
-							_selectedVoxelIndex = voxelIndex;
-							_selectedDynamic = true;
-						}
-					}
+				}
 
 					
-				}
 			}
 		}
 	}
@@ -194,12 +188,10 @@ void __vectorcall cSelectTool::ClickAction(FXMVECTOR const xmMousePos)
 void cSelectTool::deactivate()
 {
 	clear_selection();
-	MinCity::Vulkan.setMouseBufferMode(eMouseBufferMode::GROUND_VOXELS);
 }
 
 void cSelectTool::activate()
 {
-	MinCity::Vulkan.setMouseBufferMode(eMouseBufferMode::DYNAMIC_VOXELS | eMouseBufferMode::STATIC_VOXELS);
 }
 
 

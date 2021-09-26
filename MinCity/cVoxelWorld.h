@@ -86,12 +86,13 @@ namespace world
 
 	public:
 		// Accesssors //
-		uint32_t const				getRoadVisibleCount() const; // can be accessed in any function not in the internal RenderGrid()
-		rect2D_t const				getVisibleGridBounds() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
-		rect2D_t const				getVisibleGridBoundsClamped() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
-		point2D_t const&			getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
-		point2D_t const&			getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
-		bool const					isHoveredVoxelIndexOk() const { return(_voxelIndexHoveredOk); } // if false there was a invalid voxelIndex since the hovered voxel index was last updated, eg.) use to detect when clicking on nothing
+		uint32_t const						getRoadVisibleCount() const; // can be accessed in any function not in the internal RenderGrid()
+		rect2D_t const __vectorcall			getVisibleGridBounds() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
+		rect2D_t const __vectorcall			getVisibleGridBoundsClamped() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
+		point2D_t const __vectorcall		getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
+		
+		point2D_t const	__vectorcall		getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
+
 		XMVECTOR const __vectorcall	getOrigin() const; // World Space (-x,-y) ... (x,y) - not swizzled
 		v2_rotation_t const&		getAzimuth() const;
 		float const					getZoomFactor() const;
@@ -128,11 +129,10 @@ namespace world
 		void AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
 
 		
-																																					// Order of operations, *each operation is dependent on previous operation*
-		void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdate = false);		//			0
-		void __vectorcall UpdateUniformState(float const tRemainder);																				//			1
-		void Render(uint32_t const resource_index) const;																							//			2
-		void __vectorcall UpdateUniformStateLatest();																								//			3
+		void PreUpdate(bool const bPaused);																																		 //         0.) Order of operations, *each operation is dependent on previous operation*
+		void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateFrame, bool const bFirstUpdateProgram = false);//			1.)
+		void __vectorcall UpdateUniformState(float const tRemainder);																											 //			2.)
+		void Render(uint32_t const resource_index) const;																														 //			3.)
 
 		// #################
 		void SaveWorld();
@@ -141,7 +141,8 @@ namespace world
 		void RefreshLoadList();
 		vector<std::string> const& getLoadList() const;
 		// ##################
-
+		
+		// input 
 		void OnKey(int32_t const key, bool const down, bool const ctrl = false);
 		bool const __vectorcall OnMouseMotion(FXMVECTOR xmMousePosition);
 		void OnMouseLeft(int32_t const state);
@@ -151,6 +152,7 @@ namespace world
 		void OnMouseScroll(float const delta);
 		void OnMouseInactive();
 
+		// specialization constants
 		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants);
 
 		void SetSpecializationConstants_DepthResolve_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
@@ -254,6 +256,11 @@ namespace world
 		// placeXXXInstanceAt specializations
 		cCopterGameObject* const placeCopterInstanceAt(point2D_t const voxelIndex);
 
+		// mouse occlusion
+		void clearOcclusionInstances();
+		void setOcclusionInstances();
+		void updateMouseOcclusion();
+
 		void __vectorcall UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate = false);
 		
 		void createAllBuffers(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue);
@@ -289,6 +296,7 @@ namespace world
 
 			fp_seconds								accumulator;
 			bool									referenced;	// input texture points to a already allocated texture for usage
+
 		} _textureShader[eTextureShader::_size()];
 
 		ImagingMemoryInstance*		_blackbodyImage;
@@ -298,10 +306,19 @@ namespace world
 		Volumetric::voxelOpacity		_OpacityMap;
 		Volumetric::voxelVisibility		_Visibility;
 
+		struct {
+			unordered_set<uint32_t>	fadedInstances[2];
+			point2D_t				groundVoxelIndex,	// groundVoxelIndex & occlusionVoxelIndex are *read-only* for the rest of the program, do not modify.
+									occlusionVoxelIndex;
+			int32_t					state;
+
+		} _occlusion;
+
 		uint32_t					_mouseState;
 		XMFLOAT2A					_vMouse;
 		point2D_t					_voxelIndexHover;
-		bool						_voxelIndexHoveredOk;
+		bool						_lastOcclusionQueryValid;
+
 		XMFLOAT2A					_vDragLast;
 		tTime						_tDragStart = zero_time_point;
 		

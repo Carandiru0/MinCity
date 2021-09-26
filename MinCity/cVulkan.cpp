@@ -92,13 +92,6 @@ bool const cVulkan::LoadVulkanFramework()
 	return(false);
 }
 
-void cVulkan::setMouseBufferMode(uint32_t const mode) 
-{ 
-	if (mode != _mouseBufferMode) {
-		_mouseBufferMode = mode;
-		_window->setStaticCommandsDirty(cVulkan::renderStaticCommandBuffer); // trigger update as static rendering has changed
-	}
-}
 void cVulkan::setVsyncDisabled(bool const bDisabled)
 {
 	_bVsyncDisabled = bDisabled;
@@ -1212,7 +1205,7 @@ void cVulkan::CreateVoxelResources()
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_trans_, frag_voxeltrans_, 0U);
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_TRANS>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
-					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_TRANS].vbo_partition_info));
+					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_TRANS].vbo_partition_info));
 
 			}
 			
@@ -1354,58 +1347,118 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
 	vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
-	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "voxel_clear.frag.bin", constants_voxel_fs };
 
-	// Make a pipeline to use the vertex format and shaders.
-	vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
-	pm.topology(vk::PrimitiveTopology::ePointList);
-	pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
-	pm.shader(vk::ShaderStageFlagBits::eGeometry, geom_);
-	pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
+	{ // VOXEL_CLEAR
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "voxel_clear.frag.bin", constants_voxel_fs };
 
-	// dynamic voxels only
-	pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
+		// Make a pipeline to use the vertex format and shaders.
+		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
+		pm.topology(vk::PrimitiveTopology::ePointList);
+		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
+		pm.shader(vk::ShaderStageFlagBits::eGeometry, geom_);
+		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
-	pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
-	pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
-	pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
+		// dynamic voxels only
+		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
 
-	// ###***###
-	// alpha must be cleared to 1.0f on main rendertarget / color attachment
-	// all opaque geometry must be rendered first 
-	// no further writes to the alpha channel, preserve until overlay/transparency pass
-	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-	pm.depthClampEnable(VK_FALSE); // must be false
-	pm.depthTestEnable(VK_TRUE);	// dependent on depth test, all opaque geometry must be rendered first
-	pm.depthWriteEnable(VK_FALSE);  // no depth writes on voxel clear alpha mask *important*
+		pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
+		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
+		pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
 
-	pm.cullMode(vk::CullModeFlagBits::eBack);
-	pm.frontFace(vk::FrontFace::eClockwise);
-	
-	// accumulating output alpha *only* //
-	pm.blendBegin(VK_TRUE);
-	pm.blendSrcColorBlendFactor(vk::BlendFactor::eOne);		// this is additive blending
-	pm.blendDstColorBlendFactor(vk::BlendFactor::eZero);
-	pm.blendColorBlendOp(vk::BlendOp::eAdd);
-	pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-	pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOne);
-	pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
+		// ###***###
+		// alpha must be cleared to 1.0f on main rendertarget / color attachment
+		// all opaque geometry must be rendered first 
+		// no further writes to the alpha channel, preserve until overlay/transparency pass
+		pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
+		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthTestEnable(VK_TRUE);	// dependent on depth test, all opaque geometry must be rendered first
+		pm.depthWriteEnable(VK_FALSE);  // no depth writes on voxel clear alpha mask *important*
 
-	pm.blendColorWriteMask(vk::ColorComponentFlagBits::eA);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 
-	// DOES NOT WRITE TO MOUSE IMAGE (SECOND ATTACHMENT)
-	pm.blendBegin(VK_FALSE);
-	pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
+		// accumulating output alpha *only* //
+		pm.blendBegin(VK_TRUE);
+		pm.blendSrcColorBlendFactor(vk::BlendFactor::eOne);		// this is additive blending
+		pm.blendDstColorBlendFactor(vk::BlendFactor::eZero);
+		pm.blendColorBlendOp(vk::BlendOp::eAdd);
+		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOne);
+		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 
-	// Create a pipeline using a renderPass built for our window.
-	// transparent dynamic voxels in overlay renderpass, subpass 0
-	// transparent "mask" dynamic voxels in zpass, subpass 0
-	pm.subPass(0U);
-	pm.rasterizationSamples(vku::DefaultSampleCount);
+		pm.blendColorWriteMask(vk::ColorComponentFlagBits::eA);
 
-	auto& cache = _fw.pipelineCache();
-	_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR] = pm.create(_device, cache, 
-		*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->zPass());
+		// no output to second color attachment
+		pm.blendBegin(VK_FALSE);
+		pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
+
+		// Create a pipeline using a renderPass built for our window.
+		// transparent dynamic voxels in overlay renderpass, subpass 0
+		// transparent "mask" dynamic voxels in zpass, subpass 0
+		pm.subPass(0U);
+		pm.rasterizationSamples(vku::DefaultSampleCount);
+
+		auto& cache = _fw.pipelineCache();
+		_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR] = pm.create(_device, cache,
+			*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->zPass());
+	}
+
+	{ // VOXEL_CLEAR_MOUSE
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "voxel_clear_mouse.frag.bin", constants_voxel_fs };
+
+		// Make a pipeline to use the vertex format and shaders.
+		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
+		pm.topology(vk::PrimitiveTopology::ePointList);
+		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
+		pm.shader(vk::ShaderStageFlagBits::eGeometry, geom_);
+		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
+
+		// dynamic voxels only
+		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
+
+		pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
+		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
+		pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
+
+		// ###***###
+		// alpha must be cleared to 1.0f on main rendertarget / color attachment
+		// all opaque geometry must be rendered first 
+		// no further writes to the alpha channel, preserve until overlay/transparency pass
+		pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
+		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthTestEnable(VK_TRUE);	// dependent on depth test, all opaque geometry must be rendered first
+		pm.depthWriteEnable(VK_FALSE);  // no depth writes on voxel clear alpha mask *important*
+
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
+
+		// accumulating output alpha *only* //
+		pm.blendBegin(VK_TRUE);
+		pm.blendSrcColorBlendFactor(vk::BlendFactor::eOne);		// this is additive blending
+		pm.blendDstColorBlendFactor(vk::BlendFactor::eZero);
+		pm.blendColorBlendOp(vk::BlendOp::eAdd);
+		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOne);
+		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
+
+		pm.blendColorWriteMask(vk::ColorComponentFlagBits::eA);
+
+		// output to second color attachment
+		// mouse buffer, transparents just output black (required for mouse occlusion queries)
+		typedef vk::ColorComponentFlagBits ccbf;
+		pm.blendBegin(VK_FALSE);
+		pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA);
+
+		// Create a pipeline using a renderPass built for our window.
+		// transparent dynamic voxels in overlay renderpass, subpass 0
+		// transparent "mask" dynamic voxels in zpass, subpass 0
+		pm.subPass(0U);
+		pm.rasterizationSamples(vku::DefaultSampleCount);
+
+		auto& cache = _fw.pipelineCache();
+		_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE] = pm.create(_device, cache,
+			*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->zPass());
+	}
 }
 
 void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they are static) there are no other static transparents
@@ -1449,9 +1502,10 @@ void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they 
 	pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOne);
 	pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 
-	pm.blendColorWriteMask(vk::ColorComponentFlagBits::eA);
+	pm.blendColorWriteMask(vk::ColorComponentFlagBits::eA); // clearmask channel
 
-	// DOES NOT WRITE TO MOUSE IMAGE (SECOND ATTACHMENT)
+	// static transparents (roads currently) does not modify the mouse buffer
+	typedef vk::ColorComponentFlagBits ccbf;
 	pm.blendBegin(VK_FALSE);
 	pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
 
@@ -1470,11 +1524,16 @@ void cVulkan::CreateResources()
 	using pfb = vk::MemoryPropertyFlagBits;
 
 	point2D_t const framebufferSz(MinCity::getFramebufferSize());
-	_mouseBuffer = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true);
 
+	// mouse gpu readback buffers
+	_mouseBuffer[0] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
+		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, false); // persistant mapping is NOT supported for gpu readback buffers
+	_mouseBuffer[1] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
+		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, false); // persistant mapping is NOT supported for gpu readback buffers
+
+	// offscreen gpu readback buffer
 	_offscreenBuffer = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU);
+		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, false); // persistant mapping is NOT supported for gpu readback buffers
 
 	CreateComputeResources();
 
@@ -1632,6 +1691,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	}
 	// set static pre-recorded command buffers here //
 	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer);
+	_window->setGpuReadbackCommands(cVulkan::gpuReadback);
 	_window->setStaticPresentCommands(cVulkan::renderPresentCommandBuffer);
 
 	WaitDeviceIdle(); // bugfix, wait until device is ready before proceeding with execution
@@ -1664,6 +1724,10 @@ void cVulkan::renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o)
 void cVulkan::renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp)
 {
 	MinCity::Vulkan._renderPresentCommandBuffer(std::forward<vku::present_renderpass&&>(pp));
+}
+void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
+{
+	MinCity::Vulkan._gpuReadback(cb, resource_index);
 }
 
 inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
@@ -1705,7 +1769,12 @@ void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CH
 		// all children that use a clear mask use common descriptor set and pipeline
 		s.cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR]);
+		if (0 != resource_index) {
+			s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR]);
+		}
+		else {
+			s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE]);
+		}
 
 		// batching of all clears (*** requires all clears to be grouped together in vb layout)
 		vku::VertexBufferPartition clear_partitions{};
@@ -1773,7 +1842,19 @@ void cVulkan::clearAllVoxels(vku::static_renderpass&& __restrict s)  // for clea
 	}
 }
 
-void cVulkan::copyMouseBuffer(vk::CommandBuffer& cb) const
+inline void cVulkan::_gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
+{
+	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
+	cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::GPU_READBACK);
+
+	copyMouseBuffer(cb, resource_index); // mouse picking image copy to buffer ** needs to be done here as this command buffer is dynamically generated / frame
+	barrierMouseBuffer(cb, resource_index); // ensure gpu read back will be visible to cpu
+
+	// *** Command buffer ends
+	cb.end();
+}
+
+void cVulkan::copyMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const
 {
 	vk::BufferImageCopy region{};
 	region.bufferOffset = 0;
@@ -1788,19 +1869,19 @@ void cVulkan::copyMouseBuffer(vk::CommandBuffer& cb) const
 	region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 };
 	region.imageExtent = extent;
 
-	cb.copyImageToBuffer(_window->mouseImage().image(), vk::ImageLayout::eTransferSrcOptimal, _mouseBuffer.buffer(), region);
+	cb.copyImageToBuffer(_window->mouseImage().image(), vk::ImageLayout::eTransferSrcOptimal, _mouseBuffer[resource_index].buffer(), region);
 }
 
-void cVulkan::barrierMouseBuffer(vk::CommandBuffer& cb) const
+void cVulkan::barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const
 {
-	_mouseBuffer.barrier(	// ## ACQUIRE ## //
+	_mouseBuffer[resource_index].barrier(	// ## ACQUIRE ## //
 		cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost,
 		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead, MinCity::Vulkan.getGraphicsQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getTransferQueueIndex()
 	);
 }
 
-point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const xmMouse) const
+NO_INLINE point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index) const
 {
 	point2D_t const mouse_coord = v2_to_p2D_rounded(xmMouse);
 
@@ -1812,12 +1893,12 @@ point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const xmMouse) c
 
 	uint32_t aR16G16(0);
 	{
-		uint32_t const* const __restrict gpu_read_back = reinterpret_cast<uint32_t const* const __restrict>(_mouseBuffer.map());
+		uint32_t const* const __restrict gpu_read_back = reinterpret_cast<uint32_t const* const __restrict>(_mouseBuffer[resource_index].map());
 
 		// capture and return mouse hovered voxel index (no need to copy out the entire mouseBuffer image buffer - isolated to current pixel instead that mouse pointer hovers)
 		aR16G16 = *(gpu_read_back + offset);		// correct 2D to 1D coordinates
 
-		_mouseBuffer.unmap();
+		_mouseBuffer[resource_index].unmap();
 	}
 
 	// converted: return mouse hovered voxel index
@@ -1860,11 +1941,10 @@ void cVulkan::barrierOffscreenBuffer(vk::CommandBuffer& cb) const
 }
 
 // offscreen image capture
-void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out) const	// *** only safe to call after the atomic flag returned from enableOffscreenCopy is cleared ***
+NO_INLINE void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out) const	// *** only safe to call after the atomic flag returned from enableOffscreenCopy is cleared ***
 {
 	point2D_t const framebufferSz(MinCity::getFramebufferSize());
 	size_t const size(size_t(framebufferSz.x) * size_t(framebufferSz.y) * sizeof(uint32_t));
-	size_t const block_size(size & (MinCity::hardware_concurrency() - 1));
 	{
 		uint32_t const* const __restrict gpu_read_back = reinterpret_cast<uint32_t const* const __restrict>(_offscreenBuffer.map());
 
@@ -2189,7 +2269,6 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 		o.cb_render->begin(bi2); VKU_SET_CMD_BUFFER_LABEL(*o.cb_render, vkNames::CommandBuffer::OVERLAY_RENDER);
 
 		// leverage free (waiting) time to ...
-		copyMouseBuffer(*o.cb_render); // mouse picking image copy to buffer ** needs to be done here as this command buffer is dynamically generated / frame
 		
 		// prepare for usage in fragment shader, transparent voxels do not modify the opacity map so its layout is left unmodified
 		_window->colorReflectionImage().setLayout(*o.cb_render, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
@@ -2279,8 +2358,6 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
 
 	MinCity::PostProcess.Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
-
-	barrierMouseBuffer(pp.cb); // ensure gpu read back will be visible to cpu ** done in present cb instead of overlay cb to optimize (hide latency)
 
 	// *** Command buffer ends
 	pp.cb.end();
@@ -2379,10 +2456,15 @@ void cVulkan::Render()
 	// ####### //
 	_window->draw(
 		_device, cVulkan::renderCompute, cVulkan::renderDynamicCommandBuffer, cVulkan::renderOverlayCommandBuffer
-		);
+	);
 	// ####### //
 
 	renderComplete(); // this happens after queue submission / present by the vku framework
+}
+
+void cVulkan::setStaticCommandsDirty()
+{
+	_window->setStaticCommandsDirty(cVulkan::renderStaticCommandBuffer);
 }
 
 void cVulkan::checkStaticCommandsDirty(uint32_t const resource_index)
@@ -2514,7 +2596,7 @@ void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 	// Wait until all drawing is done and then kill the window.
 	WaitDeviceIdle();
 
-	_mouseBuffer.release();
+	_mouseBuffer[0].release(); _mouseBuffer[1].release();
 	_offscreenBuffer.release();
 
 	// clean up main vertex buffers

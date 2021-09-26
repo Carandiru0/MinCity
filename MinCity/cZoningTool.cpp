@@ -416,9 +416,12 @@ void __vectorcall cZoningTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 			if (pVoxel) {
 				Iso::Voxel oVoxel(*pVoxel);
 
-				Iso::setEmissive(oVoxel);
+				if (Iso::isGroundOnly(oVoxel)) {
+					
+					Iso::setEmissive(oVoxel);
 
-				world::setVoxelAt(origin, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+					world::setVoxelAt(origin, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+				}
 			}
 		}
 	}
@@ -432,7 +435,6 @@ void cZoningTool::deactivate()
 
 void cZoningTool::activate()
 {
-	MinCity::Vulkan.setMouseBufferMode(eMouseBufferMode::GROUND_VOXELS);
 }
 
 

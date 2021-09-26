@@ -338,7 +338,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	// #### City pointer must be valid starting *here*
 	City = new cCity(m_szCityName);
 
-	VoxelWorld.Update(m_tNow, zero_time_duration, true, true);
+	VoxelWorld.Update(m_tNow, zero_time_duration, true, true, true);
 	
 	UserInterface.Initialize();
 
@@ -647,11 +647,13 @@ void cMinCity::UpdateWorld()
 		bWasPaused = false;
 	}
 
-	// always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
-	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE)));
-	
 	// clearing voxel queue required b4 any voxels are added by addVoxel() method
 	VoxelWorld.clearMiniVoxels();
+
+	// always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
+	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE)));
+
+	VoxelWorld.PreUpdate(bPaused); // called every frame regardless of timing
 
 	static duration tAccumulate(nanoseconds(0));
 	{   // variable time step intended to not be used outside of this scope
@@ -662,6 +664,8 @@ void cMinCity::UpdateWorld()
 	}
 
 	// add to fixed timestamp n fixed steps, while also removing the fixed step from the accumulator
+	bool bFirstUpdate(true);
+
 	while (tAccumulate >= delta()) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
@@ -669,10 +673,11 @@ void cMinCity::UpdateWorld()
 
 		tAccumulate -= delta();
 
-		VoxelWorld.Update(m_tNow, delta(), bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
+		VoxelWorld.Update(m_tNow, delta(), bPaused, bFirstUpdate); // world/game uses regular timing, with a fixed timestep (best practice)
+		bFirstUpdate = false;
 	}
 	// fractional amount for render path (uniform shader variables)
-	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(delta())); // always update everyframe
+	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(delta())); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
 	Audio.Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
 
@@ -702,7 +707,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld.Render(resource_index);
-	VoxelWorld.UpdateUniformStateLatest();
 	Vulkan.checkStaticCommandsDirty(resource_index);
 }
 

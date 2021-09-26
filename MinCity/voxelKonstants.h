@@ -35,8 +35,9 @@ namespace Volumetric
 
 	namespace Konstants
 	{
+		static constexpr uint32_t const NO_TRANSPARENCY = eVoxelTransparency::ALPHA_100;
 		static constexpr uint32_t const DEFAULT_TRANSPARENCY = eVoxelTransparency::ALPHA_25; // very good default *don't change*
-		
+
 		static constexpr uint32_t const PALETTE_WINDOW_INDEX = 0x00FFFFFF;  // (pure white)
 
 		static constexpr uint32_t const DESTRUCTION_SEQUENCE_LENGTH(42 >> 1);										// base sequence length, will be used as: # of slices (height) * DESTRUCTION_SEQUENCE_LENGTH

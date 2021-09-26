@@ -63,7 +63,8 @@ BETTER_ENUM(eVoxelDescSharedLayoutSet, uint32_t const,
 );
 BETTER_ENUM(eVoxelSharedPipeline, uint32_t const,
 
-	VOXEL_CLEAR = 0
+	VOXEL_CLEAR = 0,
+	VOXEL_CLEAR_MOUSE = 1
 );
 BETTER_ENUM(eVoxelVertexBuffer, uint32_t const,
 
@@ -71,12 +72,6 @@ BETTER_ENUM(eVoxelVertexBuffer, uint32_t const,
 	VOXEL_ROAD,
 	VOXEL_STATIC,
 	VOXEL_DYNAMIC
-);
-BETTER_ENUM(eMouseBufferMode, uint32_t const,
-
-	GROUND_VOXELS = 0,			// *Exclusive* //
-	STATIC_VOXELS = (1 << 0),	// *Combinable* //
-	DYNAMIC_VOXELS = (1 << 1)	// *Combinable* //
 );
 BETTER_ENUM(eVoxelPipeline, int32_t const,
 
@@ -202,11 +197,11 @@ public:
 	microseconds const&                                         frameTimeAverage() const { return(_frameTimingAverage); }
 	vku::DescriptorSetUpdater& __restrict						getDescriptorSetUpdater() { return(_dsu); }
 	vk::DescriptorPool const									getDescriptorPool() const { return(_fw.descriptorPool()); }
+	
 	uint32_t const												getGraphicsQueueIndex() const { return(_fw.graphicsQueueFamilyIndex()); }
 	uint32_t const												getComputeQueueIndex() const { return(_fw.computeQueueFamilyIndex()); }
 	uint32_t const												getTransferQueueIndex() const { return(_fw.transferQueueFamilyIndex()); }
-	
-	uint32_t const												getMouseBufferMode() const { return(_mouseBufferMode); }
+
 	bool const													isFullScreenExclusiveExtensionSupported() const;
 	bool const													isFullScreenExclusive() const;
 	bool const													isHDR() const;
@@ -253,7 +248,6 @@ public:
 	__inline vku::VertexBufferPartition* const __restrict& __restrict    getRoadPartitionInfo(uint32_t const resource_index) const;
 
 	// Main Methods //
-	void setMouseBufferMode(uint32_t const mode);
 	void setVsyncDisabled(bool const bDisabled);
 	void setFullScreenExclusiveEnabled(bool const bEnabled);
 	void setHDREnabled(bool const bEnabled, uint32_t const max_nits = 0);
@@ -272,16 +266,17 @@ public:
 	void OnLost(struct GLFWwindow* const glfwwindow);
 
 	// Specific Rendering //
+	void setStaticCommandsDirty();
 	void checkStaticCommandsDirty(uint32_t const resource_index);
 	void enableOffscreenRendering(bool const bEnable);	// *only in main thread* is this a safe operation
 	void enableOffscreenCopy(); // *only in main thread* is this a safe operation
 	std::atomic_flag& getOffscreenCopyStatus() { return(_OffscreenCopied); } // when return value (flag) is cleared offscreen copy is available - to be used asynchronously in a seperate thread only!
 																			 // enableOffscreenCopy needs to be called first, otherwise return value (flag) is undefined
 	// offscreen image capture - should only be called at most once/frame
-	void queryOffscreenBuffer(uint32_t* const __restrict mem_out) const;	// *** only safe to call after the atomic flag returned from enableOffscreenCopy is cleared ***
+	NO_INLINE void queryOffscreenBuffer(uint32_t* const __restrict mem_out) const;	// *** only safe to call after the atomic flag returned from enableOffscreenCopy is cleared ***
 
 	// pixel perfect mouse picking - should only be called at most once/frame
-	point2D_t const __vectorcall queryMouseBuffer(XMVECTOR const xmMouse) const;
+	NO_INLINE point2D_t const __vectorcall queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index) const;
 	
 	void Render();
 
@@ -342,19 +337,22 @@ public:
 	static void renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	static void renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
 	static void renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp);
+	static void gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
 private:
     inline bool const _renderCompute(vku::compute_pass&& __restrict c);
 	inline void _renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	inline void _renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	inline void _renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
 	inline void _renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp);
+	inline void _gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
+
 	void renderComplete(); // triggered internally on Render Completion (after final queue submission / present by vku framework
 
 	void renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (&__restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount);
 	void clearAllVoxels(vku::static_renderpass&& __restrict s);
 
-	void copyMouseBuffer(vk::CommandBuffer& cb) const;
-	void barrierMouseBuffer(vk::CommandBuffer& cb) const;
+	void copyMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const;
+	void barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const;
 
 	void copyOffscreenBuffer(vk::CommandBuffer& cb) const;
 	void barrierOffscreenBuffer(vk::CommandBuffer& cb) const;
@@ -363,7 +361,7 @@ private:
 	vku::Framework					_fw;
 	vku::Window* 					_window;
 
-	vku::GenericBuffer				_mouseBuffer;
+	vku::GenericBuffer				_mouseBuffer[2];
 
 	vk::UniqueImageView				_offscreenImageView2DArray;
 	vku::GenericBuffer				_offscreenBuffer;
@@ -374,8 +372,6 @@ private:
 									_sampAnisotropic[eSamplerAddressing::size()];
 
 	microseconds					_frameTimingAverage;
-
-	static inline uint32_t			_mouseBufferMode = eMouseBufferMode::GROUND_VOXELS;
 
 	bool							_bFullScreenExclusiveAcquired = false,
 									_bRenderingEnabled = false,
@@ -1020,49 +1016,35 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 	constexpr int32_t const ZONLY(-1),
 							MOUSE(0);
 
+	// [back_to_front] is needed for the mouse color atttachment to be rendered in correct order (only on initial z pass)
+	// for seamless selection / dragging of background roads (behind buildings etc)
+	// for transparent voxel draw order clears aswell
+	
+	// terrain voxels //
+	renderTerrainVoxels<MOUSE>(s);	// always output to mouse buffer
+
+	// roads //
+	renderRoadVoxels<MOUSE>(s);  // always output to mouse buffer
+
 	// ***** descriptor set must be set outside of this function ***** //
+
 	uint32_t ActiveMaskCount(0);
 
-	if (eMouseBufferMode::GROUND_VOXELS != _mouseBufferMode)  // optimal order for z culling [front-to-back]
+	if (0 != s.resource_index)
 	{
-		if (eMouseBufferMode::DYNAMIC_VOXELS == (eMouseBufferMode::DYNAMIC_VOXELS & _mouseBufferMode)) {
-			// dynamic voxels //
-			ActiveMaskCount = renderDynamicVoxels<MOUSE, numChildMasks>(s, deferredChildMasks);
-		}
-		else {
-			// dynamic voxels //
-			ActiveMaskCount = renderDynamicVoxels<ZONLY, numChildMasks>(s, deferredChildMasks);
-		}
-
-		if (eMouseBufferMode::STATIC_VOXELS == (eMouseBufferMode::STATIC_VOXELS & _mouseBufferMode)) {
-			// static voxels //
-			renderStaticVoxels<MOUSE>(s);
-		}
-		else {
-			// static voxels //
-			renderStaticVoxels<ZONLY>(s);
-		}
-
-		// roads //
-		renderRoadVoxels<ZONLY>(s);
-
-		// terrain voxels //
-		renderTerrainVoxels<ZONLY>(s);
-	}
-	else { // [back_to_front] is needed for the mouse color atttachment to be rendered in correct order (only on initial z pass)
-		   // for seamless selection / dragging of background roads (behind buildings etc)
-		   
-		// terrain voxels //
-		renderTerrainVoxels<MOUSE>(s);
-
-		// roads //
-		renderRoadVoxels<MOUSE>(s);
-
 		// static voxels //
 		renderStaticVoxels<ZONLY>(s);
 
 		// dynamic voxels //
 		ActiveMaskCount = renderDynamicVoxels<ZONLY, numChildMasks>(s, deferredChildMasks);
+	}
+	else {
+
+		// static voxels //
+		renderStaticVoxels<MOUSE>(s);
+		
+		// dynamic voxels //
+		ActiveMaskCount = renderDynamicVoxels<MOUSE, numChildMasks>(s, deferredChildMasks);
 	}
 
 	return(ActiveMaskCount);

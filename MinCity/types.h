@@ -8,17 +8,23 @@
 #endif
 
 #include <vector>
+#include <unordered_set>
 #include <tbb/tbb.h>
 #include <Utility/scalable_aligned_allocator.h>
 
 #ifdef vector
 #undef vector
 #endif
+#ifdef unordered_set
+#undef unordered_set
+#endif
 
 template<typename T>
 using vector = std::vector<T, tbb::scalable_allocator<T>>;
 template<typename T, size_t const alignment = alignof(T)>
 using vector_aligned = std::vector<T, tbb::scalable_aligned_allocator<T, alignment>>;
+template<typename T>
+using unordered_set = std::unordered_set<T, std::hash<T>, std::equal_to<T>, tbb::scalable_allocator<T>>;
 
 #include "betterenums.h"
 

@@ -34,7 +34,7 @@ const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 
 #define EPSILON 0.000000001f
-#define FOG_STRENGTH -0.08f // must be negative
+#define FOG_STRENGTH -0.18f // must be negative
 #define FOG_MAX_HEIGHT 80.0f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -55,7 +55,7 @@ layout (binding = 10) restrict buffer DebugStorageBuffer {
 
 readonly layout(location = 0) in streamIn
 {   // must all be xzy
-	vec3				rd;
+	noperspective vec3	rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
 	flat vec3			fractional_offset;
@@ -141,9 +141,9 @@ bool bounced(in const float opacity)
 	// an opaque voxel are not marched causing strange issues like emission affecting transmission etc.
 	return( (opacity - BOUNCE_EPSILON) >= 0.0f ); // maybe faster to test against zero with fast sign test
 }
-float fetch_opacity_texel( in const ivec3 p_scaled ) { // hit test for reflections - note if emissive, is also opaque
+float fetch_opacity_texel( in const vec3 p_scaled ) { // hit test for reflections - note if emissive, is also opaque
 							  
-	return (texelFetch(volumeMap[OPACITY], p_scaled, 0).r);
+	return (texelFetch(volumeMap[OPACITY], ivec3(p_scaled), 0).r);
 	//return (textureLod(volumeMap[OPACITY], p_scaled * InvVolumeDimensions, 0).r);
 }
 
@@ -385,7 +385,7 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const 
 		for( ; interval_remaining >= 0.0f ; interval_remaining -= dt ) {  // fast sign test
 
 			// hit opaque/transparent voxel ?
-			const float opacity_sample = fetch_opacity_texel(ivec3(p));  // extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
+			const float opacity_sample = fetch_opacity_texel(p);  // extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
 			integrate_opacity(opacity, abs(opacity_sample), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 			[[branch]] if(bounced(opacity)) { 
 				
@@ -474,7 +474,7 @@ void main() {
 	float interval_remaining = interval_length;
 	// -------------------------------------------------------------------- //
 
-	vec3 p = In.eyePos.xyz - In.fractional_offset * InvVolumeDimensions + fma(dt, blue_noise, t_hit.x) * rd; // jittered offset
+	vec3 p = In.eyePos.xyz + fma(dt, blue_noise, t_hit.x) * rd; // jittered offset
 		
 	// inverted volume height fix (only place this needs to be done!)
 	// this is done so its not calculated everytime at texture sampling

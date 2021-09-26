@@ -851,14 +851,18 @@
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DMOUSE  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_mouse%(Extension).bin"</Command>
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DMOUSE  --target-env vulkan1.2 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_mouse%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_mouse%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_mouse%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
