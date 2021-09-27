@@ -4397,9 +4397,6 @@ namespace world
 				*/
 
 			} // end !Paused //
-			else {
-				//clearOcclusionInstances();
-			}
 		}
 		else // first update program //
 		{ // ### ONLOADED EVENT must be triggered here !! //
@@ -4410,16 +4407,9 @@ namespace world
 	// voxel painting
 	void cVoxelWorld::clearMiniVoxels()
 	{
-		tbb::parallel_invoke(
-			[&] {
-				__memclr_stream<CACHE_LINE_BYTES>(_mini.bits->data(), _mini.bits->size());
-			},
-			[&] {
-				__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			},
-			[&] {
-				_mini.voxels.clear();
-			});
+		__memclr_stream<CACHE_LINE_BYTES>(_mini.bits->data(), _mini.bits->size());
+		__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+		_mini.voxels.clear();
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)

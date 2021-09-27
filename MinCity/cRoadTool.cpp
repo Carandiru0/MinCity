@@ -18,7 +18,6 @@
 #endif
 
 static constexpr int32_t const ROAD_SIGNAGE_CHANCE = 10;
-static constexpr float const GRADING_SMOOTHNESS = 0.777f;
 
 cRoadTool::cRoadTool()
 	: _segmentVoxelIndex{}, _selection_start{}, _selected{}, _activePoint(1), // must be non-zero
@@ -836,7 +835,7 @@ typedef struct ROAD_SEGMENT {
 static vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(vector<ROAD_SEGMENT>::const_iterator const start, vector<ROAD_SEGMENT>::const_iterator const end,
 												                        int32_t const currentHeightStep, int32_t& __restrict targetHeightStep)
 {
-	static constexpr int32_t const SAMPLE_COUNT(16);
+	static constexpr int32_t const SAMPLE_COUNT(Iso::ROAD_SEGMENT_WIDTH * 3);
 
 	vector<ROAD_SEGMENT>::const_iterator target(end);
 
@@ -853,29 +852,20 @@ static vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(vector<R
 	int32_t sum(0), counter(0);
 	for (vector<ROAD_SEGMENT>::const_iterator i = start; i != end; ++i) {
 		
-		int32_t heightstep(0);
-		
 		// 2x sampling, more sampling = higher accuracy //
-		heightstep = i->h0;
-		sum += heightstep;
-		heightstep = i->h1;
-		sum += heightstep;
+		sum += i->h0;
+		sum += i->h1;
 		++counter;
 
 		if (counter > SAMPLE_COUNT) {
 			int32_t const average(sum / (counter << 1));
 
-			if (average > currentHeightStep) {
+			if (average != currentHeightStep) {
 				target = i;
-				targetHeightStep = SFM::min(Iso::MAX_HEIGHT_STEP, heightstep > average ? heightstep : average);
-				return(target);
+				targetHeightStep = average;
+				break;
 			}
-			else if (average < currentHeightStep) {
-				target = i;
-				targetHeightStep = SFM::max(0, heightstep < average ? heightstep : average);
-				return(target);
-			}
-			break;
+			// otherwise keep sampling
 		}		
 	} // for
 
@@ -1204,109 +1194,136 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 						}
 					}
 
-					// set straight road connected to node to match elevation
-					bool grading[2]{ true,true };
-					int32_t grade_heightstep[2];
-					int32_t currentSideHeightStep[2]{ currentSegment.h1, currentSegment.h1 };
-					int32_t side_offset_step(2);
 
-					do
+					// set straight road connected to node to match elevation *bugfix - now properly interpolates accounting for nodes (corners and xing) glitc free.
+
+					// for each perpindicular side, find the next node 
 					{
-						point2D_t sidePoint[2]{};
-						Iso::Voxel const* pSideVoxel[2]{ nullptr };
+						int32_t stepsaved[2]{ 1, 1 };
+						bool searching[2]{ true,true }; // will contain false if node was found
+						Iso::Voxel oSideVoxelSaved[2]{}; // will contain the last voxel for each side (node or end of road)
 
-						getAdjacentSides(currentPoint, encoded_direction, Iso::SEGMENT_SIDE_WIDTH + side_offset_step, sidePoint, pSideVoxel);
+						int32_t step(1);
 
-						for (uint32_t side = 0; side < 2; ++side) {
-							if (grading[side] && pSideVoxel[side]) {
-								Iso::Voxel oSideVoxel(*pSideVoxel[side]);
+						do
+						{
+							point2D_t sidePoint[2]{};
+							Iso::Voxel const* pSideVoxel[2]{ nullptr };
 
-								if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
-									pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
+							getAdjacentSides(currentPoint, encoded_direction, Iso::SEGMENT_SIDE_WIDTH + step, sidePoint, pSideVoxel);
 
-									uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
+							for (uint32_t side = 0; side < 2; ++side) {
+								if (searching[side] && pSideVoxel[side]) { // skips search when finished side.
+									oSideVoxelSaved[side] = *pSideVoxel[side];
 
-									bool begin_start;
+									if (Iso::isExtended(oSideVoxelSaved[side]) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxelSaved[side])) {
+										searching[side] = !Iso::isRoadNode(oSideVoxelSaved[side]); // xing or corner
+									}
+									else {
+										searching[side] = false; // end of straight road
+									}
+									stepsaved[side] = step;
+								}
+							}
 
-									switch (side_direction)
-									{
-									case Iso::ROAD_DIRECTION::N:
-									case Iso::ROAD_DIRECTION::E:
+							++step;
 
-										begin_start = side;
-										break;
-									case Iso::ROAD_DIRECTION::S:
-									case Iso::ROAD_DIRECTION::W:
+						} while (searching[0] || searching[1]);
 
-										begin_start = !side;
-										break;
-									} // end switch
+						// then interpolate from current to the result of the search for each perpindicular road.
+						int32_t const startHeightStep(currentSegment.h1);
+						int32_t currentSideHeightStep[2]{ startHeightStep, startHeightStep };
+						bool grading[2]{ true,true };
 
-									if (begin_start) {
+						int32_t const total_steps[2]{ stepsaved[0] - 1, stepsaved[1] - 1 };
 
-										Iso::setRoadHeightStepBegin(oSideVoxel, currentSideHeightStep[side]);
+						step = 1; // reset
+						
+						do
+						{
+							point2D_t sidePoint[2]{};
+							Iso::Voxel const* pSideVoxel[2]{ nullptr };
+
+							getAdjacentSides(currentPoint, encoded_direction, Iso::SEGMENT_SIDE_WIDTH + step, sidePoint, pSideVoxel);
+
+							for (uint32_t side = 0; side < 2; ++side) {
+								if (grading[side] && pSideVoxel[side]) { // skips grading when finished/side
+									Iso::Voxel oSideVoxel(*pSideVoxel[side]);
+
+									if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
 
 										if (Iso::isRoadEdge(oSideVoxel)) {
+											pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
 
-											grade_heightstep[side] = Iso::getRoadHeightStepEnd(oSideVoxel);
+											uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
 
-											int32_t const heightstep = SFM::round_to_i32(SFM::ease_out_quadratic(float(grade_heightstep[side]), float(currentSideHeightStep[side]), GRADING_SMOOTHNESS));
-											if (grade_heightstep[side] != heightstep) {
-												grade_heightstep[side] = heightstep;
-												Iso::setRoadHeightStepEnd(oSideVoxel, grade_heightstep[side]);
+											bool begin_start;
+
+											switch (side_direction)
+											{
+											case Iso::ROAD_DIRECTION::N:
+											case Iso::ROAD_DIRECTION::E:
+
+												begin_start = side;
+												break;
+											case Iso::ROAD_DIRECTION::S:
+											case Iso::ROAD_DIRECTION::W:
+
+												begin_start = !side;
+												break;
+											} // end switch
+
+											int32_t grade_heightstep;
+
+											if (begin_start) {
+
+												Iso::setRoadHeightStepBegin(oSideVoxel, currentSideHeightStep[side]);
+
+												int32_t const targetHeightStep(Iso::getRoadHeightStepEnd(oSideVoxelSaved[side]));
+												float const current = SFM::smoothstep(float(startHeightStep), float(targetHeightStep), float(step - 1) / float(total_steps[side]));
+
+												grade_heightstep = SFM::round_to_i32(current);
+
+												Iso::setRoadHeightStepEnd(oSideVoxel, grade_heightstep);
+
 											}
 											else {
-												grading[side] = false;
+
+												Iso::setRoadHeightStepEnd(oSideVoxel, currentSideHeightStep[side]);
+
+												int32_t const targetHeightStep(Iso::getRoadHeightStepBegin(oSideVoxelSaved[side]));
+												float const current = SFM::smoothstep(float(startHeightStep), float(targetHeightStep), float(step - 1) / float(total_steps[side]));
+
+												grade_heightstep = SFM::round_to_i32(current);
+
+												Iso::setRoadHeightStepBegin(oSideVoxel, grade_heightstep);
 											}
+
+											// move ground under road up to match
+											int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep, currentSideHeightStep[side]) - SFM::max(0, SFM::abs((int32_t)Iso::getRoadHeightStepBegin(oSideVoxel) - (int32_t)Iso::getRoadHeightStepEnd(oSideVoxel) - 1)));
+											//int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep[side] - 1, grade_heightstep[side] - 1));
+											ConditionRoadGround(sidePoint[side], side_direction, groundHeightStep, oSideVoxel);
+
+											// done.
+											world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
+
+											currentSideHeightStep[side] = grade_heightstep;
 										}
 										else {
-											grading[side] = false;
+											grading[side] = false; // node
 										}
 									}
 									else {
-
-										Iso::setRoadHeightStepEnd(oSideVoxel, currentSideHeightStep[side]);
-
-										if (Iso::isRoadEdge(oSideVoxel)) {
-
-											grade_heightstep[side] = Iso::getRoadHeightStepBegin(oSideVoxel);
-
-											int32_t const heightstep = SFM::round_to_i32(SFM::ease_in_quadratic(float(grade_heightstep[side]), float(currentSideHeightStep[side]), GRADING_SMOOTHNESS));
-											if (grade_heightstep[side] != heightstep) {
-												grade_heightstep[side] = heightstep;
-												Iso::setRoadHeightStepBegin(oSideVoxel, grade_heightstep[side]);
-											}
-											else {
-												grading[side] = false;
-											}
-										}
-										else {
-											grading[side] = false;
-										}
+										grading[side] = false; // end of road
 									}
-
-									// move ground under road up to match
-									int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep[side], currentSideHeightStep[side]) - SFM::max(0, SFM::abs((int32_t)Iso::getRoadHeightStepBegin(oSideVoxel) - (int32_t)Iso::getRoadHeightStepEnd(oSideVoxel) - 1)));
-									//int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep[side] - 1, grade_heightstep[side] - 1));
-									ConditionRoadGround(sidePoint[side], side_direction, groundHeightStep, oSideVoxel);
-
-									// done.
-									world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
-
-									currentSideHeightStep[side] = grade_heightstep[side];
-								}
-								else {
-									grading[side] = false;
 								}
 							}
-							else {
-								grading[side] = false;
-							}
-						}
 
-						++side_offset_step;
+							++step;
+						} while (grading[0] | grading[1]);
+					}
 
-					} while (grading[0] | grading[1]);
+
 				} // centernode
 				// done.
 			} // !existing

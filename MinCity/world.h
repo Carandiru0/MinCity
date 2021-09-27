@@ -64,8 +64,9 @@ namespace world
 	void __vectorcall recomputeGroundAdjacencyOcclusion(rect2D_t voxelArea);
 	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex);
 
-	// voxel painting (minivoxels)
 	bool const __vectorcall isVoxelVisible(FXMVECTOR const location);
+
+	// voxel painting (minivoxels)  ***** addVoxel can only be called with UserInterface.Paint(), or methods invoked inside UserInterface.Paint() *****
 	bool const __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
 
 	// Random & Search //

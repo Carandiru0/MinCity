@@ -647,14 +647,16 @@ void cMinCity::UpdateWorld()
 		bWasPaused = false;
 	}
 
-	// clearing voxel queue required b4 any voxels are added by addVoxel() method
-	VoxelWorld.clearMiniVoxels();
+	// *first*
+	VoxelWorld.clearMiniVoxels(); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface)
 
-	// always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
-	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE)));
+	// *second*
+	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE))); // always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
 
+	// *third*
 	VoxelWorld.PreUpdate(bPaused); // called every frame regardless of timing
 
+	// *fourth*
 	static duration tAccumulate(nanoseconds(0));
 	{   // variable time step intended to not be used outside of this scope
 		// Accunmulate actual time per frame
@@ -679,19 +681,23 @@ void cMinCity::UpdateWorld()
 	// fractional amount for render path (uniform shader variables)
 	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(delta())); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
+	// *fifth*
 	Audio.Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
-
-	UserInterface.Paint(); // must be done after all updates to VoxelWorld
 	
+	// *sixth*
 	if (bInputDelta) {  
 		Nuklear.UpdateGUI(); // gui requires critical timing (always on, never pause gui)
 		tLastGUI = tCriticalNow;
 	}
+	
+	// *seventh*
+	UserInterface.Paint(); // must be done after all updates to VoxelWorld
+	
+	// *last*
+	ProcessEvents();
 
 	//---------------------------------------------------------------------------------------------------------------------------------------//
 	tLast = tCriticalNow;
-	
-	ProcessEvents();
 }
 
 void cMinCity::StageResources(uint32_t const resource_index)
