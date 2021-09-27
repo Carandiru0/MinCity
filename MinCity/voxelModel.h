@@ -385,7 +385,8 @@ namespace voxB
 					vxl_end(r.end());
 
 				uint32_t const Transparency(instance.getTransparency());
-				bool const Faded(instance.isFaded());
+				bool const Faded(instance.isFaded()),
+						   EmissionOnly(instance.isEmissionOnly());
 
 				uint32_t const flags(instance.getFlags());
 
@@ -464,6 +465,7 @@ namespace voxB
 
 						hash |= (Emissive << 12);						// 0000 0000 0001 xxxx xxxx xxxx
 
+						if (!EmissionOnly)
 						{	// xyz = visible relative UV,  w = detailed occlusion 
 							// UV coordinates are not swizzled at this point, however by the fragment shader they are xzy
 							// UV coordinate describe the "visible grid" relative position bound to 0...VOXEL_MINIGRID_VISIBLE_XYZ

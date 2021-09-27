@@ -18,6 +18,7 @@
 #endif
 
 static constexpr int32_t const ROAD_SIGNAGE_CHANCE = 10;
+static constexpr float const GRADING_SMOOTHNESS = 0.777f;
 
 cRoadTool::cRoadTool()
 	: _segmentVoxelIndex{}, _selection_start{}, _selected{}, _activePoint(1), // must be non-zero
@@ -904,7 +905,7 @@ static uint32_t const __vectorcall getSmoothHeightStep(point2D_t const currentPo
 		uiHeightSum += Iso::getHeightStep(*pVoxel); ++fNumSamples;
 	}
 
-	return(SFM::round_to_u32((float)uiHeightSum / fNumSamples));
+	return(SFM::round_to_u32(((float)uiHeightSum) / fNumSamples));
 }
 
 void __vectorcall cRoadTool::ConditionRoadGround(
@@ -1249,7 +1250,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 											grade_heightstep[side] = Iso::getRoadHeightStepEnd(oSideVoxel);
 
-											int32_t const heightstep = SFM::round_to_i32(float(grade_heightstep[side] + currentSideHeightStep[side]) * 0.5f);
+											int32_t const heightstep = SFM::round_to_i32(SFM::ease_out_quadratic(float(grade_heightstep[side]), float(currentSideHeightStep[side]), GRADING_SMOOTHNESS));
 											if (grade_heightstep[side] != heightstep) {
 												grade_heightstep[side] = heightstep;
 												Iso::setRoadHeightStepEnd(oSideVoxel, grade_heightstep[side]);
@@ -1270,7 +1271,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 											grade_heightstep[side] = Iso::getRoadHeightStepBegin(oSideVoxel);
 
-											int32_t const heightstep = SFM::round_to_i32(float(grade_heightstep[side] + currentSideHeightStep[side]) * 0.5f);
+											int32_t const heightstep = SFM::round_to_i32(SFM::ease_in_quadratic(float(grade_heightstep[side]), float(currentSideHeightStep[side]), GRADING_SMOOTHNESS));
 											if (grade_heightstep[side] != heightstep) {
 												grade_heightstep[side] = heightstep;
 												Iso::setRoadHeightStepBegin(oSideVoxel, grade_heightstep[side]);
@@ -1334,7 +1335,9 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 	FMT_LOG_DEBUG("Segment Elevation Complete, segments({:d})", segments.size());
 #endif
 
+#if defined(DEBUG_ROAD_SEGMENTS)
 	uint32_t target_count(0);
+#endif
 
 	vector<ROAD_SEGMENT>::const_iterator iter(segments.cbegin());
 	vector<ROAD_SEGMENT>::const_iterator target(segments.cend());
@@ -1376,7 +1379,9 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 			// this allows next target to be calculated
 			currentHeightStep = targetHeightStep;
 			target = segments.cend();
+#if defined(DEBUG_ROAD_SEGMENTS)
 			++target_count;
+#endif
 		}
 
 

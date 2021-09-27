@@ -771,9 +771,13 @@ void cVoxelWorld::setOcclusionInstances()
 
 	_occlusion.state = hasOcclusion;
 }
-void cVoxelWorld::updateMouseOcclusion()
+void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 {
 	//FMT_NUKLEAR_DEBUG(true, "{:d} , {:d}   {:d} , {:d}  {:s}", _occlusion.groundVoxelIndex.x, _occlusion.groundVoxelIndex.y, _occlusion.occlusionVoxelIndex.x, _occlusion.occlusionVoxelIndex.y, (_lastOcclusionQueryValid ? "true" : "false"));
+	[[unlikely]] if (bPaused) {
+		clearOcclusionInstances();
+		return;
+	}
 
 	{
 		if (_lastOcclusionQueryValid) {
@@ -2120,10 +2124,16 @@ constinit static struct voxelRender // ** static container, all methods and memb
 		auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
 
 		if (FoundModelInstance) {
-			// visibility too agressive culling light emission from models, so extents are doubled on xz axis
-			//if (Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMVectorMultiply(_visibleLight, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents)))) {
-				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
-			//}
+
+			bool const emission_only(FoundModelInstance->isEmissionOnly());
+
+			if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
+				FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+			}
+
+			FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
+
+			FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 		}
 	}
 
@@ -3970,7 +3980,7 @@ namespace world
 			static constexpr int32_t const MAX_VALUE(UINT16_MAX);
 			static constexpr float const INV_MAX_VALUE(1.0f / float(MAX_VALUE));
 
-			point2D_t const rawData[2] = { MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse), 1), MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse), 0) };
+			point2D_t const rawData[2]{ MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse), 1), MinCity::Vulkan.queryMouseBuffer(XMLoadFloat2A(&_vMouse), 0) };
 
 			if (!rawData[0].isZero()) { // bugfix for when mouse hovers out of grid bounds 
 
@@ -3997,20 +4007,29 @@ namespace world
 
 				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
-				//if (voxelIndex != _occlusion.groundVoxelIndex) {
-					if (voxelIndex != _occlusion.occlusionVoxelIndex) {
-						uvec4_v cmpTwo(2);
-						point2D_t const absDiff(p2D_abs(p2D_sub(_occlusion.groundVoxelIndex, voxelIndex)));
-						uvec4_v const cmpDiff(absDiff.v);
+				if (voxelIndex != _occlusion.occlusionVoxelIndex) {
+
+					uvec4_v const cmpMax(Iso::SCREEN_VOXELS_XZ);
+					point2D_t absDiff(p2D_abs(p2D_sub(_occlusion.occlusionVoxelIndex, voxelIndex)));
+					uvec4_v cmpDiff(absDiff.v);
+
+					if (uvec4_v::all<2>(cmpDiff < cmpMax)) { // filter out large sudden changes
+					
+						uvec4_v const cmpTwo(2);
+						absDiff = p2D_abs(p2D_sub(_occlusion.groundVoxelIndex, voxelIndex));
+						cmpDiff.v = absDiff.v;
 
 						if (uvec4_v::all<2>(cmpDiff < cmpTwo)) { // update the hoverindex if within (+-)1 voxels of last recorded *known good* ground voxel index
 																 // this improves the latency of input and accuracy.
 							_voxelIndexHover.v = voxelIndex.v;
 						}
+
 						_occlusion.occlusionVoxelIndex.v = voxelIndex.v;
 					}
-					_lastOcclusionQueryValid = true;
-				//}
+					
+				}
+				_lastOcclusionQueryValid = true;
+
 			}
 			else {
 				_lastOcclusionQueryValid = false;
@@ -4115,14 +4134,7 @@ namespace world
 	void cVoxelWorld::PreUpdate(bool const bPaused) // *** timing is unreliable in this function, do not use time in this function
 	{
 		// special input handling (required every frame) //
-		//if (!bPaused) { // only neccesary to query the voxel indices hovered by the mouse when active (not paused).
-
-			//if (_bMotionDelta || oCamera.Motion) {
-
-			HoverVoxel();
-			
-			//}
-		//}
+		HoverVoxel();
 	}
 	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateFrame, bool const bFirstUpdateProgram)
 	{
@@ -4153,7 +4165,7 @@ namespace world
 				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
 
 			if (bFirstUpdateFrame) {
-				updateMouseOcclusion();
+				updateMouseOcclusion(bPaused);
 			}
 
 #ifdef GIF_MODE

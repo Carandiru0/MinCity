@@ -110,9 +110,11 @@ namespace Volumetric
 		__inline voxB::voxelModel<Dynamic> const& __restrict		  getModel() const { return(model); }
 		uint32_t const												  getFlags() const { return(flags);}
 		bool const													  isFaded() const { return(faded); }
+		bool const													  isEmissionOnly() const { return(emission_only); }
 
 		uint32_t const												  getTransparency() const { return(transparency); } // use eVoxelTransparency enum
-		void														  setFaded(bool const faded_) { faded = faded_; }
+		void														  setFaded(bool const faded_) { faded = faded_; } // makes instance transparent
+		void														  setEmissionOnly(bool const emission_only_) { emission_only = emission_only_; } // makes instance hidden except for lights still added to lightbuffer
 
 		/// Transparency only has affect if loaded model has state groups defining the voxels that are transparent at load model time
 		void														  setTransparency(uint32_t const transparency_) { transparency = transparency_; } // use eVoxelTransparency enum
@@ -129,11 +131,11 @@ namespace Volumetric
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
-		bool												faded;
+		bool												faded, emission_only;
 		uint32_t											transparency;	// 4 distinct levels of transparency supported - see eVoxelTransparency enum - however all values between 0 - 255 will be correctly converted to transparency level that is closest
 	public:
 		inline explicit voxelModelInstance(voxB::voxelModel<Dynamic> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
-			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), faded(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
+			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), faded(false), emission_only(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
 		{}
 	};
 

@@ -709,8 +709,10 @@ namespace Volumetric
 		// at this point, these are the new extents only if they have changed
 		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), current_min(MappedVoxelLights.getCurrentVolumeExtentsMin());
 		
+		__m128i const xmZero(_mm_setzero_si128()), xmLimit(MappedVoxelLights.getVolumeExtentsLimit().v);
+
 		{ // pad by one         // no modifications to .w component
- 			__m128i const xmOne(uvec4_v(1, 0).v), xmZero(_mm_setzero_si128()), xmLimit(MappedVoxelLights.getVolumeExtentsLimit().v);
+ 			__m128i const xmOne(uvec4_v(1, 0).v);
 
 			current_max.v = _mm_add_epi32(current_max.v, xmOne);
 			current_max.v = SFM::clamp(current_max.v, xmZero, xmLimit);
@@ -738,8 +740,8 @@ namespace Volumetric
 				if (uvec4_v::any<3>(current_max > last_max) ||
 					uvec4_v::any<3>(current_min < last_min)) {
 
-					clear_max_max.v = uvec4_v(LightWidth, LightHeight, LightDepth).v;
-					clear_min_min.v = uvec4_v().v;
+					clear_max_max.v = xmLimit;
+					clear_min_min.v = xmZero;
 				}
 				else { // when "shrinking", optimized union of regions for volume clearing!
 
@@ -811,7 +813,9 @@ namespace Volumetric
 
 			// back to vector form
 			current_max.v = uvec4_v(extents_max).v;
+			current_max.v = SFM::clamp(current_max.v, xmZero, xmLimit);
 			current_min.v = uvec4_v(extents_min).v;
+			current_min.v = SFM::clamp(current_min.v, xmZero, xmLimit);
 
 			if (uvec4_v::any<3>(current_max != uvec4_v(last_max_extents[resource_index])) ||
 				uvec4_v::any<3>(current_min != uvec4_v(last_min_extents[resource_index]))) {

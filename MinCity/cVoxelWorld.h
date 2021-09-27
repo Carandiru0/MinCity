@@ -259,7 +259,7 @@ namespace world
 		// mouse occlusion
 		void clearOcclusionInstances();
 		void setOcclusionInstances();
-		void updateMouseOcclusion();
+		void updateMouseOcclusion(bool const bPaused);
 
 		void __vectorcall UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate = false);
 		

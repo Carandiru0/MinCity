@@ -71,8 +71,13 @@ public:
 		// convert from world space to light space
 		//            &
 		// storing current minimum & maximum
-		SFM::ceil_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMax))).xyzw(_max_extents);
-		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMin))).xyzw(_min_extents);
+		uvec4_v const new_max( SFM::ceil_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMax))) );
+		uvec4_v const new_min( SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMin))) );
+
+		if (uvec4_v::all<3>(new_min < new_max)) { // *bugfix only update the publicly accessible extents if the new min/max is valid.
+			new_max.xyzw(_max_extents);
+			new_min.xyzw(_min_extents);
+		}
 
 		// copy internal cache to write-combined memory (staging buffer) using streaming stores
 		// this fully replaces the volume for the stagingBuffer irregardless of current light bounds min & max (important) (this effectively reduces the need to clear the gpu - writecombined *staging* buffer)
