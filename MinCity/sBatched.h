@@ -8,7 +8,8 @@ BETTER_ENUM(eThreadBatchGrainSize, uint32_t const,	// batch (*minimums*) sizes f
 
 	GRID_RENDER_2D = 16U, // <--- this includes ground, is 2 dimensional and should be small (auto-partitioning - load balanced)
 	MODEL = 64U,		 // minimum voxels processed in a single task, will be a lot larger as is split uniformly across affinity
-	RADIAL = 32U		 // ""        ""      ""     for a row in a single task, adaptively larger based on row size and is split uniformly across affinity
+	RADIAL = 32U,		 // ""        ""      ""     for a row in a single task, adaptively larger based on row size and is split uniformly across affinity
+	GEN_PLOT = 1U		 // minimum unit for auto partitioner - *bugfix: must be equal to one otherwise buildings on plot intersect each other.
 );
 
 BETTER_ENUM(eStreamingBatchSize, uint32_t const,		// batch sizes for batched streaming stores

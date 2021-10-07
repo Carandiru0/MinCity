@@ -65,7 +65,8 @@ layout(location = 0) out streamOut
 	writeonly flat uint adjacency;
 	writeonly flat vec2	world_uv;
 #ifndef BASIC
-	writeonly flat vec3    ambient;
+	writeonly flat float   ambient;
+	writeonly flat float   color;
 	writeonly flat float   occlusion;
 	writeonly flat float   emission;
 #endif
@@ -77,7 +78,7 @@ writeonly layout(location = 0) out streamOut
 	flat vec4   corners;
 	flat vec2	world_uv;
 #ifndef BASIC
-	flat vec3    ambient;
+	flat float   ambient;
 	flat float   occlusion;
 	flat float   emission;
 	flat vec4    extra;
@@ -92,8 +93,8 @@ writeonly layout(location = 0) out streamOut
 	flat vec2	world_uv;
 #endif
 #ifndef BASIC
-	flat vec3    ambient;
-	flat vec3	 color;
+	flat float   ambient;
+	flat float	 color;
 	flat float   occlusion;
 	flat float   emission;
 	flat vec4    extra;
@@ -261,7 +262,7 @@ void main() {
   
 #ifndef CLEAR
 
-  Out.ambient = b.average_reflection_color.rgb / float(b.average_reflection_count);
+  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count));
 
 #if defined(DYNAMIC) && defined(TRANS)  // transparent voxels only
 #if defined(ROAD)
@@ -344,15 +345,15 @@ void main() {
   }
 #endif
 
-#else // ########## voxels only
+#endif
 
   {
 #ifndef BASIC
-	Out.color = toLinear(unpackColor(inUV.w)); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
+#ifndef ROAD // applies to ground and regular voxels only
+	Out.color = packColor(toLinear(unpackColor(inUV.w))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
+#endif
 #endif
   }
-
-#endif  // else, voxels
 
 #if !defined(BASIC)
 

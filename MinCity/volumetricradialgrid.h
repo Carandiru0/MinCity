@@ -705,7 +705,6 @@ namespace Volumetric
 		// Fastest way to iterate over a vector! (in parallel as isolated random access)
 		vector<Volumetric::xRow> const& __restrict Rows(radialGrid->InstanceRows);
 
-		tbb::affinity_partitioner part;
 		tbb::parallel_for(
 			tbb::blocked_range<xRow const* __restrict>(Rows.data(), Rows.data() + Rows.size(), eThreadBatchGrainSize::RADIAL),
 			[&](tbb::blocked_range<xRow const* __restrict> rows) {
@@ -740,8 +739,7 @@ namespace Volumetric
 				// ensure all batches are  output (residual/remainder)
 				local::voxels.out(pVoxelsOut);
 				// ####################################################################################################################
-			}
-		, part);
+			});
 	}
 } // end namespace
 

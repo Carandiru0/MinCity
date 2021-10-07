@@ -4,9 +4,13 @@
 #include "UndoVoxel.h"
 #include <vector>
 #include "money_t.h"
+#include "world.h"
 
 class cZoningTool final : public cAbstractToolMethods
 {
+	// R  //  // C  //  // I  //
+	static constexpr uint32_t const ZONING_COLOR[3] = { 0x00FF00, 0xFF0000, 0x00FFFF }; // bgr
+
 public:
 	uint32_t const toolType() const final {
 		return(eTools::ZONING);
@@ -31,7 +35,8 @@ private:
 	void clearZoneHistory();
 	void pushZoneHistory(UndoVoxel&& history);
 
-	void __vectorcall zoneArea(rect2D_t const area);
+	template<bool const bEmission>
+	__inline void __vectorcall highlightArea(rect2D_t const area);
 private:
 	vector<sUndoVoxel>	_undoHistory;
 	
@@ -44,3 +49,36 @@ public:
 	cZoningTool();
 	virtual ~cZoningTool() = default;
 };
+
+template<bool const bEmission>
+__inline void __vectorcall cZoningTool::highlightArea(rect2D_t const area)
+{
+	if (_ActivatedSubTool > 0) {
+		point2D_t voxelIndex{};
+
+		uint32_t const zoneColor(ZONING_COLOR[_ActivatedSubTool - 1]);
+
+		for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
+
+			for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
+
+				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+
+				if (pVoxel) {
+					Iso::Voxel oVoxel(*pVoxel);
+
+					if (Iso::isGroundOnly(oVoxel)) {
+						pushZoneHistory(UndoVoxel(voxelIndex, oVoxel));
+
+						Iso::setColor(oVoxel, zoneColor);
+						if constexpr (bEmission) {
+							Iso::setEmissive(oVoxel);
+						}
+
+						world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+					}
+				}
+			}
+		}
+	}
+}

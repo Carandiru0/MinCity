@@ -369,6 +369,8 @@ namespace world
 				}
 			}
 		}
+
+		_onLoadedRequired = true; // trigger onloaded() inside Update of VoxelWorld
 	}
 
 } // end ns

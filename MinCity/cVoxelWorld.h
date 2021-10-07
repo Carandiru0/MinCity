@@ -15,7 +15,7 @@
 #include <optional>
 #include "volumetricOpacity.h"
 #include "volumetricVisibility.h"
-
+#include "cSimulation.h"
 #include "cBlueNoise.h"
 
 // forward decls:
@@ -223,9 +223,14 @@ namespace world
 		template<int32_t const eVoxelModelGrpID> // public preferred usage returns [hash, instance] structured binding
 		auto const placeVoxelModelInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const flags = 0);
 	
+		template<typename TNonUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
+		TNonUpdateableGameObject* const placeNonUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags = 0);
 
 		template<typename TNonUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TNonUpdateableGameObject* const placeNonUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
+
+		template<typename TUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
+		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags = 0);
 
 		template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
@@ -314,6 +319,8 @@ namespace world
 
 		} _occlusion;
 
+		cSimulation*				_sim;
+
 		uint32_t					_mouseState;
 		XMFLOAT2A					_vMouse;
 		point2D_t					_voxelIndexHover;
@@ -324,6 +331,8 @@ namespace world
 		
 		bool						_bMotionInvalidate = false, _bMotionDelta = false;
 		bool						_bDraggingMouse = false;
+
+		bool						_onLoadedRequired;
 
 		sExplosionInstance*			_activeExplosion;
 		sTornadoInstance*			_activeTornado;
@@ -590,6 +599,35 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, ui
 	return(binding); // returns [hash, instance] structured binding
 }
 
+template<typename TNonUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed
+TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
+{
+	auto const [hash, instance] = placeVoxelModelInstanceAt<Dynamic>(voxelIndex, voxelModel, additional_flags);
+
+	if (instance) {
+
+		if (hash) { // normal instance, need actual reference to managed memory
+			if constexpr (Dynamic) {
+
+				return(&TNonUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]));
+			}
+			else {
+
+				return(&TNonUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]));
+			}
+		}
+		else { // child instance
+			return(&TNonUpdateableGameObject::emplace_back(instance));
+		}
+	}
+#ifndef NDEBUG
+	else {
+		FMT_LOG_WARN(VOX_LOG, "placeNonUpdateableInstanceAt<{:s}> failed. at voxelIndex({:d},{:d})",
+			(Dynamic ? "dynamic" : "static"), voxelIndex.x, voxelIndex.y);
+	}
+#endif
+	return(nullptr);
+}
 template<typename TNonUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed
 TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags)
 {
@@ -620,6 +658,35 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 	return(nullptr);
 }
 
+template<typename TUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed
+TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
+{
+	auto const [hash, instance] = placeVoxelModelInstanceAt<Dynamic>(voxelIndex, voxelModel, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | additional_flags);
+
+	if (instance) {
+
+		if (hash) { // normal instance, need actual reference to managed memory
+			if constexpr (Dynamic) {
+
+				return(&TUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]));
+			}
+			else {
+
+				return(&TUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]));
+			}
+		}
+		else { // child instance
+			return(&TUpdateableGameObject::emplace_back(instance));
+		}
+	}
+#ifndef NDEBUG
+	else {
+		FMT_LOG_WARN(VOX_LOG, "placeUpdateableInstanceAt<{:s}> failed. at voxelIndex({:d},{:d})",
+			(Dynamic ? "dynamic" : "static"), voxelIndex.x, voxelIndex.y);
+	}
+#endif
+	return(nullptr);
+}
 template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed
 TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags)
 {

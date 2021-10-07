@@ -29,7 +29,8 @@ readonly layout(location = 0) in streamIn
 	flat uint   adjacency;
 	flat vec2	world_uv;
 #ifndef BASIC
-	flat vec3    ambient;
+	flat float   ambient;
+	flat float	 color;
 	flat float   occlusion;
 	flat float   emission;
 #endif
@@ -41,7 +42,7 @@ readonly layout(location = 0) in streamIn
 	flat vec4   corners;
 	flat vec2	world_uv;
 #ifndef BASIC
-	flat vec3    ambient;
+	flat float   ambient;
 	flat float   occlusion;
 	flat float   emission;
 	flat vec4    extra;
@@ -56,8 +57,8 @@ readonly layout(location = 0) in streamIn
 	flat vec2	world_uv;
 #endif
 #ifndef BASIC
-	flat vec3    ambient;
-	flat vec3	 color;
+	flat float   ambient;
+	flat float	 color;
 	flat float   occlusion;
 	flat float   emission;
 	flat vec4    extra;
@@ -190,12 +191,11 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #if !defined(BASIC)
 
-#if defined(HEIGHT) 
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
 #endif
 #ifdef ROAD
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -210,12 +210,11 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #if !defined(BASIC)
 	 
-#if defined(HEIGHT) 
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
 #endif
 #ifdef ROAD
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -230,12 +229,11 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #if !defined(BASIC)
 	
-#if defined(HEIGHT)  
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
 #endif
-#ifdef ROAD
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+#ifdef ROAD 
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -250,12 +248,11 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #if !defined(BASIC)
 	
-#if defined(HEIGHT) 
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
 #endif
-#ifdef ROAD
-	Out._uv_texture.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.world_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+#ifdef ROAD 
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
 #endif
 #endif // not basic
 
@@ -280,7 +277,9 @@ void main() {
 	// ** Per voxel ops *** //
 #ifndef BASIC
 	Out.ambient = In[0].ambient;
-
+#ifdef _color
+	Out._color = In[0].color;
+#endif
 #ifdef _occlusion
 	Out._occlusion = In[0].occlusion;
 #endif
@@ -289,12 +288,11 @@ void main() {
 #endif
 
 #ifdef ROAD
-	Out.world_uv.z = In[0].extra.x; // road tile index in .z, which is good for indexing texture array nicely as special.xy already contains uv coords
+	Out.road_uv.z = In[0].extra.x; // road tile index in .z, which is good for indexing texture array nicely as special.xy already contains uv coords
 #endif
 	
 #if !(defined(HEIGHT) || defined(ROAD))
 	Out._passthru = In[0].passthru; // passthru extra data ****************************************************************************
-	Out._color = In[0].color;
 #endif
 
 #ifdef _time

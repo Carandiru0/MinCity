@@ -9,6 +9,7 @@
 #include <Random/superrandom.hpp>
 #include <Imaging/Imaging/Imaging.h>
 #include <Utility/bit_volume.h>
+#include <Utility/bit_row.h>
 #include "cNuklear.h"
 #include "cPostProcess.h"
 #include "adjacency.h"
@@ -112,7 +113,7 @@ static inline struct CameraEntity
 tbb::queuing_rw_mutex _theLock; // for _theGrid
 static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
 {
-	Iso::Voxel* __restrict		 _protected;
+	Iso::Voxel* __restrict		 _protected = nullptr;
 	
 	__declspec(safebuffers) __forceinline operator Iso::Voxel* const __restrict() const {
 		return(_protected);
@@ -120,7 +121,7 @@ static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous 
 } _theGrid{};
 static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
 {
-	Iso::mini::Voxel const** __restrict	 _protected;
+	Iso::mini::Voxel const** __restrict	 _protected = nullptr;
 
 	__declspec(safebuffers) __forceinline operator Iso::mini::Voxel const** const __restrict() const {
 		return(_protected);
@@ -134,7 +135,15 @@ static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, pro
 	volume
 		* __restrict bits = nullptr;
 } _mini;
+static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
+{
+	using row = bit_row<Iso::WORLD_GRID_SIZE>;
+	row
+		* __restrict	 residential = nullptr,
+		* __restrict	 commercial = nullptr,
+		* __restrict	 industrial = nullptr;
 
+} _theZone{};
 
 static uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
 	UINT8_MAX - GROUND_HEIGHT_NOISE_STEP,
@@ -933,6 +942,103 @@ namespace world
 		return(false); // not visible
 	}
 
+	namespace zoning
+	{
+		void setArea(rect2D_t voxelArea, uint32_t const zone_type)
+		{
+			//
+			using row = bit_row<Iso::WORLD_GRID_SIZE>;
+
+			row
+				* __restrict grid,
+				* __restrict other[2];
+			
+			switch (zone_type) {
+			case RESIDENTIAL:
+				grid = _theZone.residential;
+				other[0] = _theZone.commercial;
+				other[1] = _theZone.industrial;
+				break;
+			case COMMERCIAL:
+				grid = _theZone.commercial;
+				other[0] = _theZone.residential;
+				other[1] = _theZone.industrial;
+				break;
+			default:
+			case INDUSTRIAL:
+				grid = _theZone.industrial;
+				other[0] = _theZone.residential;
+				other[1] = _theZone.commercial;
+				break;
+			}
+
+			// clamp to world/minmax coords
+			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+
+			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
+			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+
+			point2D_t voxelIterate;
+
+			for (voxelIterate.y = voxelArea.top; voxelIterate.y < voxelArea.bottom; ++voxelIterate.y) {
+
+				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
+
+					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAtLocal(voxelIterate)); // pre-transformed to [0,0 to X,Y]
+
+					if (pVoxel) {
+						Iso::Voxel const oVoxel(*pVoxel);
+
+						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
+							grid[voxelIterate.y].set_bit(voxelIterate.x);
+							for (uint32_t i = 0; i < 2; ++i) {
+								other[i][voxelIterate.y].clear_bit(voxelIterate.x);
+							}
+						}
+					}
+				}
+			}
+		}
+		void clearArea(rect2D_t voxelArea, uint32_t const zone_type)
+		{
+			//
+			using row = bit_row<Iso::WORLD_GRID_SIZE>;
+
+			row
+				* __restrict grid;
+			;
+			switch (zone_type) {
+			case RESIDENTIAL:
+				grid = _theZone.residential;
+				break;
+			case COMMERCIAL:
+				grid = _theZone.commercial;
+				break;
+			default:
+			case INDUSTRIAL:
+				grid = _theZone.industrial;
+				break;
+			}
+
+			// clamp to world/minmax coords
+			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+
+			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
+			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+
+			point2D_t voxelIterate;
+
+			for (voxelIterate.y = voxelArea.top; voxelIterate.y < voxelArea.bottom; ++voxelIterate.y) {
+
+				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
+
+					grid[voxelIterate.y].clear_bit(voxelIterate.x);
+
+				}
+			}
+		}
+	} // end ns
+
 	Iso::Voxel const * const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
@@ -953,6 +1059,20 @@ namespace world
 	{	//          	equal same voxel	
 		// still in Grid Space (-x,-y) to (X, Y) Coordinates 
 		return(getVoxelAt(v2_to_p2D(Location)));
+	}
+
+	Iso::Voxel const* const __restrict __vectorcall getVoxelAtLocal(point2D_t const voxelIndex)
+	{
+		// Check bounds
+		if ((voxelIndex.x | voxelIndex.y) >= 0) {
+
+			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
+
+				return((_theGrid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+			}
+		}
+
+		return(nullptr);
 	}
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
@@ -1569,7 +1689,7 @@ namespace world
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area)
 	{
 		return(point2D_t(PsuedoRandomNumber32(area.left, area.right),
-			PsuedoRandomNumber32(area.top, area.bottom)));
+						 PsuedoRandomNumber32(area.top, area.bottom)));
 	}
 	point2D_t const __vectorcall getRandomVisibleVoxelIndex()
 	{
@@ -1922,7 +2042,7 @@ constinit static struct voxelRender // ** static container, all methods and memb
 	using miniVoxelLocalBatch = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::GROUND>;
 	using miniVoxelThreadBatch = tbb::enumerable_thread_specific<
 		miniVoxelLocalBatch,
-		tbb::cache_aligned_allocator<VoxelLocalBatch>,
+		tbb::cache_aligned_allocator<miniVoxelLocalBatch>,
 		tbb::ets_key_per_instance >;
 
 	static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
@@ -2066,7 +2186,17 @@ constinit static struct voxelRender // ** static container, all methods and memb
 			groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
 			groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
 
-			XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+			XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+
+			uint32_t color(0xFFFFFF); // bgr default color for terrain
+			if (Iso::isGroundOnly(oVoxel)) {
+				uint32_t const ground_color(Iso::getColor(oVoxel));
+
+				if (0 != ground_color) {
+					color = ground_color;
+				}
+			}
+			xmUVs = XMVectorSetW(xmUVs, ((float)color));
 
 			localGround.emplace_back(
 				voxelGround,
@@ -2397,8 +2527,8 @@ namespace world
 {
 	cVoxelWorld::cVoxelWorld()
 		:
-		_lastState{}, _currentState{}, _targetState{}, _occlusion{},
-		_vMouse{}, _lastOcclusionQueryValid(false),
+		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, _sim(nullptr),
+		_vMouse{}, _lastOcclusionQueryValid(false), _onLoadedRequired(false),
 		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr), _textureShader{},
 		_blackbodyImage(nullptr),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
@@ -2536,13 +2666,19 @@ namespace world
 		{
 			_theGrid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			_theTemp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
-
+			
+			__memclr_stream<CACHE_LINE_BYTES>(_theGrid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			__memclr_stream<CACHE_LINE_BYTES>(_theTemp._protected, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			
 			_mini.voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-
 			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 			_mini.bits = volume::create();
-
 			clearMiniVoxels();
+
+			using row = bit_row<Iso::WORLD_GRID_SIZE>;
+			_theZone.residential = row::create(Iso::WORLD_GRID_SIZE);
+			_theZone.commercial = row::create(Iso::WORLD_GRID_SIZE);
+			_theZone.industrial = row::create(Iso::WORLD_GRID_SIZE);
 
 			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(_theGrid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
 			FMT_LOG(VOX_LOG, "mini grid voxel allocation: {:n} bytes", (size_t)(sizeof(_theTemp[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
@@ -2851,7 +2987,11 @@ namespace world
 
 	void cVoxelWorld::OnLoaded(tTime const& __restrict tNow)
 	{
+		SAFE_DELETE(_sim);
+		_sim = new cSimulation();
+
 		// rain!!!
+		SAFE_DELETE(_activeRain);
 		_activeRain = new sRainInstance(XMVectorZero(), 128.0f);
 
 #ifdef GIF_MODE
@@ -3054,6 +3194,8 @@ namespace world
 			}
 		}
 #endif
+
+		_onLoadedRequired = false; // reset
 	}
 
 	// *** no simultaneous !writes! to grid or grid data can occur while calling this function ***
@@ -4081,12 +4223,6 @@ namespace world
 		time_last = _currentState.time; // update last interpolated time
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
-		// view matrix derived from eyePos
-		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder)); 
-
-		_currentState.Uniform.eyePos = xmEyePos;
-		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
-
 		// **panning is isolated to not affect raymarching uniformity**
 #ifdef PANNING_ENABLED
 		_currentState.pan = SFM::lerp(_lastState.pan, _targetState.pan, tRemainder);
@@ -4094,13 +4230,19 @@ namespace world
 		_currentState.pan = XMVectorZero();
 #endif
 
-		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(xmEyePos, _currentState.pan),  // normal view matrix
-															 _currentState.pan, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		// view matrix derived from eyePos
+		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
+
+		_currentState.Uniform.eyePos = xmEyePos;
+		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+
+		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
+												 XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 		_currentState.Uniform.view = xmView;
 		_OpacityMap.pushViewMatrix(xmView);
 
 		// not yet required
-		_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
+		//_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
 
 		// Update Frustum, which updates projection matrix, which is derived from ZoomFactor
 		_currentState.zoom = SFM::lerp(_lastState.zoom, _targetState.zoom, tRemainder);
@@ -4159,13 +4301,17 @@ namespace world
 		// ***** Anything that uses uniform state updates AFTER
 		_bMotionDelta = false; // must reset *here*
 		
-		[[likely]] if (!bFirstUpdateProgram) {
+		[[likely]] if (!bFirstUpdateProgram && !_onLoadedRequired) {
 
 			[[unlikely]] if (eExclusivity::DEFAULT != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
 				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
 
 			if (bFirstUpdateFrame) {
 				updateMouseOcclusion(bPaused);
+			}
+
+			if (_sim) {
+				_sim->run(tNow, tDelta, _theZone.residential, _theZone.commercial, _theZone.industrial);
 			}
 
 #ifdef GIF_MODE
@@ -5127,6 +5273,8 @@ namespace world
 
 	void cVoxelWorld::CleanUp()
 	{
+		SAFE_DELETE(_sim);
+
 		// cleanup special instances
 		SAFE_DELETE(_activeExplosion);
 		SAFE_DELETE(_activeTornado);
@@ -5193,18 +5341,30 @@ namespace world
 
 		supernoise::blue.Release();
 
+		using row = bit_row<Iso::WORLD_GRID_SIZE>;
+		if (_theZone.residential) {
+			row::destroy(_theZone.residential);
+		}
+		if (_theZone.commercial) {
+			row::destroy(_theZone.commercial);
+		}
+		if (_theZone.industrial) {
+			row::destroy(_theZone.industrial);
+		}
+
 		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 
 		if (_mini.bits) {
 			volume::destroy(_mini.bits);
 		}
+		if (_theTemp._protected) {
+			scalable_aligned_free(_theTemp._protected);
+		}
 
 		if (_theGrid._protected) {
 			scalable_aligned_free(_theGrid._protected);
 		}
-		if (_theTemp._protected) {
-			scalable_aligned_free(_theTemp._protected);
-		}
+		
 
 #ifdef DEBUG_STORAGE_BUFFER
 		SAFE_RELEASE_DELETE(DebugStorageBuffer);

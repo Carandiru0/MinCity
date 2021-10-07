@@ -11,6 +11,9 @@ namespace world
 	static constexpr uint32_t const TERRAIN_TEXTURE_SZ = Iso::WORLD_GRID_SIZE;		// ** must be a multiple of world grid, 
 																					// ** power of 2 and not exceeding 16384
 
+	static constexpr uint32_t const RESIDENTIAL = 0,
+									COMMERCIAL = 1,
+									INDUSTRIAL = 2;
 
 #define zERO 0.0f
 	read_only inline XMVECTORF32 const WORLD_CENTER{ 0.0f, 0.0f, zERO, zERO };
@@ -35,6 +38,9 @@ namespace world
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex);
 	Iso::Voxel const* const __restrict __vectorcall getVoxelAt(FXMVECTOR const Location);
+
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	Iso::Voxel const* const __restrict __vectorcall getVoxelAtLocal(point2D_t const voxelIndex);
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	bool const __vectorcall setVoxelAt(point2D_t voxelIndex, Iso::Voxel const&& __restrict newData);
@@ -68,6 +74,13 @@ namespace world
 
 	// voxel painting (minivoxels)  ***** addVoxel can only be called with UserInterface.Paint(), or methods invoked inside UserInterface.Paint() *****
 	bool const __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
+
+	// zoning
+	namespace zoning
+	{
+		void setArea(rect2D_t voxelArea, uint32_t const zone_type);
+		void clearArea(rect2D_t voxelArea, uint32_t const zone_type);
+	}
 
 	// Random & Search //
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area);

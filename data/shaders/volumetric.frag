@@ -35,6 +35,7 @@ const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 
 #define EPSILON 0.000000001f
 #define FOG_STRENGTH -0.18f // must be negative
+#define SCATTER_STRENGTH (GOLDEN_RATIO*60.0f)
 #define FOG_MAX_HEIGHT 80.0f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -51,14 +52,13 @@ layout (binding = 10) restrict buffer DebugStorageBuffer {
   float		history[1024][1024];
 } b;
 
-#endif
+#endif // DEBUG_VOLUMETRIC
 
 readonly layout(location = 0) in streamIn
 {   // must all be xzy
 	noperspective vec3	rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
-	flat vec3			fractional_offset;
 } In;
 
 #define OUT_REFLECT 0
@@ -141,10 +141,9 @@ bool bounced(in const float opacity)
 	// an opaque voxel are not marched causing strange issues like emission affecting transmission etc.
 	return( (opacity - BOUNCE_EPSILON) >= 0.0f ); // maybe faster to test against zero with fast sign test
 }
-float fetch_opacity_texel( in const vec3 p_scaled ) { // hit test for reflections - note if emissive, is also opaque
+float fetch_opacity_reflection( in const vec3 p ) { // hit test for reflections - note if emissive, is also opaque
 							  
-	return (texelFetch(volumeMap[OPACITY], ivec3(p_scaled), 0).r);
-	//return (textureLod(volumeMap[OPACITY], p_scaled * InvVolumeDimensions, 0).r);
+	return( max(textureLod(volumeMap[OPACITY], p, 0).r, texelFetch(volumeMap[OPACITY], ivec3(p * VolumeDimensions), 0).r) ); // *bugfix - smoother
 }
 
 
@@ -314,7 +313,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
-	const float fogAmount = (voxel.tran) * (1.0f - exp2(((transparency + emission) * 0.5f + scattering * 100.0f) * FOG_STRENGTH));
+	const float fogAmount = (voxel.tran) * (1.0f - exp2(((transparency + emission) * 0.5f + scattering * SCATTER_STRENGTH) * FOG_STRENGTH));
 	const float lightAmount = attenuation + emission;  // this is what brings out a volumetric glow *do not change*
 
 	// this is balanced so that sigmaS remains conservative. Only emission can bring the level of sigmaS above 1.0f
@@ -365,31 +364,29 @@ vec4 reflection(in vec4 voxel, in const float bounce_scatter, in const float opa
 }
 
 // all in parameters is important
-void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const float dt, in float interval_remaining, in float interval_length)
+void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float dt, in float interval_remaining, in float interval_length)
 {
 	// interval_remaining currently equals the bounce interval location
 	// allow reflections visible at same distance that was travelled from eye to bounce
 	interval_length = interval_remaining = min(dt * MAX_STEPS, interval_length - interval_remaining) * BOUNCE_INTERVAL;
 
-	p += 2.0f * dt * rd; // first reflected move to next point
+	dt = 2.0f * dt;	// reflection step is double, faster
+	p += dt * rd;	// first reflected move to next point
 
 	float opacity = 0.0f;
 	vec4 stored_reflection = voxel;
 	{ //  begin new reflection raymarch to find reflected surface
-		// transform to world volume scale (using integer based coord because of texelFetch usage in test_hit() optimization)
-		p *= VolumeDimensions;
-
 		float reflection_avg = 1.0f;
 
 		// find reflection
-		for( ; interval_remaining >= 0.0f ; interval_remaining -= dt ) {  // fast sign test
+		for( ; interval_remaining >= 0.0f ; interval_remaining -= dt) {  // fast sign test
 
 			// hit opaque/transparent voxel ?
-			const float opacity_sample = fetch_opacity_texel(p);  // extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
+			const float opacity_sample = fetch_opacity_reflection(p);  // extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
 			integrate_opacity(opacity, abs(opacity_sample), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 			[[branch]] if(bounced(opacity)) { 
 				
-				stored_reflection = mix(stored_reflection, reflection(voxel, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p * InvVolumeDimensions, dt),
+				stored_reflection = mix(stored_reflection, reflection(voxel, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p, dt),
 										reflection_avg);
 				reflection_avg *= 0.5f; // averaging reflections if passing thru transparent voxels. (decreasing magnitude averaging)
 
@@ -398,10 +395,9 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const 
 				}
 			}
 
-			p += rd;	// jump by full direction step (in worlld volume coordinates now)
+			p += dt * rd;
 		}
-		// transform back to uv scale
-		// not needed anymore p *= InvVolumeDimensions;
+
 	} // end raymarch
 
 	imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), stored_reflection);

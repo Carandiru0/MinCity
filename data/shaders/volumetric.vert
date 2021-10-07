@@ -9,7 +9,6 @@ writeonly layout(location = 0) out streamOut
 	noperspective vec3	rd;
 	flat vec3			eyePos;
 	flat vec3			eyeDir;
-	flat vec3			fractional_offset;
 } Out;
 
 
@@ -23,25 +22,27 @@ void main() {
 	// Compute eye position and ray directions in the unit cube space
 	// fragment shaders always sample with height being z component
 
+	const vec3 VolumeScale = VolumeDimensions * 0.5f;
+	const vec3 position = inPos.xyz - fractional_offset_v3() / VolumeDimensions;
+
 	const vec3 eyePos = u._eyePos.xyz;
-	Out.rd.xzy = normalize(inPos.xyz - eyePos);
+	Out.rd.xzy = normalize(position - eyePos);
 	Out.eyePos.xzy = eyePos;
 
 	vec3 eyeDir = u._eyeDir.xyz;
 	eyeDir.y = -eyeDir.y;  // must invert y axis here!! otherwise rotation of camera reveals incorrect depth
 	eyeDir = normalize(eyeDir);  
-	Out.eyeDir.xzy = eyeDir; // Out.eyeDir is flat, normalized and good to use normalized in fragment shader
+	Out.eyeDir.xzy = eyeDir; // Out.eyeDir is flat, normalized and good to use normalized in fragment shaders
 
-	Out.fractional_offset = vec3(fractional_offset(), 0.0f) / VolumeDimensions.xzy;
+	//Out.fractional_offset = vec3(fractional_offset(), 0.0f) / VolumeDimensions.xzy;
 
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
-	const vec3 VolumeScale = VolumeDimensions * 0.5f;
 
 	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
 	const vec3 volume_translation = mix(vec3(-0.5f), vec3(0.0f), eyeDir * 0.5f + 0.5f) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f);
 	
 	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewproj * vec4(fma(inPos.xyz, VolumeScale, volume_translation), 1.0f);	
+	gl_Position = u._viewproj * vec4(fma(position, VolumeScale, volume_translation), 1.0f);	
 }
 
 /*

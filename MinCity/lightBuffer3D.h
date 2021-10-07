@@ -227,10 +227,7 @@ public:
 	{
 		writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth>::clear_tracking();
 
-		//_internal = (std::atomic_uint32_t* __restrict)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
 		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
-
-		//_cache = (XMFLOAT4A*)__memalloc_large(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
 		_cache = (XMFLOAT4A*)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
 
 		clear();

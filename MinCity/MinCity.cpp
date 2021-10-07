@@ -193,12 +193,6 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 		return(false);
 	}
 
-	// Start background thread for long running tasks
-	if (!async_long_task::initialize()) {
-		FMT_LOG_FAIL(INFO_LOG, "Background Thread for long tasks could not be initialized! \n");
-		return(false);
-	}
-
 	// Load Settings
 	LoadINI(); // sequence first
 
@@ -904,6 +898,8 @@ __declspec(noinline) static bool SetProcessPrivilege(
 
 __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread and hyperthreading cache optimizations
 {
+	bool async_threads_started(false);
+
 	int32_t num_hw_threads(-1); // -1 will have tbb automatically fallback, in cases where it can't be optimized here.00000000000000002111111111111111/
 	HANDLE const hProcess(GetCurrentProcess());
 	HANDLE const hThread(GetCurrentThread());
@@ -968,11 +964,11 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 
 				if (hyperthreaded) {
 
-					// reserve both logical processors on first hardware core for main thread
+					// reserve both logical processors on second hardware core for main thread
 					{
 						unsigned long const cores[] = { logical_processors[0], logical_processors[1] };
 						logical_processor_count_used = 2;
-						SetThreadSelectedCpuSets(hThread, cores, logical_processor_count_used);
+						SetThreadSelectedCpuSets(hThread, &logical_processors[1], 1);
 					}
 				}
 				else {
@@ -996,6 +992,27 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					--logical_processor_count_used;
 				}
 
+				// Start background thread for long running tasks, setup using the second logical core of the last two hw cores if system is hyperthreaded.
+				{
+					int32_t const logical_processor_count((int32_t const)logical_processors.size());
+					int32_t last_logical_second_core_index[2]{};
+
+					last_logical_second_core_index[0] = logical_processor_count - 1;	// last, will be second core
+					last_logical_second_core_index[1] = logical_processor_count - 3;	// second last would be 1st logical core so skip to the next hw core, second logical core
+
+					// if there are not enough cores, set cores to zero  to disable special handling of cores for async threads
+					unsigned long cores[2]{};
+
+					if (last_logical_second_core_index[0] > 0) {
+						cores[0] = logical_processors[last_logical_second_core_index[0]];
+					}
+					if (last_logical_second_core_index[1] > 0) {
+						cores[1] = logical_processors[last_logical_second_core_index[1]];
+					}
+
+					async_threads_started = async_long_task::initialize(cores);
+				}
+
 				// if hyperthreading is on, limit to the available actual hardware cores. The even elements of the vector represent the first thread on a 
 				// hyperthreaded core. The second thread is therefore the one we want to erase from the vector; all even keep, all odd erase.
 				uint32_t index(0);
@@ -1010,11 +1027,22 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					++index;
 				}
 
-				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread.
+				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread/logical core.
 				if (logical_processors.size() > 1) {
 					SetProcessDefaultCpuSets(hProcess, logical_processors.data(), (unsigned long)logical_processors.size());
 				}
 			}
+		}
+	}
+
+	// fallback compatibility
+	if (!async_threads_started) {
+
+		unsigned long const cores[2]{}; // indicating zero will disable special handling of cores for async threads
+
+		async_threads_started = async_long_task::initialize(cores);
+		if (!async_threads_started) {
+			FMT_LOG_FAIL(INFO_LOG, "Background Thread for long tasks could not be initialized! \n");
 		}
 	}
 

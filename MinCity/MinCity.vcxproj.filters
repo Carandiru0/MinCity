@@ -336,6 +336,9 @@
     <ClInclude Include="prices.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
+    <ClInclude Include="cSimulation.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -495,6 +498,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="cAbstractToolMethods.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cSimulation.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>

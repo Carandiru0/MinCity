@@ -132,11 +132,10 @@ void main() {
 
 	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength);
 																   // bugfix: y is flipped. simplest to correct here.
-	const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(vec2(In._uv_texture.x, 1.0f - In._uv_texture.y), 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
+	const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
-	         
 
 	vec3 color = lit( vec3(terrainHeight), light_color,
 					  In._occlusion, min(1.0f, attenuation + In._emission),
@@ -144,7 +143,7 @@ void main() {
 					  L, N, V);
 
 	
-	float grid = antialiasedGrid(In._uv_texture.xy, 1024.0f);
+	float grid = antialiasedGrid(In.world_uv.xy, 1024.0f);
 
 	// third way ------------------------------------
 	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
@@ -152,12 +151,9 @@ void main() {
 	grid *= 1.0f - attenuation; // modulate by the abscense of light
 	grid *= In._occlusion; // ambient occlusion
  
-	const float grid_luma = dot(clamp(color + grid, 0.0f, 1.0f), LUMA);
 	float luma = dot(color, LUMA);
 
-	luma = clamp(grid_luma / max(1.0f - luma, 1e-6f), 0.0f, 1.0f); // avoid division by zero, clamp result to 0.0 ... 1.0f range
-	
-	color = mix(color, grid.xxx * (1.0f - luma), grid);
+	color = mix(color, grid * unpackColor(In._color) * 1.0f / (1.0f + (1.0f - luma)), grid);
 
 	outColor.rgb = color;
 }
@@ -182,11 +178,11 @@ void main() {
 	float fresnelTerm;
 
 	//const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(In._uv_texture.xy, 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
-	const float bump = texture(_texArray[TEX_NOISE], vec3(In._uv_texture.xy * 8.0f, 0))._perlin;
+	const float bump = texture(_texArray[TEX_NOISE], vec3(In.world_uv.xy * 8.0f, 0))._perlin;
 	fresnelTerm = smoothstep(0.0f, 1.0f, min(1.0f, bump /* (1.0f - terrainHeight)*/ + pow(bump, 5.0f)));
 
 	// smoother
-	vec4 road_segment = texture(_texArray[TEX_ROAD], In.world_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
+	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
 	// or ** more sharp pixelated but without any aliasing hmmm...
 	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)),In.uv_local.z), dFdx(In.uv_local.xy), dFdy(In.uv_local.xy)); 
 	
@@ -205,7 +201,7 @@ void main() {
 	                  decal_luminance, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g)),
 					  L, N, V, reflection, fresnelTerm );
 
-	color = mix(color, In.ambient + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
+	color = mix(color, unpackColor(In.ambient) + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
 
 	const vec3 shineCol = 0.333333f * vec3(0.5f, 0.05f, 1.0f);
 
@@ -226,11 +222,11 @@ void main() {
 	const vec3 V = normalize(In.V.xyz); 
 
 	// smoother
-	const float road_tile_luma = dot(texture(_texArray[TEX_ROAD], In.world_uv.xyz).rgb, LUMA);
+	const float road_tile_luma = dot(texture(_texArray[TEX_ROAD], In.road_uv.xyz).rgb, LUMA);
 	//const vec4 dFdUV = vec4( dFdx(In.uv_local.xy), dFdy(In.uv_local.xy) );
 	//const float road_tile_luma = dot(textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)), In.uv_local.z), dFdUV.xy, dFdUV.zw).rgb, LUMA);
 
-	const vec2 uv = In.world_uv.xy + vec2(0.0f, In._time*0.5f);
+	const vec2 uv = In.road_uv.xy + vec2(0.0f, In._time*0.5f);
 	vec4 road_segment;
 	road_segment.a = texture(_texArray[TEX_ROAD], vec3(uv, SELECTION)).a;
 	// or ** more sharp pixelated but without any aliasing hmmm...
@@ -274,7 +270,7 @@ void main() {
 			        
 #ifndef TRANS              
     
-	outColor.rgb = lit( In._color, light_color,
+	outColor.rgb = lit( unpackColor(In._color), light_color,
 						    In._occlusion, attenuation,
 	                        In._emission, ROUGHNESS,
 						    L, N, V );
@@ -286,7 +282,7 @@ void main() {
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 
 	float fresnelTerm;  // feedback from lit      
-	const vec3 lit_color = lit( In._color, light_color,
+	const vec3 lit_color = lit( unpackColor(In._color), light_color,
 						    In._occlusion, attenuation,
 	                        In._emission, ROUGHNESS,
 						    L, N, V, fresnelTerm );

@@ -457,7 +457,7 @@ namespace voxB
 								continue;
 							
 							Transparent = Faded | state.Transparent;
-							Emissive = (state.Emissive | Iso::isEmissive(rootVoxel)) & !Faded;			// dynamic emission state
+							Emissive = (state.Emissive) & !Faded;			// dynamic emission state
 						}
 						else {
 							Emissive = Iso::isEmissive(rootVoxel);		// static emission state
@@ -589,8 +589,6 @@ namespace voxB
 		)(tbb::blocked_range<uint32_t>(0, numTraverse));
 		*/
 
-		tbb::affinity_partitioner part;
-
 		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, _numVoxels, eThreadBatchGrainSize::MODEL),
 			RenderFuncBlockChunk(xmVoxelOrigin, 
 				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
@@ -602,7 +600,6 @@ namespace voxB
 				, PerformanceCounters
 #endif
 			)
-			, part
 		);
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION

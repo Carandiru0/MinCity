@@ -3,6 +3,9 @@
 #ifndef BLUENOISE_H
 #define BLUENOISE_H
 
+#include <Math/superfastmath.h>
+#include <Math/point2D_t.h>
+
 // define BLUENOISE_DIMENSION_SZ before inclusion of this header file
 #ifndef BLUENOISE_DIMENSION_SZ
 #define BLUENOISE_DIMENSION_SZ 128	// Default 128x128 Texture Size
@@ -23,7 +26,9 @@ namespace supernoise
 	public:
 		// accessors //
 		// **only the first channel of loaded bluenoise file is accessible by get1D() get2D()
+		// all get1D or get2D methods wrap around, so inputs outside the normal range are ok to use.
 		__inline float const						get1D(size_t const frame) const;
+		__inline float const						get2D(point2D_t const pixel) const;
 		__inline float const						get2D(FXMVECTOR const uv) const;
 		__inline float const						get2D(float const u, float const v) const;
 
@@ -47,12 +52,12 @@ namespace supernoise
 		~cBlueNoise();
 	};
 
-	// noise::blue - global singleton instance
+	// supernoise::blue - global singleton instance
 	__declspec(selectany) extern inline cBlueNoise blue{};			// deemed important enough to be a singleton instance accessible globally
 									// plays friendlier with cache not being nested by cVoxelWorld singleton, and simplifies access from other classes
 									// ** note that _blueNoise is initialized + loaded and released by cVoxelWorld singleton **
 									// ** safe to access (globally) const methods only, all methods other than Load() & Release() are const **
-} // end ns noise
+} // end ns supernoise
 
 namespace supernoise
 {
@@ -61,6 +66,13 @@ namespace supernoise
 		static constexpr uint32_t const BLUENOISE_DIMENSION_SZ_MOD = (BLUENOISE_DIMENSION_SZ * BLUENOISE_DIMENSION_SZ) - 1;
 
 		return(_blueNoise1D[frame & BLUENOISE_DIMENSION_SZ_MOD]);
+	}
+
+	__inline float const cBlueNoise::get2D(point2D_t const pixel) const // supports repeat addressing
+	{
+		static constexpr int32_t const BLUENOISE_DIMENSION_XY_MOD = BLUENOISE_DIMENSION_SZ - 1;
+
+		return(_blueNoise1D[(pixel.y & BLUENOISE_DIMENSION_XY_MOD) * BLUENOISE_DIMENSION_SZ + (pixel.x & BLUENOISE_DIMENSION_XY_MOD)]);
 	}
 
 	__inline float const cBlueNoise::get2D(FXMVECTOR const xmUV) const // supports repeat addressing
@@ -75,7 +87,7 @@ namespace supernoise
 
 		return(_blueNoise1D[(uv_nearest.y & BLUENOISE_DIMENSION_XY_MOD) * BLUENOISE_DIMENSION_SZ + (uv_nearest.x & BLUENOISE_DIMENSION_XY_MOD)]);
 	}
-	__inline float const cBlueNoise::get2D(float const u, float const v) const
+	__inline float const cBlueNoise::get2D(float const u, float const v) const // supports repeat addressing
 	{
 		return(get2D(XMVectorSet(u, v, 0.0f, 0.0f)));
 	}

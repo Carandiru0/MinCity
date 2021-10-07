@@ -105,7 +105,7 @@ vec3 reflection(in const float luminance)
 
 	// pre-multiply for bilateral alpha - this also fades the reflection as distance grows greater
 	// the current luminance of the "area" affects the brightness of the reflection, with an inverse relationship (brightness of "area" lighting dominates, causing reflection to be less visible and blend in with lighting)
-	return( ambient_reflection.rgb * ambient_reflection.a * (1.0f - luminance * 0.5f) ); // bugfix: reflections not showing in very luminant areas - luminance must be multiplied by 0.5f
+	return( ambient_reflection.rgb * ambient_reflection.a * smoothstep(0.0f, 1.5f, 0.5f + (1.0f - luminance)) ); // bugfix: reflections not showing in very luminant areas - luminance modified by 0.5f
 }
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
@@ -189,7 +189,7 @@ vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float o
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm);
 
 			// ambient reflection (ambient light not affected by fresnel) - (attenuation in this case is global, from any light source)
-	return ( In.ambient + ambient_reflection * attenuation * (1.0f - specular_reflection_term) +
+	return ( unpackColor(In.ambient) + ambient_reflection * attenuation * (1.0f - specular_reflection_term) +
 			  // diffuse color .   // diffuse shading/lighting								  // specular shading/lighting					
 		     fma( voxelAlbedo * occlusion + occlusion, ( diffuse_reflection_term + specular_reflection_term * ambient_reflection ) * light_color, 
 			       // emission					// ^^^^^^ this is like a + 1.0f but instead shaded

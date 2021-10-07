@@ -260,7 +260,6 @@ namespace Iso
 		oVoxel.Desc |= MASK_DISCOVERED_BIT;
 	}
 
-	// hasXXX hash - whether voxel is owner or not
 	STATIC_INLINE_PURE bool const hasStatic(Voxel const& oVoxel) { return(0 != oVoxel.Hash[STATIC_HASH]); }
 	STATIC_INLINE_PURE bool const hasDynamic(Voxel const& oVoxel) {
 		for (uint32_t i = DYNAMIC_HASH; i < HASH_COUNT; ++i) {
@@ -321,6 +320,19 @@ namespace Iso
 		oVoxel.Owner |= (1 << index);
 	}
 
+	// test both dynamic & static
+	STATIC_INLINE_PURE bool const isHashEmpty(Voxel const& oVoxel) {  // this helper should *not* be used in conjunction with getNextAvailableHashIndex(), as its reduntantly testing the same thing 
+																	  // however can be used isolated from getNextAvailableHashIndex()
+
+		for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+			if (0 != oVoxel.Hash[i])
+				return(false);
+		}
+
+		return(true); // empty!
+	}
+
+	// test either dynamic xor static
 	template<bool const Dynamic>
 	STATIC_INLINE_PURE bool const isHashEmpty(Voxel const& oVoxel) {  // this helper should *not* be used in conjunction with getNextAvailableHashIndex(), as its reduntantly testing the same thing 
 																	  // however can be used isolated from getNextAvailableHashIndex()
@@ -331,8 +343,7 @@ namespace Iso
 			}
 		}
 		else {
-			if (0 != oVoxel.Hash[Iso::STATIC_HASH])
-				return(false);
+			return(0 == oVoxel.Hash[Iso::STATIC_HASH]);
 		}
 
 		return(true); // empty!
@@ -360,6 +371,14 @@ namespace Iso
 	STATIC_INLINE void resetHash(Voxel& oVoxel, uint32_t const index) {
 		oVoxel.Hash[index] = 0;
 		clearAsOwner(oVoxel, index); // *** also remove owner status if it exists, applies to any/all cases
+	}
+
+	// only applicable if not an extended type, like roads.
+	STATIC_INLINE_PURE uint32_t const getColor(Voxel const& oVoxel) {
+		return(oVoxel.Hash[GROUND_HASH]);
+	}
+	STATIC_INLINE void setColor(Voxel& oVoxel, uint32_t const color) {
+		oVoxel.Hash[GROUND_HASH] = color;
 	}
 
 	STATIC_INLINE void clearAsNode(Voxel& oVoxel)

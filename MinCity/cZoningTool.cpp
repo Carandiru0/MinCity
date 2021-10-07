@@ -248,7 +248,17 @@ void cZoningTool::paint()
 
 void cZoningTool::commitZoneHistory() // commits current "zone" to grid
 {
-	_undoHistory.clear();
+	clearZoneHistory();
+
+	if (_ActivatedSubTool > 0) {
+		rect2D_t const finalArea(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
+
+		highlightArea<false>(finalArea); // creates new undo history
+
+		world::zoning::setArea(finalArea, _ActivatedSubTool - 1);
+
+		_undoHistory.clear(); // discard the new undo history
+	}
 }
 
 void cZoningTool::clearZoneHistory() // undo's current "road" from grid
@@ -339,35 +349,7 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 
 		++lastCount;
 		break;
-	default:
-		break;
 	}	
-}
-
-void __vectorcall cZoningTool::zoneArea(rect2D_t const area)
-{
-	point2D_t voxelIndex{};
-
-	for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
-
-		for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
-
-			Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
-
-			if (pVoxel) {
-				Iso::Voxel oVoxel(*pVoxel);
-
-				if (Iso::isGroundOnly(oVoxel)) {
-					pushZoneHistory(UndoVoxel(voxelIndex, oVoxel));
-
-					Iso::setEmissive(oVoxel);
-
-					world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-				}
-			}
-		}
-
-	}
 }
 
 void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
@@ -382,7 +364,7 @@ void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR 
 
 			clearZoneHistory();
 
-			zoneArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
+			highlightArea<true>(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
 
 			_segmentVoxelIndex[1] = clampedEndPoint;
 			++_activePoint;

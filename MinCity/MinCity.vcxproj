@@ -295,6 +295,7 @@
     <ClInclude Include="cRockStageGameObject.h" />
     <ClInclude Include="cSelectTool.h" />
     <ClInclude Include="cSignageGameObject.h" />
+    <ClInclude Include="cSimulation.h" />
     <ClInclude Include="cTestGameObject.h" />
     <ClInclude Include="cTextureBoy.h" />
     <ClInclude Include="cToolProvider.h" />
@@ -383,6 +384,7 @@
     <ClCompile Include="cRockStageGameObject.cpp" />
     <ClCompile Include="cSelectTool.cpp" />
     <ClCompile Include="cSignageGameObject.cpp" />
+    <ClCompile Include="cSimulation.cpp" />
     <ClCompile Include="cTestGameObject.cpp" />
     <ClCompile Include="cTextureBoy.cpp" />
     <ClCompile Include="cToolProvider.cpp" />
