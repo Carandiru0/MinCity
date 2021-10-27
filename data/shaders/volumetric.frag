@@ -34,8 +34,8 @@ const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 
 #define EPSILON 0.000000001f
-#define FOG_STRENGTH -0.18f // must be negative
-#define SCATTER_STRENGTH (GOLDEN_RATIO*60.0f)
+#define FOG_STRENGTH 0.18f
+#define SCATTER_STRENGTH (GOLDEN_RATIO*69.0f)
 #define FOG_MAX_HEIGHT 80.0f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -313,11 +313,12 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
-	const float fogAmount = (voxel.tran) * (1.0f - exp2(((transparency + emission) * 0.5f + scattering * SCATTER_STRENGTH) * FOG_STRENGTH));
-	const float lightAmount = attenuation + emission;  // this is what brings out a volumetric glow *do not change*
+	// important --------------------------[makes emission glow] // this is what brings out a volumetric glow *do not change*
+	const float fogAmount = (voxel.tran) * (emission + (1.0f - exp2(((transparency + emission) * 0.5f + scattering * SCATTER_STRENGTH) * -FOG_STRENGTH)));
+	const float lightAmount = attenuation;  
 
 	// this is balanced so that sigmaS remains conservative. Only emission can bring the level of sigmaS above 1.0f
-	const float sigmaS = fma(fogAmount, lightAmount, fogAmount) + lightAmount * emission; // this is what brings out a volumetric glow *do not change*
+	const float sigmaS = fma(fogAmount, lightAmount, fogAmount);
 	const float inv_sigmaE = 1.0f / max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------

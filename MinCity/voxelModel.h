@@ -334,7 +334,7 @@ namespace voxB
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
 	{
-		typedef struct __declspec(novtable) sRenderFuncBlockChunk {
+		typedef struct no_vtable sRenderFuncBlockChunk {
 
 		private:
 			XMVECTOR const						xmVoxelOrigin, xmUV;
@@ -350,7 +350,7 @@ namespace voxB
 
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
-			__forceinline explicit sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmUV_,
+			__forceinline sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmUV_,
 				voxB::voxelDescPacked const* const __restrict voxelsIn_,
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic_,

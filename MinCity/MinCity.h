@@ -138,17 +138,17 @@ public:
 /* ################################################################################################### */
 
 private:
-	static uint32_t						m_eExclusivity; // *only safe to set from main thread*
-	static size_t						m_frameCount;
+	constinit static uint32_t			m_eExclusivity; // *only safe to set from main thread*
+	constinit static size_t				m_frameCount;
 	static tTime const					m_tStart;
 	static tTime						m_tNow, m_tCriticalNow, m_tLastPause;
-	static std::atomic_bool				m_bNewEventsAllowed;
-	static bool							m_bRunning,
+	constinit static std::atomic_bool	m_bNewEventsAllowed;
+	constinit static bool				m_bRunning,
 										m_bPaused,
 										m_bFocused,
 										m_bGradualStartingUp;
 
-	static size_t						m_hwCoreCount;
+	constinit static size_t				m_hwCoreCount;
 	static std::string					m_szCityName;
 	// Event container:
 	static tbb::concurrent_queue<std::pair<uint32_t, void*>> m_events;
@@ -172,20 +172,21 @@ inline world::cProcedural	cMinCity::Procedural;
 inline cUserInterface		cMinCity::UserInterface;
 inline cAudio				cMinCity::Audio;
 
-inline uint32_t					cMinCity::m_eExclusivity{}; // *only safe to set from main thread*
-inline size_t					cMinCity::m_frameCount = 0;
-inline tTime const				cMinCity::m_tStart{ high_resolution_clock::now() }; // always valid time
-inline tTime					cMinCity::m_tNow{ cMinCity::m_tStart }; // always valid time
-inline tTime					cMinCity::m_tCriticalNow{ cMinCity::m_tStart }; // always valid time that continues even while paused
-inline tTime					cMinCity::m_tLastPause{ zero_time_point };
-inline std::atomic_bool			cMinCity::m_bNewEventsAllowed = false;
-inline bool						cMinCity::m_bRunning = false;		// state is set in cMinCity::Initialize on Success
-inline bool						cMinCity::m_bPaused = false;		// state refers to a "live pause" of the rendering and updates affected by the pause
-inline bool						cMinCity::m_bFocused = false;		// start time of app is safetly swapped, so at no given point of time is it errornous
-inline bool						cMinCity::m_bGradualStartingUp = true;	// start time of app will reset during very first call of Update()
-inline size_t					cMinCity::m_hwCoreCount = 1;
-inline std::string				cMinCity::m_szCityName = "";
-inline cCity*					cMinCity::City(nullptr);
+constinit inline uint32_t					cMinCity::m_eExclusivity{}; // *only safe to set from main thread*
+constinit inline size_t						cMinCity::m_frameCount = 0;
+inline tTime const							cMinCity::m_tStart{ high_resolution_clock::now() }; // always valid time
+inline tTime								cMinCity::m_tNow{ cMinCity::m_tStart }; // always valid time
+inline tTime								cMinCity::m_tCriticalNow{ cMinCity::m_tStart }; // always valid time that continues even while paused
+inline tTime								cMinCity::m_tLastPause{ zero_time_point };
+constinit inline std::atomic_bool			cMinCity::m_bNewEventsAllowed = false;
+constinit inline bool						cMinCity::m_bRunning = false;		// state is set in cMinCity::Initialize on Success
+constinit inline bool						cMinCity::m_bPaused = false;		// state refers to a "live pause" of the rendering and updates affected by the pause
+constinit inline bool						cMinCity::m_bFocused = false;		// start time of app is safetly swapped, so at no given point of time is it errornous
+constinit inline bool						cMinCity::m_bGradualStartingUp = true;	// start time of app will reset during very first call of Update()
+constinit inline size_t						cMinCity::m_hwCoreCount = 1;
+inline std::string							cMinCity::m_szCityName = "";
+constinit inline cCity*						cMinCity::City(nullptr);
+
 inline tbb::concurrent_queue<std::pair<uint32_t, void*>> cMinCity::m_events;
 
 // Common Accessors // 

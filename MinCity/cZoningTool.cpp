@@ -51,7 +51,7 @@ void cZoningTool::paint()
 {
 	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
 
-	static bool bFindMaxVisibility(false);
+	constinit static bool bFindMaxVisibility(false);
 
 	// make relative to world origin (gridspace to worldspace transform)
 	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
@@ -253,11 +253,7 @@ void cZoningTool::commitZoneHistory() // commits current "zone" to grid
 	if (_ActivatedSubTool > 0) {
 		rect2D_t const finalArea(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
 
-		highlightArea<false>(finalArea); // creates new undo history
-
-		world::zoning::setArea(finalArea, _ActivatedSubTool - 1);
-
-		_undoHistory.clear(); // discard the new undo history
+		world::zoning::zoneArea(finalArea, _ActivatedSubTool - 1);
 	}
 }
 
@@ -304,8 +300,8 @@ void __vectorcall cZoningTool::ReleaseAction(FXMVECTOR const xmMousePos)
 }
 void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 {
-	static uint32_t lastTool(0),
-					lastCount(0);
+	constinit static uint32_t lastTool(0),
+							  lastCount(0);
 
 	world::cBuildingGameObject* pGameObject(nullptr);
 
@@ -352,6 +348,32 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 	}	
 }
 
+void __vectorcall cZoningTool::highlightArea(rect2D_t const area)
+{
+	if (_ActivatedSubTool > 0) {
+		point2D_t voxelIndex{};
+
+		for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
+
+			for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
+
+				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+
+				if (pVoxel) {
+					Iso::Voxel oVoxel(*pVoxel);
+
+					if (Iso::isGroundOnly(oVoxel)) {
+						pushZoneHistory(UndoVoxel(voxelIndex, oVoxel));
+
+						Iso::setEmissive(oVoxel);
+
+						world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+					}
+				}
+			}
+		}
+	}
+}
 void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
 {
 	if (0 != _activePoint) { // have starting index?
@@ -364,7 +386,7 @@ void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR 
 
 			clearZoneHistory();
 
-			highlightArea<true>(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
+			highlightArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
 
 			_segmentVoxelIndex[1] = clampedEndPoint;
 			++_activePoint;

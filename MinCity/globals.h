@@ -152,7 +152,8 @@ namespace Globals
 #define DEBUG_DIR DATA_DIR L"debug/"
 #endif
 // ####################################################################################################################################################//
-	
+	static constexpr uint32_t const DEFAULT_STACK_SIZE = 262144;	// in bytes, 256KB
+
 	static constexpr uint32_t const DEFAULT_SCREEN_WIDTH = 1920,	// 16:9 default, should not be used directly
 									DEFAULT_SCREEN_HEIGHT = 1080;  // strange bug if full 1080 used - goes into some kind of weird psuedo exclusive mode (the driver does). Need to finish VK_FULLSCREEN exclusive support extension I guess for this to work properly
 	static constexpr float const DEFAULT_ANISOTROPIC_LEVEL = 8.0f;

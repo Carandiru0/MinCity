@@ -64,104 +64,116 @@ using namespace world;
 
 */
 
-static inline struct CameraEntity
+namespace // private to this file (anonymous)
 {
-	static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
+	static inline struct CameraEntity
+	{
+		static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
 
-	point2D_t 
-		voxelIndex_TopLeft,
-		voxelIndex_Center;
-	XMFLOAT2A
-		voxelFractionalGridOffset;
+		point2D_t
+			voxelIndex_TopLeft,
+			voxelIndex_Center;
+		XMFLOAT2A
+			voxelFractionalGridOffset;
 
-	XMFLOAT2A
-		Pan;
+		XMFLOAT2A
+			Pan;
 
-	v2_rotation_t Azimuth;
-	float PrevAzimuthAngle, TargetAzimuthAngle;
+		v2_rotation_t Azimuth;
+		float PrevAzimuthAngle, TargetAzimuthAngle;
 
-	XMFLOAT2A Velocity, Origin;
+		XMFLOAT2A Velocity, Origin;
 
-	XMFLOAT2A TargetPosition, Displacement;
+		XMFLOAT2A TargetPosition, Displacement;
 
-	float InitialDistanceToTarget;
+		float InitialDistanceToTarget;
 
-	float ZoomFactor;
+		float ZoomFactor;
 
-	float PrevZoomFactor,
-		  TargetZoomFactor;
+		float PrevZoomFactor,
+			TargetZoomFactor;
 
-	tTime tTranslateStart,
-		tRotateStart,
-		tZoomStart;
+		tTime tTranslateStart,
+			tRotateStart,
+			tZoomStart;
 
-	bool Motion;
+		bool Motion;
 
-	CameraEntity()
-		: //Origin(Iso::MIN_VOXEL_COORD >> 1, Iso::MAX_VOXEL_COORD >> 1), // virtual coordinates
-		Origin(0, 0), // virtual coordinates
-		Pan{},
-		voxelFractionalGridOffset{},
-		ZoomFactor(Globals::DEFAULT_ZOOM_SCALAR),
-		tTranslateStart{ zero_time_point },
-		tRotateStart{ zero_time_point },
-		tZoomStart{ zero_time_point },
-		Motion(false)
-	{}
-} oCamera;
+		CameraEntity()
+			: //Origin(Iso::MIN_VOXEL_COORD >> 1, Iso::MAX_VOXEL_COORD >> 1), // virtual coordinates
+			Origin(0, 0), // virtual coordinates
+			Pan{},
+			voxelFractionalGridOffset{},
+			ZoomFactor(Globals::DEFAULT_ZOOM_SCALAR),
+			tTranslateStart{ zero_time_point },
+			tRotateStart{ zero_time_point },
+			tZoomStart{ zero_time_point },
+			Motion(false)
+		{}
+	} oCamera;
 
-tbb::queuing_rw_mutex _theLock; // for _theGrid
-static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theGrid
+} // end ns
+
+namespace // private to this file (anonymous)
 {
-	Iso::Voxel* __restrict		 _protected = nullptr;
-	
-	__declspec(safebuffers) __forceinline operator Iso::Voxel* const __restrict() const {
-		return(_protected);
-	}
-} _theGrid{};
-static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
+	namespace the
+	{
+		static inline tbb::queuing_rw_mutex lock; // for the::grid
+
+		static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for the::grid
+		{
+			Iso::Voxel* __restrict		 _protected = nullptr;
+
+			__declspec(safebuffers) __forceinline operator Iso::Voxel* const __restrict() const {
+				return(_protected);
+			}
+		} grid{};
+		static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for the::temp
+		{
+			Iso::mini::Voxel const** __restrict	 _protected = nullptr;
+
+			__declspec(safebuffers) __forceinline operator Iso::mini::Voxel const** const __restrict() const {
+				return(_protected);
+			}
+		} temp{};
+
+	} // end ns
+} // end ns
+
+namespace // private to this file (anonymous)
 {
-	Iso::mini::Voxel const** __restrict	 _protected = nullptr;
+	namespace mini
+	{
+		static inline tbb::concurrent_vector<Iso::mini::Voxel> voxels;	// actual memory that is pointed to by a Iso::mini::voxel
 
-	__declspec(safebuffers) __forceinline operator Iso::mini::Voxel const** const __restrict() const {
-		return(_protected);
-	}
-} _theTemp{};
-static inline alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
+		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
+
+		static inline constinit alignas(CACHE_LINE_BYTES)
+			volume* __restrict bits{ nullptr };
+
+	} // end ns
+}
+
+namespace // private to this file (anonymous)
 {
-	tbb::concurrent_vector<Iso::mini::Voxel> voxels;	// actual memory that is pointed to by a Iso::mini::voxel
-
-	using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
-	volume
-		* __restrict bits = nullptr;
-} _mini;
-static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for _theTemp
-{
-	using row = bit_row<Iso::WORLD_GRID_SIZE>;
-	row
-		* __restrict	 residential = nullptr,
-		* __restrict	 commercial = nullptr,
-		* __restrict	 industrial = nullptr;
-
-} _theZone{};
-
-static uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
-	UINT8_MAX - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[0] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[1] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[2] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[3] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[4] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[5] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[6] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[7] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[8] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[9] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[10] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[11] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[12] - GROUND_HEIGHT_NOISE_STEP,
-	GROUND_HEIGHT_NOISE[13] - GROUND_HEIGHT_NOISE_STEP
-};
+	static uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
+		UINT8_MAX - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[0] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[1] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[2] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[3] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[4] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[5] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[6] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[7] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[8] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[9] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[10] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[11] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[12] - GROUND_HEIGHT_NOISE_STEP,
+		GROUND_HEIGHT_NOISE[13] - GROUND_HEIGHT_NOISE_STEP
+	};
+} // end ns
 
 // ####### Private Init methods
 static void ComputeGroundAdjacencyOcclusion()
@@ -320,7 +332,7 @@ void cVoxelWorld::GenerateGround()
 			}
 
 			// Save Voxel to Grid SRAM
-			*(_theGrid + ((yVoxel * Iso::WORLD_GRID_SIZE) + xVoxel)) = oVoxel;
+			*(the::grid + ((yVoxel * Iso::WORLD_GRID_SIZE) + xVoxel)) = oVoxel;
 
 		} while (++xVoxel < Iso::WORLD_GRID_SIZE);
 
@@ -883,7 +895,7 @@ namespace world
 
 			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
 
-				return(*(_theTemp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+				return(*(the::temp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
 			}
 		}
 
@@ -900,7 +912,7 @@ namespace world
 			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
 
 				// Update Voxel
-				*(_theTemp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
+				*(the::temp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
 				return(true);
 			}
 		}
@@ -923,16 +935,16 @@ namespace world
 			uvec4_t uiIndex;
 			uvIndex.xyzw(uiIndex);
 
-			size_t const index(_mini.bits->get_index(uiIndex.x, uiIndex.y, uiIndex.z));
+			size_t const index(mini::bits->get_index(uiIndex.x, uiIndex.y, uiIndex.z));
 
-			if (!_mini.bits->read_bit(index)) {  // filter out, if already set, nothing get added
+			if (!mini::bits->read_bit(index)) {  // filter out, if already set, nothing get added
 
 				if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, Iso::MINI_VOX_RADIUS)) { // visibility check //
 
-					_mini.bits->set_bit(index);
+					mini::bits->set_bit(index);
 
 					setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
-						&(*_mini.voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
+						&(*mini::voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
 
 					return(true); // visible
 				}
@@ -944,34 +956,44 @@ namespace world
 
 	namespace zoning
 	{
-		void setArea(rect2D_t voxelArea, uint32_t const zone_type)
-		{
-			//
-			using row = bit_row<Iso::WORLD_GRID_SIZE>;
+		void zoneArea(rect2D_t voxelArea, uint32_t const zone_type) // supports zoning-zoning overwrite, excludes any area that is not strictly ground, 
+																	// synchronizes residential, commercial, industrial area exclusivity.
+																	// exclusivity is strictly maintained here, so the other zoning operations work without having to worry about it
+		{															// as from this point on it's an impossible state to have bits set for the same voxel in more than one zoning type.
+			// clamp to world/minmax coords
+			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
 
-			row
-				* __restrict grid,
-				* __restrict other[2];
-			
-			switch (zone_type) {
-			case RESIDENTIAL:
-				grid = _theZone.residential;
-				other[0] = _theZone.commercial;
-				other[1] = _theZone.industrial;
-				break;
-			case COMMERCIAL:
-				grid = _theZone.commercial;
-				other[0] = _theZone.residential;
-				other[1] = _theZone.industrial;
-				break;
-			default:
-			case INDUSTRIAL:
-				grid = _theZone.industrial;
-				other[0] = _theZone.residential;
-				other[1] = _theZone.commercial;
-				break;
+			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
+			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+
+			uint32_t const zoning(Iso::MASK_ZONING & (zone_type + 1));
+			point2D_t voxelIterate;
+
+			for (voxelIterate.y = voxelArea.top; voxelIterate.y < voxelArea.bottom; ++voxelIterate.y) {
+
+				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
+
+					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAtLocal(voxelIterate)); // pre-transformed to [0,0 to X,Y]
+
+					if (pVoxel) {
+						Iso::Voxel oVoxel(*pVoxel);
+
+						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
+
+							uint32_t hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
+							hash &= ~(Iso::MASK_ZONING); // clear zoning bits
+							hash |= zoning; // set zoning bits
+
+							Iso::setHash(oVoxel, Iso::GROUND_HASH, hash);
+							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
+						}
+					}
+				}
 			}
+		}
 
+		void dezoneArea(rect2D_t voxelArea) // area dezones if not built, bulldozing must be done first otherwise. automatic zoning type handling.
+		{
 			// clamp to world/minmax coords
 			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
 
@@ -987,53 +1009,17 @@ namespace world
 					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAtLocal(voxelIterate)); // pre-transformed to [0,0 to X,Y]
 
 					if (pVoxel) {
-						Iso::Voxel const oVoxel(*pVoxel);
+						Iso::Voxel oVoxel(*pVoxel);
 
-						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
-							grid[voxelIterate.y].set_bit(voxelIterate.x);
-							for (uint32_t i = 0; i < 2; ++i) {
-								other[i][voxelIterate.y].clear_bit(voxelIterate.x);
-							}
+						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) { // only apply to ground area excluding the static & dynamic instances
+
+							uint32_t hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
+							hash &= ~(Iso::MASK_ZONING); // clear zoning bits
+
+							Iso::setHash(oVoxel, Iso::GROUND_HASH, hash);
+							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 						}
 					}
-				}
-			}
-		}
-		void clearArea(rect2D_t voxelArea, uint32_t const zone_type)
-		{
-			//
-			using row = bit_row<Iso::WORLD_GRID_SIZE>;
-
-			row
-				* __restrict grid;
-			;
-			switch (zone_type) {
-			case RESIDENTIAL:
-				grid = _theZone.residential;
-				break;
-			case COMMERCIAL:
-				grid = _theZone.commercial;
-				break;
-			default:
-			case INDUSTRIAL:
-				grid = _theZone.industrial;
-				break;
-			}
-
-			// clamp to world/minmax coords
-			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
-
-			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
-
-			point2D_t voxelIterate;
-
-			for (voxelIterate.y = voxelArea.top; voxelIterate.y < voxelArea.bottom; ++voxelIterate.y) {
-
-				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
-
-					grid[voxelIterate.y].clear_bit(voxelIterate.x);
-
 				}
 			}
 		}
@@ -1049,7 +1035,7 @@ namespace world
 
 			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
 
-				return((_theGrid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+				return((the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
 			}
 		}
 
@@ -1068,7 +1054,7 @@ namespace world
 
 			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
 
-				return((_theGrid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+				return((the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
 			}
 		}
 
@@ -1170,7 +1156,7 @@ namespace world
 			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
 
 				// Update Voxel
-				*(_theGrid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
+				*(the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
 				return(true);
 			}
 		}
@@ -1183,6 +1169,22 @@ namespace world
 																																																			//          	equal same voxel	
 		// still in Grid Space (-x,-y) to (X, Y) Coordinates 
 		return(setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(newData)));
+	}
+
+	bool const __vectorcall setVoxelAtLocal(point2D_t const voxelIndex, Iso::Voxel const&& __restrict newData)
+	{
+		// Check bounds
+		if ((voxelIndex.x | voxelIndex.y) >= 0) {
+
+			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
+
+				// Update Voxel
+				*(the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
+				return(true);
+			}
+		}
+
+		return(false);
 	}
 
 	void __vectorcall setVoxelsAt(rect2D_t voxelArea, Iso::Voxel const&& __restrict voxelReference)
@@ -1255,7 +1257,7 @@ namespace world
 					Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
 					if (pVoxel) {
 						Iso::Voxel oVoxel(*pVoxel);
-						if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
+						if (!Iso::isRoad(oVoxel)) // not accidentally highlighting roads
 						{
 							Iso::setEmissive(oVoxel);
 							setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
@@ -1273,7 +1275,7 @@ namespace world
 				Iso::Voxel const* const pVoxel = getVoxelAt(p);
 				if (pVoxel) {
 					Iso::Voxel oVoxel(*pVoxel);
-					if (!(isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == getExtendedType(oVoxel))) // not accidentally highlighting roads
+					if (!Iso::isRoad(oVoxel)) // not accidentally highlighting roads
 					{
 						Iso::setEmissive(oVoxel);
 						setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
@@ -1413,7 +1415,7 @@ namespace world
 
 			if (voxelNeighbour.x < Iso::WORLD_GRID_SIZE && voxelNeighbour.y < Iso::WORLD_GRID_SIZE) {
 
-				return((_theGrid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
+				return((the::grid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
 			}
 		}
 
@@ -1849,7 +1851,7 @@ namespace world
 					if (pVoxel) {
 						Iso::Voxel const oVoxel(*pVoxel);
 
-						if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {
+						if (Iso::isRoad(oVoxel)) {
 							if constexpr (bFindNodeOrEdge) {  // node
 								if (Iso::isRoadNode(*pVoxel)) {
 									bFound = true;
@@ -1946,7 +1948,7 @@ namespace world
 
 				Iso::Voxel const oVoxel(*pVoxel);
 
-				return(Iso::isExtended(oVoxel) & (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)));
+				return(Iso::isRoad(oVoxel));
 			}
 			return(false);
 		}
@@ -1958,7 +1960,7 @@ namespace world
 
 				Iso::Voxel const oVoxel(*pVoxel);
 
-				if (Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))) {
+				if (Iso::isRoad(oVoxel)) {
 
 					found_road_point = p2D_add(origin, offset);
 					return(true);
@@ -1973,7 +1975,7 @@ namespace world
 
 				Iso::Voxel const oVoxel(*pVoxel);
 
-				return(Iso::isExtended(oVoxel) & (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)));
+				return(Iso::isRoad(oVoxel));
 			}
 			return(false);
 		}
@@ -2029,499 +2031,516 @@ namespace world
 //XMGLOBALCONST inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z, Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z };
 //XMGLOBALCONST inline XMVECTORF32 const _visibleLight{ 2.0f, 1.0f, 2.0f, 1.0f }; // for scaling model extents to account for potential lighting radius
 
-constinit static struct voxelRender // ** static container, all methods and members must be static inline ** //
+namespace // private to this file (anonymous)
 {
-	constinit static struct
+	constinit static struct voxelRender // ** static container, all methods and members must be static inline ** //
 	{
-		uint32_t road_tiles_visible;
-
-	} inline render_state{};
-
-	// this construct significantly improves throughput of voxels, by batching the streaming stores //
-	// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
-	using miniVoxelLocalBatch = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::GROUND>;
-	using miniVoxelThreadBatch = tbb::enumerable_thread_specific<
-		miniVoxelLocalBatch,
-		tbb::cache_aligned_allocator<miniVoxelLocalBatch>,
-		tbb::ets_key_per_instance >;
-
-	static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
-
-	static uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex)
-	{
-		ivec4_t iIndex;
-		ivec4_v(xmIndex).xyzw(iIndex);
-
-		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
-		//	left = voxB::BIT_ADJ_LEFT,
-		//	right = voxB::BIT_ADJ_RIGHT,
-		//	front = voxB::BIT_ADJ_FRONT,
-		//	back = voxB::BIT_ADJ_BACK,
-		//	above = voxB::BIT_ADJ_ABOVE
-
-		uint32_t adjacent(0);
-
-		if (iIndex.x - 1 >= 0) {
-			adjacent |= _mini.bits->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
-		}
-		if (iIndex.x + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X) {
-			adjacent |= _mini.bits->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
-		}
-		if (iIndex.z - 1 >= 0) {
-			adjacent |= _mini.bits->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
-		}
-		if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
-			adjacent |= _mini.bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
-		}
-		if (iIndex.y + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y) {
-			adjacent |= _mini.bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
-		}
-		return(adjacent);
-	}
-
-	STATIC_INLINE void XM_CALLCONV RenderMiniVoxel(point2D_t const& __restrict voxelIndex,
-		Iso::mini::Voxel const&& __restrict oVoxel,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-		miniVoxelLocalBatch& __restrict localMini,
-		miniVoxelLocalBatch& __restrict localMiniTrans)
-	{
-		// required for voxels w/light, voxels w/o light & lights (hidden voxel)
-		XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
-		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-		uint32_t const color(oVoxel.index.w);
-
-		bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
-
-		if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
-			
-			uint8_t const alpha((color >> 24) & 0xFF);
-			bool const transparent(0xFF != alpha);
-
-			uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
-
-			// Build hash //
-			uint32_t hash(0);
-
-			// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
-			hash |= adjacency;
-			// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
-
-			hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
-			hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
-
-			XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
-			XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
-
-			if (transparent) {
-
-				localMiniTrans.emplace_back(
-					voxels_trans,
-
-					xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
-				);
-			}
-			else {
-
-				localMini.emplace_back(
-					voxels_dynamic,
-
-					xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
-				);
-			}
-		}
-
-		// if voxel is hidden then its just a light
-		if (emissive) {
-
-			Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
-		}
-	}
-	STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
-		Iso::mini::Voxel const&& __restrict oVoxel,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-		miniVoxelLocalBatch& __restrict localMini,
-		miniVoxelLocalBatch& __restrict localMiniTrans)
-	{
-		RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(oVoxel), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
-
-		Iso::mini::Voxel const* next(oVoxel.next);
-		while (next) {
-
-			RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*next), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
-
-			next = next->next;
-		}
-		
-	}
-
-	// this construct significantly improves throughput of voxels, by batching the streaming stores //
-	// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
-	using VoxelLocalBatch = sBatched<VertexDecl::VoxelNormal, eStreamingBatchSize::GROUND>;
-	using VoxelThreadBatch = tbb::enumerable_thread_specific<
-		VoxelLocalBatch,
-		tbb::cache_aligned_allocator<VoxelLocalBatch>,
-		tbb::ets_key_per_instance >;                
-	
-	static inline VoxelThreadBatch batchedGround, batchedRoad, batchedRoadTrans;
-
-	
-	STATIC_INLINE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
-		Iso::Voxel const& __restrict oVoxel,
-		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
-		VoxelLocalBatch& __restrict localGround)
-	{
-		// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
-		XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
-
-		if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
+		constinit static struct
 		{
-			// **** HASH FORMAT 32bits available //
+			uint32_t road_tiles_visible;
 
-			// Build hash //
-			uint32_t groundHash(0);
-			groundHash |= Iso::getAdjacency(oVoxel);			//				0001 1111
-			groundHash |= (Iso::getOcclusion(oVoxel) << 5);		//				111x xxxx
-			groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
-			groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
+		} inline render_state{};
 
-			XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+		// this construct significantly improves throughput of voxels, by batching the streaming stores //
+		// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
+		using miniVoxelLocalBatch = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::GROUND>;
+		using miniVoxelThreadBatch = tbb::enumerable_thread_specific<
+			miniVoxelLocalBatch,
+			tbb::cache_aligned_allocator<miniVoxelLocalBatch>,
+			tbb::ets_key_per_instance >;
 
-			uint32_t color(0xFFFFFF); // bgr default color for terrain
-			if (Iso::isGroundOnly(oVoxel)) {
-				uint32_t const ground_color(Iso::getColor(oVoxel));
+		static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
 
-				if (0 != ground_color) {
-					color = ground_color;
+		STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex)
+		{
+			ivec4_t iIndex;
+			ivec4_v(xmIndex).xyzw(iIndex);
+
+			//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
+			//	left = voxB::BIT_ADJ_LEFT,
+			//	right = voxB::BIT_ADJ_RIGHT,
+			//	front = voxB::BIT_ADJ_FRONT,
+			//	back = voxB::BIT_ADJ_BACK,
+			//	above = voxB::BIT_ADJ_ABOVE
+
+			uint32_t adjacent(0);
+
+			if (iIndex.x - 1 >= 0) {
+				adjacent |= mini::bits->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
+			}
+			if (iIndex.x + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X) {
+				adjacent |= mini::bits->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
+			}
+			if (iIndex.z - 1 >= 0) {
+				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
+			}
+			if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
+				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+			}
+			if (iIndex.y + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y) {
+				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
+			}
+			return(adjacent);
+		}
+
+		STATIC_INLINE void XM_CALLCONV RenderMiniVoxel(point2D_t const& __restrict voxelIndex,
+			Iso::mini::Voxel const&& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+			miniVoxelLocalBatch& __restrict localMini,
+			miniVoxelLocalBatch& __restrict localMiniTrans)
+		{
+			// required for voxels w/light, voxels w/o light & lights (hidden voxel)
+			XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+			uint32_t const color(oVoxel.index.w);
+
+			bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
+
+			if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
+
+				uint8_t const alpha((color >> 24) & 0xFF);
+				bool const transparent(0xFF != alpha);
+
+				uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
+
+				// Build hash //
+				uint32_t hash(0);
+
+				// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
+				hash |= adjacency;
+				// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
+
+				hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
+				hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
+
+				XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
+				XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+
+				if (transparent) {
+
+					localMiniTrans.emplace_back(
+						voxels_trans,
+
+						xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
+					);
+				}
+				else {
+
+					localMini.emplace_back(
+						voxels_dynamic,
+
+						xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
+					);
 				}
 			}
-			xmUVs = XMVectorSetW(xmUVs, ((float)color));
 
-			localGround.emplace_back(
-				voxelGround,
-				
+			// if voxel is hidden then its just a light
+			if (emissive) {
+
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
+			}
+		}
+		STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
+			Iso::mini::Voxel const&& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+			miniVoxelLocalBatch& __restrict localMini,
+			miniVoxelLocalBatch& __restrict localMiniTrans)
+		{
+			RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(oVoxel), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
+
+			Iso::mini::Voxel const* next(oVoxel.next);
+			while (next) {
+
+				RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*next), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
+
+				next = next->next;
+			}
+
+		}
+
+		// this construct significantly improves throughput of voxels, by batching the streaming stores //
+		// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
+		using VoxelLocalBatch = sBatched<VertexDecl::VoxelNormal, eStreamingBatchSize::GROUND>;
+		using VoxelThreadBatch = tbb::enumerable_thread_specific<
+			VoxelLocalBatch,
+			tbb::cache_aligned_allocator<VoxelLocalBatch>,
+			tbb::ets_key_per_instance >;
+
+		static inline VoxelThreadBatch batchedGround, batchedRoad, batchedRoadTrans;
+
+
+		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+			Iso::Voxel const& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
+			VoxelLocalBatch& __restrict localGround)
+		{
+			// R  //  // C  //  // I  //
+			static constexpr uint32_t const ZONING_COLOR[3] = { 0x00FF00, 0xFF0000, 0x00FFFF }; // bgr
+
+			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
+			XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
+
+			if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
+			{
+				// **** HASH FORMAT 32bits available //
+
+				// Build hash //
+				uint32_t groundHash(0);
+				groundHash |= Iso::getAdjacency(oVoxel);			//				0001 1111
+				groundHash |= (Iso::getOcclusion(oVoxel) << 5);		//				111x xxxx
+				groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
+				groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
+
+				XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+
+				uint32_t color(0xFFFFFF); // bgr default color for terrain
+				if (Iso::isGroundOnly(oVoxel)) {
+
+					uint32_t const hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
+					uint32_t const zoning(Iso::MASK_ZONING & hash);
+
+					if (zoning > 0) {
+
+						color = ZONING_COLOR[zoning - 1];
+					}
+				}
+				else {
+					color = 0; // no grid on ground underneath roads or other extended type voxels.
+				}
+
+				xmUVs = XMVectorSetW(xmUVs, ((float)color));
+
+				localGround.emplace_back(
+					voxelGround,
+
 					xmVoxelOrigin,
 					xmUVs,
 					groundHash
 				);
+			}
 		}
-	}
 
 
-	STATIC_INLINE void XM_CALLCONV RenderRoad(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
-		Iso::Voxel const& __restrict oVoxel,
-		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
-		VoxelLocalBatch& __restrict localRoad)
-	{
-		// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
-		XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
-
-		if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
+		STATIC_INLINE void XM_CALLCONV RenderRoad(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+			Iso::Voxel const& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
+			VoxelLocalBatch& __restrict localRoad)
 		{
-			// **** HASH FORMAT 32bits available //
+			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
+			XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
 
-			// Build hash //
-			uint32_t roadHash(0);
-			// not used roadHash |= Iso::getHeightStep(oVoxel);									//			     	                      000R 1111   // msb is reserved (5th bit)
-			// not used roadHash |= (Iso::getOcclusion(oVoxel) << 5);							//		     		                      111x xxxx
-			roadHash |= (Iso::isEmissive(oVoxel) << 8);								//                           0000 0001	  xxxx xxxx
-			roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);	// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
+			if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
+			{
+				// **** HASH FORMAT 32bits available //
 
-			XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+				// Build hash //
+				uint32_t roadHash(0);
+				// not used roadHash |= Iso::getHeightStep(oVoxel);									//			     	                      000R 1111   // msb is reserved (5th bit)
+				// not used roadHash |= (Iso::getOcclusion(oVoxel) << 5);							//		     		                      111x xxxx
+				roadHash |= (Iso::isEmissive(oVoxel) << 8);								//                           0000 0001	  xxxx xxxx
+				roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);	// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
 
-			localRoad.emplace_back(
-				voxelRoad,
-				
+				XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+
+				localRoad.emplace_back(
+					voxelRoad,
+
 					xmVoxelOrigin,
 					xmUVs,
 					roadHash
 				);
 
-			++render_state.road_tiles_visible; // *this state is only valid when RenderGrid() is complete.
-		}
-	}
-
-
-	template<bool const Dynamic>
-	STATIC_INLINE void XM_CALLCONV RenderModel(uint8_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
-		Iso::Voxel const& __restrict oVoxel,
-		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
-	{
-		auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
-		auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
-
-		if (FoundModelInstance) {
-
-			bool const emission_only(FoundModelInstance->isEmissionOnly());
-
-			if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
-				FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+				++render_state.road_tiles_visible; // *this state is only valid when RenderGrid() is complete.
 			}
-
-			FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
-
-			FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 		}
-	}
 
-	template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y>
-	static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
+
+		template<bool const Dynamic>
+		STATIC_INLINE void XM_CALLCONV RenderModel(uint8_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
+			Iso::Voxel const& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
+		{
+			auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
+			auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
+
+			if (FoundModelInstance) {
+
+				bool const emission_only(FoundModelInstance->isEmissionOnly());
+
+				if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
+					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+				}
+
+				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
+
+				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
+			}
+		}
+
+		template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y>
+		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
-	{
-		render_state.road_tiles_visible = 0; // reset
+		{
+			render_state.road_tiles_visible = 0; // reset
 
-		point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
+			point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 
-		// Traverse Grid
-		point2D_t iterations(MAX_VISIBLE_X, MAX_VISIBLE_Y);
+			// Traverse Grid
+			point2D_t iterations(MAX_VISIBLE_X, MAX_VISIBLE_Y);
 
 #ifdef DEBUG_TEST_FRONT_TO_BACK
-		static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
-		{
-			static tTime tLast;
+			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
+			{
+				static tTime tLast;
 
-			if (0 != lines_missing) {
-				tTime tNow = high_resolution_clock::now();
-				if (tNow - tLast > milliseconds(50)) {
-					--lines_missing;
-					tLast = tNow;
+				if (0 != lines_missing) {
+					tTime tNow = high_resolution_clock::now();
+					if (tNow - tLast > milliseconds(50)) {
+						--lines_missing;
+						tLast = tNow;
+					}
+				}
+				else {
+					lines_missing = MAX_VISIBLE_Y - 1;
 				}
 			}
-			else {
-				lines_missing = MAX_VISIBLE_Y - 1;
+#endif
+
+			if ((voxelReset.y < 0)) {
+				iterations.y += voxelReset.y;
+				voxelReset.y = 0;
 			}
-		}
-#endif
 
-		if ((voxelReset.y < 0)) {
-			iterations.y += voxelReset.y;
-			voxelReset.y = 0;
-		}
+			if ((voxelReset.x < 0)) {
+				iterations.x += voxelReset.x;
+				voxelReset.x = 0;
+			}
 
-		if ((voxelReset.x < 0)) {
-			iterations.x += voxelReset.x;
-			voxelReset.x = 0;
-		}
-
-		point2D_t voxelEnd = p2D_add(voxelReset, iterations);
-		voxelEnd = p2D_min(voxelEnd, point2D_t(Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE));
+			point2D_t voxelEnd = p2D_add(voxelReset, iterations);
+			voxelEnd = p2D_min(voxelEnd, point2D_t(Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE));
 #ifdef DEBUG_TEST_FRONT_TO_BACK
-		voxelEnd.y -= lines_missing;
+			voxelEnd.y -= lines_missing;
 #endif
-		typedef struct alignas(16) __declspec(novtable) sRenderFuncBlockChunk {
+			typedef struct alignas(16) no_vtable sRenderFuncBlockChunk {
 
-		private:
-			XMVECTOR const 									voxelStart;
-			Iso::Voxel const* const __restrict				theGrid;
-			Iso::mini::Voxel const* const* const __restrict	theTemp;
+			private:
+				XMVECTOR const 									voxelStart;
+				Iso::Voxel const* const __restrict				theGrid;
+				Iso::mini::Voxel const* const* const __restrict	theTemp;
 
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoad;
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoadTrans;
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoad;
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoadTrans;
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
+				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
+				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
 
-			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
-		public:
-			__forceinline explicit __vectorcall sRenderFuncBlockChunk(
-				FXMVECTOR const voxelStart_,
-				Iso::Voxel const* const __restrict theGrid_,
-				Iso::mini::Voxel const* const* const __restrict theTemp_,
-				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelGround_,
-				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelRoad_,
-				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
-				tbb::atomic<VertexDecl::VoxelNormal*> & __restrict voxelStatic_,
-				tbb::atomic<VertexDecl::VoxelDynamic*> & __restrict voxelDynamic_,
-				tbb::atomic<VertexDecl::VoxelDynamic*> & __restrict voxelTrans_)
-				: voxelStart(voxelStart_), theGrid(theGrid_), theTemp(theTemp_),
-				voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
-			{}
+				sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
+			public:
+				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
+					FXMVECTOR const voxelStart_,
+					Iso::Voxel const* const __restrict theGrid_,
+					Iso::mini::Voxel const* const* const __restrict theTemp_,
+					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
+					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad_,
+					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
+					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
+					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
+					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
+					: voxelStart(voxelStart_), theGrid(theGrid_), theTemp(theTemp_),
+					voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
+				{}
 
-			void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
+				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
 
-				miniVoxelLocalBatch& __restrict localMini(batchedMini.local());
-				miniVoxelLocalBatch& __restrict localMiniTrans(batchedMiniTrans.local());
+					miniVoxelLocalBatch& __restrict localMini(batchedMini.local());
+					miniVoxelLocalBatch& __restrict localMiniTrans(batchedMiniTrans.local());
 
-				VoxelLocalBatch& __restrict localGround(batchedGround.local());
-				VoxelLocalBatch& __restrict localRoad(batchedRoad.local());
-				VoxelLocalBatch& __restrict localRoadTrans(batchedRoadTrans.local());
+					VoxelLocalBatch& __restrict localGround(batchedGround.local());
+					VoxelLocalBatch& __restrict localRoad(batchedRoad.local());
+					VoxelLocalBatch& __restrict localRoadTrans(batchedRoadTrans.local());
 
-				int32_t const	// pull out into registers from memory
-					y_begin(r.rows().begin()),
-					y_end(r.rows().end()),
-					x_begin(r.cols().begin()),
-					x_end(r.cols().end());
+					int32_t const	// pull out into registers from memory
+						y_begin(r.rows().begin()),
+						y_end(r.rows().end()),
+						x_begin(r.cols().begin()),
+						x_end(r.cols().end());
 
-				for (int32_t y = y_begin; y < y_end; ++y)
-				{
-					int32_t x = x_begin;
-
-					Iso::Voxel const* __restrict pVoxel = theGrid + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
-					_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
-
-					Iso::mini::Voxel const* const* __restrict pMiniVoxels = theTemp + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
-
-					for (; x < x_end; ++x)
+					for (int32_t y = y_begin; y < y_end; ++y)
 					{
-						point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
+						int32_t x = x_begin;
 
-						Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
-						++pMiniVoxels; // sequentially access for best cache prediction
+						Iso::Voxel const* __restrict pVoxel = theGrid + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
+						_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
 
-						Iso::Voxel const oVoxel(*pVoxel);
-						++pVoxel; // sequentially access for best cache prediction
+						Iso::mini::Voxel const* const* __restrict pMiniVoxels = theTemp + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
 
-						// Make index (row,col)relative to starting index voxel
-						// calculate origin from relative row,col
-						// Add the offset of the world origin calculated
-						// Now inside screenspacve coordinates
-						// Rendering is FRONT to BACK only (checked)
-						XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(p2D_to_v2(voxelIndex), voxelStart)); // make relative to render start position
-
-						if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
-							
-							if (nullptr != pMiniVoxel) {
-								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
-							}
-
-							// ***Ground always exists*** //
-							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
-
-							if (isExtended(oVoxel))
-							{
-								switch (getExtendedType(oVoxel))
-								{
-								case Iso::EXTENDED_TYPE_ROAD:
-									if (Iso::isEmissive(oVoxel)) { // any emissive road is transparent
-										RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoadTrans, localRoadTrans); // trans road
-									}
-									RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoad, localRoad); // opaque road
-
-									break;
-								case Iso::EXTENDED_TYPE_WATER:
-									// todo
-									break;
-									// default should not exist //
-								}
-							} // extended
-						}					
-
-						if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
+						for (; x < x_end; ++x)
 						{
-#ifndef DEBUG_NO_RENDER_STATIC_MODELS
-							RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
-#endif
-						} // root
-						// a voxel in the grid can have a static model and dynamic model simultaneously
-						if (Iso::isOwnerAny(oVoxel, Iso::DYNAMIC_HASH)) { // only if there are dynamic hashes which this voxel owns
-							for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
-								if (Iso::isOwner(oVoxel, i)) {
+							point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
 
-									RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+							Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
+							++pMiniVoxels; // sequentially access for best cache prediction
+
+							Iso::Voxel const oVoxel(*pVoxel);
+							++pVoxel; // sequentially access for best cache prediction
+
+							// Make index (row,col)relative to starting index voxel
+							// calculate origin from relative row,col
+							// Add the offset of the world origin calculated
+							// Now inside screenspacve coordinates
+							// Rendering is FRONT to BACK only (checked)
+							XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(p2D_to_v2(voxelIndex), voxelStart)); // make relative to render start position
+
+							if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
+
+								if (nullptr != pMiniVoxel) {
+									RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
+								}
+
+								// ***Ground always exists*** //
+								RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
+
+								if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
+								{
+									switch (getExtendedType(oVoxel))
+									{
+									case Iso::EXTENDED_TYPE_ROAD:
+										if (Iso::isEmissive(oVoxel)) { // any emissive road is transparent
+											RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoadTrans, localRoadTrans); // trans road
+										}
+										RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoad, localRoad); // opaque road
+
+										break;
+									case Iso::EXTENDED_TYPE_WATER:
+										// todo
+										break;
+										// default should not exist //
+									}
+								} // extended
+							}
+
+							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
+							{
+#ifndef DEBUG_NO_RENDER_STATIC_MODELS
+								RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+#endif
+							} // root
+							// a voxel in the grid can have a static model and dynamic model simultaneously
+							if (Iso::isOwnerAny(oVoxel, Iso::DYNAMIC_HASH)) { // only if there are dynamic hashes which this voxel owns
+								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
+									if (Iso::isOwner(oVoxel, i)) {
+
+										RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+									}
 								}
 							}
-						}
-						
+
+
+						} // for
 
 					} // for
 
-				} // for
+				} // operation
 
-			} // operation
+			} const RenderFuncBlockChunk;
 
-		} const RenderFuncBlockChunk;
-
-		// *****************************************************************************************************************//
-		XMVECTOR const xmVoxelStart(XMVectorAdd(p2D_to_v2(voxelStart), XMLoadFloat2A(&oCamera.voxelFractionalGridOffset))); // *bugfix major: fractional offset needs to be applied.
-																															// all voxel positions rendered are relative to voxelStart
+			// *****************************************************************************************************************//
+			XMVECTOR const xmVoxelStart(XMVectorAdd(p2D_to_v2(voxelStart), XMLoadFloat2A(&oCamera.voxelFractionalGridOffset))); // *bugfix major: fractional offset needs to be applied.
+																																// all voxel positions rendered are relative to voxelStart
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION																					// geometry shader resolves uv's from this position aswell 
-		tTime const tGridStart(high_resolution_clock::now());																// smooth movement from the camera's point of view is enabled by this offset.
+			tTime const tGridStart(high_resolution_clock::now());																// smooth movement from the camera's point of view is enabled by this offset.
 #endif																														// all voxels, opacitymap, light emitters, everything -derive there position from this singular source.
-		{
-			tbb::queuing_rw_mutex::scoped_lock lock(_theLock, false); // read-only grid access
+			{
+				tbb::queuing_rw_mutex::scoped_lock lock(the::lock, false); // read-only grid access
 
-			tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
-			tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
-				voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-				RenderFuncBlockChunk(xmVoxelStart, _theGrid, _theTemp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
-			);
-		}
-		// ####################################################################################################################
-		// ensure all batches are output and cleared for next trip
-		for (auto i = batchedMini.begin(); i != batchedMini.end(); ++i) {
-			i->out(voxelDynamic);
-		}
-		batchedMini.clear();
-		for (auto i = batchedMiniTrans.begin(); i != batchedMiniTrans.end(); ++i) {
-			i->out(voxelTrans);
-		}
-		batchedMiniTrans.clear();
+				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
+					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
+					RenderFuncBlockChunk(xmVoxelStart, the::grid, the::temp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
+				);
+			}
+			// ####################################################################################################################
+			// ensure all batches are output and cleared for next trip
+			for (auto i = batchedMini.begin(); i != batchedMini.end(); ++i) {
+				i->out(voxelDynamic);
+			}
+			batchedMini.clear();
+			for (auto i = batchedMiniTrans.begin(); i != batchedMiniTrans.end(); ++i) {
+				i->out(voxelTrans);
+			}
+			batchedMiniTrans.clear();
 
-		for (auto i = batchedGround.begin(); i != batchedGround.end(); ++i) {
-			i->out(voxelGround);
-		}
-		batchedGround.clear();
-		for (auto i = batchedRoad.begin(); i != batchedRoad.end(); ++i) {
-			i->out(voxelRoad);
-		}
-		batchedRoad.clear();
-		for (auto i = batchedRoadTrans.begin(); i != batchedRoadTrans.end(); ++i) {
-			i->out(voxelRoadTrans);
-		}
-		batchedRoadTrans.clear();
-		// ####################################################################################################################
+			for (auto i = batchedGround.begin(); i != batchedGround.end(); ++i) {
+				i->out(voxelGround);
+			}
+			batchedGround.clear();
+			for (auto i = batchedRoad.begin(); i != batchedRoad.end(); ++i) {
+				i->out(voxelRoad);
+			}
+			batchedRoad.clear();
+			for (auto i = batchedRoadTrans.begin(); i != batchedRoadTrans.end(); ++i) {
+				i->out(voxelRoadTrans);
+			}
+			batchedRoadTrans.clear();
+			// ####################################################################################################################
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
-		PerformanceResult& result(getDebugVariableReference(PerformanceResult, DebugLabel::PERFORMANCE_VOXEL_SUBMISSION));
-		result.grid_duration = high_resolution_clock::now() - tGridStart;
-		++result.grid_count;
+			PerformanceResult& result(getDebugVariableReference(PerformanceResult, DebugLabel::PERFORMANCE_VOXEL_SUBMISSION));
+			result.grid_duration = high_resolution_clock::now() - tGridStart;
+			++result.grid_count;
 #endif
-	}
-} inline voxelRender; // end ns voxelRender
+		}
+	} inline voxelRender; // end struct voxelRender
+} // end ns
 
 template<typename VertexDeclaration>
-struct alignas(64) voxelBuffer {
+struct alignas(CACHE_LINE_BYTES) voxelBuffer {
 	vku::double_buffer<vku::GenericBuffer> stagingBuffer;
 	inline static constexpr VertexDeclaration const type;
 };
 
 // all instances belong in here
-inline static struct alignas(64) voxelData
+namespace // private to this file (anonymous)
 {
-	inline static struct alignas(64) {
-		voxelBuffer<VertexDecl::VoxelDynamic>
-			opaque;
-		voxelBuffer<VertexDecl::VoxelDynamic>
-			trans;
-	} visibleDynamic;
+	constinit inline static struct alignas(CACHE_LINE_BYTES) voxelData
+	{
+		inline static struct alignas(CACHE_LINE_BYTES) {
+			voxelBuffer<VertexDecl::VoxelDynamic>
+				opaque;
+			voxelBuffer<VertexDecl::VoxelDynamic>
+				trans;
 
-	voxelBuffer<VertexDecl::VoxelNormal>
-		visibleStatic;
+		} visibleDynamic;
 
-	inline static struct alignas(64) {
-		voxelBuffer<VertexDecl::VoxelNormal>
-			opaque;
-		voxelBuffer<VertexDecl::VoxelNormal>
-			trans;
-	} visibleRoad;
+		inline static voxelBuffer<VertexDecl::VoxelNormal>
+			visibleStatic;
 
-	voxelBuffer<VertexDecl::VoxelNormal>
-		visibleTerrain;
+		inline static struct alignas(CACHE_LINE_BYTES) {
+			voxelBuffer<VertexDecl::VoxelNormal>
+				opaque;
+			voxelBuffer<VertexDecl::VoxelNormal>
+				trans;
+		} visibleRoad;
 
-} voxels;
+		inline static voxelBuffer<VertexDecl::VoxelNormal>
+			visibleTerrain;
+
+	} voxels;
+}
 
 namespace Volumetric
 {
-	inline voxLink* VolumetricLink{ nullptr };
+	constinit inline voxLink* VolumetricLink{ nullptr };
 }
 namespace world
 {
@@ -2664,24 +2683,19 @@ namespace world
 
 		// create world grid memory
 		{
-			_theGrid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
-			_theTemp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
+			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
+			the::temp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			
-			__memclr_stream<CACHE_LINE_BYTES>(_theGrid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			__memclr_stream<CACHE_LINE_BYTES>(_theTemp._protected, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			__memclr_stream<CACHE_LINE_BYTES>(the::grid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			__memclr_stream<CACHE_LINE_BYTES>(the::temp._protected, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			
-			_mini.voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			mini::voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
-			_mini.bits = volume::create();
+			mini::bits = volume::create();
 			clearMiniVoxels();
 
-			using row = bit_row<Iso::WORLD_GRID_SIZE>;
-			_theZone.residential = row::create(Iso::WORLD_GRID_SIZE);
-			_theZone.commercial = row::create(Iso::WORLD_GRID_SIZE);
-			_theZone.industrial = row::create(Iso::WORLD_GRID_SIZE);
-
-			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(_theGrid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
-			FMT_LOG(VOX_LOG, "mini grid voxel allocation: {:n} bytes", (size_t)(sizeof(_theTemp[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
+			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::grid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
+			FMT_LOG(VOX_LOG, "mini grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::temp[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
 		}
 		
 		GenerateGround();
@@ -3210,8 +3224,8 @@ namespace world
 		Iso::Voxel* __restrict gridSnapshot = (Iso::Voxel * __restrict)scalable_malloc(gridSz);
 
 		{
-			tbb::queuing_rw_mutex::scoped_lock lock(_theLock, false); // read-only access
-			memcpy(gridSnapshot, _theGrid, gridSz);
+			tbb::queuing_rw_mutex::scoped_lock lock(the::lock, false); // read-only access
+			memcpy(gridSnapshot, the::grid, gridSz);
 		}
 
 		return(std::make_pair( gridSnapshot, voxel_count ));
@@ -3239,8 +3253,8 @@ namespace world
 			// to be thread safe. This lock has very little contention put on it from this side, however if the lock is already 
 			// obtained by RenderGrid the wait this function will have is high (time for RenderGrid to complete)
 
-			tbb::queuing_rw_mutex::scoped_lock lock(_theLock, true); // write access
-			oldGrid = (Iso::Voxel*)_InterlockedExchangePointer((PVOID * __restrict)&_theGrid._protected, theGrid);
+			tbb::queuing_rw_mutex::scoped_lock lock(the::lock, true); // write access
+			oldGrid = (Iso::Voxel*)_InterlockedExchangePointer((PVOID * __restrict)&the::grid._protected, theGrid);
 		}
 		// free the old grid's large allocation
 		if (oldGrid) {
@@ -3713,8 +3727,8 @@ namespace world
 		if (c.cb_render_texture) {
 
 			static tTime tLast(now());
-			static uint32_t temporal_size(0);
-			static bool bComputeRecorded(false);
+			constinit static uint32_t temporal_size(0);
+			constinit static bool bComputeRecorded(false);
 
 			tTime const tNow(now());
 			fp_seconds const tDelta(tNow - tLast);
@@ -3896,7 +3910,7 @@ namespace world
 
 	void __vectorcall cVoxelWorld::zoomCamera(float const inout)
 	{
-		static tTime tLast{ zero_time_point };
+		constinit static tTime tLast{ zero_time_point };
 
 		tTime const tNow(critical_now());
 		if (tNow - tLast > fixed_delta_x2_duration)
@@ -3926,7 +3940,7 @@ namespace world
 
 	void __vectorcall cVoxelWorld::rotateCamera(float const anglerelative)
 	{
-		static tTime tLast{ zero_time_point };
+		constinit static tTime tLast{ zero_time_point };
 
 		tTime const tNow(critical_now());
 		if (tNow - tLast > fixed_delta_x2_duration)
@@ -3996,7 +4010,7 @@ namespace world
 
 	void __vectorcall cVoxelWorld::translateCamera(point2D_t const vDir)	// intended for scrolling from mouse hitting screen extents
 	{
-		static tTime tLast{ zero_time_point };
+		constinit static tTime tLast{ zero_time_point };
 
 		tTime const tNow(now());
 		if (tNow - tLast > fixed_delta_x2_duration)
@@ -4022,7 +4036,7 @@ namespace world
 
 	void XM_CALLCONV cVoxelWorld::translateCamera(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does not orient in current direction of camera
 	{
-		static tTime tLast{ zero_time_point };
+		constinit static tTime tLast{ zero_time_point };
 
 		tTime const tNow(now());
 		if (tNow - tLast > fixed_delta_x2_duration)
@@ -4035,7 +4049,7 @@ namespace world
 
 	void XM_CALLCONV cVoxelWorld::translateCameraOrient(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does orient in current direction of camera
 	{
-		static tTime tLast{ zero_time_point };
+		constinit static tTime tLast{ zero_time_point };
 
 		tTime const tNow(now());
 		if (tNow - tLast > fixed_delta_x2_duration)
@@ -4204,8 +4218,8 @@ namespace world
 	{
 		static constexpr float const MAX_DELTA = duration_cast<fp_seconds>(fixed_delta_x2_duration).count(),		// 33ms
 									 MIN_DELTA = MAX_DELTA * 0.25f;													// 8ms
-		static float time_last(0.0f), // last interpolated time
-					 time_delta_last(0.0f); // last interpolated time delta
+		constinit static float time_last(0.0f), // last interpolated time
+							   time_delta_last(0.0f); // last interpolated time delta
 
 		_currentState.time = SFM::lerp(_lastState.time, _targetState.time, tRemainder);
 
@@ -4310,8 +4324,8 @@ namespace world
 				updateMouseOcclusion(bPaused);
 			}
 
-			if (_sim) {
-				_sim->run(tNow, tDelta, _theZone.residential, _theZone.commercial, _theZone.industrial);
+			if (bFirstUpdateFrame && _sim) {
+				_sim->run(tNow, tDelta, the::grid);
 			}
 
 #ifdef GIF_MODE
@@ -4553,9 +4567,17 @@ namespace world
 	// voxel painting
 	void cVoxelWorld::clearMiniVoxels()
 	{
-		__memclr_stream<CACHE_LINE_BYTES>(_mini.bits->data(), _mini.bits->size());
-		__memclr_stream<CACHE_LINE_BYTES>(_theTemp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-		_mini.voxels.clear();
+		tbb::parallel_invoke(
+			[&] {
+				__memclr_stream<CACHE_LINE_BYTES>(mini::bits->data(), mini::bits->size());
+			},
+			[&] {
+				__memclr_stream<CACHE_LINE_BYTES>(the::temp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			},
+			[&] {
+				mini::voxels.clear();
+
+			});
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -5341,28 +5363,17 @@ namespace world
 
 		supernoise::blue.Release();
 
-		using row = bit_row<Iso::WORLD_GRID_SIZE>;
-		if (_theZone.residential) {
-			row::destroy(_theZone.residential);
-		}
-		if (_theZone.commercial) {
-			row::destroy(_theZone.commercial);
-		}
-		if (_theZone.industrial) {
-			row::destroy(_theZone.industrial);
-		}
-
 		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 
-		if (_mini.bits) {
-			volume::destroy(_mini.bits);
+		if (mini::bits) {
+			volume::destroy(mini::bits);
 		}
-		if (_theTemp._protected) {
-			scalable_aligned_free(_theTemp._protected);
+		if (the::temp._protected) {
+			scalable_aligned_free(the::temp._protected);
 		}
 
-		if (_theGrid._protected) {
-			scalable_aligned_free(_theGrid._protected);
+		if (the::grid._protected) {
+			scalable_aligned_free(the::grid._protected);
 		}
 		
 

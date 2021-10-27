@@ -541,7 +541,7 @@ bool const cCarGameObject::forward(state const& __restrict currentState, state& 
 
 		// road end? xing? or corner?
 		{
-			if (!(Iso::isExtended(oVoxelRoad) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxelRoad))) {
+			if (!Iso::isRoad(oVoxelRoad)) {
 
 				for (int32_t i = CENTER_NODE_OFFSET; i >= 1; --i) {
 
@@ -655,7 +655,7 @@ void __vectorcall cCarGameObject::gravity(FXMVECTOR const xmLocation, FXMVECTOR 
 		if (pVoxel) {
 			Iso::Voxel const oVoxel(*pVoxel);
 
-			if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {
+			if (Iso::isRoad(oVoxel)) {
 				fRoadHeightFront = fRoadHeightBack = fRoadHeightCenter = Iso::getRealRoadHeight(oVoxel);
 			}
 			else { // shouldn't happen but just in case if no road default to ground height
@@ -673,7 +673,7 @@ void __vectorcall cCarGameObject::gravity(FXMVECTOR const xmLocation, FXMVECTOR 
 			if (pVoxel) {
 				Iso::Voxel const oVoxel(*pVoxel);
 
-				if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {
+				if (Iso::isRoad(oVoxel)) {
 					fRoadHeightFront = Iso::getRealRoadHeight(oVoxel);
 				}
 			}
@@ -684,7 +684,7 @@ void __vectorcall cCarGameObject::gravity(FXMVECTOR const xmLocation, FXMVECTOR 
 			if (pVoxel) {
 				Iso::Voxel const oVoxel(*pVoxel);
 
-				if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {
+				if (Iso::isRoad(oVoxel)) {
 					fRoadHeightBack = Iso::getRealRoadHeight(oVoxel);
 				}
 			}
@@ -947,7 +947,7 @@ void cCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& _
 {
 #ifndef GIF_MODE
 	
-	static tTime tLastAttempt(zero_time_point);
+	constinit static tTime tLastAttempt(zero_time_point);
 
 	if (tNow - tLastAttempt > milliseconds(CAR_CREATE_INTERVAL)) {
 

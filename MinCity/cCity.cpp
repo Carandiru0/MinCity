@@ -48,7 +48,7 @@ void cCity::Update(tTime const tNow)
 
 	using iter_delta = std::vector<deltaGrowth>::const_iterator;
 
-	static tTime tLast(zero_time_point);
+	constinit static tTime tLast(zero_time_point);
 
 	if (tNow - tLast >= nanoseconds(UPDATE_INTERVAL)) {
 

@@ -470,8 +470,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 								);
 
 							if (desc.lit) {
-								XMVECTOR const xmIndex2(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-								Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex2, desc.getColorPacked());
+								Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias), desc.getColorPacked());
 							}
 						}
 					}

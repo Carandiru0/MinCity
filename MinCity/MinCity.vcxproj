@@ -140,8 +140,8 @@
       <MinimalRebuild>false</MinimalRebuild>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <StringPooling>true</StringPooling>
-      <SupportJustMyCode>true</SupportJustMyCode>
-      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <SupportJustMyCode>false</SupportJustMyCode>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -153,10 +153,8 @@
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <StackReserveSize>
-      </StackReserveSize>
-      <StackCommitSize>
-      </StackCommitSize>
+      <StackReserveSize>262144</StackReserveSize>
+      <StackCommitSize>4096</StackCommitSize>
       <LargeAddressAware>true</LargeAddressAware>
       <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
@@ -245,10 +243,8 @@
       <PreventDllBinding>false</PreventDllBinding>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
-      <StackReserveSize>
-      </StackReserveSize>
-      <StackCommitSize>
-      </StackCommitSize>
+      <StackReserveSize>262144</StackReserveSize>
+      <StackCommitSize>4096</StackCommitSize>
       <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>

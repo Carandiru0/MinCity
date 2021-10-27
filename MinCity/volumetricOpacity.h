@@ -426,7 +426,7 @@ namespace Volumetric
 		vku::TextureImageStorage3D*							OpacityMap;
 		voxelVolumeSet										VolumeSet;
 
-		static inline XMFLOAT3A const						Dimensions{ float(Width), float(Height), float(Depth) };
+		constinit static inline XMFLOAT3A const				Dimensions{ float(Width), float(Height), float(Depth) };
 		static inline float const							VolumeLength = (std::hypot(float(Width), float(Height), float(Depth))),
 															InvVolumeLength = (1.0f / VolumeLength);
 
@@ -605,7 +605,7 @@ namespace Volumetric
 		}
 		else if (c.cb_render_light) { 
 
-			static bool bRecorded[2]{ false, false };
+			constinit static bool bRecorded[2]{ false, false };
 
 			uint32_t const resource_index(c.resource_index);
 
@@ -699,10 +699,10 @@ namespace Volumetric
 	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
 	__inline bool const volumetricOpacity<Width, Height, Depth>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb) {
 
-		static bool bRecorded[2]{ false, false };
+		constinit static bool bRecorded[2]{ false, false };
 
 		// cheap loads reused, must be static - *bugfix: per resource state required
-		static uvec4_t new_max_extents[2]{}, new_min_extents[2]{};		// these extents are before rounding to gpu memory granularity (pre-check)
+		constinit static uvec4_t new_max_extents[2]{}, new_min_extents[2]{};		// these extents are before rounding to gpu memory granularity (pre-check)
 
 		[[maybe_unused]] uvec4_v clear_max_max, clear_min_min;
 
@@ -787,7 +787,7 @@ namespace Volumetric
 
 		// Prevent re-recording of command buffer if last output extents used matches in resolution //
 		// important to prevent de-optimization // *bugfix: per resource state required
-		static uvec4_t last_max_extents[2]{}, last_min_extents[2]{};	// these extents are *after* rounding to gpu memory granularity (final check)
+		constinit static uvec4_t last_max_extents[2]{}, last_min_extents[2]{};	// these extents are *after* rounding to gpu memory granularity (final check)
 
 		// UPLOAD image already transitioned to transfer dest layout at this point
 		// ################################## //

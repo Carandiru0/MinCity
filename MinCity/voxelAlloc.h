@@ -8,7 +8,7 @@
 #define VOXEL_ALPHA_SHIFT 1
 namespace Volumetric
 {
-	static uint32_t const	
+	static constexpr uint32_t const	
 		MODEL_MAX_DIMENSION_XYZ = 256;	// supporting 256x256x256 size voxel model
 
 	static constexpr uint32_t const
@@ -42,7 +42,7 @@ namespace Volumetric
 		INVERSE_MINIGRID_VISIBLE_Y = 1.0f / (float)(Allocation::VOXEL_MINIGRID_VISIBLE_Y),
 		INVERSE_MINIGRID_VISIBLE_Z = 1.0f / (float)(Allocation::VOXEL_MINIGRID_VISIBLE_Z);
 
-	// main transform position to uvw constants
+	// main transform position to uvw constants (works for both normal ground voxels and mini voxels; the scale and bias math is equal)
 	read_only inline XMVECTORF32 const _xmTransformToIndexScale{ 2.0f, -2.0f, 2.0f };
 	read_only inline XMVECTORF32 const _xmTransformToIndexBias{ (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f, 0.0f, (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f };
 	read_only inline XMVECTORF32 const _xmInverseVisibleXYZ{ Volumetric::INVERSE_MINIGRID_VISIBLE_X, Volumetric::INVERSE_MINIGRID_VISIBLE_Y, Volumetric::INVERSE_MINIGRID_VISIBLE_Z, 1.0f };

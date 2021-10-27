@@ -174,7 +174,7 @@ static uint32_t const count_gifs_in_directory( fs::path const path_to_textures )
 
 void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desired_height, uint32_t const unique_hash_seed)
 {
-	static uint32_t gif_count[2]{};
+	constinit static uint32_t gif_count[2]{};
 
 	uint32_t const micro((uint32_t const)(desired_height <= MICRO_PIXEL_HEIGHT_MAX));
 

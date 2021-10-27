@@ -2,6 +2,8 @@
 
 #include <Math/superfastmath.h>
 #include <Utility/mem.h>
+#include <Utility/class_helper.h>
+
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
 
@@ -12,13 +14,13 @@ namespace VertexDecl
 	// all vertex declarations are explicitly aligned to 16 bytes per component
 	// only use vec4 compatible data (XMVECTOR)
 	// ok to use smaller type (eg uint) if last member of declaration, will still be aligned on 16byte boundary
-	struct __declspec(novtable) alignas(16) just_position {
+	struct no_vtable alignas(16) just_position {
 
 		XMVECTOR	position;
 
 	};
 
-	struct __declspec(novtable) alignas(16) VoxelNormal {
+	struct no_vtable alignas(16) VoxelNormal {
 
 	public:
 		XMVECTOR	worldPos;						//xyz = world position , w = hash
@@ -40,7 +42,7 @@ namespace VertexDecl
 	private:
 		VoxelNormal& operator=(VoxelNormal const&) = delete;
 	};
-	struct __declspec(novtable) alignas(16) VoxelDynamic : public VoxelNormal {
+	struct no_vtable alignas(16) VoxelDynamic : public VoxelNormal {
 
 		XMVECTOR	orient_reserved;						//x=cos,y=sin for azimuth, z=cos,w=sin for pitch 
 
@@ -62,7 +64,7 @@ namespace VertexDecl
 		VoxelDynamic& operator=(VoxelDynamic const&) = delete;
 	};
 
-	struct __declspec(novtable) alignas(16) nk_vertex {
+	struct no_vtable alignas(16) nk_vertex {
 		XMFLOAT4A position_uv;
 		uint32_t color;
 	};
@@ -71,7 +73,7 @@ namespace VertexDecl
 
 namespace BufferDecl
 {
-	struct __declspec(novtable) VoxelSharedBuffer {
+	struct no_vtable VoxelSharedBuffer {
 		XMVECTOR	average_reflection_color;
 		uint32_t    average_reflection_count;
 		uint32_t	new_image_layer_count_max;
@@ -82,7 +84,7 @@ namespace UniformDecl
 {
 	// BUFFER alignment should not be explicity specified on struct, rather use alignment rules of Vulkan spec and do ordering of struct members manually
 
-	struct __declspec(novtable) VoxelSharedUniform {
+	struct no_vtable VoxelSharedUniform {
 		XMMATRIX    viewproj;
 		XMMATRIX	view;
 		XMMATRIX	inv_view;
@@ -93,10 +95,10 @@ namespace UniformDecl
 		XMVECTOR	aligned_data1;	// .x = max light distance
 		uint32_t	frame; // must be last
 	};
-	struct __declspec(novtable) nk_uniform {
+	struct no_vtable nk_uniform {
 		XMMATRIX	projection;
 	};
-	struct __declspec(novtable) DebugStorageBuffer {
+	struct no_vtable DebugStorageBuffer {
 		XMVECTOR	numbers;
 		bool		toggles[4];
 		float		history[1024][1024];
@@ -105,7 +107,7 @@ namespace UniformDecl
 	// alignment on push constants is natural (ie float = 4bytes) to maximize availabilty of restricted size available to use (128 bytes)
 	// Up to **128** bytes of immediate data. (Vulkan minimum spec is 128bytes, also is my Radeon 290 Limit)
 
-	typedef struct __declspec(novtable) alignas(4) NuklearPushConstants { // 4+4 = 8 bytes
+	typedef struct no_vtable alignas(4) NuklearPushConstants { // 4+4 = 8 bytes
 		uint32_t array_index,
 				 type;
 	} NuklearPushConstants;
@@ -113,27 +115,27 @@ namespace UniformDecl
 	// overlapping ranges defined per struct (inherited)
 
 	// ###pipeline### pushes their own specific range with size of the struct, offset is manually defined at compile time in order defined for the pipelinelayout below
-	typedef struct __declspec(novtable) alignas(4) ComputeLightPushConstantsJFA { // 4+4+4 = 12 bytes
+	typedef struct no_vtable alignas(4) ComputeLightPushConstantsJFA { // 4+4+4 = 12 bytes
 		int32_t		step;
 		uint32_t	index_output,
 					index_input;  // **** index_input must be last as it overlaps - filter shader uses it and updates only it in addition to the data in ComputeLightPushConstantsFilter
 	} ComputeLightPushConstantsJFA;
-	typedef struct __declspec(novtable) alignas(4) ComputeLightPushConstantsFilter : ComputeLightPushConstantsJFA { // 4 rows * 4 floats per row * 4bytes, +2 floats = 72 bytes
+	typedef struct no_vtable alignas(4) ComputeLightPushConstantsFilter : ComputeLightPushConstantsJFA { // 4 rows * 4 floats per row * 4bytes, +2 floats = 72 bytes
 		uint32_t	index_filter;
 		XMFLOAT4X4	view;
 	} ComputeLightPushConstantsFilter;
 	// only typedef for size
-	typedef struct __declspec(novtable) alignas(4) ComputeLightPushConstantsOverlap {
+	typedef struct no_vtable alignas(4) ComputeLightPushConstantsOverlap {
 		uint32_t const	index_input;
 		uint32_t		index_filter;
 		XMFLOAT4X4		view;
 	} ComputeLightPushConstantsOverlap;
 
 	// ###pipelinelayout### uses the leaf, order of data is defined here with multiple inheritance, memory layout is in order they are defined:
-	struct __declspec(novtable) alignas(4) ComputeLightPushConstants : ComputeLightPushConstantsFilter {
+	struct no_vtable alignas(4) ComputeLightPushConstants : ComputeLightPushConstantsFilter {
 	};
 
-	typedef struct __declspec(novtable) alignas(4) TextureShaderPushConstants { // 4 = 4 bytes
+	typedef struct no_vtable alignas(4) TextureShaderPushConstants { // 4 = 4 bytes
 		XMFLOAT2	origin;
 		float		frame_or_time;	// customizable per textureshader requirements
 	} TextureShaderPushConstants;

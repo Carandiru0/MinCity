@@ -47,6 +47,9 @@ namespace world
 	bool const __vectorcall setVoxelAt(FXMVECTOR const Location, Iso::Voxel const&& __restrict newData);
 	void __vectorcall setVoxelsAt(rect2D_t voxelArea, Iso::Voxel const&& __restrict voxelReference);
 
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	bool const __vectorcall setVoxelAtLocal(point2D_t const voxelIndex, Iso::Voxel const&& __restrict newData);
+
 	template<bool const Dynamic>
 	STATIC_INLINE bool const __vectorcall setVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
 	void __vectorcall setVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
@@ -78,8 +81,8 @@ namespace world
 	// zoning
 	namespace zoning
 	{
-		void setArea(rect2D_t voxelArea, uint32_t const zone_type);
-		void clearArea(rect2D_t voxelArea, uint32_t const zone_type);
+		void zoneArea(rect2D_t voxelArea, uint32_t const zone_type);
+		void dezoneArea(rect2D_t voxelArea);
 	}
 
 	// Random & Search //
@@ -99,7 +102,7 @@ namespace world
 		bool const __vectorcall search_neighbour_for_road(point2D_t& __restrict found_road_point, point2D_t const origin, point2D_t const offset);
 		bool const __vectorcall search_neighbour_for_road(point2D_t const origin, point2D_t const offset);
 		point2D_t const __vectorcall search_road_intersect(point2D_t const origin, point2D_t const axis,
-			int32_t const begin, int32_t const end); // begin / end are offsets from origin
+														   int32_t const begin, int32_t const end); // begin / end are offsets from origin
 
 	} // end ns world::roads
 

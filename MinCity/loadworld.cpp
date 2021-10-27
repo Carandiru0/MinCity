@@ -14,7 +14,7 @@
 namespace fs = std::filesystem;
 
 static inline struct {
-	vector<std::string>	cityname;		// indices
+	vector<std::string>		cityname;		// indices
 	vector<std::wstring>	cityfile;		// match
 } _loadList;
 

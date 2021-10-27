@@ -17,11 +17,11 @@ template< typename XMFLOAT4A, uint32_t const LightWidth, uint32_t const LightHei
 							  uint32_t const Width, uint32_t const Height, uint32_t const Depth>
 struct alignas(CACHE_LINE_BYTES) lightBuffer3D : public writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
-	static inline XMVECTORU32 const _xmMaskBits{ 0x00, 0xFF, 0xFF, 0xFF };
+	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x00, 0xFF, 0xFF, 0xFF };
 
-	static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Width),  1.0f / float(Height),  1.0f / float(Depth), 0.0f }; // needs to be xyz
-	static inline XMVECTORF32 const _xmLightLimitMax{ float(LightWidth),  float(LightHeight),  float(LightDepth), 0.0f }; // needs to be xyz
-	static inline XMVECTORF32 const _xmWorldLimitMax{ float(Width),  float(Depth),  float(Height), 0.0f }; // needs to be xzy
+	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Width),  1.0f / float(Height),  1.0f / float(Depth), 0.0f }; // needs to be xyz
+	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightWidth),  float(LightHeight),  float(LightDepth), 0.0f }; // needs to be xyz
+	constinit static inline XMVECTORF32 const _xmWorldLimitMax{ float(Width),  float(Depth),  float(Height), 0.0f }; // needs to be xzy
 	
 public:
 	// access - readonly
@@ -37,11 +37,15 @@ public:
 		_maximum = std::move<Bounds&&>(Bounds{});
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
 
-		// clear internal memory
-		__memclr_stream<CACHE_LINE_BYTES>(_internal, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
-
-		// clear internal cache
-		__memclr_stream<CACHE_LINE_BYTES>(_cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
+		tbb::parallel_invoke(
+			[&] {
+				// clear internal memory
+				__memclr_stream<CACHE_LINE_BYTES>(_internal, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
+			},
+			[&] {
+				// clear internal cache
+				__memclr_stream<CACHE_LINE_BYTES>(_cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
+			});
 	}
 
 	__declspec(safebuffers) void __vectorcall commit(vku::GenericBuffer const& __restrict stagingBuffer, size_t const hw_concurrency) {

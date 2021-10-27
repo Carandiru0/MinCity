@@ -510,7 +510,7 @@ static point2D_t const __vectorcall snap_to_nearest_end(point2D_t const origin, 
 		Iso::Voxel const oVoxel(*pVoxel);
 
 		// ### Only if Not Already center of node road block && Is a road block (STRAIGHT SECTION)
-		if (!Iso::isRoadNode(oVoxel) && Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))) {
+		if (Iso::isRoad(oVoxel) && !Iso::isRoadNode(oVoxel)) {
 
 			// adjacent in "inline" direction?
 			uint32_t const encoded_direction(Iso::getRoadDirection(oVoxel));
@@ -532,7 +532,7 @@ static point2D_t const __vectorcall snap_to_nearest_end(point2D_t const origin, 
 						Iso::Voxel const oSideVoxel(*pSideVoxel[side]);
 
 						// looking for absence of road start
-						if (!(Iso::isExtended(oSideVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)))) {
+						if (!Iso::isRoad(oSideVoxel)) {
 
 							// needs to ensure that within Iso::SEGMENT_SIDE_WIDTH that there are no nodes in the current direction inline (there could be a gap in space between a straight segment and road corner equal to half the Iso::ROAD_SEGMENT_WIDTH before the road node is there, due to the way its laid out)
 							point2D_t const current_direction(p2D_sub(sidePoint[side],lastRoadPoint[side])); // maximum [-1...1] on one axis difference possible here
@@ -543,7 +543,7 @@ static point2D_t const __vectorcall snap_to_nearest_end(point2D_t const origin, 
 							if (nullptr != pVoxelNode) {
 
 								Iso::Voxel const oVoxelNode(*pVoxelNode);
-								if (Iso::isExtended(oVoxelNode) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxelNode)) && Iso::isRoadNode(oVoxelNode)) {
+								if (Iso::isRoad(oVoxelNode) && Iso::isRoadNode(oVoxelNode)) {
 									// found the node - return unchanged origin point
 									return(origin);
 								}
@@ -605,7 +605,7 @@ static point2D_t const __vectorcall snap_to_nearest_node(point2D_t const origin,
 
 				if (pSideVoxel[side]) {
 					Iso::Voxel const oSideVoxel(*pSideVoxel[side]);
-					if (Iso::isExtended(oSideVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) && Iso::isRoadNode(oSideVoxel)) {
+					if (Iso::isRoad(oSideVoxel) && Iso::isRoadNode(oSideVoxel)) {
 
 						uint32_t const nodeType(getRoadNodeType(sidePoint[side]));
 
@@ -663,7 +663,7 @@ static bool const __vectorcall select_road_intersect(point2D_t const origin, uin
 
 				if (pSideVoxel[side]) {
 					Iso::Voxel oSideVoxel(*pSideVoxel[side]);
-					if (Iso::isExtended(oSideVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel))) {
+					if (Iso::isRoad(oSideVoxel)) {
 						// "selections" do not use road history !!!, must be deselected when neccessary
 
 						if constexpr (bSelected) {
@@ -689,7 +689,7 @@ static bool const __vectorcall select_road_intersect(point2D_t const origin, uin
 
 				if (pSideVoxel[side]) {
 					Iso::Voxel oSideVoxel(*pSideVoxel[side]);
-					if (Iso::isExtended(oSideVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel))) {
+					if (Iso::isRoad(oSideVoxel)) {
 						// "selections" do not use road history !!!, must be deselected when neccessary
 
 						if constexpr (bSelected) {
@@ -907,11 +907,11 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 	// move ground under road up to match
 	{
 		Iso::setHeightStep(oVoxel, groundHeightStep);
-
+		
 		mini = p2D_min(mini, currentPoint);
 		maxi = p2D_max(maxi, currentPoint);
 	}
-	// surrounding ground under road
+	// surrounding ground under road - ground under road adjacent to the center/middle of the road.
 	for (int32_t offset = 1; offset <= Iso::SEGMENT_SIDE_WIDTH; ++offset) {
 
 		point2D_t sidePoint[2]{};
@@ -924,9 +924,14 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 			if (pSideVoxel[side]) {
 				Iso::Voxel oSideVoxel(*pSideVoxel[side]);
 				pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
+				
+				// define as road, but not an owner. (not the middle of the road)
+				Iso::setType(oSideVoxel, Iso::TYPE_EXTENDED);
+				Iso::setExtendedType(oSideVoxel, Iso::EXTENDED_TYPE_ROAD);
+				Iso::clearAsOwner(oSideVoxel, Iso::GROUND_HASH);
+				Iso::setHeightStep(oSideVoxel, groundHeightStep);
+				Iso::setPending(oSideVoxel); // in "constructing" state, not fully committed to grid
 
-				oSideVoxel = oVoxel;
-				Iso::setType(oSideVoxel, Iso::TYPE_GROUND);
 				world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
 
 				mini = p2D_min(mini, sidePoint[side]);
@@ -937,35 +942,6 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 
 	// ** required for any changes in terrain height ** //
 	world::recomputeGroundAdjacencyOcclusion(rect2D(mini, maxi));
-}
-
-static auto const checkAdjacentInlineForRoadHeightEnd(point2D_t const currentPoint, uint32_t const encoded_direction) {
-
-	typedef struct {
-		uint32_t const road_heightstep;
-		bool const existing_road;
-	} Returned;
-
-	// check adjacent nodes inline with direction //
-	static constexpr int32_t const SIDE_OFFSET = Iso::SEGMENT_SIDE_WIDTH + 1;
-	bool bExisting(false);
-	point2D_t sidePoint[2]{};
-	Iso::Voxel const* pSideVoxel[2]{ nullptr };
-
-	getAdjacentSides<false>(currentPoint, encoded_direction, SIDE_OFFSET, sidePoint, pSideVoxel);
-
-	for (uint32_t side = 0; side < 2; ++side) {
-		if (pSideVoxel[side]) {
-			Iso::Voxel oSideVoxel(*pSideVoxel[side]);
-
-			if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
-
-				return(Returned{ Iso::getRoadHeightStepEnd(oSideVoxel), false });
-			}
-		}
-	}
-
-	return(Returned{ 0, false });
 }
 
 bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, point2D_t const endPoint)
@@ -1010,16 +986,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		if (nullptr == pVoxel)
 			return(false);
 
-		// bugfix: check adjacent nodes inline with direction //
-		auto const [road_heightstep, exists] = checkAdjacentInlineForRoadHeightEnd(currentPoint, encoded_direction);
-				
-		if (!exists) {
-			currentSegment.h0 = getSmoothHeightStep(currentPoint, encoded_direction);
-		}
-		else {
-			currentSegment.h1 = road_heightstep;
-		}
-
+		currentSegment.h0 = getSmoothHeightStep(currentPoint, encoded_direction);
 		currentSegment.origin.v = currentPoint.v;
 	}
 
@@ -1035,7 +1002,8 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		Iso::Voxel const oVoxel(*pVoxel);
 		
 		// ** note currentSegment.h1 is only updated when it needs to change ** //
-		if (Iso::isGroundOnly(oVoxel) || intersection_index >= 0 ) {  // new road
+		if (Iso::isGroundOnly(oVoxel) || intersection_index >= 0  // new road *or* is road but not the middle of road (allows xing).
+			|| (Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) && !Iso::isOwner(oVoxel, Iso::GROUND_HASH))) {  
 
 			pushRoadHistory(UndoVoxel(currentPoint, oVoxel));
 
@@ -1081,7 +1049,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 				}
 			}
 		}
-		else if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {  // existing road
+		else if (Iso::isRoad(oVoxel)) {  // existing road
 
 			// same axis for existing road being drawn now? // Prevent drawing road over road.
 			// bugfix: **only** applies to straight segments of roads, nodes need to be bypassed on this check!
@@ -1174,7 +1142,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 							if (pSideVoxel[side]) {
 								Iso::Voxel oSideVoxel(*pSideVoxel[side]);
 
-								if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
+								if (Iso::isRoad(oSideVoxel)) {
 									pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
 
 									uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
@@ -1195,7 +1163,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 					}
 
 
-					// set straight road connected to node to match elevation *bugfix - now properly interpolates accounting for nodes (corners and xing) glitc free.
+					// set straight road connected to node to match elevation *bugfix - now properly interpolates accounting for nodes (corners and xing) glitch free.
 
 					// for each perpindicular side, find the next node 
 					{
@@ -1216,7 +1184,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 								if (searching[side] && pSideVoxel[side]) { // skips search when finished side.
 									oSideVoxelSaved[side] = *pSideVoxel[side];
 
-									if (Iso::isExtended(oSideVoxelSaved[side]) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxelSaved[side])) {
+									if (Iso::isRoad(oSideVoxelSaved[side])) {
 										searching[side] = !Iso::isRoadNode(oSideVoxelSaved[side]); // xing or corner
 									}
 									else {
@@ -1250,7 +1218,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 								if (grading[side] && pSideVoxel[side]) { // skips grading when finished/side
 									Iso::Voxel oSideVoxel(*pSideVoxel[side]);
 
-									if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
+									if (Iso::isRoad(oSideVoxel)) {
 
 										if (Iso::isRoadEdge(oSideVoxel)) {
 											pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
@@ -1426,7 +1394,6 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		Iso::setExtendedType(oVoxel, Iso::EXTENDED_TYPE_ROAD);
 		Iso::setHash(oVoxel, Iso::GROUND_HASH, 0); // reset hash
 
-
 		Iso::setRoadHeightStepBegin(oVoxel, prevHeightStep);
 		Iso::setRoadHeightStepEnd(oVoxel, currentHeightStep);
 		Iso::setRoadDirection(oVoxel, encoded_direction);
@@ -1440,12 +1407,14 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 			Iso::setAsRoadEdge(oVoxel);
 		}
 
+		Iso::setPending(oVoxel); // in "constructing" state, not fully committed to grid
 
 		// move ground under road up to match
 		int32_t const groundHeightStep = SFM::min(prevHeightStep, currentHeightStep);
 		ConditionRoadGround(currentPoint, encoded_direction, groundHeightStep, oVoxel);
 
-		Iso::setPending(oVoxel); // in "constructing" state, not fully committed to grid
+		Iso::setAsOwner(oVoxel, Iso::GROUND_HASH);  // *important* set here *only*
+		
 		Iso::setEmissive(oVoxel);
 
 		// done!
@@ -1535,7 +1504,7 @@ static auto const __vectorcall autotile(point2D_t const currentPoint, uint32_t c
 
 					Iso::Voxel const oSideVoxel(*pSideVoxel[next_index]);
 
-					if (Iso::isExtended(oSideVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oSideVoxel)) {
+					if (Iso::isRoad(oSideVoxel)) {
 
 						bValid = true;
 
@@ -1620,7 +1589,7 @@ void cRoadTool::autotileRoadHistory()
 		if (pVoxel) {
 			Iso::Voxel oVoxel(*pVoxel);
 
-			if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {
+			if (Iso::isRoad(oVoxel)) {
 
 				auto const [road_tile, road_node_type, center] = autotile(voxelIndex, Iso::getRoadDirection(oVoxel), Iso::isRoadNode(oVoxel));
 
@@ -1734,7 +1703,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 				bool bExistingTrafficSign(false);
 
 				// ensure that it does not already exist
-				if (Iso::isOwnerAny(oXingVoxel)) {
+				if (Iso::isOwnerAny(oXingVoxel, Iso::DYNAMIC_HASH)) {
 					for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 						if (0 != oXingVoxel.Hash[i]) {
 							auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(oXingVoxel.Hash[i]);
@@ -1856,7 +1825,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 		if (bNSEW) {
 			rotation = lamp_post_side ? rotation : v2_rotation_constants::v180;
 		}
-		else {
+		else { 
 			rotation = lamp_post_side ? v2_rotation_constants::v90 : v2_rotation_constants::v270;
 		}
 
@@ -1916,7 +1885,7 @@ void cRoadTool::decorateRoadHistory()
 		if (pVoxel) {
 			Iso::Voxel oVoxel(*pVoxel);
 
-			if (Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) {
+			if (Iso::isRoad(oVoxel)) {
 
 				if (Iso::isRoadNode(oVoxel)) {
 					// "remove" any lamp posts / signage in area of xing

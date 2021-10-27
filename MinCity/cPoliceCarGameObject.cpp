@@ -183,7 +183,7 @@ void cPoliceCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds co
 #ifndef GIF_MODE
 	if (size() < MAX_CARS) {
 
-		static tTime tLastCreation(zero_time_point);
+		constinit static tTime tLastCreation(zero_time_point);
 
 		if (tNow - tLastCreation > milliseconds(CAR_CREATE_INTERVAL)) {
 			CreateCar();

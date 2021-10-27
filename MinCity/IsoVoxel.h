@@ -149,10 +149,14 @@ namespace Iso
 
 	// ######### Hash bits:
 
+	// ground hash bits //
+	static constexpr uint32_t const MASK_ZONING = 0x03;		//	                0011	// Ground/Not Zoned = 0, Residential = 1, Commercial = 2, Industrial = 3 (Treat as a number value - not bit position - after mask is applied)
+
+
 	// road hash bits //
 	static constexpr uint32_t const ROAD_SEGMENT_WIDTH = 11; // shader value should also match this (uniforms.vert) - must be even number
-	static constexpr int32_t const  SEGMENT_SIDE_WIDTH(ROAD_SEGMENT_WIDTH >> 1), 
-		                            SEGMENT_SNAP_WIDTH(ROAD_SEGMENT_WIDTH + 1);
+	static constexpr int32_t const  SEGMENT_SIDE_WIDTH(ROAD_SEGMENT_WIDTH >> 1),
+									SEGMENT_SNAP_WIDTH(ROAD_SEGMENT_WIDTH + 1);
 	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_BEGIN = 0x0F;		//	                1111
 	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_END = 0xF0;		//             1111 xxxx
 	static constexpr uint32_t const MASK_ROAD_DIRECTION = 0x300;			//        0011 xxxx xxxx
@@ -208,13 +212,15 @@ namespace Iso
 
 	} // end ns
 
-	// "Owner" Voxel
+
+	// "Owner" Voxel & Hashes
 	static constexpr uint8_t const
 		GROUND_HASH = 0,
 		STATIC_HASH = (1 << 0),
 		DYNAMIC_HASH = (1 << 1);
 	static constexpr uint8_t const
 		HASH_COUNT = 8;
+
 
 	typedef struct sVoxel
 	{
@@ -240,22 +246,22 @@ namespace Iso
 
 	// for indicating voxel is temporary / constructing
 	STATIC_INLINE_PURE bool const isPending(Voxel const& oVoxel) { return(MASK_PENDING_BIT & oVoxel.Desc); }
-	STATIC_INLINE void clearPending(Voxel& oVoxel) {	
+	STATIC_INLINE void clearPending(Voxel& oVoxel) {
 		// Clear bit
 		oVoxel.Desc &= (~MASK_PENDING_BIT);
 	}
-	STATIC_INLINE void setPending(Voxel& oVoxel) {	
+	STATIC_INLINE void setPending(Voxel& oVoxel) {
 		// Set bit
 		oVoxel.Desc |= MASK_PENDING_BIT;
 	}
 
 	// only for search algorithms
 	STATIC_INLINE_PURE bool const isDiscovered(Voxel const& oVoxel) { return(MASK_DISCOVERED_BIT & oVoxel.Desc); }
-	STATIC_INLINE void clearDiscovered(Voxel& oVoxel) {	
+	STATIC_INLINE void clearDiscovered(Voxel& oVoxel) {
 		// Clear bit
 		oVoxel.Desc &= (~MASK_DISCOVERED_BIT);
 	}
-	STATIC_INLINE void setDiscovered(Voxel& oVoxel) {	
+	STATIC_INLINE void setDiscovered(Voxel& oVoxel) {
 		// Set bit
 		oVoxel.Desc |= MASK_DISCOVERED_BIT;
 	}
@@ -373,14 +379,6 @@ namespace Iso
 		clearAsOwner(oVoxel, index); // *** also remove owner status if it exists, applies to any/all cases
 	}
 
-	// only applicable if not an extended type, like roads.
-	STATIC_INLINE_PURE uint32_t const getColor(Voxel const& oVoxel) {
-		return(oVoxel.Hash[GROUND_HASH]);
-	}
-	STATIC_INLINE void setColor(Voxel& oVoxel, uint32_t const color) {
-		oVoxel.Hash[GROUND_HASH] = color;
-	}
-
 	STATIC_INLINE void clearAsNode(Voxel& oVoxel)
 	{
 		// Clear node bit
@@ -399,7 +397,7 @@ namespace Iso
 			resetHash(oVoxel, i); // also clears owner state
 		}						  // also resets ground hash which isn't used if ground only, only for roads / modifications to ground
 		clearAsNode(oVoxel);
-	
+
 		setType(oVoxel, Iso::TYPE_GROUND);   // default change type to ground
 	}
 
@@ -426,7 +424,7 @@ namespace Iso
 	{
 		return(getRealHeight((float)getHeightStep(oVoxel)));  // half-voxel offset is exact
 	}
-	
+
 	// #defines to ensure one comparison only and compared with zero always (performance)
 
 	// #### All Voxels
@@ -477,6 +475,14 @@ namespace Iso
 	}
 
 	// #### Roads
+	template<bool const owner_only = true>					    // middle of road is owner voxel of road segment, otherwise it's not the middle of the road.
+	STATIC_INLINE_PURE bool const isRoad(Voxel const& oVoxel);	// default is to test if road and is the owner voxel. 
+
+	template<> // only the actual road describing owner voxel.
+	STATIC_INLINE_PURE bool const isRoad<true>(Voxel const& oVoxel) { return(isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) && isOwner(oVoxel, GROUND_HASH)); }
+	template<> // if voxel is road.
+	STATIC_INLINE_PURE bool const isRoad<false>(Voxel const& oVoxel) { return(isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))); }
+
 	STATIC_INLINE_PURE bool const isRoadNode(Voxel const& oVoxel) { return((MASK_NODE_BIT & oVoxel.Desc)); } // Only used if current voxel is of extended type road
 	STATIC_INLINE_PURE bool const isRoadEdge(Voxel const& oVoxel) { return(!(MASK_NODE_BIT & oVoxel.Desc)); } // Only used if current voxel is of extended type road
 	STATIC_INLINE_PURE bool const isRoadNodeCenter(Voxel const& oVoxel) { return(MASK_ROAD_NODE_CENTER == (oVoxel.Hash[GROUND_HASH] & MASK_ROAD_NODE_CENTER)); } // Only used if current voxel is of extended type road and is a node

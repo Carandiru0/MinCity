@@ -243,6 +243,8 @@ void main() {
 	{ // mask for bloom - bugfix: use the msaa sampler instead of temporal ssaa color provides stability when moving camera, otherwise a pulsing intensity for bloom can be seen - very distractinbg
 		vec3 color = textureLod(colorMap, In.uv, 0).rgb;
 		color = color * smoothstep(0.5f, 1.0f, max(color.r, max(color.g, color.b))); // 0.5 to 1.0 is good for bloom, don't change.
+
+		expandBlurAA(colorMap, color, In.uv, 0.5f);
 		imageStore(outBlur[0], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));		
 	}
 	
@@ -250,8 +252,7 @@ void main() {
 #elif defined(SMAA_PASS_0)  // blur downsampled horizontally + anamorphic reduction													
 	vec3 color = textureLod(blurMap[0], In.uv, 0).rgb;
 	expandAA(blurMap[0], color, In.uv); // <----- keeps things a little bit sharper
-//	color = mix( color, blur(blurMap[0], In.uv, InvScreenResDimensions, vec2(1,0)), 0.5f);
-//	color = mix( color, blur(blurMap[0], In.uv, InvScreenResDimensions, vec2(3,0)), 0.5f);
+
 	imageStore(outBlur[1], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));
 
 	anamorphicReduction(In.uv);
@@ -259,8 +260,7 @@ void main() {
 #elif defined (SMAA_PASS_1)   // blur downsampled vertically	           
 	vec3 color = textureLod(blurMap[1], In.uv, 0).rgb;
 	expandAA(blurMap[1], color, In.uv); // <----- keeps things a little bit sharper
-//	color = mix( color, blur(blurMap[1], In.uv, InvScreenResDimensions, vec2(0,1)), 0.5f);
-//	color = mix( color, blur(blurMap[1], In.uv, InvScreenResDimensions, vec2(0,3)), 0.5f);
+
 	imageStore(outBlur[0], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));
 
 	return; // output of pixel shader not used
@@ -302,7 +302,7 @@ void main() {
 		color = textureLod(lutMap, color * LUT_SCALE + LUT_OFFSET, 0).rgb;
 		
 		// BLOOM // // *BEST APPLIED ONLY HERE* bloom after the 3D lut is applied (expanding output range) and before any HDR transforms.
-		color += textureLod(blurMap[0], In.uv, 0).rgb * luminance; // times original luminance anti-aliases the bloom, looks sharper.
+		color += textureLod(blurMap[0], In.uv, 0).rgb * (0.1f + (1.0f - luminance)); // *bugfix: times original (1.0f - luminance) preserves antialiasing.
 	}
 #ifdef HDR
 	{ // 2.) HDR

@@ -5,12 +5,15 @@
 #include <filesystem>
 #include <Utility/async_long_task.h>
 
-static inline struct no_vtable : no_copy {
+namespace // private to this file (anonymous)
+{
+	static inline struct no_vtable : no_copy {
 
-	FMOD_SYSTEM*		system;
+		FMOD_SYSTEM* system;
 
-} audio{};
+	} audio{};
 
+} // end ns
 
 cAudio::cAudio()
 	: _music_soundbank(nullptr), _music_subsound(nullptr), _music_channel(nullptr), _music_subsound_index(STARTING_MUSIC_SUBSOUND_INDEX),

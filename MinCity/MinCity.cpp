@@ -45,8 +45,11 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "RedirectIO.h"
 
 // private global variables //
-static inline tbb::task_scheduler_init* TASK_INIT{ nullptr };
-static inline GLFWwindow* g_glfwwindow(nullptr);
+namespace // private to this file (anonymous)
+{
+	constinit static inline tbb::task_scheduler_init* TASK_INIT{ nullptr };
+	constinit static inline GLFWwindow* g_glfwwindow(nullptr);
+}
 
 #ifdef DEBUG_VARIABLES_ENABLED
 
@@ -451,7 +454,7 @@ void cMinCity::OnNew()
 }
 void cMinCity::OnLoad()
 {
-	static int64_t _task_id_load(0);
+	constinit static int64_t _task_id_load(0);
 
 	async_long_task::wait_for_all(milliseconds(async_long_task::beats::frame));
 	m_eExclusivity = eExclusivity::LOADING;
@@ -476,7 +479,7 @@ void cMinCity::OnLoad()
 }
 void cMinCity::OnSave(bool const bShutdownAfter)
 {
-	static int64_t _task_id_save(0);
+	constinit static int64_t _task_id_save(0);
 
 	async_long_task::wait_for_all(milliseconds(async_long_task::beats::frame));
 	m_eExclusivity = eExclusivity::SAVING;
@@ -511,7 +514,7 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 
 void cMinCity::Load()
 {
-	static bool bDelay(true);
+	constinit static bool bDelay(true);
 
 	int32_t const load_state(Nuklear.getLastSelectionForWindow<eWindowType::LOAD>());
 
@@ -528,7 +531,7 @@ void cMinCity::Load()
 }
 void cMinCity::Save(bool const bShutdownAfter) // no user prompt, immediate clean shutdown
 {
-	static bool bDelay(true);
+	constinit static bool bDelay(true);
 
 	int32_t const save_state(Nuklear.getLastSelectionForWindow<eWindowType::SAVE>());
 
@@ -612,8 +615,8 @@ NO_INLINE static bool const GradualStartUp(size_t const frameCount, bool const& 
 
 void cMinCity::UpdateWorld() 
 {
-	static bool bWasPaused(false);
-	static tTime 
+	constinit static bool bWasPaused(false);
+	constinit static tTime 
 		tLast{ zero_time_point },
 		tLastGUI{ zero_time_point };
 
@@ -651,7 +654,7 @@ void cMinCity::UpdateWorld()
 	VoxelWorld.PreUpdate(bPaused); // called every frame regardless of timing
 
 	// *fourth*
-	static duration tAccumulate(nanoseconds(0));
+	constinit static duration tAccumulate(nanoseconds(0));
 	{   // variable time step intended to not be used outside of this scope
 		// Accunmulate actual time per frame
 		// clamp at the 2x step size, don't care or want spurious spikes of time
@@ -898,6 +901,8 @@ __declspec(noinline) static bool SetProcessPrivilege(
 
 __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread and hyperthreading cache optimizations
 {
+	static constexpr uint32_t const ASYNC_THREAD_STACK_SIZE = Globals::DEFAULT_STACK_SIZE >> 2;
+
 	bool async_threads_started(false);
 
 	int32_t num_hw_threads(-1); // -1 will have tbb automatically fallback, in cases where it can't be optimized here.00000000000000002111111111111111/
@@ -1010,7 +1015,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 						cores[1] = logical_processors[last_logical_second_core_index[1]];
 					}
 
-					async_threads_started = async_long_task::initialize(cores);
+					async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
 				}
 
 				// if hyperthreading is on, limit to the available actual hardware cores. The even elements of the vector represent the first thread on a 
@@ -1040,7 +1045,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 
 		unsigned long const cores[2]{}; // indicating zero will disable special handling of cores for async threads
 
-		async_threads_started = async_long_task::initialize(cores);
+		async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
 		if (!async_threads_started) {
 			FMT_LOG_FAIL(INFO_LOG, "Background Thread for long tasks could not be initialized! \n");
 		}
@@ -1116,7 +1121,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 	return(num_hw_threads);
 }
 
-extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads);  // external forward decl
+extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
 	// setup secure loading of dlls, should be done before loading any dlls, or creation of any threads under this process (including dlls creating threads)
@@ -1157,7 +1162,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 		m_hwCoreCount = std::max(m_hwCoreCount, (size_t)std::thread::hardware_concurrency()); // can return 0 on failure, so keep the highest core count. default of 1 is set for m_hwCoreCount.
 	}
 
-	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads);
+	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads, Globals::DEFAULT_STACK_SIZE);
 }
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {
