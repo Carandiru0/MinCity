@@ -672,7 +672,7 @@ void cMinCity::UpdateWorld()
 
 		tAccumulate -= delta();
 
-		VoxelWorld.Update(m_tNow, delta(), bPaused, bFirstUpdate); // world/game uses regular timing, with a fixed timestep (best practice)
+		VoxelWorld.Update(m_tNow, tDeltaFixedStep, bPaused, bFirstUpdate); // world/game uses regular timing, with a fixed timestep (best practice)
 		bFirstUpdate = false;
 	}
 	// fractional amount for render path (uniform shader variables)

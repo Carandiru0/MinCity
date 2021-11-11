@@ -9,19 +9,16 @@
 #include "cBlueNoise.h"
 #include "betterenums.h"
 
-static constexpr float const MINIMUM_INCREMENT = 0.01f,
+static constexpr float const MINIMUM_NOISE = 0.01f * SFM::GOLDEN_RATIO,
 							 MAXIMUM_RANGE_SCALE = (float)INT32_MAX - 65;	// *bugfix: rollover to INT32_MAX + 1 if converted to float. precision requires offset of 65 or previous floating point digit that is actually <= INT32_MAX
-
-// spacing = minimum + (+-1 * minimum) + 1   (calculation of spacing used around buildings where +-1 is randomized but in the range of +-1)																			// spacing = minimum + (+-1 * minimum) + 1
-static constexpr int32_t const MINIMUM_SPACING = 2,
-							   MAXIMUM_SPACING = MINIMUM_SPACING + MINIMUM_SPACING + 1;	
 
 namespace // private to this file (anonymous)
 {
 	namespace packing
 	{
 		static constexpr uint32_t const
-			PATCH_SIZE = Iso::WORLD_GRID_SIZE,
+			PATCH_SIZE = (Iso::WORLD_GRID_SIZE >> 3),
+			PATCH_COUNT = (Iso::WORLD_GRID_SIZE / PATCH_SIZE) * (Iso::WORLD_GRID_SIZE / PATCH_SIZE),
 			MINIMUM_PLOT_SIZE = 4;
 
 		constinit static inline alignas(CACHE_LINE_BYTES) bit_row<Iso::WORLD_GRID_SIZE>* theZone[3]{ nullptr, nullptr, nullptr };
@@ -31,15 +28,16 @@ namespace // private to this file (anonymous)
 } // end ns
 
 cSimulation::cSimulation()
-	: _demand{}, _tAccumulateLod{}, _run_count(0), _plot_size_index(0), _current_packing{}
+	: _tAccumulateLod{}, _run_count(0), _plot_size_index(0), _patch_index(0), _current_packing{}, _properties{}
 {
 	for (uint32_t i = 0; i < 3; ++i) {
 		packing::theZone[i] = bit_row<Iso::WORLD_GRID_SIZE>::create(Iso::WORLD_GRID_SIZE);
 	}
 	packing::theRoad = bit_row<Iso::WORLD_GRID_SIZE>::create(Iso::WORLD_GRID_SIZE);
 
-	_plot_sizes.reserve(10);
-	for (uint32_t i = 256; i > (packing::MINIMUM_PLOT_SIZE << 1); i >>= 1) {
+	_plot_sizes.reserve(9);
+	// skip largest section 256 ?
+	for (uint32_t i = 128; i > (packing::MINIMUM_PLOT_SIZE << 1); i >>= 1) {
 		_plot_sizes.emplace_back(i);
 	}
 	for (uint32_t i = 192; i > (packing::MINIMUM_PLOT_SIZE << 1); i >>= 1) {
@@ -48,6 +46,22 @@ cSimulation::cSimulation()
 	random_shuffle(_plot_sizes.begin(), _plot_sizes.end());
 
  	_current_packing.plot_size = _plot_sizes[_plot_size_index];
+
+	_patches.reserve(packing::PATCH_COUNT);
+	point2D_t uv;
+	for (uv.y = 0; uv.y < Iso::WORLD_GRID_SIZE; uv.y += packing::PATCH_SIZE) {
+
+		for (uv.x = 0; uv.x < Iso::WORLD_GRID_SIZE; uv.x += packing::PATCH_SIZE) {
+
+			_patches.emplace_back(uv, p2D_adds(uv, packing::PATCH_SIZE));
+		}
+	}
+	random_shuffle(_patches.begin(), _patches.end());
+
+	// new properties for patches
+	_patch_properties.reserve(packing::PATCH_COUNT);
+	_patch_properties.resize(packing::PATCH_COUNT);
+	memset(_patch_properties.data(), 0, _patch_properties.size() * sizeof(new_properties));
 }
 
 template <int32_t const model_group_id>
@@ -85,7 +99,7 @@ static Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> const* const __vec
 // generating -------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 
 // constant, does not write to global memory.						// this function assumes y is less than Iso::WORLD_GRID_SIZE, no bounds check required.
-__declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t const simRowRange, uint32_t const y, Iso::Voxel const* const __restrict theGrid)
+__declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t const simRowRange, uint32_t const y, Iso::Voxel const* const __restrict theGrid, new_properties& __restrict properties)
 {
 	bit_row<Iso::WORLD_GRID_SIZE>* const __restrict rowZone[3]{ &packing::theZone[world::RESIDENTIAL][y], &packing::theZone[world::COMMERCIAL][y], &packing::theZone[world::INDUSTRIAL][y] };
 	bit_row<Iso::WORLD_GRID_SIZE>& __restrict rowRoad{ packing::theRoad[y] };
@@ -100,17 +114,19 @@ __declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t co
 		if (!Iso::isPending(oVoxel)) {
 
 			if (Iso::isGroundOnly(oVoxel)) {
+				
+				uint32_t const hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
+				uint32_t const voxelZoning(Iso::MASK_ZONING & hash);
 
-				if (!Iso::hasStatic(oVoxel)) {
+				if (0 != voxelZoning) {
 
-					uint32_t const hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
-					uint32_t const voxelZoning(Iso::MASK_ZONING & hash);
+					uint32_t const zone(voxelZoning - 1);
 
-					if (0 != voxelZoning) {
-						rowZone[voxelZoning - 1]->set_bit(x); // tile is zoned and empty
-					}
+					bool const bStatic(Iso::hasStatic(oVoxel));
+					rowZone[zone]->write_bit(x, !bStatic); // tile is zoned and empty
 
-
+					properties.tiles_occupied[zone] += (size_t const)bStatic;
+					++properties.tiles[zone];
 				}
 			}
 			else if (Iso::isRoad<false>(oVoxel)) {
@@ -121,16 +137,17 @@ __declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t co
 	}
 }
 
-static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* const __restrict theGrid, tbb::affinity_partitioner& __restrict partitioner)
+static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* const __restrict theGrid, new_properties& __restrict properties, tbb::affinity_partitioner& __restrict partitioner)
 {
 	typedef struct no_vtable generation {
 
 	private:
 		point2D_t const					   simRowRange;
 		Iso::Voxel const* const __restrict theGrid;
+		new_properties& __restrict		   properties;
 	public:
-		__forceinline generation(point2D_t const simRowRange_, Iso::Voxel const* const __restrict theGrid_)
-			: simRowRange(simRowRange_), theGrid(theGrid_)
+		__forceinline generation(point2D_t const simRowRange_, Iso::Voxel const* const __restrict theGrid_, new_properties& __restrict properties_)
+			: simRowRange(simRowRange_), theGrid(theGrid_), properties(properties_)
 		{}
 
 		void operator()(tbb::blocked_range<uint32_t> const& rows) const {
@@ -141,7 +158,7 @@ static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* cons
 
 			for (uint32_t iDy = row_begin; iDy < row_end; ++iDy) {
 
-				genRow(simRowRange, iDy, theGrid);
+				genRow(simRowRange, iDy, theGrid, properties);
 			}
 		}
 
@@ -158,7 +175,7 @@ static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* cons
 	//	generation(point2D_t(simArea.left, simArea.right), theGrid, zoning)(rows);
 	//}
 	tbb::parallel_for(tbb::blocked_range<uint32_t>(simArea.top, simArea.bottom, eThreadBatchGrainSize::GEN_PLOT), // parallel rows
-		generation(point2D_t(simArea.left, simArea.right), theGrid), partitioner
+		generation(point2D_t(simArea.left, simArea.right), theGrid, properties), partitioner
 	);
 }
 
@@ -166,7 +183,8 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 {
 	static constexpr float const EPSILON = 0.01f;
 
-	uvec4_v const uvMinimum(SFM::floor_to_u32(XMVectorScale(XMLoadFloat3A(&_demand), MAXIMUM_RANGE_SCALE)));
+	// demand influenced random numbers
+	uvec4_v const uvMinimum(SFM::floor_to_u32(XMVectorScale(XMLoadFloat3A(&_properties.demand), MAXIMUM_RANGE_SCALE))); 
 
 	uvec4_v const uvRandom(PsuedoRandomNumber32(), PsuedoRandomNumber32(), PsuedoRandomNumber32());
 
@@ -177,7 +195,7 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 		// allow one once/frame either residential, commercial, or industrial exclusively based on demand
 		bool bPending[3]{ (bool)(masked & (1 << world::RESIDENTIAL)), (bool)(masked & (1 << world::COMMERCIAL)), (bool)(masked & (1 << world::INDUSTRIAL)) };
 
-		alignas(16) float* const demand(reinterpret_cast<float* const>(&_demand)); // indexable local reference
+		alignas(16) float* const demand(reinterpret_cast<float* const>(&_properties.demand)); // indexable local reference
 
 		if (bPending[world::RESIDENTIAL]) {
 
@@ -222,8 +240,8 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 		}
 		if (pending_min != pending_max) {
 
-			// randomly select between only the pending range
-			active = PsuedoRandomNumber32(pending_min, pending_max);
+			// randomly select
+			active = (PsuedoRandom5050() ? pending_min : pending_max);
 		}
 		else {
 			active = pending_min;
@@ -240,11 +258,33 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 		}
 		_current_packing.plot_size = _plot_sizes[_plot_size_index]; // update currently used plot size
 
-		//rect2D_t simOverlappingArea = r2D_grow(simArea, point2D_t(MAXIMUM_SPACING));
-		// clamp to local/minmax coords
-		//simOverlappingArea = r2D_clamp(simOverlappingArea, 0, Iso::WORLD_GRID_SIZE);
+		// simulation properties, *not valid* until after parallel generation //
+		// simple addition ok out of order and will have at the end the same sum regardless of order of additions, strict atomic not required.
+		
+		// overlap only required for processing
 
-		generate(simArea, theGrid, partitioner);
+		memset(&_patch_properties[_patch_index], 0, sizeof(new_properties));
+
+		generate(simArea, theGrid, _patch_properties[_patch_index], partitioner);
+
+
+		// reset select world properties 
+		for (uint32_t i = 0; i < 3; ++i)
+		{
+			_properties.tiles[i] = 0;
+			_properties.tiles_occupied[i] = 0;
+		}
+		// accumulate all patches for world properties
+		for (uint32_t patch = 0; patch < _patch_properties.size(); ++patch) {
+
+			for (uint32_t i = 0; i < 3; ++i)
+			{
+				_properties.tiles[i] += _patch_properties[patch].tiles[i];
+				_properties.tiles_occupied[i] += _patch_properties[patch].tiles_occupied[i];
+			}
+		}
+		// *simulation properties now valid* //
+
 
 		return(true);
 	}
@@ -253,11 +293,6 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 }
 
 // processing -------------------------------------------------------------------------------------------------------------------------------------------------------------------// 
-BETTER_ENUM(requirement, uint32_t const,  // exclusive states, do not combine
-	none = 0,
-	adjacent_road = 1,
-	adjacent_building_adjacent_to_road = 2
-);
 
 typedef struct 
 {
@@ -312,8 +347,7 @@ STATIC_INLINE_PURE result const __vectorcall test_adjacent_road(rect2D_t const p
 	return{ false, point2D_t() };
 }
 
-/*
-STATIC_INLINE_PURE bool const __vectorcall require_building_adjacent_to_road(Iso::Voxel const& __restrict oVoxel)
+STATIC_INLINE_PURE result const __vectorcall require_building_adjacent_to_road(Iso::Voxel const& __restrict oVoxel)
 {
 	if (Iso::hasStatic(oVoxel)) { // part of building?
 
@@ -330,194 +364,92 @@ STATIC_INLINE_PURE bool const __vectorcall require_building_adjacent_to_road(Iso
 
 				point2D_t const instance_origin(instance->getVoxelIndex());
 
-				// transform local area to world coordinates relative to the center origin of the model instance, then increase rect size by one for perimeter.
-				rect2D_t const building_perimeter(r2D_grow(r2D_add(instance->getModel()._LocalArea, instance_origin), point2D_t(1)));
+				// transform model local area to world coordinates relative to the center origin of the model instance, then increase rect size by one for perimeter.
+				rect2D_t building_perimeter(r2D_grow(r2D_add(instance->getModel()._LocalArea, instance_origin), point2D_t(1)));
+				// convert world coordinates to local coordinate
+				building_perimeter = r2D_add(building_perimeter, point2D_t(Iso::WORLD_GRID_HALFSIZE)); // convert to local  ( -x, -y )...( x, y )  to  ( 0, 0 )...( x, y )
+				building_perimeter = r2D_clamp(building_perimeter, 0, Iso::WORLD_GRID_SIZE);
 
 				return(test_adjacent_road(building_perimeter));
 			}
 		}
 	}
 
-	return(false);
-}
-
-STATIC_INLINE_PURE result const __vectorcall require_adjacent_building_adjacent_to_road(rect2D_t const perimeter, point2D_t const origin)
-{
-	// perimeter area with random spacing is used, to result in nice spacing between adjacent buildings.
-	point2D_t voxelIndex[2];
-
-	// second, check perimeter with additional offset up to MAXIMUM_SPACING for existing buildings
-	rect2D_t growing_perimeter;
-
-	for (int32_t offset = 0; offset <= MAXIMUM_SPACING; ++offset) 
-	{
-		growing_perimeter = r2D_grow(perimeter, point2D_t(offset));
-
-		{ // top -- bottom
-
-			// setup
-			uint32_t const start = (uint32_t const)PsuedoRandom5050();
-
-			// first row
-			voxelIndex[start] = growing_perimeter.left_top();
-
-			// last row
-			voxelIndex[!start] = growing_perimeter.left_bottom();
-
-			for (uint32_t i = 0; i < 2; ++i) {
-
-				for (; voxelIndex[i].x < growing_perimeter.right; ++voxelIndex[i].x) {
-
-					Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex[i]));
-
-					if (pVoxel) {
-
-						if (require_building_adjacent_to_road(*pVoxel)) { // part of building?
-
-							// at least one voxel of the area defined touches building that touches road - done.
-							return{ true, origin };
-						}
-					}
-				}
-			}
-		}
-
-		{ // left -- right
-
-			// setup
-			uint32_t const start = (uint32_t const)PsuedoRandom5050();
-
-			// first column
-			voxelIndex[start] = growing_perimeter.left_top();
-
-			// last column
-			voxelIndex[!start] = growing_perimeter.right_top();
-
-			for (uint32_t i = 0; i < 2; ++i) {
-
-				for (; voxelIndex[i].y < growing_perimeter.bottom; ++voxelIndex[i].y) {
-
-					Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex[i]));
-
-					if (pVoxel) {
-
-						if (require_building_adjacent_to_road(*pVoxel)) { // part of building?
-
-							// at least one voxel of the area defined touches building that touches road - done.
-							return{ true, origin };
-						}
-					}
-				}
-			}
-		}
-	}
-
 	return{ false, point2D_t() };
 }
 
-STATIC_INLINE_PURE result const __vectorcall require_adjacent_road(rect2D_t const perimeter, point2D_t const origin, int32_t const spacing)
+STATIC_INLINE_PURE result const __vectorcall test_adjacent_building_adjacent_to_road(rect2D_t const perimeter)
 {
-	result returned{ false, origin };	// initialized to original center of area - see notes below.
-
-	// check perimeter exclusively for roads
-	point2D_t voxelIndex[2], voxelOffset[2];
+	point2D_t voxelIndex[2];
 
 	{ // top -- bottom
-
-		bool bMoved(false);
 
 		// setup
 		uint32_t const start = (uint32_t const)PsuedoRandom5050();
 
 		// first row
 		voxelIndex[start] = perimeter.left_top();
-		voxelOffset[start] = point2D_t(0, -spacing); // translate up
+
 		// last row
 		voxelIndex[!start] = perimeter.left_bottom();
-		voxelOffset[!start] = point2D_t(0, spacing); // translate down
 
-		for (uint32_t i = 0; (!bMoved && i < 2); ++i) {
+		for (uint32_t i = 0; i < 2; ++i) {
 
 			for (; voxelIndex[i].x < perimeter.right; ++voxelIndex[i].x) {
 
-				if (packing::theRoad[voxelIndex[i].y].read_bit(voxelIndex[i].x)) {
+				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex[i]));
 
-					returned.voxelIndex = p2D_add(returned.voxelIndex, voxelOffset[i]);
-					bMoved = true;
-					break;
+				if (pVoxel) {
+
+					auto const [success, voxelRoad] = require_building_adjacent_to_road(*pVoxel);
+					if (success) { // part of building?
+
+						// at least one voxel of the area defined touches building that touches road - done.
+						return{ true, point2D_t() };
+					}
 				}
 			}
 		}
-
-		returned.complete |= bMoved;
 	}
 
 	{ // left -- right
-
-		bool bMoved(false);
 
 		// setup
 		uint32_t const start = (uint32_t const)PsuedoRandom5050();
 
 		// first column
 		voxelIndex[start] = perimeter.left_top();
-		voxelOffset[start] = point2D_t(-spacing, 0); // translate left
+
 		// last column
 		voxelIndex[!start] = perimeter.right_top();
-		voxelOffset[!start] = point2D_t(spacing, 0); // translate right
 
-		for (uint32_t i = 0; (!bMoved && i < 2); ++i) {
+		for (uint32_t i = 0; i < 2; ++i) {
 
 			for (; voxelIndex[i].y < perimeter.bottom; ++voxelIndex[i].y) {
 
-				if (packing::theRoad[voxelIndex[i].y].read_bit(voxelIndex[i].x)) {
+				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex[i]));
 
-					returned.voxelIndex = p2D_add(returned.voxelIndex, voxelOffset[i]);
-					bMoved = true;
-					break;
+				if (pVoxel) {
+
+					auto const [success, voxelRoad] = require_building_adjacent_to_road(*pVoxel);
+					if (success) { // part of building?
+
+						// at least one voxel of the area defined touches building that touches road - done.
+						return{ true, point2D_t() };
+					}
 				}
 			}
 		}
-
-		returned.complete |= bMoved; 
-	}
-
-	return(returned);
-}
-
-template<uint32_t const requirement>
-STATIC_INLINE_PURE result const __vectorcall checkRequirement(rect2D_t const area, int32_t const spacing) {
-
-	// check surrounding voxels (perimeter) for:
-	// 1.) road
-	// 2.) adjacent building (which would only be placed previously if 1.) had been met)
-	
-	// *note: if the new area is adjacent to a road, it should be within 1 space/voxel. The area passed in includes a random amount of spacing around the building.
-	//		  since the area with the extra spacing is always larger than the area without the extra spacing, the building could be moved within the larger area.
-	//		  this is a new "center" that is returned for the origin of the building to be placed.
-	// *note: the unique spacing around the new potential building is included in the area passed in to check. so we don't have to worry about it when looking for adjacent buildings.
-	//        however, the spacing that *was* used on an adjacent existing building is unknown. so a search needs to iterate of the maximum spacing the building could have.
-	rect2D_t const perimeter(r2D_grow(area, point2D_t(1)));
-
-	if constexpr (requirement::adjacent_road == requirement) { 
-
-		return(require_adjacent_road(perimeter, area.center(), spacing));
-	}
-	else if constexpr (requirement::adjacent_building_adjacent_to_road == requirement) {
-
-		return(require_adjacent_building_adjacent_to_road(perimeter, area.center()));
 	}
 
 	return{ false, point2D_t() };
 }
-*/
 
 typedef struct {
 	rect2D_t 	area;
 	point2D_t	adjacentIndex;
 } zone;
 
-template<uint32_t const requirement>
 static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zoning, uint32_t const plot_size, tbb::affinity_partitioner& __restrict partitioner)
 {
 	using Areas = tbb::enumerable_thread_specific<
@@ -529,11 +461,12 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 
 	private:
 		bit_row<Iso::WORLD_GRID_SIZE> const* const __restrict		theZone;
+		point2D_t const												section;
 		Areas& __restrict											areas;
 		uint32_t const												plot_size;
 	public:
-		__forceinline processing(bit_row<Iso::WORLD_GRID_SIZE> const* const __restrict& __restrict theZone_, Areas& __restrict areas_, uint32_t const plot_size_)
-			: theZone(theZone_), areas(areas_), plot_size(plot_size_)
+		__forceinline processing(point2D_t const section_, bit_row<Iso::WORLD_GRID_SIZE> const* const __restrict& __restrict theZone_, Areas& __restrict areas_, uint32_t const plot_size_)
+			: theZone(theZone_), section(section_), areas(areas_), plot_size(plot_size_)
 		{}
 
 		void operator()(tbb::blocked_range<uint32_t> const& rows) const {
@@ -549,7 +482,7 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 			for (uint32_t iDy = row_begin; iDy < row_end; ++iDy) {
 
 				// Test Number of Consecutive Bits //
-				for (uint32_t iDx = 0; iDx < Iso::WORLD_GRID_SIZE; ++iDx)
+				for (uint32_t iDx = section.x; iDx < ((uint32_t)section.y); ++iDx)
 				{
 					if (theZone[iDy].read_bit(iDx)) {
 
@@ -572,7 +505,7 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 					size = 0; // reset
 
 					// Test Number of Consecutive Bits //
-					for (uint32_t iDx = 0; iDx < Iso::WORLD_GRID_SIZE; ++iDx)
+					for (uint32_t iDx = section.x; iDx < ((uint32_t)section.y); ++iDx)
 					{
 						if (adjacency.read_bit(iDx)) {
 
@@ -605,7 +538,7 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 							local_areas.emplace_back(r2D_sub(localArea, point2D_t(Iso::WORLD_GRID_HALFSIZE)), p2D_subs(voxelIndex, Iso::WORLD_GRID_HALFSIZE));
 						}
 						else { // within 1 extra tile/cell
-							perimeter = r2D_grow(localArea, point2D_t(1));
+							perimeter = r2D_grow(perimeter, point2D_t(1));
 							perimeter = r2D_clamp(perimeter, 0, Iso::WORLD_GRID_SIZE);
 
 							auto const [success, voxelIndex] = test_adjacent_road(perimeter);
@@ -615,7 +548,16 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 								// Change from (0,0) => (x,y) to (-x,-y) => (x,y)
 								local_areas.emplace_back(r2D_sub(localArea, point2D_t(Iso::WORLD_GRID_HALFSIZE)), p2D_subs(voxelIndex, Iso::WORLD_GRID_HALFSIZE));
 							}
+							else {  // with empty space between zone and a building that is adjacent to road
 
+								auto const [success, voxelIndex] = test_adjacent_building_adjacent_to_road(perimeter);
+
+								if (success) {
+
+									// Change from (0,0) => (x,y) to (-x,-y) => (x,y)
+									local_areas.emplace_back(r2D_sub(localArea, point2D_t(Iso::WORLD_GRID_HALFSIZE)), p2D_subs(voxelIndex, Iso::WORLD_GRID_HALFSIZE));
+								}
+							}
 						}
 					}
 
@@ -633,8 +575,8 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 	//	tbb::blocked_range<uint32_t> const rows{ y, y + 1 };
 	//	processing(locations, point2D_t(simArea.left, simArea.right), plot_size, spacing)(rows);
 	//}
-	tbb::parallel_for(tbb::blocked_range<uint32_t>(simArea.top, simArea.bottom - 1 - plot_size, plot_size/*eThreadBatchGrainSize::GEN_PLOT*//* (simArea.bottom - 1) - simArea.top*/), // parallel rows
-		processing(packing::theZone[zoning], areas, plot_size), partitioner
+	tbb::parallel_for(tbb::blocked_range<uint32_t>(simArea.top, simArea.bottom - 1 - plot_size, eThreadBatchGrainSize::GEN_PLOT/* (simArea.bottom - 1) - simArea.top*/), // parallel rows
+		processing(point2D_t(simArea.left, simArea.right), packing::theZone[zoning], areas, plot_size), partitioner
 	);
 
 	tbb::flattened2d<Areas> const flat_view(tbb::flatten2d(areas));
@@ -662,7 +604,8 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 		}
 		else {
 
-			float min_square_ratio(9999999.0f), max_area(0.0f);
+			//float min_square_ratio(9999999.0f), max_area(0.0f);
+			uint32_t max_area(0);
 
 			for (tbb::flattened2d<Areas>::const_iterator
 				i = flat_view.begin(); i != flat_view.end(); ++i) {
@@ -686,6 +629,7 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 			}
 		}
 
+		/*
 		point2D_t start = selected.area.left_top();
 		point2D_t end = selected.area.right_bottom();
 
@@ -739,7 +683,9 @@ static zone const __vectorcall process(rect2D_t const simArea, uint32_t const zo
 				world::addVoxel(xmOriginEnd, point2D_t(end.x, start.y), 0xff00ff00, Iso::mini::emissive);
 			}
 		}
+		*/
 	}
+
 	/*
 	Iso::Voxel const* const pVoxel(world::getVoxelAt(select_area.center()));
 
@@ -769,13 +715,15 @@ void __vectorcall cSimulation::process_zoning(rect2D_t const simArea, fp_seconds
 	int32_t const unique_spacing(MINIMUM_SPACING + SFM::round_to_i32(bn * float(MINIMUM_SPACING)) + 1);	// bluenoise scaled
 
 	point2D_t const plot_size(r2D_grow(current_packing.model->_LocalArea, point2D_t(unique_spacing)).width_height());
-
-	rect2D_t simOverlappingArea = r2D_grow(simArea, plot_size);
-	// clamp to local/minmax coords
-	simOverlappingArea = r2D_clamp(simOverlappingArea, 0, Iso::WORLD_GRID_SIZE);
 	*/
 
-	zone const returned( process<requirement::adjacent_road>(simArea, _current_packing.zoning, _current_packing.plot_size, partitioner) );
+	// overlap by the plot size to not miss areas that intersect the boundary of a patch
+	// allowing for placement / packing to be seamless.
+	rect2D_t simOverlappingArea = r2D_grow(simArea, (_current_packing.plot_size >> 1));
+	// clamp to local/minmax coords
+	simOverlappingArea = r2D_clamp(simOverlappingArea, 0, Iso::WORLD_GRID_SIZE);
+
+	zone const returned( process(simOverlappingArea, _current_packing.zoning, _current_packing.plot_size, partitioner) );
 		
 	if (!returned.area.isZero()) {
 
@@ -819,11 +767,6 @@ void __vectorcall cSimulation::process_zoning(rect2D_t const simArea, fp_seconds
 
 			if (nullptr != MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cBuildingGameObject, false>(origin, pendingModel, common_flags)) {
 
-				alignas(16) float* const demand(reinterpret_cast<float* const>(&_demand)); // indexable local reference
-
-				// reduce demand
-				demand[_current_packing.zoning] -= 10.0f * MINIMUM_INCREMENT * tDelta.count();
-
 				FMT_LOG(GAME_LOG, "spawned {:s} @ ({:d},{:d})", (_current_packing.zoning == 0 ? "residential" : (_current_packing.zoning == 1 ? "commercial" : "industrial")), origin.x, origin.y);
 			}
 		}
@@ -834,19 +777,10 @@ namespace // private to this file (anonymous)
 {
 	namespace packing
 	{
+		// lod - level of detail - spreading packing simulation work over space and time.
 		static constexpr fp_seconds const // should be multiples increasing
-			interval[4]{ fp_seconds(milliseconds(150)),	// visible (256)
-						 fp_seconds(milliseconds(300)),	// 512
-						 fp_seconds(milliseconds(600)),	// 1024
-						 fp_seconds(milliseconds(1200))	// 2048
-		};
-
-		static constexpr int32_t const
-			size[4]{ Iso::WORLD_GRID_SIZE >> 3,	// visible (256)
-					 Iso::WORLD_GRID_SIZE >> 2,	// 512
-					 Iso::WORLD_GRID_SIZE >> 1,	// 1024
-					 Iso::WORLD_GRID_SIZE		// 2048
-		};
+			interval[2]{ fp_seconds(milliseconds(500)),		// visible packing simulation update
+						 fp_seconds(milliseconds(80)) };	// tiled random ~5 seconds to simulate all patches for entire world (packing only)
 
 	} // end ns
 } // end ns
@@ -854,22 +788,64 @@ namespace // private to this file (anonymous)
 void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta,
 	                  Iso::Voxel const* const __restrict theGrid)
 {
-	static constexpr uint32_t const
-		SUBDIVIDE_SIZE = 256,
-		SUBDIVISIONS = Iso::WORLD_GRID_SIZE / 256;
-
 	// age demand
-	XMVECTOR xmDemand(XMLoadFloat3A(&_demand));
-	xmDemand = SFM::__fma(XMVectorMultiply( XMVectorSubtract(_mm_set_ps1(1.0f), xmDemand),
-						  XMVectorScale(XMVectorSet(PsuedoRandomFloat(), PsuedoRandomFloat(), PsuedoRandomFloat(), 0.0f), MINIMUM_INCREMENT)), _mm_set_ps1(tDelta.count()), xmDemand);
-	xmDemand = SFM::saturate(xmDemand);
-	XMStoreFloat3A(&_demand, xmDemand);
+	{
+		alignas(16) float const seed(PsuedoRandomFloat());
 
-	// level of detail zone generation & processing //
-	for (uint32_t i = 0; i < 4; ++i) {
-		_tAccumulateLod[i] += tDelta;
+		size_t population(0), possible_population(0);
+
+		for (uint32_t i = 0; i < 3; ++i) {
+			population += _properties.population_per_tile[i] * _properties.tiles_occupied[i];
+			possible_population += _properties.population_per_tile[i] * _properties.tiles[i];
+		}
+		_properties.population = population;
+		_properties.possible_population = possible_population;
+
+		alignas(16) float const growth((float)(((double)possible_population) / ((double)population + 1.0)) * (1.0f + tDelta.count()));
+
+		alignas(16) float occupancy[3];
+
+		for (uint32_t i = 0; i < 3; ++i) {
+
+			occupancy[i] = SFM::max(1.0f / (Iso::WORLD_GRID_SIZE*Iso::WORLD_GRID_SIZE), (float)(((double)_properties.tiles_occupied[i]) / ((double)_properties.tiles[i] + 1.0)));
+		}
+
+		union {
+			XMFLOAT3A				 demand;	// residential, commercial, industrial demand, range [0.0f ... 1.0f]
+
+			struct alignas(16) {
+				float	 r, c, i;
+			};
+		};
+
+		// industry drives progress / requires more residential
+		i = growth * (occupancy[world::RESIDENTIAL] / occupancy[world::INDUSTRIAL]);
+		i = i * i;
+		i = SFM::saturate(i * (1.0f - occupancy[world::INDUSTRIAL]));
+
+		// residential provides home for population
+		r = (1.0f - occupancy[world::RESIDENTIAL]) + growth * (1.0f - SFM::saturate(occupancy[world::INDUSTRIAL] / occupancy[world::RESIDENTIAL]));
+		r = SFM::saturate(r * (1.0f - occupancy[world::RESIDENTIAL]));;
+
+		// commercial supports residential and industrial
+		c = growth * (occupancy[world::RESIDENTIAL] * 0.6666f + occupancy[world::INDUSTRIAL] * 0.3333f);
+		c = SFM::saturate(c * (1.0f - occupancy[world::COMMERCIAL]));
+
+		{ // r,c,i demand on a bellcurve.
+
+			XMVECTOR xmDemand;
+			xmDemand = XMLoadFloat3A(&demand);
+			xmDemand = XMVectorSubtract(XMVectorReplicate(1.0f), xmDemand);
+			xmDemand = SFM::bellcurve(xmDemand);
+			xmDemand = SFM::lerp(XMLoadFloat3A(&_properties.demand), xmDemand, tDelta.count() * seed);
+			XMStoreFloat3A(&_properties.demand, xmDemand);
+		}
+
+		// level of detail zone generation & processing //
+		for (uint32_t i = 0; i < 2; ++i) {
+			_tAccumulateLod[i] += tDelta;
+		}
 	}
-
 	//if (0 == (_run_count & 1)) { // only run on even frames to balance loading
 
 		rect2D_t simArea;
@@ -877,34 +853,31 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 		// LOD 0
 		if (_tAccumulateLod[0] > packing::interval[0]) {
 
-			_tAccumulateLod[0] -= packing::interval[0];
+			do {
+				_tAccumulateLod[0] -= packing::interval[0];
+			} while (_tAccumulateLod[0] > packing::interval[0]);
 
-			simArea = MinCity::VoxelWorld.getVisibleGridBoundsClamped();
+			simArea = r2D_add(MinCity::VoxelWorld.getVisibleGridBoundsClamped(), point2D_t(Iso::WORLD_GRID_HALFSIZE)); // convert to local  ( -x, -y )...( x, y )  to  ( 0, 0 )...( x, y )
 		}
-		/*
-		// LOD 1, 2, 3
-		for (uint32_t lod = 1; lod < 4; ++lod) {
+		else if (_tAccumulateLod[1] > packing::interval[1]) {
 
-			if (_tAccumulateLod[lod] > packing::interval[lod]) {
+			do {
+				_tAccumulateLod[1] -= packing::interval[1];
+			} while (_tAccumulateLod[1] > packing::interval[1]);
 
-				_tAccumulateLod[lod] -= packing::interval[lod];
+			if (_patches.size() == ++_patch_index) {
 
-				int32_t const extent(packing::size[lod] >> 1);
-
-				simArea = rect2D_t(point2D_t(-extent), point2D_t(extent));
-				//simArea = r2D_add(simArea, MinCity::VoxelWorld.getVisibleGridCenter());
+				_patch_index = 0;
+				random_shuffle(_patches.begin(), _patches.end());
 			}
+			simArea = _patches[_patch_index];
 		}
-		*/
-		//if (!simArea.isZero()) {
 
-			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-			simArea = r2D_add(simArea, point2D_t(Iso::WORLD_GRID_HALFSIZE));
+		if (!simArea.isZero()) {
 
-			simArea = rect2D_t(point2D_t(), point2D_t(Iso::WORLD_GRID_SIZE));
-			
+			// currently local: (0,0) => (x,y)		
 			// clamp to local/minmax coords
-			simArea = r2D_clamp(simArea, 0, Iso::WORLD_GRID_SIZE);
+ 			simArea = r2D_clamp(simArea, 0, Iso::WORLD_GRID_SIZE);
 
 			static constexpr uint32_t const num_samples(16);
 
@@ -921,24 +894,27 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 			}
 
 			microseconds const tElapsed(duration_cast<microseconds>(high_resolution_clock::now() - tStart));
-			sum += tElapsed;
-			maxi = std::max(maxi, tElapsed);
-			mini = std::min(mini, tElapsed);
+			if (tElapsed.count() > 0) {
+				sum += tElapsed;
+				maxi = std::max(maxi, tElapsed);
+				mini = std::min(mini, tElapsed);
 
-			if (num_samples == ++samples) {
-				avg = sum / num_samples;
-				sum = microseconds(0);
-				samples = 0;
+				if (num_samples == ++samples) {
+					avg = sum / num_samples;
+					sum = microseconds(0);
+					samples = 0;
+				}
+
+				//FMT_NUKLEAR_DEBUG(true, "packing: avg({:d}us)  max({:d}us)  min({:d}us)  frame({:d}us)", avg.count(), maxi.count(), mini.count(), tElapsed.count());
 			}
-
-			//FMT_NUKLEAR_DEBUG(true, "packing: avg({:d}us)  max({:d}us)  min({:d}us)  frame({:d}us)", avg.count(), maxi.count(), mini.count(), tElapsed.count());
-		//}
-	//}
-
+		}
 
 	{
-		//alignas(16) float* const demand(reinterpret_cast<float* const>(&_demand)); // indexable local reference
-		//FMT_NUKLEAR_DEBUG(false, "residential [ {:.1f} ]  commercial [ {:.1f} ]  industrial [ {:.1f} ]", (demand[world::RESIDENTIAL] * 100.0f), (demand[world::COMMERCIAL] * 100.0f), (demand[world::INDUSTRIAL] * 100.0f));
+		XMFLOAT3A demand_;
+		XMStoreFloat3A(&demand_, XMLoadFloat3A(&_properties.demand));
+
+		alignas(16) float* const demand_print(reinterpret_cast<float* const>(&demand_)); // indexable local reference
+		FMT_NUKLEAR_DEBUG(false, "residential [ {:.1f} ]  commercial [ {:.1f} ]  industrial [ {:.1f} ]", (demand_print[world::RESIDENTIAL] * 100.0f), (demand_print[world::COMMERCIAL] * 100.0f), (demand_print[world::INDUSTRIAL] * 100.0f));
 	}
 
 	++_run_count;

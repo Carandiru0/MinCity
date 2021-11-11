@@ -5006,7 +5006,75 @@ namespace world
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
 	}
 	
-	// hides (unsets root/owner) so that instance of the specific model type
+	// queries if voxel model instance of type intersects a voxel. does not have to be owner voxel.
+	uint32_t const cVoxelWorld::hasVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex) const
+	{
+		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+
+		if (pVoxel) {
+
+			Iso::Voxel const oVoxel(*pVoxel);
+
+			for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+
+				// get hash, which should be the voxel model instance ID
+				uint32_t const hash(Iso::getHash(oVoxel, i));
+
+				if (Iso::STATIC_HASH == i) {
+					auto const instance = lookupVoxelModelInstance<false>(hash);
+
+					if (instance) {
+						auto const ident = instance->getModel().identity();
+						if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
+							return(hash);
+						}
+					}
+				}
+				else {
+					auto const instance = lookupVoxelModelInstance<true>(hash);
+
+					if (instance) {
+						auto const ident = instance->getModel().identity();
+						if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
+							return(hash);
+						}
+					}
+				}
+			}
+		}
+		
+		return(0);
+	}
+	// queries if voxel model instance of type intersects a voxel area. has to be the owner voxel of the instance for this to succeed.
+	uint32_t const cVoxelWorld::hasVoxelModelInstanceAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex) const
+	{
+		// clamp to world/minmax coords
+		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+
+		point2D_t voxelIterate(voxelArea.left_top());
+		point2D_t const voxelEnd(voxelArea.right_bottom());
+
+		while (voxelIterate.y <= voxelEnd.y) {
+
+			voxelIterate.x = voxelArea.left;
+			while (voxelIterate.x <= voxelEnd.x) {
+
+				uint32_t const hash(hasVoxelModelInstanceAt(voxelIterate, modelGroup, modelIndex));
+
+				if (hash) {
+					return(hash);
+				}
+
+				++voxelIterate.x;
+			}
+
+			++voxelIterate.y;
+		}
+
+		return(0);
+	}
+
+	// hides (unsets root/owner) so that instance of the specific model type is hidden. has to be the owner voxel of the instance for this to succeed.
 	bool const cVoxelWorld::hideVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden)
 	{
 		uint32_t existing(0);

@@ -235,6 +235,8 @@ namespace world
 		template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
 
+		uint32_t const hasVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex) const;
+		uint32_t const hasVoxelModelInstanceAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex) const;
 
 		bool const hideVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden = nullptr);
 		bool const hideVoxelModelInstancesAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex, vector<Iso::voxelIndexHashPair>* const pRecordHidden = nullptr);
@@ -399,19 +401,23 @@ namespace world
 
 __inline point2D_t const* const __restrict cVoxelWorld::lookupVoxelModelInstanceRootIndex(uint32_t const hash) const	// read-only access
 {
-	// Get root voxel world coords
-	auto const iFoundIndex = _hshVoxelModelRootIndex.find(hash);
-	if (_hshVoxelModelRootIndex.cend() != iFoundIndex) {
-		return(&iFoundIndex->second);
+	if (hash) {
+		// Get root voxel world coords
+		auto const iFoundIndex = _hshVoxelModelRootIndex.find(hash);
+		if (_hshVoxelModelRootIndex.cend() != iFoundIndex) {
+			return(&iFoundIndex->second);
+		}
 	}
 	return(nullptr);
 }
 __inline point2D_t * const __restrict cVoxelWorld::acquireVoxelModelInstanceRootIndex(uint32_t const hash) // read-write access
 {
-	// Get root voxel world coords
-	auto const iFoundIndex = _hshVoxelModelRootIndex.find(hash);
-	if (_hshVoxelModelRootIndex.cend() != iFoundIndex) {
-		return(&iFoundIndex->second);
+	if (hash) {
+		// Get root voxel world coords
+		auto const iFoundIndex = _hshVoxelModelRootIndex.find(hash);
+		if (_hshVoxelModelRootIndex.cend() != iFoundIndex) {
+			return(&iFoundIndex->second);
+		}
 	}
 	return(nullptr);
 }
@@ -420,20 +426,24 @@ __inline point2D_t * const __restrict cVoxelWorld::acquireVoxelModelInstanceRoot
 template<bool const Dynamic>
 __inline resolvedType<Dynamic, Volumetric::voxelModelInstance_Dynamic>* const __restrict cVoxelWorld::lookupVoxelModelInstance(uint32_t const hash) const
 {
-	// resolve model id for dimensions
-	auto const iFoundModel = _hshVoxelModelInstances_Dynamic.find(hash);
-	if (_hshVoxelModelInstances_Dynamic.cend() != iFoundModel) {
-		return(iFoundModel->second);
+	if (hash) {
+		// resolve model id for dimensions
+		auto const iFoundModel = _hshVoxelModelInstances_Dynamic.find(hash);
+		if (_hshVoxelModelInstances_Dynamic.cend() != iFoundModel) {
+			return(iFoundModel->second);
+		}
 	}
 	return(nullptr);
 }
 template<bool const Dynamic>
 __inline resolvedType<!Dynamic, Volumetric::voxelModelInstance_Static>* const __restrict cVoxelWorld::lookupVoxelModelInstance(uint32_t const hash) const
 {
-	// resolve model id for dimensions
-	auto const iFoundModel = _hshVoxelModelInstances_Static.find(hash);
-	if (_hshVoxelModelInstances_Static.cend() != iFoundModel) {
-		return(iFoundModel->second);
+	if (hash) {
+		// resolve model id for dimensions
+		auto const iFoundModel = _hshVoxelModelInstances_Static.find(hash);
+		if (_hshVoxelModelInstances_Static.cend() != iFoundModel) {
+			return(iFoundModel->second);
+		}
 	}
 	return(nullptr);
 }

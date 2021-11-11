@@ -1003,7 +1003,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		
 		// ** note currentSegment.h1 is only updated when it needs to change ** //
 		if (Iso::isGroundOnly(oVoxel) || intersection_index >= 0  // new road *or* is road but not the middle of road (allows xing).
-			|| (Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) && !Iso::isOwner(oVoxel, Iso::GROUND_HASH))) {  
+ 			|| (Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) && !Iso::isOwner(oVoxel, Iso::GROUND_HASH))) {  
 
 			pushRoadHistory(UndoVoxel(currentPoint, oVoxel));
 
@@ -1888,6 +1888,7 @@ void cRoadTool::decorateRoadHistory()
 			if (Iso::isRoad(oVoxel)) {
 
 				if (Iso::isRoadNode(oVoxel)) {
+					
 					// "remove" any lamp posts / signage in area of xing
 					rect2D_t area(0, 0, Iso::ROAD_SEGMENT_WIDTH << 1, Iso::ROAD_SEGMENT_WIDTH << 1);
 					area = r2D_add(area, voxelIndex);
@@ -1902,6 +1903,7 @@ void cRoadTool::decorateRoadHistory()
 							MinCity::VoxelWorld.destroyImmediatelyVoxelModelInstance(pendingSign);
 							pendingSign = 0;
 						}
+						lamp_post_side = !lamp_post_side;
 						segment_count = 0;
 
 						decorate_xing(voxelIndex, oVoxel, undoHistory, _undoSignage, _seed_traffic_sign);
@@ -1915,7 +1917,22 @@ void cRoadTool::decorateRoadHistory()
 						if (0 != pendingSign) { // commit last lamppost
 							_undoSignage.push_back(pendingSign);
 						}
-						pendingSign = decorate_lamppost(voxelIndex, oVoxel, lamp_post_side, lamp_post_swapped_for_sign, _seed_signage, undoHistory);
+
+						// test area for existing lamppost or road signs, if the exist, skip.
+						rect2D_t area(0, 0, LAMP_POST_INTERVAL << 1, LAMP_POST_INTERVAL << 1);
+						area = r2D_add(area, voxelIndex);
+						area = r2D_sub(area, point2D_t(LAMP_POST_INTERVAL, LAMP_POST_INTERVAL));
+
+						uint32_t const hashLamp = MinCity::VoxelWorld.hasVoxelModelInstanceAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModels_Indices::LAMP_POST);
+						if (0 == hashLamp || hashLamp == pendingSign) {
+
+							uint32_t const hashSign = MinCity::VoxelWorld.hasVoxelModelInstanceAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModels_Indices::ROAD_SIGN);
+							if (0 == hashSign || hashSign == pendingSign) {
+
+								pendingSign = decorate_lamppost(voxelIndex, oVoxel, lamp_post_side, lamp_post_swapped_for_sign, _seed_signage, undoHistory);
+							}
+						}
+
 						lamp_post_side = !lamp_post_side;
 						segment_count = 0;
 					}
