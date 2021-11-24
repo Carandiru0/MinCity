@@ -21,6 +21,9 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 layout(early_fragment_tests) in;
 
+#define FRAGMENT_IN
+#include "voxel_fragment.glsl"
+
 layout(location = 0) out vec4 outColor;
 #ifdef MOUSE
 layout(location = 1) out vec2 outMouse;

@@ -23,9 +23,7 @@ namespace Volumetric
 
 			voxelScreen(voxelScreen const& src) noexcept
 				: screen_rect(src.screen_rect.v), major_axis(src.major_axis)
-			{
-
-			}
+			{}
 
 			voxelScreen& operator=(voxelScreen const& src) noexcept
 			{

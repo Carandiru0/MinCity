@@ -7,6 +7,11 @@ layout(location = 0) out float outFullDepth;
 layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInputMS inputFullDepth;
 layout (binding = 1, r32f) writeonly restrict uniform image2D outHalfDepth;
 
+layout(location = 0) in streamIn /*not used, required for validation*/
+{
+	readonly vec2		uv;
+} In;
+
 void main() {
 	
 	// multisampled depth resolve

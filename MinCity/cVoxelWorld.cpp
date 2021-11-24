@@ -32,6 +32,7 @@
 #include "cRockStageGameObject.h"
 #endif
 
+#include "cAutomataGameObject.h"
 #include "cRemoteUpdateGameObject.h"
 #include "cBuildingGameObject.h"
 #include "cTrafficSignGameObject.h"
@@ -3175,7 +3176,14 @@ namespace world
 						Volumetric::eVoxelModelInstanceFlags::INSTANT_CREATION);
 #endif
 		{ // test dynamics 
-			cTestGameObject* pGameObj;
+			cTestGameObject* pTstGameObj(nullptr);
+			cAutomataGameObject* pAutoGameObj(nullptr);
+
+			//pAutoGameObj = placeProceduralInstanceAt<cAutomataGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
+			//	Volumetric::eVoxelModels_Indices::HOLOGRAM_GIRL);
+			//pAutoGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
+			//pAutoGameObj->setRule(0, 4);
+
 			/*
 			if (PsuedoRandom5050()) {
 				pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
@@ -3190,9 +3198,9 @@ namespace world
 				}
 				else {
 			*/
-					pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(25, 25)),
-						Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
-					pGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_75);
+				pTstGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(25, 25)),
+							Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
+				pTstGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_75);
 			/*	}
 			}*/
 		}
@@ -3848,7 +3856,7 @@ namespace world
 				static constexpr size_t const buffer_count(4ULL);
  				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ vbo[eVoxelVertexBuffer::VOXEL_TERRAIN], vbo[eVoxelVertexBuffer::VOXEL_ROAD], vbo[eVoxelVertexBuffer::VOXEL_STATIC], vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC] };
 				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
-					cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexInput,
+					cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 					vk::DependencyFlagBits::eByRegion,
 					vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
 				);
@@ -3857,7 +3865,7 @@ namespace world
 			// *Required* - solves a bug with trailing voxels, vulkan.cpp has the corresponding "acquire" operation in static command buffer operation
 			// see https://www.khronos.org/registry/vulkan/specs/1.0/html/chap6.html#synchronization-memory-barriers under BufferMemoryBarriers
 			ubo.barrier( // ## RELEASE ## //
-				cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexShader,
+				cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 				vk::DependencyFlagBits::eByRegion,
 				vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
 			);
@@ -3866,12 +3874,13 @@ namespace world
 				static constexpr size_t const buffer_count(2ULL);
 				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ &_buffers.shared_buffer[resource_index], &_buffers.subgroup_layer_count_max[resource_index] };
 				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
-					cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader,  // first usage is in z only pass in voxel_clear.frag
+					cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,  // first usage is in z only pass in voxel_clear.frag
 					vk::DependencyFlagBits::eByRegion,
 					vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
 				);
 			}
 		}
+
 
 		cb.end();	// ********* command buffer end is called here only //
 
@@ -4428,6 +4437,16 @@ namespace world
 				{
 					auto it = cTestGameObject::begin();
 					while (cTestGameObject::end() != it) {
+
+						it->OnUpdate(tNow, tDelta);
+						++it;
+					}
+				}
+
+				// last
+				{
+					auto it = cAutomataGameObject::begin();
+					while (cAutomataGameObject::end() != it) {
 
 						it->OnUpdate(tNow, tDelta);
 						++it;

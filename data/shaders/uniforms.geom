@@ -23,46 +23,46 @@ layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far s
 #include "voxel_fragment.glsl"
 
 #if defined(HEIGHT) // terrain
-readonly layout(location = 0) in streamIn
+layout(location = 0) in streamIn
 {
-	flat vec3	right, forward, up;
-	flat uint   adjacency;
-	flat vec2	world_uv;
+	readonly flat vec3	right, forward, up;
+	readonly flat uint   adjacency;
+	readonly flat vec2	world_uv;
 #ifndef BASIC
-	flat float   ambient;
-	flat float	 color;
-	flat float   occlusion;
-	flat float   emission;
+	readonly flat float   ambient;
+	readonly flat float	 color;
+	readonly flat float   occlusion;
+	readonly flat float   emission;
 #endif
 } In[];
 #elif defined(ROAD) // road
-readonly layout(location = 0) in streamIn
+layout(location = 0) in streamIn
 {
-	flat vec3	right, forward, up;
-	flat vec4   corners;
-	flat vec2	world_uv;
+	readonly flat vec3	right, forward, up;
+	readonly flat vec4   corners;
+	readonly flat vec2	world_uv;
 #ifndef BASIC
-	flat float   ambient;
-	flat float   occlusion;
-	flat float   emission;
-	flat vec4    extra;
+	readonly flat float   ambient;
+	readonly flat float   occlusion;
+	readonly flat float   emission;
+	readonly flat vec4    extra;
 #endif
 } In[];
 #else  // voxels only
-readonly layout(location = 0) in streamIn
+layout(location = 0) in streamIn
 {
-	flat vec3	right, forward, up;
-	flat uint	adjacency;
+	readonly flat vec3	right, forward, up;
+	readonly flat uint	adjacency;
 #ifdef BASIC
-	flat vec2	world_uv;
+	readonly flat vec2	world_uv;
 #endif
 #ifndef BASIC
-	flat float   ambient;
-	flat float	 color;
-	flat float   occlusion;
-	flat float   emission;
-	flat vec4    extra;
-	flat float	 passthru;
+	readonly flat float   ambient;
+	readonly flat float	 color;
+	readonly flat float   occlusion;
+	readonly flat float   emission;
+	readonly flat vec4    extra;
+	readonly flat float	 passthru;
 #endif
 } In[];
 #endif

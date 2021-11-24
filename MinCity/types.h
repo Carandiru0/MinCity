@@ -36,7 +36,9 @@ namespace world {
 			NoOwner = 0, // bad number for enum, has no type
 			NonUpdateable = 1, // basic
 			Updateable = 2,	   // basic
+			Procedural = 3,    // advanced
 			// add game objects as needed here : //
+			AutomataGameObject,
 			BuildingGameObject,
 			CarGameObject,
 			PoliceCarGameObject,

@@ -25,10 +25,12 @@ namespace Volumetric
 		RESERVED = 0,
 		INSTANT_CREATION = (1 << 0),
 		UPDATEABLE = (1 << 1),
-		GROUND_CONDITIONING = (1 << 2),
-		DESTROY_EXISTING_STATIC = (1 << 3),
-		DESTROY_EXISTING_DYNAMIC = (1 << 4),
-		CHILD_ONLY = (1 << 5),
+		PROCEDURAL = (1 << 2),
+		GROUND_CONDITIONING = (1 << 3),
+		DESTROY_EXISTING_STATIC = (1 << 4),
+		DESTROY_EXISTING_DYNAMIC = (1 << 5),
+		//
+		CHILD_ONLY = (1 << 30),
 		// Last
 		EMPTY_INSTANCE = (1u << 31u)
 	);

@@ -220,20 +220,37 @@ namespace world
 		template<bool const Dynamic> // not so friendly usuage, but if you already have the voxelModel ....   returns [hash, instance] structured binding
 		auto const placeVoxelModelInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const flags = 0);
 
+		template<bool const Dynamic> // not so friendly usuage, but if you already have the voxelModel ....   returns [hash, instance, model] structured binding
+		auto const placeProceduralVoxelModelInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const flags = 0);
+
+
 		template<int32_t const eVoxelModelGrpID> // public preferred usage returns [hash, instance] structured binding
 		auto const placeVoxelModelInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const flags = 0);
 	
+		template<int32_t const eVoxelModelGrpID> // public preferred usage returns [hash, instance, model] structured binding
+		auto const placeProceduralVoxelModelInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const flags = 0);
+
+
 		template<typename TNonUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TNonUpdateableGameObject* const placeNonUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags = 0);
 
 		template<typename TNonUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TNonUpdateableGameObject* const placeNonUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
 
+
 		template<typename TUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags = 0);
 
 		template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
+
+
+		template<typename TProceduralGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
+		TProceduralGameObject* const placeProceduralInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags = 0);
+
+		template<typename TProceduralGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
+		TProceduralGameObject* const placeProceduralInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
+
 
 		uint32_t const hasVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex) const;
 		uint32_t const hasVoxelModelInstanceAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex) const;
@@ -448,6 +465,7 @@ __inline resolvedType<!Dynamic, Volumetric::voxelModelInstance_Static>* const __
 	return(nullptr);
 }
 
+
 template<bool const Dynamic>
 auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const flags)
 {
@@ -592,6 +610,32 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 	return(binding);
 }
 
+template<typename T1, typename T2, typename T3>
+struct many {
+	T1 a;
+	T2 b;
+	T3 c;
+};
+template<bool const Dynamic>
+auto const cVoxelWorld::placeProceduralVoxelModelInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const flags)
+{
+	Volumetric::voxB::voxelModel<Dynamic>* model(nullptr);
+
+	model = new Volumetric::voxB::voxelModel<Dynamic>(*voxelModel); // create copy for unique usage by owner game object, owner must release model.
+
+	auto const [hash, instance] = placeVoxelModelInstanceAt<Dynamic>(voxelIndex, model, flags);
+
+#ifndef NDEBUG
+	if (0 == (instance)) {
+		FMT_LOG_WARN(VOX_LOG, "placeProceduralVoxelModelInstanceAt<{:s}> failed. at voxelIndex({:d},{:d})",
+			(Dynamic ? "dynamic" : "static"), voxelIndex.x, voxelIndex.y);
+	}
+#endif
+
+	return( many{hash, instance, model} ); // returns [hash, instance, model] structured binding
+}
+
+
 template<int32_t const eVoxelModelGrpID>
 auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const flags)
 {
@@ -608,6 +652,24 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, ui
 #endif
 	return(binding); // returns [hash, instance] structured binding
 }
+
+template<int32_t const eVoxelModelGrpID>
+auto const cVoxelWorld::placeProceduralVoxelModelInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const flags)
+{
+	// get model
+	auto const* const __restrict voxelModel = Volumetric::getVoxelModel<eVoxelModelGrpID>(modelIndex);
+
+	auto const binding = placeProceduralVoxelModelInstanceAt<(eVoxelModelGrpID < 0)>(voxelIndex, voxelModel, flags);
+
+#ifndef NDEBUG
+	if (0 == &(binding)) {
+		FMT_LOG_WARN(VOX_LOG, "placeProceduralVoxelModelInstanceAt<{:s}> failed. modelIndex({:d}) of modelGroup({:d}) at voxelIndex({:d},{:d})",
+			((eVoxelModelGrpID < 0) ? "dynamic" : "static"), modelIndex, eVoxelModelGrpID, voxelIndex.x, voxelIndex.y);
+	}
+#endif
+	return(binding); // returns [hash, instance, model] structured binding
+}
+
 
 template<typename TNonUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed
 TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
@@ -668,6 +730,7 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 	return(nullptr);
 }
 
+
 template<typename TUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed
 TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
 {
@@ -721,6 +784,67 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 #ifndef NDEBUG
 	else {
 		FMT_LOG_WARN(VOX_LOG, "placeUpdateableInstanceAt<{:s}> failed. modelIndex({:d}) of modelGroup({:d}) at voxelIndex({:d},{:d})",
+			((eVoxelModelGrpID < 0) ? "dynamic" : "static"), modelIndex, eVoxelModelGrpID, voxelIndex.x, voxelIndex.y);
+	}
+#endif
+	return(nullptr);
+}
+
+
+template<typename TProceduralGameObject, bool const Dynamic> // allow polymorphic type to be passed
+TProceduralGameObject* const cVoxelWorld::placeProceduralInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
+{
+	auto const [hash, instance, model] = placeProceduralVoxelModelInstanceAt<Dynamic>(voxelIndex, voxelModel, Volumetric::eVoxelModelInstanceFlags::PROCEDURAL | Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | additional_flags);
+
+	if (instance && model) {
+
+		if (hash) { // normal instance, need actual reference to managed memory
+			if constexpr (Dynamic) {
+
+				return(&TProceduralGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash], model));
+			}
+			else {
+
+				return(&TProceduralGameObject::emplace_back(_hshVoxelModelInstances_Static[hash], model));
+			}
+		}
+		else { // child instance
+			return(&TProceduralGameObject::emplace_back(std::forward(instance), model));
+		}
+	}
+#ifndef NDEBUG
+	else {
+		FMT_LOG_WARN(VOX_LOG, "placeProceduralInstanceAt<{:s}> failed. at voxelIndex({:d},{:d})",
+			(Dynamic ? "dynamic" : "static"), voxelIndex.x, voxelIndex.y);
+	}
+#endif
+	return(nullptr);
+}
+template<typename TProceduralGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed
+TProceduralGameObject* const cVoxelWorld::placeProceduralInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags)
+{
+	auto const [hash, instance, model] = placeProceduralVoxelModelInstanceAt<eVoxelModelGrpID>(voxelIndex, modelIndex, Volumetric::eVoxelModelInstanceFlags::PROCEDURAL | Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | additional_flags);
+
+	if (instance && model) {
+
+		if (hash) { // normal instance, need actual reference to managed memory
+			if constexpr (eVoxelModelGrpID < 0) {
+
+				return(&TProceduralGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash], model));
+			}
+			else {
+
+				return(&TProceduralGameObject::emplace_back(_hshVoxelModelInstances_Static[hash], model));
+			}
+		}
+		else { // child instance
+
+			return(&TProceduralGameObject::emplace_back(instance, model));
+		}
+	}
+#ifndef NDEBUG
+	else {
+		FMT_LOG_WARN(VOX_LOG, "placeProceduralInstanceAt<{:s}> failed. modelIndex({:d}) of modelGroup({:d}) at voxelIndex({:d},{:d})",
 			((eVoxelModelGrpID < 0) ? "dynamic" : "static"), modelIndex, eVoxelModelGrpID, voxelIndex.x, voxelIndex.y);
 	}
 #endif

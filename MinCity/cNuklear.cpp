@@ -177,11 +177,11 @@ nk_clip_cursor(GLFWwindow* const win) {
 	::SetLastError(ERROR_SUCCESS);
 	if (0 == MapWindowPoints(hWnd, nullptr, (POINT * const)& clipRect, 2)) {
 		if (ERROR_SUCCESS == ::GetLastError()) {
-			ClipCursor(&clipRect);
+			//ClipCursor(&clipRect);
 		}
 	}
 	else {
-		ClipCursor(&clipRect);
+		//ClipCursor(&clipRect);
 	}
 }
 
@@ -667,7 +667,7 @@ void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restr
 				static constexpr size_t const buffer_count(2ULL);
 				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ &vbo, &ibo };
 				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
-					cb_transfer, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexInput,
+					cb_transfer, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 					vk::DependencyFlagBits::eByRegion,
 					vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
 				);
@@ -680,7 +680,7 @@ void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restr
 			SetUniformBuffer(cb_transfer, ubo);
 			
 			ubo.barrier( // ## RELEASE ## //
-				cb_transfer, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexShader,
+				cb_transfer, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 				vk::DependencyFlagBits::eByRegion,
 				vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
 			);

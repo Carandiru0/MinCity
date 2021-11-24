@@ -68,12 +68,12 @@ namespace world
 	}
 
 	// If currently visible event:
-	Volumetric::voxB::voxelState const cVideoScreenGameObject::OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
+	Volumetric::voxB::voxelState const __vectorcall cVideoScreenGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
 	{
-		return(reinterpret_cast<cVideoScreenGameObject const* const>(_this)->OnVoxel(voxel, rOriginalVoxelState, vxl_index));
+		return(reinterpret_cast<cVideoScreenGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, rOriginalVoxelState, vxl_index));
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	Volumetric::voxB::voxelState const cVideoScreenGameObject::OnVoxel(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+	Volumetric::voxB::voxelState const __vectorcall cVideoScreenGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
 	{
 		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
 

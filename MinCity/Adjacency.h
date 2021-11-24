@@ -84,6 +84,7 @@ namespace Volumetric
 	} // end ns
 
 	BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to the above bit shift values
+		below = 5, // not used for adjacency in voxel desc, but needed for automata or any neighbourhood search that requires "below"
 		left = 4,
 		right = 3,
 		front = 2,

@@ -848,7 +848,7 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 	}
 	//if (0 == (_run_count & 1)) { // only run on even frames to balance loading
 
-		rect2D_t simArea;
+		rect2D_t simArea{};
 
 		// LOD 0
 		if (_tAccumulateLod[0] > packing::interval[0]) {

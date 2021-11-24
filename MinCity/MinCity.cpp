@@ -183,16 +183,16 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	if (TASK_INIT) {
 		if (TASK_INIT->is_active()) {
-			FMT_LOG_OK(INFO_LOG, "Intel Threading Building Blocks initialized ");
+			FMT_LOG_OK(INFO_LOG, "[Threading] initialized ");
 			// not showin status of speculation -- to many cpu's do not support TSX, all AMD and a lot of Intel CPU's that have the feature disabled. shame. FMT_LOG_OK(NULL_LOG, "speculation : [{:s}]", TASK_INIT->has_speculation() ? "supported" : "unsupported");
 		}
 		else {
-			FMT_LOG_FAIL(INFO_LOG, "Intel Threading Building Blocks was unable to initialize! 1x\n");
+			FMT_LOG_FAIL(INFO_LOG, "[Threading] was unable to initialize! 1x\n");
 			return(false);
 		}
 	}
 	else {
-		FMT_LOG_FAIL(INFO_LOG, "Intel Threading Building Blocks was unable to initialize! 0x\n");
+		FMT_LOG_FAIL(INFO_LOG, "[Threading] was unable to initialize! 0x\n");
 		return(false);
 	}
 

@@ -10,6 +10,11 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
+layout(location = 0) in streamIn /*not used, required for validation*/
+{
+	readonly vec2		uv;
+} In;
+
 #ifdef EVEN
 #define OP !
 #else

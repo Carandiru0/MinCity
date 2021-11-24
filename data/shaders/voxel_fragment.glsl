@@ -1,7 +1,6 @@
 #ifndef VOXEL_FRAGMENT_
 #define VOXEL_FRAGMENT_
 
-//#ifndef BASIC
 
 #ifdef FRAGMENT_OUT
 writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all members must be vec4)
@@ -11,25 +10,29 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	vec4 V;	
 	flat vec4 extra;	
 	flat float ambient;
+#ifndef BASIC
 #if defined(HEIGHT) || defined(ROAD)
 	vec2 world_uv;
 #ifdef ROAD
 	vec3 road_uv;
 #endif
 #endif
+#endif
 } Out;
 #else
-readonly layout(location = 0) in streamIn   // in/out to pixel shader (all members must be vec4)
+layout(location = 0) in streamIn   // in/out to pixel shader (all members must be vec4)
 {
-	vec4 uv;			// uv:  xyz always reserved for light volume uv relative coords
-	vec4 N;
-	vec4 V;	
-	flat vec4 extra;	
-	flat float ambient;
+	readonly vec4 uv;			// uv:  xyz always reserved for light volume uv relative coords
+	readonly vec4 N;
+	readonly vec4 V;	
+	readonly flat vec4 extra;	
+	readonly flat float ambient;
+#ifndef BASIC
 #if defined(T2D) || defined(ROAD)
-	vec2 world_uv;
+	readonly vec2 world_uv;
 #ifdef ROAD
-	vec3 road_uv;
+	readonly vec3 road_uv;
+#endif
 #endif
 #endif
 } In;

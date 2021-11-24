@@ -168,12 +168,12 @@ namespace voxB
 		inline uint32_t const 			  getColor() const { return(Color); }
 		inline uint32_t const 			  getAlpha() const { return(Alpha); }
 		inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
-		inline void						  addAdjacency(uint32_t const Adj) { 
-			Left	|= (0 != (BIT_ADJ_LEFT & Adj));
-			Right	|= (0 != (BIT_ADJ_RIGHT & Adj));
-			Front	|= (0 != (BIT_ADJ_FRONT & Adj));
-			Back	|= (0 != (BIT_ADJ_BACK & Adj));
-			Above	|= (0 != (BIT_ADJ_ABOVE & Adj));
+		inline void						  setAdjacency(uint32_t const Adj) { 
+			Left	= (0 != (BIT_ADJ_LEFT & Adj));
+			Right	= (0 != (BIT_ADJ_RIGHT & Adj));
+			Front	= (0 != (BIT_ADJ_FRONT & Adj));
+			Back	= (0 != (BIT_ADJ_BACK & Adj));
+			Above	= (0 != (BIT_ADJ_ABOVE & Adj));
 		}
 
 		inline uint32_t const			  getOcclusion() const { return( (((uint32_t)OcclusionCount) << 3U) | (Occlusion_Right << 2U) | (Occlusion_Left << 1U) | (Occlusion_Corner) ); }
@@ -230,6 +230,15 @@ namespace voxB
 	{
 		voxelScreen const* videoscreen = nullptr;
 
+		voxelModelFeatures() = default;
+
+		voxelModelFeatures(voxelModelFeatures const& src)
+		{
+			if (src.videoscreen) {
+
+				videoscreen = new voxelScreen(*src.videoscreen);
+			}
+		}
 		~voxelModelFeatures() {
 			SAFE_DELETE(videoscreen);
 		}
@@ -246,7 +255,8 @@ namespace voxB
 	typedef struct voxelModelBase
 	{		
 		voxelDescPacked const* __restrict   _Voxels;		// Finalized linear array of voxels (constant readonly memory)
-		
+		voxelState* __restrict				_State;
+
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
 		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis)
@@ -260,11 +270,26 @@ namespace voxB
 
 		bool const	    _isDynamic_;
 
-		voxelState* __restrict _State;
-
 		inline voxelModelBase(bool const isDynamic) 
 			: _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Extents{}, _isDynamic_(isDynamic), _Voxels(nullptr), _State(nullptr)
 		{}
+
+		voxelModelBase(voxelModelBase const& src)
+			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
+			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _isDynamic_(src._isDynamic_), _Voxels(nullptr), _State(nullptr)
+		{
+			if (nullptr != src._Voxels) {
+
+				_Voxels = (voxelDescPacked const* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, 16); // matches voxBinary usage (alignment)
+				memcpy((void*)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
+			}
+
+			if (nullptr != src._State) {
+
+				_State = (voxelState * __restrict)scalable_aligned_malloc(_numVoxels * sizeof(voxelState), 16);
+				memcpy(_State, src._State, _numVoxels * sizeof(voxelState));
+			}
+		}
 
 		void ComputeLocalAreaAndExtents();
 
@@ -292,6 +317,10 @@ namespace voxB
 		
 		inline voxelModel(voxelModelIdent<Dynamic>&& identity)
 		: voxelModelBase(Dynamic), _identity(std::forward<voxelModelIdent<Dynamic>&&>(identity))
+		{}
+
+		voxelModel(voxelModel<Dynamic> const& src)
+			: voxelModelBase(src), _identity(src._identity)
 		{}
 
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
@@ -439,19 +468,14 @@ namespace voxB
 
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
-					{
-						// Build hash //
-						uint32_t hash(0);
-						hash |= voxel.getAdjacency();					//           0000 0000 0001 1111
-						hash |= (voxel.getOcclusion() << 5);			//           0000 1111 111x xxxx
-
+					{			
 						bool Transparent(false), Emissive(false);
 						if (nullptr != model._State) {
 
 							voxB::voxelState state(model._State[vxl]);
 							voxel.Alpha = Transparency; // only applicable if transparent voxel
 
-							state = instance.OnVoxel(voxel, state, vxl);
+							state = instance.OnVoxel(xmIndex, voxel, state, vxl);
 
 							if (state.Hidden)
 								continue;
@@ -463,6 +487,11 @@ namespace voxB
 							Emissive = Iso::isEmissive(rootVoxel);		// static emission state
 						}
 
+						// Build hash //
+						uint32_t hash(0);
+
+						hash |= voxel.getAdjacency();					//           0000 0000 0001 1111
+						hash |= (voxel.getOcclusion() << 5);			//           0000 1111 111x xxxx
 						hash |= (Emissive << 12);						// 0000 0000 0001 xxxx xxxx xxxx
 
 						if (!EmissionOnly)

@@ -54,11 +54,11 @@ layout (binding = 10) restrict buffer DebugStorageBuffer {
 
 #endif // DEBUG_VOLUMETRIC
 
-readonly layout(location = 0) in streamIn
+layout(location = 0) in streamIn
 {   // must all be xzy
-	noperspective vec3	rd;
-	flat vec3			eyePos;
-	flat vec3			eyeDir;
+	readonly noperspective vec3	rd;
+	readonly flat vec3			eyePos;
+	readonly flat vec3			eyeDir;
 } In;
 
 #define OUT_REFLECT 0

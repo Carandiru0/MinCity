@@ -58,3 +58,4 @@ desktop.ini
 *.iobj
 *.sarif
 MinCity/x64/Debug/MinCity.exe.recipe
+*.idb

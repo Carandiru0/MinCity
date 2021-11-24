@@ -101,7 +101,7 @@ namespace Volumetric
 		}
 	};
 
-	typedef Volumetric::voxB::voxelState const(* voxel_event_function)(Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict eventTarget, uint32_t const vxl_index);
+	typedef Volumetric::voxB::voxelState const (__vectorcall* voxel_event_function)(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict eventTarget, uint32_t const vxl_index);
 
 	template< bool const Dynamic >
 	class voxelModelInstance : public voxelModelInstanceBase
@@ -127,7 +127,7 @@ namespace Volumetric
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
-		__inline Volumetric::voxB::voxelState const XM_CALLCONV OnVoxel(voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const;
+		__inline Volumetric::voxB::voxelState const __vectorcall OnVoxel(FXMVECTOR xmIndex, voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const;
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
@@ -169,10 +169,10 @@ namespace Volumetric
 		}
 	}
 	template<bool const Dynamic>
-	__inline Volumetric::voxB::voxelState const XM_CALLCONV voxelModelInstance<Dynamic>::OnVoxel(voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+	__inline Volumetric::voxB::voxelState const __vectorcall voxelModelInstance<Dynamic>::OnVoxel(FXMVECTOR xmIndex, voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
 	{
 		if (eOnVoxel) {
-			return((*eOnVoxel)(voxel, rOriginalVoxelState, owner_gameobject, vxl_index));
+			return((*eOnVoxel)(xmIndex, voxel, rOriginalVoxelState, owner_gameobject, vxl_index));
 		}
 		return(rOriginalVoxelState);
 	}

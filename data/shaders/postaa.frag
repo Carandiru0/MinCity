@@ -13,18 +13,18 @@ layout (constant_id = 4) const float MaximumNits = 1000.0f;
 
 layout(location = 0) out vec4 outColor;
 
-readonly layout(location = 0) in streamIn
+layout(location = 0) in streamIn
 {
-	vec2		uv;
+	readonly vec2		uv;
 #if defined (SMAA_PASS_2)
-	flat float	jitter;
-	flat uint	odd_frame;
+	readonly flat float	jitter;
+	readonly flat uint	odd_frame;
 #endif
 
 #ifdef OVERLAY
-	flat float time_delta;
-	flat float time;
-	flat uint  odd_frame;
+	readonly flat float time_delta;
+	readonly flat float time;
+	readonly flat uint  odd_frame;
 #endif
 } In;
 #define texcoord uv // alias

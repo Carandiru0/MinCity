@@ -80,7 +80,8 @@
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LinkIncremental>false</LinkIncremental>
+    <LinkIncremental>
+    </LinkIncremental>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;$(LibraryPath)</LibraryPath>
     <IncludePath>X:\tbb\include;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
@@ -132,7 +133,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <CallingConvention>Cdecl</CallingConvention>
       <AdditionalOptions>/D_WIN32_WINNT=0x0A00 %(AdditionalOptions)</AdditionalOptions>
@@ -147,12 +148,11 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
       <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib</AdditionalDependencies>
-      <LinkTimeCodeGeneration>
-      </LinkTimeCodeGeneration>
-      <OptimizeReferences>true</OptimizeReferences>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <OptimizeReferences>false</OptimizeReferences>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <EnableCOMDATFolding>false</EnableCOMDATFolding>
       <StackReserveSize>262144</StackReserveSize>
       <StackCommitSize>4096</StackCommitSize>
       <LargeAddressAware>true</LargeAddressAware>
@@ -215,7 +215,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw   %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>
       </DisableSpecificWarnings>
       <CallingConvention>Cdecl</CallingConvention>
@@ -229,6 +229,7 @@
       </UseStandardPreprocessor>
       <StringPooling>true</StringPooling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -272,6 +273,7 @@
     <ClInclude Include="cAbstractToolMethods.h" />
     <ClInclude Include="cAISkyMover.h" />
     <ClInclude Include="cAudio.h" />
+    <ClInclude Include="cAutomataGameObject.h" />
     <ClInclude Include="cBlueNoise.h" />
     <ClInclude Include="cBuildingGameObject.h" />
     <ClInclude Include="cCarGameObject.h" />
@@ -286,6 +288,7 @@
     <ClInclude Include="cPoliceCarGameObject.h" />
     <ClInclude Include="cPostProcess.h" />
     <ClInclude Include="cProcedural.h" />
+    <ClInclude Include="cProceduralGameObject.h" />
     <ClInclude Include="cRemoteUpdateGameObject.h" />
     <ClInclude Include="cRoadTool.h" />
     <ClInclude Include="cRockStageGameObject.h" />
@@ -364,6 +367,7 @@
     <ClCompile Include="cAIMover.cpp" />
     <ClCompile Include="cAISkyMover.cpp" />
     <ClCompile Include="cAudio.cpp" />
+    <ClCompile Include="cAutomataGameObject.cpp" />
     <ClCompile Include="cBlueNoise.cpp" />
     <ClCompile Include="cBuildingGameObject.cpp" />
     <ClCompile Include="cCarGameObject.cpp" />
@@ -375,6 +379,7 @@
     <ClCompile Include="cPoliceCarGameObject.cpp" />
     <ClCompile Include="cPostProcess.cpp" />
     <ClCompile Include="cProcedural.cpp" />
+    <ClCompile Include="cProceduralGameObject.cpp" />
     <ClCompile Include="cRemoteUpdateGameObject.cpp" />
     <ClCompile Include="cRoadTool.cpp" />
     <ClCompile Include="cRockStageGameObject.cpp" />
@@ -426,8 +431,8 @@
     <ClCompile Include="X:\Vulkan\Vookoo\include\vku\volk\volk.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsC</CompileAs>
-      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">CompileAsC</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">CompileAsCpp</CompileAs>
       <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
       <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Speed</FavorSizeOrSpeed>
