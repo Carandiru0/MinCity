@@ -334,6 +334,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="sBatched.h" />
     <ClInclude Include="shockwave.h" />
+    <ClInclude Include="splash_screen.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="tbb.h" />
     <ClInclude Include="tornado.h" />

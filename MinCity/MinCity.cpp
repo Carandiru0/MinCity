@@ -17,6 +17,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <filesystem>
 
 #include "globals.h"
+#include "resource.h"
 
 #define RANDOM_IMPLEMENTATION
 #define NOISE_IMPLEMENTATION
@@ -44,11 +45,15 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #include "RedirectIO.h"
 
+#define SPLASH_SCREEN_IMPLEMENTATION
+#include "splash_screen.h"
+
 // private global variables //
 namespace // private to this file (anonymous)
 {
 	constinit static inline tbb::task_scheduler_init* TASK_INIT{ nullptr };
 	constinit static inline GLFWwindow* g_glfwwindow(nullptr);
+	constinit static inline HINSTANCE g_hInstance(nullptr);
 }
 
 #ifdef DEBUG_VARIABLES_ENABLED
@@ -183,6 +188,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	if (TASK_INIT) {
 		if (TASK_INIT->is_active()) {
+
 			FMT_LOG_OK(INFO_LOG, "[Threading] initialized ");
 			// not showin status of speculation -- to many cpu's do not support TSX, all AMD and a lot of Intel CPU's that have the feature disabled. shame. FMT_LOG_OK(NULL_LOG, "speculation : [{:s}]", TASK_INIT->has_speculation() ? "supported" : "unsupported");
 		}
@@ -326,6 +332,8 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	{
 		glfwSetWindowIconifyCallback(glfwwindow, window_iconify_callback);
 		glfwSetWindowFocusCallback(glfwwindow, window_focus_callback);
+
+		splash_screen::Release();
 
 		glfwShowWindow(glfwwindow);
 
@@ -833,27 +841,6 @@ void cMinCity::OnFocusRestored()
 	SetForegroundWindow(glfwGetWin32Window(g_glfwwindow));  // enable foreground window for the now foreground process
 }
 
-__declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
-{
-	ClipCursor(nullptr);
-
-	async_long_task::cancel_all();
-
-	// huge memory leak bugfix
-	Vulkan.WaitPresentIdle();
-	Vulkan.WaitDeviceIdle();
-
-	SAFE_DELETE(City);
-
-	Audio.CleanUp();
-	Nuklear.CleanUp();
-	PostProcess.CleanUp();
-	VoxelWorld.CleanUp();
-	TextureBoy.CleanUp();
-
-	Vulkan.Cleanup(glfwwindow);  /// should be LAST //
-}
-
 __declspec(noinline) static bool SetProcessPrivilege(
 	HANDLE const hToken,          // access token handle
 	LPCTSTR lpszPrivilege,  // name of privilege to enable/disable
@@ -1018,20 +1005,8 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
 				}
 
-				// if hyperthreading is on, limit to the available actual hardware cores. The even elements of the vector represent the first thread on a 
-				// hyperthreaded core. The second thread is therefore the one we want to erase from the vector; all even keep, all odd erase.
-				uint32_t index(0);
-				for (std::vector<DWORD>::const_iterator iter = logical_processors.cbegin(); iter != logical_processors.cend(); ) {
-
-					if (index & 1) { // is odd?
-						iter = logical_processors.erase(iter);
-					}
-					else {
-						++iter;
-					}
-					++index;
-				}
-
+				// no more limiting needed. Locking to hw cores only results in worse performance.
+				
 				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread/logical core.
 				if (logical_processors.size() > 1) {
 					SetProcessDefaultCpuSets(hProcess, logical_processors.data(), (unsigned long)logical_processors.size());
@@ -1121,6 +1096,8 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 	return(num_hw_threads);
 }
 
+
+
 extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
@@ -1154,7 +1131,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	timeEndPeriod(1); // ensure that the regular default timer resolution is active
 
 	int32_t const num_hw_threads(SetupEnvironment());
-	
+
 	if (num_hw_threads > 0) { // successfully optimized to hardware "real" core count
 		m_hwCoreCount = (size_t)num_hw_threads;
 	}
@@ -1163,7 +1140,51 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	}
 
 	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads, Globals::DEFAULT_STACK_SIZE);
+
+#ifndef NDEBUG
+	RedirectIOToConsole(); // *** must be just before the splash screen
+#else
+	RedirectIOToFile(); // *** must be just before the splash screen
+#endif
+	
+	if (splash_screen::LoadSplashScreen()) {
+
+		ImagingMemoryInstance const* const imageCurrent = splash_screen::CurrentSplashScreen(0.0f);
+
+		if (imageCurrent) {
+
+			splash_screen::RegisterWindowClass(g_hInstance);
+			HWND const hWndSplash = splash_screen::CreateSplashWindow(g_hInstance);
+			splash_screen::SetSplashImage(hWndSplash, splash_screen::splash_screen.hSplash);
+			ShowWindow(hWndSplash, SW_SHOWNORMAL);
+			splash_screen::StartTimer();
+		}
+	}
 }
+
+__declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
+{
+	ClipCursor(nullptr);
+
+	async_long_task::cancel_all();
+
+	splash_screen::Release();
+
+	// huge memory leak bugfix
+	Vulkan.WaitPresentIdle();
+	Vulkan.WaitDeviceIdle();
+
+	SAFE_DELETE(City);
+
+	Audio.CleanUp();
+	Nuklear.CleanUp();
+	PostProcess.CleanUp();
+	VoxelWorld.CleanUp();
+	TextureBoy.CleanUp();
+
+	Vulkan.Cleanup(glfwwindow);  /// should be LAST //
+}
+
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {
 	ClipCursor(nullptr);
@@ -1178,11 +1199,10 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
  
 {  
 	UNREFERENCED_PARAMETER(hPrevInstance);	
-	
+	g_hInstance = hInstance;
+
 	cMinCity::CriticalInit();
 	
-	RedirectIOToConsole();
-
 	cMinCity::Initialize(g_glfwwindow);  // no need to check the state here, unless handling errors
 									   // Running status is updated in this function if succesful
 
@@ -1196,7 +1216,7 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
 	cMinCity::Cleanup(g_glfwwindow);
 	cMinCity::CriticalCleanup();
 
-	WaitConsoleClose();
+	WaitIOClose();
 
 	return(0);
 }
