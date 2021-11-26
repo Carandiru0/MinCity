@@ -169,46 +169,17 @@ nk_center_cursor(GLFWwindow* const win) {
 	XMStoreFloat2((XMFLOAT2 * const)& nk_input.mouse_pos, xmCenter);
 }
 
-static void
-nk_clip_cursor(GLFWwindow* const win) {
-	HWND const hWnd = glfwGetWin32Window(win);
-	RECT clipRect;
-	GetClientRect(hWnd, &clipRect);
-	::SetLastError(ERROR_SUCCESS);
-	if (0 == MapWindowPoints(hWnd, nullptr, (POINT * const)& clipRect, 2)) {
-		if (ERROR_SUCCESS == ::GetLastError()) {
-			//ClipCursor(&clipRect);
-		}
-	}
-	else {
-		//ClipCursor(&clipRect);
-	}
-}
-
-static void 
-nk_center_clip_cursor(GLFWwindow* const win) {
-
-	nk_clip_cursor(win);
-	nk_center_cursor(win);
-}
-
 void
 cNuklear::nk_focus_callback(GLFWwindow *const win, int const focused)
 {
-	if (!focused) {
-		glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-		ClipCursor(nullptr);
-
-		nk_input.input_focused = false;
+	if (focused) {
+		static constinit bool firstFocus{ true };
+		if (firstFocus) { // *bugfix, needs to be set on 1st focus so cursor starts at correct location.
+			nk_center_cursor(win);
+			firstFocus = false;
+		}
 	}
-	else {
-
-		glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);  // must be GLFW_CURSOR_HIDDEN for mouse to clip accurately with manual clipping done
-
-		nk_center_clip_cursor(win);
-
-		nk_input.input_focused = true;
-	}
+	nk_input.input_focused = focused;
 }
 void
 cNuklear::nk_iconify_callback(GLFWwindow * const win, int const minimized)
@@ -298,9 +269,16 @@ nk_mouse_button_callback(GLFWwindow* const window, int const button, int const a
 static void
 nk_mouse_position_callback(GLFWwindow* const window, double const xpos, double const ypos)
 {
+	constinit static XMVECTORF32 const xmMouseCursorGlyphNegSize{ float(-NK_CURSOR_DATA_W), float(-NK_CURSOR_DATA_H), 0.0f, 0.0f};
+
 	if (nk_input.input_focused) {
-		nk_input.mouse_pos.x = (float)xpos;
-		nk_input.mouse_pos.y = (float)ypos;
+
+		XMVECTOR xmMousePos(XMVectorSet(xpos, ypos, 0.0f, 0.0f));
+
+		xmMousePos = SFM::clamp(xmMousePos, xmMouseCursorGlyphNegSize, p2D_to_v2(MinCity::getFramebufferSize()));	// *bugfix, best way todo with glfw - keeps mouse restricted to the renderable area +- mouse cursor size.
+		
+		XMStoreFloat2((XMFLOAT2*)&nk_input.mouse_pos, xmMousePos);
+		glfwSetCursorPos(window, nk_input.mouse_pos.x, nk_input.mouse_pos.y); // this updates the actual position with clamped values so mouse is never outside the renderable area. 
 	}
 }
 
@@ -428,7 +406,7 @@ void cNuklear::Initialize(GLFWwindow* const& __restrict win)
 	glfw.fb_scale.y = (float)glfw.display_height / (float)glfw.height;
 	*/
 	
-	glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_HIDDEN); // must be GLFW_CURSOR_HIDDEN for mouse to clip accurately with manual clipping done
+	glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	glfwSetScrollCallback(win, nk_scroll_callback);
 	glfwSetKeyCallback(win, nk_key_callback);
 	glfwSetCharCallback(win, nk_char_callback);
@@ -889,9 +867,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				
 			if (!p2D_sub(point2D_t(nk_input.mouse_pos.x, nk_input.mouse_pos.y),
 				         point2D_t(nk_input.last_mouse_pos.x, nk_input.last_mouse_pos.y)).isZero()) { // bugfix: have clip cursor every time for it to stop at edges of screen properly
-																											// good enough one whole pixels to save some performance
-				nk_clip_cursor(win);
-
+						
 				nk_input.last_mouse_pos = nk_input.mouse_pos;  // only updated for whole pixel movement to improve clipping performance
 				bInputGUIDelta = true; // mouse cursor
 			}

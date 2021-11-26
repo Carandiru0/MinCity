@@ -19,7 +19,8 @@ namespace // private to this file (anonymous)
 		static constexpr uint32_t const
 			PATCH_SIZE = (Iso::WORLD_GRID_SIZE >> 3),
 			PATCH_COUNT = (Iso::WORLD_GRID_SIZE / PATCH_SIZE) * (Iso::WORLD_GRID_SIZE / PATCH_SIZE),
-			MINIMUM_PLOT_SIZE = 4;
+			MINIMUM_PLOT_SIZE = 4,
+			MAXIMUM_PLOT_SIZE = Volumetric::MODEL_MAX_DIMENSION_XYZ / MINIVOXEL_FACTOR;
 
 		constinit static inline alignas(CACHE_LINE_BYTES) bit_row<Iso::WORLD_GRID_SIZE>* theZone[3]{ nullptr, nullptr, nullptr };
 		constinit static inline alignas(CACHE_LINE_BYTES) bit_row<Iso::WORLD_GRID_SIZE>* theRoad{ nullptr };
@@ -35,14 +36,11 @@ cSimulation::cSimulation()
 	}
 	packing::theRoad = bit_row<Iso::WORLD_GRID_SIZE>::create(Iso::WORLD_GRID_SIZE);
 
-	_plot_sizes.reserve(9);
 	// skip largest section 256 ?
-	for (uint32_t i = 128; i > (packing::MINIMUM_PLOT_SIZE << 1); i >>= 1) {
+	for (uint32_t i = packing::MAXIMUM_PLOT_SIZE; i > packing::MINIMUM_PLOT_SIZE; i -= packing::MINIMUM_PLOT_SIZE) {
 		_plot_sizes.emplace_back(i);
 	}
-	for (uint32_t i = 192; i > (packing::MINIMUM_PLOT_SIZE << 1); i >>= 1) {
-		_plot_sizes.emplace_back(i);
-	}
+
 	random_shuffle(_plot_sizes.begin(), _plot_sizes.end());
 
  	_current_packing.plot_size = _plot_sizes[_plot_size_index];
@@ -78,7 +76,7 @@ static Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> const* const __vec
 		auto const* const __restrict model(Volumetric::getVoxelModel<model_group_id>(model_index));
 
 		point2D_t const model_width_height(model->_LocalArea.width_height());
-
+		 
 		if (model->_maxDimensions.y >= minimum_height) {
 			if (model_width_height.x < available_width_height.x && model_width_height.x >= (available_width_height.x >> 1)
 				&& model_width_height.y < available_width_height.y && model_width_height.y >= (available_width_height.y >> 1))

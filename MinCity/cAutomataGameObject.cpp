@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "globals.h"
 #include "cAutomataGameObject.h"
 #include "MinCity.h"
 #include "cVoxelWorld.h"
@@ -24,7 +25,7 @@ namespace world
 		}
 
 		_worldIndex = (uvec4_t* const __restrict)scalable_aligned_malloc(sizeof(uvec4_t) * Model->_numVoxels, 16);
-		memset(_worldIndex, 0, sizeof(uvec4_t) * Model->_numVoxels);
+		__memclr_stream<16>(_worldIndex, Model->_numVoxels * sizeof(uvec4_t));
 	}
 
 	cAutomataGameObject::cAutomataGameObject(cAutomataGameObject&& src) noexcept
@@ -93,9 +94,7 @@ namespace world
 		// required on first and all further renders
 		uvec4_v const uvIndex(SFM::floor_to_u32(XMVectorAdd(xmIndex, _mm_set1_ps(0.5f))));
 
-		if (_changed) {
-			uvIndex.xyzw(_worldIndex[vxl_index]); // produce association index --> worldIndex for next update() (data dependency)
-		}
+		uvIndex.xyzw(_worldIndex[vxl_index]); // produce association index --> worldIndex for next update() (data dependency)
 
 		if (!_firstUpdate) { // any modifications to voxel or its state go after the first render/update only.
 
@@ -174,6 +173,9 @@ namespace world
 			_bits->clear_bit(iIndex.x, iIndex.y, iIndex.z);
 		}
 		else {
+
+			_bits->set_bit(iIndex.x, iIndex.y, iIndex.z);
+
 			// bit is still "set" in volume, pass onto current vector.
 			out.emplace_back(in);
 
@@ -247,14 +249,19 @@ namespace world
 
 			// set the volume bit
 			_bits->set_bit(iIndex.x, iIndex.y, iIndex.z);
+
+			Automata born(in);
+			born.state.Transparent = false;
+			born.state.Emissive = true;
+
 			// pass onto current vector
-			out.emplace_back(in);
+			out.emplace_back(born);
 		}
 	}
 
 	void cAutomataGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		static constexpr fp_seconds const interval_update(fp_seconds(milliseconds(250)));
+		static constexpr fp_seconds const interval_update(fp_seconds(milliseconds(350)));
 
 		if (_firstUpdate) {
 			return; // always skip 1st update. Update happens b4 render. However this update runs one-frame behind.
@@ -263,7 +270,8 @@ namespace world
 		}
 
 		_changed = false;
-		while ((_accumulator += tDelta) >= interval_update) {
+		_accumulator += tDelta;
+		while (_accumulator >= interval_update) {
 
 			_accumulator -= interval_update;
 			_changed = true;
@@ -282,7 +290,7 @@ namespace world
 				[&](uint32_t const vxl_index) {
 
 					VecAutomata::reference local_current(current.local()),
-						local_empty(empty.local());
+										   local_empty(empty.local());
 
 					// state 
 					autoState({ uvec4_v(_worldIndex[vxl_index]), model->_Voxels[vxl_index], model->_State[vxl_index] }, local_current, local_empty);
@@ -299,7 +307,7 @@ namespace world
 
 					// Volumetric::voxB::voxelDescPacked
 					Automata const* automata(local_empty.data()),
-						* const end(local_empty.data() + local_empty.size());
+						    * const end(local_empty.data() + local_empty.size());
 
 					for (; automata != end; ++automata) {
 
@@ -323,15 +331,13 @@ namespace world
 
 			if (0 != numAutomata) {
 
-				vector<Volumetric::voxB::voxelDescPacked>	passedVoxels;
-				vector<Volumetric::voxB::voxelState>		passedState;
+				model->_Voxels = (Volumetric::voxB::voxelDescPacked* __restrict)scalable_aligned_realloc((void*)model->_Voxels, sizeof(Volumetric::voxB::voxelDescPacked) * numAutomata, 16);
+				model->_State = (Volumetric::voxB::voxelState* __restrict)scalable_aligned_realloc((void*)model->_State, sizeof(Volumetric::voxB::voxelState) * numAutomata, 16);
 
- 				passedVoxels.reserve(numAutomata);
-				passedState.reserve(numAutomata);
-
+				numAutomata = 0;
 				uint32_t numEmissive(0), numTransparent(0);
 				uvec4_v xmMin(UINT32_MAX, UINT32_MAX, UINT32_MAX, 0),
-					xmMax(0);
+						xmMax(0);
 
 				for (tbb::flattened2d<VecAutomata>::const_iterator
 					i = flat_view.begin(); i != flat_view.end(); ++i) {
@@ -340,11 +346,12 @@ namespace world
 					xmMin.v = SFM::min(xmMin.v, xmPosition);
 					xmMax.v = SFM::max(xmMax.v, xmPosition);
 
-					passedVoxels.emplace_back(i->voxel);
-					passedState.emplace_back(i->state);
+					memcpy((void* __restrict)&model->_Voxels[numAutomata], &i->voxel, sizeof(Volumetric::voxB::voxelDescPacked));
+					memcpy(&model->_State[numAutomata], &i->voxel, sizeof(Volumetric::voxB::voxelState));
 
-					numEmissive += (uint32_t const)(bool const)passedState.back().Emissive;
-					numTransparent += (uint32_t const)(bool const)passedState.back().Emissive;
+					++numAutomata;
+					numEmissive += (uint32_t const)(bool const)i->state.Emissive;
+					numTransparent += (uint32_t const)(bool const)i->state.Transparent;
 				}
 
 				model->_numVoxels = numAutomata;
@@ -367,14 +374,10 @@ namespace world
 				//tbb::parallel_sort(pa	ssedVoxels.begin(), passedVoxels.end());
 
 				// reallocate last linear buffers to new size & copy
-				model->_Voxels = (Volumetric::voxB::voxelDescPacked const* const __restrict)scalable_aligned_realloc((void*)model->_Voxels, sizeof(Volumetric::voxB::voxelDescPacked) * numAutomata, 16);
-				memcpy((void* __restrict)model->_Voxels, passedVoxels.data(), numAutomata * sizeof(Volumetric::voxB::voxelDescPacked const));
-
-				model->_State = (Volumetric::voxB::voxelState* const __restrict)scalable_aligned_realloc((void*)model->_State, sizeof(Volumetric::voxB::voxelState) * numAutomata, 16);
-				memcpy((void* __restrict)model->_State, passedState.data(), numAutomata * sizeof(Volumetric::voxB::voxelState));
+				
 
 				_worldIndex = (uvec4_t* const __restrict)scalable_aligned_realloc((void*)_worldIndex, sizeof(uvec4_t) * numAutomata, 16);
-				memset((void* __restrict)_worldIndex, 0, numAutomata * sizeof(uvec4_t));
+				__memclr_stream<16>(_worldIndex, numAutomata * sizeof(uvec4_t));
 
 				// finally synchronize instance w/updated model to grid
 				Volumetric::voxelModelInstance_Dynamic* const __restrict instance(getModelInstance());

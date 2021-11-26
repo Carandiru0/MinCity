@@ -254,8 +254,8 @@ namespace voxB
 	
 	typedef struct voxelModelBase
 	{		
-		voxelDescPacked const* __restrict   _Voxels;		// Finalized linear array of voxels (constant readonly memory)
-		voxelState* __restrict				_State;
+		voxelDescPacked const* __restrict   _Voxels;			// Finalized linear array of voxels (constant readonly memory)
+		voxelState* __restrict		        _State;
 
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
@@ -280,14 +280,14 @@ namespace voxB
 		{
 			if (nullptr != src._Voxels) {
 
-				_Voxels = (voxelDescPacked const* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, 16); // matches voxBinary usage (alignment)
-				memcpy((void*)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
+				_Voxels = (voxelDescPacked* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, 16); // matches voxBinary usage (alignment)
+				__memcpy_stream<16>((void* __restrict)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
 			}
 
 			if (nullptr != src._State) {
 
 				_State = (voxelState * __restrict)scalable_aligned_malloc(_numVoxels * sizeof(voxelState), 16);
-				memcpy(_State, src._State, _numVoxels * sizeof(voxelState));
+				__memcpy_stream<16>(_State, src._State, _numVoxels * sizeof(voxelState));
 			}
 		}
 
@@ -296,7 +296,7 @@ namespace voxB
 		void createState() {			// State is option and only created on models that request it
 			if (nullptr == _State) {
 				_State = (voxelState* __restrict)scalable_aligned_malloc(_numVoxels * sizeof(voxelState), 16);
-				memset(&_State[0], 0, _numVoxels * sizeof(voxelState)); // cant use __memclr_aligned_16, bugfix.
+				memset(_State, 0, _numVoxels * sizeof(voxelState));
 			}
 		}
 

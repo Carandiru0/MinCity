@@ -2686,7 +2686,7 @@ namespace world
 		{
 			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			the::temp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
-			
+			 
 			__memclr_stream<CACHE_LINE_BYTES>(the::grid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			__memclr_stream<CACHE_LINE_BYTES>(the::temp._protected, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			
@@ -3177,7 +3177,7 @@ namespace world
 #endif
 		{ // test dynamics 
 			cTestGameObject* pTstGameObj(nullptr);
-			cAutomataGameObject* pAutoGameObj(nullptr);
+			//cAutomataGameObject* pAutoGameObj(nullptr);
 
 			//pAutoGameObj = placeProceduralInstanceAt<cAutomataGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
 			//	Volumetric::eVoxelModels_Indices::HOLOGRAM_GIRL);

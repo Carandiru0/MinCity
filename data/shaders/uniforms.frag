@@ -246,7 +246,7 @@ void main() {
 						    
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, V, decal_luminance);
-	color.rgb = mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
+	color.rgb = road_segment.rgb + mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
 
 	outColor = applyTransparency(color, road_segment.a, weight);
 	// outColor = vec4(weight.xxx, 1.0f); 

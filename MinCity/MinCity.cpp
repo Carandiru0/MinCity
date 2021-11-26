@@ -138,8 +138,6 @@ static void window_iconify_callback(GLFWwindow* const window, int const iconifie
 	}
 	else
 	{
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN); // done a second time when window is focused
-
 		// The window was restored
 		MinCity::Vulkan.OnRestored(window); // critical first rendering enable/disable and pause / unpause handling
 		MinCity::OnFocusRestored(); // other handling and update of focus member boolean
@@ -152,8 +150,6 @@ static void window_focus_callback(GLFWwindow* const window, int const focused)
 
 	if (focused)
 	{
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN); // done a second time when window is focused
-		
 		// The window gained input focus
 		MinCity::Vulkan.OnRestored(window); // critical first rendering enable/disable and pause / unpause handling
 		MinCity::OnFocusRestored(); // other handling and update of focus member boolean
@@ -703,6 +699,12 @@ void cMinCity::UpdateWorld()
 
 	//---------------------------------------------------------------------------------------------------------------------------------------//
 	tLast = tCriticalNow;
+
+	// bring done cpu & power usage when standing by //
+	[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
+		Sleep(((DWORD const)duration_cast<milliseconds>(delta()).count()) >> 1);
+		_mm_pause();
+	}
 }
 
 void cMinCity::StageResources(uint32_t const resource_index)
@@ -824,7 +826,6 @@ void cMinCity::ClearEvents(bool const bDisableNewEventsAfter)
 void cMinCity::OnFocusLost()
 {	
 	m_bFocused = false;
-	ClipCursor(nullptr);
 
 	if (eExclusivity::DEFAULT == m_eExclusivity) {
 		m_eExclusivity = eExclusivity::STANDBY;
@@ -1164,8 +1165,6 @@ __declspec(noinline) void cMinCity::CriticalInit()
 
 __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 {
-	ClipCursor(nullptr);
-
 	async_long_task::cancel_all();
 
 	splash_screen::Release();
@@ -1187,8 +1186,6 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {
-	ClipCursor(nullptr);
-
 	SAFE_DELETE(TASK_INIT);
 }
 

@@ -546,7 +546,7 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 		
 		pDestMem->_numVoxels = (uint32_t)culledVoxels.size(); // save actual number of voxels - culled voxel total
 
-		pDestMem->_Voxels = (voxelDescPacked const* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+		pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
 		memcpy((void* __restrict)pDestMem->_Voxels, culledVoxels.data(), pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 		pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
@@ -642,7 +642,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 					XMVECTOR const maxDimensions(xmDimensions.v4f());
 					XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(maxDimensions));
 
-					pDestMem->_Voxels = (voxelDescPacked const* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
 					memcpy_s((void* __restrict)pDestMem->_Voxels, pDestMem->_numVoxels * sizeof(voxelDescPacked const), pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 					pDestMem->ComputeLocalAreaAndExtents();
