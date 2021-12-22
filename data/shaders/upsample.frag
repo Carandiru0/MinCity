@@ -9,7 +9,7 @@
 #include "screendimensions.glsl"
 
 #if !defined(RESOLVE)
-#define BINDING 5
+#define BINDING 6
 #define READWRITE
 #include "sharedbuffer.glsl"
 #endif
@@ -41,7 +41,8 @@ void main() {
 
 layout(location = 0) in streamIn
 {
-	vec2		uv;
+	readonly vec2		uv;
+	readonly flat float	slice;
 } In;
 
 #define VOLUME 0
@@ -50,12 +51,12 @@ layout(location = 0) in streamIn
 layout(location = 0) out vec4 outVolumetric;
 layout(location = 1) out vec4 outReflection;
 
-layout (binding = 0) uniform sampler2D noiseMap;
-layout (binding = 1) uniform sampler2D checkeredMap[2]; // half resolution checkered volumetric light  &  bounce light (reflection)
+layout (binding = 1) uniform sampler2DArray noiseMap;
+layout (binding = 2) uniform sampler2D checkeredMap[2]; // half resolution checkered volumetric light  &  bounce light (reflection)
 
 float fetch_bluenoise_scaled(in const vec2 uv)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv, in const float scaled_bluenoise )
@@ -91,17 +92,18 @@ void main() {
 
 layout(location = 0) in streamIn
 {
-	vec2 uv;
+	readonly vec2 uv;
+	readonly flat float	slice;
 } In;
 
 layout(location = 0) out vec4 outVolumetric;
 layout(location = 1) out vec4 outReflection;
 
-layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput inputFullDepth; // full resolution depth map
-layout (binding = 1) uniform sampler2D HalfDepthMap;	// half resolution depth map
-layout (binding = 2) uniform sampler2D noiseMap; // bluenoise
-layout (binding = 3) uniform sampler2D volumetricMap; // half resolution volumetric light
-layout (binding = 4) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
+layout (input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput inputFullDepth; // full resolution depth map
+layout (binding = 2) uniform sampler2D HalfDepthMap;	// half resolution depth map
+layout (binding = 3) uniform sampler2DArray noiseMap; // bluenoise
+layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumetric light
+layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
 const float POISSON_RADIUS = 9.0f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
@@ -149,7 +151,7 @@ vec4 poissonBlur( in const restrict sampler2D samp, in vec4 color, in const vec2
 // duplicated because of different noiseMap binding index between reconstruction and resolve shaders, simpler
 float fetch_bluenoise_scaled(in const vec2 uv)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 

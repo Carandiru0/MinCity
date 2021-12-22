@@ -50,8 +50,11 @@
 //#define DEBUG_TORNADO_COUNT
 //#define DEBUG_SHOCKWAVE_COUNT
 //#define DEBUG_RAIN_COUNT
+//#define DEBUG_NO_RAIN
 //#define DEBUG_VOLUMETRIC
-//#define DEBUG_DEPTH_CUBE
+//#define DEBUG_DEPTH_CUBE\\
+// 56trr\
+// 
 //#define DEBUG_MOUSE_HOVER_VOXEL
 #define DEBUG_FPS_WINDOW
 //#define DEBUG_LUT_WINDOW
@@ -135,7 +138,7 @@ namespace Globals
 {
 #define _S * const 
 	static constexpr char const 
-		_S TITLE = "MinCity";
+		_S TITLE = "minCity";
 
 #define DATA_DIR L"data/"
 #define BIN_DIR L"\\data\\bin\\" // bugfix, needs to be \\ for this one (secure dll loading)
@@ -145,7 +148,7 @@ namespace Globals
 #define GIF_DIR TEXTURE_DIR L"gifs/"
 #define GUI_DIR TEXTURE_DIR L"gui/"
 #define VOX_DIR DATA_DIR L"vox/"
-#define VOX_CACHE_DIR DATA_DIR L"vox/cached/"
+#define VOX_CACHE_DIR VOX_DIR L"cached/"
 #define AUDIO_DIR DATA_DIR L"audio/"
 
 #ifndef NDEBUG
@@ -173,7 +176,8 @@ namespace Globals
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 42;	 // 42ms = 24fps maximum gui update interval when no input is flagging the gui to be updated
 	
-	static constexpr uint32_t const MIN_BLACK_LVL_EMISSIVE = 8;
+	static constexpr 
+		uint32_t const MIN_BLACK_LVL_EMISSIVE = 8;
 
 	static constexpr uint32_t const NK_MAX_VERTEX_BUFFER_SZ = 256 * 1024,
 									NK_MAX_INDEX_BUFFER_SZ = 64 * 1024;

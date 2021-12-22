@@ -25,9 +25,6 @@ namespace Volumetric
 		__inline XMMATRIX const XM_CALLCONV getViewMatrix() const { return(XMLoadFloat4x4A(&_matView)); }
 		__inline XMMATRIX const XM_CALLCONV getProjectionMatrix() const { return(XMLoadFloat4x4A(&_matProj)); } 
 		
-		STATIC_INLINE_PURE XMMATRIX const XM_CALLCONV getProjectionMatrix(float const Width, float const Height,
-																		  float const MinZ, float const MaxZ);
-
 		// main methods //
 		bool const XM_CALLCONV SphereTestFrustum(FXMVECTOR const xmPosition, float const fRadius) const;
 		bool const XM_CALLCONV AABBTestFrustum(FXMVECTOR const xmPosition, FXMVECTOR const xmExtents) const;
@@ -46,11 +43,4 @@ namespace Volumetric
 		~volumetricVisibility() = default;
 	};
 
-
-
-	__inline __declspec(noalias) XMMATRIX const XM_CALLCONV volumetricVisibility::getProjectionMatrix(float const Width, float const Height,
-																						              float const MinZ, float const MaxZ)
-	{
-		return(XMMatrixOrthographicLH(Width, Height, MinZ, MaxZ));
-	}
 }

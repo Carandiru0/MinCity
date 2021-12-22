@@ -70,7 +70,7 @@ layout(location = 0) in streamIn
 #define OPACITY 3
 
 layout (input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput inputDepth;	// linear depthmap
-layout (binding = 2) uniform sampler2D noiseMap;	// bluenoise
+layout (binding = 2) uniform sampler2D noiseMap;	// bluenoise (static over time)
 layout (binding = 3) uniform sampler2D fogMap;	// dynamic fog
 layout (binding = 4) uniform sampler3D volumeMap[4];	// LightMap (direction & distance), (light color), (color reflection), OpacityMap
 layout (binding = 5, rgba8) writeonly restrict uniform image2D outImage[2]; // reflection, volumetric    *writeonly access
@@ -226,7 +226,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, inout 
 
 float fetch_bluenoise(in const vec2 pixel)
 {
-	return( textureLod(noiseMap, pixel * BLUE_NOISE_UV_SCALER, 0).r ); // *bluenoise RED channel used* //
+	return( textureLod(noiseMap, pixel * BLUE_NOISE_UV_SCALER, 0).y ); // *bluenoise GREEN channel used* // *bugfix - should not use temporal blue noise, too much visible change in reflections noisy over time.
 }
 float fetch_depth()
 {
@@ -448,7 +448,7 @@ void main() {
 	float pre_dt = pre_interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
 	pre_dt = max(pre_dt, pre_interval_length*INV_MAX_STEPS);
 	// ----------------------------------- //
-	const float dt = max(pre_dt, MIN_STEP);// fixes infinite loop bug, *do not change*
+	const float dt = max(pre_dt, MIN_STEP) * GOLDEN_RATIO_ZERO;// fixes infinite loop bug, *do not change* (should be half pre_dt for best resolution, but there is an inherent advantage at having each step scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled).
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth
@@ -462,15 +462,14 @@ void main() {
 	// Integration variables		// depth modified transmission - gives depth to volume - clamp is important...
     
 	// without modifying interval variables start position
-	// done so the interval frame by frame is deterministic per pixel
-	// which reflection cache optimizations rely on ---
-	const float blue_noise = fetch_bluenoise(gl_FragCoord.xy);
-	// adjust interval_length and start position by "bluenoise step"
+	
 	// -------------------------------------------------------------------- //
-	const float interval_length = pre_interval_length - (dt * blue_noise);
+	const float interval_length = pre_interval_length;
 	float interval_remaining = interval_length;
 	// -------------------------------------------------------------------- //
 
+	// adjust start position by "bluenoise step"
+	const float blue_noise = fetch_bluenoise(gl_FragCoord.xy);
 	vec3 p = In.eyePos.xyz + fma(dt, blue_noise, t_hit.x) * rd; // jittered offset
 		
 	// inverted volume height fix (only place this needs to be done!)
@@ -564,7 +563,7 @@ void main() {
 //#endif
 
 	// output volumetric light
-	imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), vec4(voxel.light, (1.0f - voxel.tran))); // <-- this is correct blending of light, don't change it. opacity = 1.0f - transmission
+	imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), vec4(voxel.light, (1.0f - clamp(voxel.tran, 0.0f, 1.0f)))); // <-- this is correct blending of light, don't change it. opacity = 1.0f - transmission
 						
 	// - done!
 	//vec4 test = textureLod(fogMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f);

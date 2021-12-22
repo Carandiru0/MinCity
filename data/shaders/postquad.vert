@@ -1,19 +1,21 @@
 #version 450 
 #extension GL_GOOGLE_include_directive : enable
+
+#if defined (SMAA_PASS_2) || defined(RESOLVE) || defined(OVERLAY)
 #include "shareduniform.glsl"
+#endif
 
 writeonly layout(location = 0) out streamOut
 {
 	vec2		uv;
-#if defined (SMAA_PASS_2)
-	flat float	jitter;
-	flat uint	odd_frame;
+#if defined (SMAA_PASS_2) || defined(RESOLVE)
+	flat float	slice;
 #endif
 
 #ifdef OVERLAY
 	flat float time_delta;
 	flat float time;
-	flat uint  odd_frame;
+	flat uint odd_frame;
 #endif
 } Out;
 #define texcoord uv // alias
@@ -24,10 +26,8 @@ void main()
 	gl_Position = vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
 	Out.uv = uv;
 
-#if defined (SMAA_PASS_2)	// final neighbourhood blending subpass
-	const uint odd = u._uframe & 1U;
-	Out.jitter = float( (int(odd) << 1) - 1 ); // -1 ... 1
-	Out.odd_frame = odd;
+#if defined (SMAA_PASS_2) || defined(RESOLVE)	// final neighbourhood blending subpass
+	Out.slice = float(u._uframe & 63U); // +blue noise over time
 #endif
 
 #ifdef OVERLAY

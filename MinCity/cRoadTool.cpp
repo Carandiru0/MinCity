@@ -7,6 +7,8 @@
 #include "cSignageGameObject.h"
 #include "cTrafficSignGameObject.h"
 #include "cTrafficControlGameObject.h"
+#include "gui.h"
+#include "prices.h"
 
 #include "cNuklear.h"
 
@@ -109,7 +111,8 @@ void __vectorcall cRoadTool::PressAction(FXMVECTOR const xmMousePos)
 {
 	point2D_t origin(getHoveredVoxelIndexSnapped());
 
-	clearRoadHistory();
+	undoRoadHistory();
+
 	_seed_traffic_sign = PsuedoRandomNumber64();
 	_seed_signage = PsuedoRandomNumber64();
 
@@ -157,7 +160,7 @@ void __vectorcall cRoadTool::ReleaseAction(FXMVECTOR const xmMousePos)
 void cRoadTool::commitRoadHistory() // commits current "road" to grid
 {
 	// using history (only voxel indices) to acquire the voxel from the grid, unset the pending bit, then update the voxel in the grid
-	for (vector<sUndoVoxel>::const_iterator commitVoxel = _undoHistory.cbegin(); commitVoxel != _undoHistory.cend(); ++commitVoxel)
+	for (vector<sUndoVoxel>::const_iterator commitVoxel = getHistory().cbegin(); commitVoxel != getHistory().cend(); ++commitVoxel)
 	{
 		point2D_t const voxelIndex(commitVoxel->voxelIndex);
 		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
@@ -179,10 +182,10 @@ void cRoadTool::commitRoadHistory() // commits current "road" to grid
 	// clear all history, all changes to grid committed
 	_undoExistingSignage.clear();
 	_undoSignage.clear();
-	_undoHistory.clear();
+	clearHistory();
 }
 
-void cRoadTool::clearRoadHistory() // undo's current "road" from grid
+void cRoadTool::undoRoadHistory() // undo's current "road" from grid
 {
 	// restore hidden signage
 	for (auto const& undoVoxel : _undoExistingSignage)
@@ -215,12 +218,7 @@ void cRoadTool::clearRoadHistory() // undo's current "road" from grid
 	}
 	_undoSignage.clear();
 
-	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
-	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
-	{
-		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
-	}
-	_undoHistory.clear();
+	undoHistory();
 }
 
 static uint32_t const __vectorcall getRoadNodeType(point2D_t const origin, int32_t const self_direction = -1)	// (query actual road node block type) inherently assumes origin points to a voxel that is : "road" & "CENTERED root/node"
@@ -735,7 +733,7 @@ bool const __vectorcall cRoadTool::select_road_intersect(point2D_t const origin,
 	return(::select_road_intersect<true>(origin, roadNodeType, _selected));
 }
 
-void __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const origin, int32_t const additional_search_width)
+bool const __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const origin, int32_t const additional_search_width)
 {
 	static constexpr int32_t const SHORT_SEARCH_RADIUS(Iso::SEGMENT_SIDE_WIDTH);
 	int32_t const LONG_SEARCH_RADIUS(Iso::SEGMENT_SNAP_WIDTH + additional_search_width);
@@ -746,6 +744,7 @@ void __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const orig
 	int32_t closest_distance(INT32_MAX);
 
 	uint32_t roadNodeType(Iso::ROAD_NODE_TYPE::INVALID);
+	bool ok(false);
 
 	deselect_road_intersect(); // reset
 
@@ -775,13 +774,15 @@ void __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const orig
 
 		closest_intersect = snap_to_nearest_node(closest_intersect, 1, &roadNodeType);		// **** snap to (node) happens here
 		closest_intersect = snap_to_nearest_end(closest_intersect, 1); // this works giving road nodes priority to be selected first, which if that did happen this ends up behaving like a nop.
-		select_road_intersect(closest_intersect, roadNodeType);
+		ok = select_road_intersect(closest_intersect, roadNodeType);
 
 #ifndef NDEBUG
 		//FMT_NUKLEAR_DEBUG(false, "                        *road*  ({:d},{:d})", closest_intersect.x, closest_intersect.y);
 #endif
 	}
-	else { // long search, ie.) cursor over ground, nearby roads are selected if inline with cursor horizontally/vertically
+	
+	if (!ok)
+	{ // long search, ie.) cursor over ground, nearby roads are selected if inline with cursor horizontally/vertically
 
 		closest_distance = INT32_MAX; //reset
 
@@ -805,22 +806,35 @@ void __vectorcall cRoadTool::search_and_select_closest_road(point2D_t const orig
 
 			closest_intersect = snap_to_nearest_node(closest_intersect, 1, &roadNodeType);	// **** snap to (node) happens here
 			closest_intersect = snap_to_nearest_end(closest_intersect, 1); // this works giving road nodes priority to be selected first, which if that did happen this ends up behaving like a nop.
-			select_road_intersect(closest_intersect, roadNodeType);
+			ok = select_road_intersect(closest_intersect, roadNodeType);
 		}
 	}
+
+	return(ok);
 }
 
 void __vectorcall cRoadTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 {
+	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
+
 	static point2D_t last_origin;
-	point2D_t const origin(getHoveredVoxelIndexSnapped());
+	point2D_t origin(getHoveredVoxelIndexSnapped());
 
 	if (origin != last_origin) {
 		last_origin = origin;
 
-		clearRoadHistory();
+		undoRoadHistory();
 
 		search_and_select_closest_road(origin); // while moving mouse and road tool is activated
+
+		point2D_t const selectedEndPoint(_selected.origin);
+		if (!selectedEndPoint.isZero()) { // snapped to nearby road?
+			origin = selectedEndPoint;	// this prevents diagonal road as the axis are clamped next
+												// and the axis max will still be the same
+		}
+
+		highlightArea(rect2D_t(p2D_subs(origin, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(origin, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
+
 	}
 }
 
@@ -907,7 +921,8 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 	// move ground under road up to match
 	{
 		Iso::setHeightStep(oVoxel, groundHeightStep);
-		
+		Iso::setPending(oVoxel);
+
 		mini = p2D_min(mini, currentPoint);
 		maxi = p2D_max(maxi, currentPoint);
 	}
@@ -923,12 +938,14 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 
 			if (pSideVoxel[side]) {
 				Iso::Voxel oSideVoxel(*pSideVoxel[side]);
-				pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
+				pushHistory(UndoVoxel(sidePoint[side], oSideVoxel));
 				
 				// define as road, but not an owner. (not the middle of the road)
 				Iso::setType(oSideVoxel, Iso::TYPE_EXTENDED);
 				Iso::setExtendedType(oSideVoxel, Iso::EXTENDED_TYPE_ROAD);
 				Iso::clearAsOwner(oSideVoxel, Iso::GROUND_HASH);
+				Iso::clearZoning(oSideVoxel);
+				Iso::clearColor(oSideVoxel);
 				Iso::setHeightStep(oSideVoxel, groundHeightStep);
 				Iso::setPending(oSideVoxel); // in "constructing" state, not fully committed to grid
 
@@ -1005,7 +1022,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		if (Iso::isGroundOnly(oVoxel) || intersection_index >= 0  // new road *or* is road but not the middle of road (allows xing).
  			|| (Iso::isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) && !Iso::isOwner(oVoxel, Iso::GROUND_HASH))) {  
 
-			pushRoadHistory(UndoVoxel(currentPoint, oVoxel));
+			pushHistory(UndoVoxel(currentPoint, oVoxel));
 
 			if (intersection_index < 0) {
 #if defined(DEBUG_ROAD_SEGMENTS)
@@ -1055,23 +1072,33 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 			// bugfix: **only** applies to straight segments of roads, nodes need to be bypassed on this check!
 
 			if (!Iso::isRoadNode(oVoxel)) { // is existing road not a node?
-				switch (Iso::getRoadDirection(oVoxel))
+				uint32_t const existingDirection(Iso::getRoadDirection(oVoxel));
+				switch (existingDirection)
 				{
 				case Iso::ROAD_DIRECTION::N:
 				case Iso::ROAD_DIRECTION::S:
-					bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::N) || (encoded_direction == Iso::ROAD_DIRECTION::S));
+					bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::N) | (encoded_direction == Iso::ROAD_DIRECTION::S));
 					break;
 				case Iso::ROAD_DIRECTION::E:
 				case Iso::ROAD_DIRECTION::W:
-					bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::E) || (encoded_direction == Iso::ROAD_DIRECTION::W));
+					bExistingCancel = ((encoded_direction == Iso::ROAD_DIRECTION::E) | (encoded_direction == Iso::ROAD_DIRECTION::W));
 					break;
 				}
+
+				if (bExistingCancel) {
+					// bugfix: update the beginning height of the segment (h0 would be used by next segment)
+					if (existingDirection == encoded_direction) {
+						currentSegment.h0 = Iso::getRoadHeightStepEnd(oVoxel);
+					}
+					else {
+						currentSegment.h0 = Iso::getRoadHeightStepBegin(oVoxel);
+					}
+				}
+
 			}
 
-			if (bExistingCancel) {
-				currentSegment.h0 = Iso::getRoadHeightStepEnd(oVoxel); // bugfix: update the beginning height of the segment (h0 would be used by next segment)
-			}
-			else { // all nodes no straights apply below!
+			if (!bExistingCancel)
+			{ // all nodes no straights apply below!
 				bool const bCenterNode(isRoadNodeType(currentPoint, encoded_direction));
 
 #if defined(DEBUG_ROAD_SEGMENTS)
@@ -1092,7 +1119,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 							Iso::Voxel const oVoxelPatch(*pVoxelPatch);
 
-							pushRoadHistory(UndoVoxel(patchPoint, oVoxelPatch)); // need auto-tiling
+							pushHistory(UndoVoxel(patchPoint, oVoxelPatch)); // need auto-tiling
 						}
 
 						// add road segments to fill empty half
@@ -1107,7 +1134,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 							Iso::Voxel const oVoxelPatch(*pVoxelPatch);
 
-							pushRoadHistory(UndoVoxel(patchPoint, oVoxelPatch)); // need auto-tiling
+							pushHistory(UndoVoxel(patchPoint, oVoxelPatch)); // need auto-tiling
 
 							ROAD_SEGMENT patchSegment(currentSegment);
 
@@ -1119,7 +1146,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 				}
 
 				// order is important between previous "patching" and this
-				pushRoadHistory(UndoVoxel(currentPoint, oVoxel));
+				pushHistory(UndoVoxel(currentPoint, oVoxel));
 
 				currentSegment.node = true;
 				currentSegment.h1 = getSmoothHeightStep(currentPoint, encoded_direction);
@@ -1143,7 +1170,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 								Iso::Voxel oSideVoxel(*pSideVoxel[side]);
 
 								if (Iso::isRoad(oSideVoxel)) {
-									pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
+									pushHistory(UndoVoxel(sidePoint[side], oSideVoxel));
 
 									uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
 
@@ -1196,7 +1223,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 							++step;
 
-						} while (searching[0] || searching[1]);
+						} while (searching[0] | searching[1]);
 
 						// then interpolate from current to the result of the search for each perpindicular road.
 						int32_t const startHeightStep(currentSegment.h1);
@@ -1221,7 +1248,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 									if (Iso::isRoad(oSideVoxel)) {
 
 										if (Iso::isRoadEdge(oSideVoxel)) {
-											pushRoadHistory(UndoVoxel(sidePoint[side], oSideVoxel));
+											pushHistory(UndoVoxel(sidePoint[side], oSideVoxel));
 
 											uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
 
@@ -1269,7 +1296,6 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 											// move ground under road up to match
 											int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep, currentSideHeightStep[side]) - SFM::max(0, SFM::abs((int32_t)Iso::getRoadHeightStepBegin(oSideVoxel) - (int32_t)Iso::getRoadHeightStepEnd(oSideVoxel) - 1)));
-											//int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep[side] - 1, grade_heightstep[side] - 1));
 											ConditionRoadGround(sidePoint[side], side_direction, groundHeightStep, oSideVoxel);
 
 											// done.
@@ -1392,7 +1418,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		// Send to GRID begins, all state is set //
 		Iso::setType(oVoxel, Iso::TYPE_EXTENDED);
 		Iso::setExtendedType(oVoxel, Iso::EXTENDED_TYPE_ROAD);
-		Iso::setHash(oVoxel, Iso::GROUND_HASH, 0); // reset hash
+		Iso::resetHash(oVoxel, Iso::GROUND_HASH); // reset hash
 
 		Iso::setRoadHeightStepBegin(oVoxel, prevHeightStep);
 		Iso::setRoadHeightStepEnd(oVoxel, currentHeightStep);
@@ -1580,7 +1606,7 @@ static auto const __vectorcall autotile(point2D_t const currentPoint, uint32_t c
 
 void cRoadTool::autotileRoadHistory()
 {
-	for (vector<sUndoVoxel>::const_reverse_iterator iter = _undoHistory.crbegin(); iter != _undoHistory.crend(); ++iter)
+	for (vector<sUndoVoxel>::const_reverse_iterator iter = getHistory().crbegin(); iter != getHistory().crend(); ++iter)
 	{
 		point2D_t const voxelIndex(iter->voxelIndex);
 
@@ -1876,7 +1902,7 @@ void cRoadTool::decorateRoadHistory()
 	uint32_t segment_count(0);
 	uint32_t intersection_count(0);
 
-	for (vector<sUndoVoxel>::const_iterator iter = _undoHistory.cbegin(); iter != _undoHistory.cend(); ++iter)
+	for (vector<sUndoVoxel>::const_iterator iter = getHistory().cbegin(); iter != getHistory().cend(); ++iter)
 	{
 		point2D_t const voxelIndex(iter->voxelIndex);
 
@@ -1948,11 +1974,13 @@ void cRoadTool::decorateRoadHistory()
 	}
 
 	// move any changed voxel grid history
-	std::move(undoHistory.begin(), undoHistory.end(), std::back_inserter(_undoHistory));
+	pushHistory(std::forward<vector<sUndoVoxel>&&>(undoHistory));
 }
 
 void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
 {
+	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
+
 	if (0 != _activePoint) { // have starting index?
 
 		static point2D_t lastEndPoint;
@@ -1961,14 +1989,17 @@ void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR co
 		if (clampedEndPoint != lastEndPoint) {
 			lastEndPoint = clampedEndPoint;
 
-			clearRoadHistory();
+			undoRoadHistory();
 
 			search_and_select_closest_road(clampedEndPoint);  // while dragging..... done b4 any new road is placed to exclude it from being selected
+
 			point2D_t const selectedEndPoint(_selected.origin);
 			if (!selectedEndPoint.isZero()) { // snapped to nearby road?
 				clampedEndPoint = selectedEndPoint;	// this prevents diagonal road as the axis are clamped next
 													// and the axis max will still be the same
 			}
+
+			highlightArea(rect2D_t(p2D_subs(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
 
 			{
 				point2D_t const abs_difference = p2D_abs(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));
@@ -2034,17 +2065,25 @@ void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR co
 				_segmentVoxelIndex[_activePoint].v = clampedEndPoint.v;
 			}
 			else {
-				clearRoadHistory();
+				undoRoadHistory();
 			}
 		}
 	}
+}
+
+void cRoadTool::paint()
+{
+	cAbstractToolMethods::paint();
+
+	// make relative to world origin (gridspace to worldspace transform)
+	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 }
 
 // these functions should be defined last
 void cRoadTool::deactivate()
 {
 	deselect_road_intersect(); // reset
-	clearRoadHistory();
+	undoRoadHistory();
 
 #if defined(DEBUG_AUTOTILE) || defined(DEBUG_ROAD_SEGMENTS)
 	MinCity::Nuklear.clearAllPopupText();

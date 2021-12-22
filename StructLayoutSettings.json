@@ -1,0 +1,10 @@
+{
+  "AutomaticExtraction": true,
+  "CMakeCommandsFile": "",
+  "AdditionalPreprocessorDefinitions": "_MT",
+  "AdditionalIncludeDirs": "",
+  "AdditionalForceIncludes": "",
+  "AdditionalCommandLine": "-v",
+  "EnableWarnings": true,
+  "ParserOutputFolder": ""
+}

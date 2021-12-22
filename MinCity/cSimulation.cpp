@@ -59,7 +59,7 @@ cSimulation::cSimulation()
 	// new properties for patches
 	_patch_properties.reserve(packing::PATCH_COUNT);
 	_patch_properties.resize(packing::PATCH_COUNT);
-	memset(_patch_properties.data(), 0, _patch_properties.size() * sizeof(new_properties));
+	memset(_patch_properties.data(), 0, _patch_properties.size() * sizeof(properties_patch));
 }
 
 template <int32_t const model_group_id>
@@ -97,7 +97,7 @@ static Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> const* const __vec
 // generating -------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 
 // constant, does not write to global memory.						// this function assumes y is less than Iso::WORLD_GRID_SIZE, no bounds check required.
-__declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t const simRowRange, uint32_t const y, Iso::Voxel const* const __restrict theGrid, new_properties& __restrict properties)
+__declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t const simRowRange, uint32_t const y, Iso::Voxel const* const __restrict theGrid, properties_patch& __restrict properties)
 {
 	bit_row<Iso::WORLD_GRID_SIZE>* const __restrict rowZone[3]{ &packing::theZone[world::RESIDENTIAL][y], &packing::theZone[world::COMMERCIAL][y], &packing::theZone[world::INDUSTRIAL][y] };
 	bit_row<Iso::WORLD_GRID_SIZE>& __restrict rowRoad{ packing::theRoad[y] };
@@ -113,14 +113,13 @@ __declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t co
 
 			if (Iso::isGroundOnly(oVoxel)) {
 				
-				uint32_t const hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
-				uint32_t const voxelZoning(Iso::MASK_ZONING & hash);
+				uint32_t const voxelZoning(Iso::getZoning(oVoxel));
 
-				if (0 != voxelZoning) {
+				if (0 != voxelZoning) { // 0 = non-zoned area
 
-					uint32_t const zone(voxelZoning - 1);
+					uint32_t const zone(voxelZoning - 1); // required - 1 resolves zone [residential, commercial, industrial]
 
-					bool const bStatic(Iso::hasStatic(oVoxel));
+					bool const bStatic(Iso::hasStatic(oVoxel)); // last final check 
 					rowZone[zone]->write_bit(x, !bStatic); // tile is zoned and empty
 
 					properties.tiles_occupied[zone] += (size_t const)bStatic;
@@ -135,16 +134,16 @@ __declspec(safebuffers) STATIC_INLINE_PURE void __vectorcall genRow(point2D_t co
 	}
 }
 
-static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* const __restrict theGrid, new_properties& __restrict properties, tbb::affinity_partitioner& __restrict partitioner)
+static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* const __restrict theGrid, properties_patch& __restrict properties, tbb::affinity_partitioner& __restrict partitioner)
 {
 	typedef struct no_vtable generation {
 
 	private:
 		point2D_t const					   simRowRange;
 		Iso::Voxel const* const __restrict theGrid;
-		new_properties& __restrict		   properties;
+		properties_patch& __restrict	   properties;
 	public:
-		__forceinline generation(point2D_t const simRowRange_, Iso::Voxel const* const __restrict theGrid_, new_properties& __restrict properties_)
+		__forceinline generation(point2D_t const simRowRange_, Iso::Voxel const* const __restrict theGrid_, properties_patch& __restrict properties_)
 			: simRowRange(simRowRange_), theGrid(theGrid_), properties(properties_)
 		{}
 
@@ -162,9 +161,11 @@ static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* cons
 
 	} generation;
 	
+	// clear all zone occupancy grids
 	for (uint32_t i = 0; i < 3; ++i) {
 		__memclr_stream<CACHE_LINE_BYTES>(packing::theZone[i], Iso::WORLD_GRID_SIZE * sizeof(bit_row<Iso::WORLD_GRID_SIZE>)); // reset
 	}
+	// clear all road occupancy grid
 	__memclr_stream<CACHE_LINE_BYTES>(packing::theRoad, Iso::WORLD_GRID_SIZE * sizeof(bit_row<Iso::WORLD_GRID_SIZE>)); // reset
 
 	//for (uint32_t y = simArea.top; y < simArea.bottom; ++y) {
@@ -259,10 +260,10 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 		// simulation properties, *not valid* until after parallel generation //
 		// simple addition ok out of order and will have at the end the same sum regardless of order of additions, strict atomic not required.
 		
-		// overlap only required for processing
+		// safe clear of only this current patches data.
+		memset(&_patch_properties[_patch_index], 0, sizeof(properties_patch));
 
-		memset(&_patch_properties[_patch_index], 0, sizeof(new_properties));
-
+		// *overlap only required for processing*
 		generate(simArea, theGrid, _patch_properties[_patch_index], partitioner);
 
 
@@ -272,7 +273,7 @@ bool const __vectorcall cSimulation::generate_zoning(rect2D_t const simArea, Iso
 			_properties.tiles[i] = 0;
 			_properties.tiles_occupied[i] = 0;
 		}
-		// accumulate all patches for world properties
+		// re-accumulate all patches for world properties
 		for (uint32_t patch = 0; patch < _patch_properties.size(); ++patch) {
 
 			for (uint32_t i = 0; i < 3; ++i)

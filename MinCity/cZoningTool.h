@@ -29,13 +29,9 @@ public:
 	void setCost(int64_t const cost);
 private:
 	void commitZoneHistory();
-	void clearZoneHistory();
-	void pushZoneHistory(UndoVoxel&& history);
-
-	void __vectorcall highlightArea(rect2D_t const area);
-private:
-	vector<sUndoVoxel>	_undoHistory;
+	void undoZoneHistory();
 	
+private:
 	point2D_t				_segmentVoxelIndex[2];
 	uint32_t				_activePoint;
 	uint32_t				_ActivatedSubTool;

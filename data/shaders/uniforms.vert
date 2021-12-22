@@ -128,6 +128,12 @@ const uint MASK_TRANSPARENCY = 0x600U;	/*			 xxxx 011x xxxx xxxx */
 #endif
 
 #if defined(ROAD)  
+#ifdef BASIC
+layout (constant_id = 13) const float ROAD_WIDTH = 0.0f;
+#else
+layout (constant_id = 5) const float ROAD_WIDTH = 0.0f;
+#endif
+
 #undef MASK_ADJACENCY // not used for roads //
 #undef MASK_OCCLUSION // not used for roads //
 #undef MASK_EMISSION
@@ -145,7 +151,6 @@ const uint  NORTH = 0U,
 			EAST = 2U,
 			WEST = 3U;
 
-const float ROAD_WIDTH = 11.0f; // should match Iso::ROAD_SEGMENT_WIDTH in iso.h
 #endif
 
 #else // not HEIGHT/ROAD
@@ -341,7 +346,7 @@ void main() {
 	const float y_max = max(corner_height.x, corner_height.y);
 	
 	// perfectly centered, delta_height removes staircase
-	worldPos.y = (y_max - (y_max - y_min) * 0.5f) - delta_height.y * 0.5f;
+	worldPos.y = 0.5f * (y_max + (y_min - delta_height.y)); // (herbie optimized) same as: (y_max - (y_max - y_min) * 0.5f) - delta_height.y * 0.5f
   }
 #endif
 
@@ -421,8 +426,8 @@ else // already filled with opaque block
   const int ivoxel_height = int(floor(voxel_height));
 
   ivec3 iminivoxel;
-  
-  [[dependency_infinite]] for( iminivoxel.y = ivoxel_height; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
+									// *bugfix: -1 yields correct height
+  [[dependency_infinite]] for( iminivoxel.y = ivoxel_height - 1; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 

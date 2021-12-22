@@ -175,6 +175,8 @@ namespace world
 		void SetSpecializationConstants_VoxelTerrain_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelTerrain_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
+		void SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
+		void SetSpecializationConstants_VoxelRoad_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelRoad_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 

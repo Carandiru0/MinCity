@@ -50,6 +50,10 @@ namespace world
 
 		static constexpr float const
 			MIN_SPEED = 36.0f;
+
+		static constexpr tTime const
+			CANCEL_IDLE = tTime{ std::chrono::nanoseconds(1) };
+
 	public:
 		static constexpr uint32_t const
 			MASK_COLOR_HEADLIGHT = 0xf0f0f0,		//bgra
@@ -103,6 +107,7 @@ namespace world
 		bool const forward(state const& __restrict currentState, state& __restrict targetState, int32_t const distance);
 		void __vectorcall gravity(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth);	// makes car "hug" road
 		bool const __vectorcall ccd(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth) const; // continous collision detection (only against other dynamics (cars))
+		void idle(tTime const idleStart) { _this.tIdleStart = idleStart; } // for cancelling idle timeout or reseting to zero idle start
 
 		// special 
 		STATIC_INLINE_PURE bool const evaluate_spawn_space(Iso::Voxel const& __restrict oVoxel);

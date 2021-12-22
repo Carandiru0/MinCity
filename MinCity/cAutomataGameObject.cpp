@@ -245,12 +245,13 @@ namespace world
 			adjacent += (uint32_t)_bits->read_bit(iIndex.x, iIndex.y - 1, iIndex.z); //occupiedIndex[Volumetric::adjacency::below];
 		}
 
-		if (adjacent <= _born) {
+		if (adjacent < _born) {
 
 			// set the volume bit
 			_bits->set_bit(iIndex.x, iIndex.y, iIndex.z);
 
 			Automata born(in);
+			born.voxel.Color = 0xFF00FF00;
 			born.state.Transparent = false;
 			born.state.Emissive = true;
 
@@ -261,7 +262,7 @@ namespace world
 
 	void cAutomataGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		static constexpr fp_seconds const interval_update(fp_seconds(milliseconds(350)));
+		static constexpr fp_seconds const interval_update(fp_seconds(milliseconds(1)));
 
 		if (_firstUpdate) {
 			return; // always skip 1st update. Update happens b4 render. However this update runs one-frame behind.
@@ -331,13 +332,14 @@ namespace world
 
 			if (0 != numAutomata) {
 
-				model->_Voxels = (Volumetric::voxB::voxelDescPacked* __restrict)scalable_aligned_realloc((void*)model->_Voxels, sizeof(Volumetric::voxB::voxelDescPacked) * numAutomata, 16);
-				model->_State = (Volumetric::voxB::voxelState* __restrict)scalable_aligned_realloc((void*)model->_State, sizeof(Volumetric::voxB::voxelState) * numAutomata, 16);
+				Volumetric::voxB::voxelDescPacked* __restrict passedVoxels((Volumetric::voxB::voxelDescPacked* const __restrict)scalable_aligned_realloc((void*)model->_Voxels, sizeof(Volumetric::voxB::voxelDescPacked) * numAutomata, 16));
+				Volumetric::voxB::voxelState* __restrict passedState((Volumetric::voxB::voxelState* const __restrict)scalable_aligned_realloc((void*)model->_State, sizeof(Volumetric::voxB::voxelState) * numAutomata, 16));
 
-				numAutomata = 0;
 				uint32_t numEmissive(0), numTransparent(0);
 				uvec4_v xmMin(UINT32_MAX, UINT32_MAX, UINT32_MAX, 0),
-						xmMax(0);
+					    xmMax(0);
+
+				numAutomata = 0;
 
 				for (tbb::flattened2d<VecAutomata>::const_iterator
 					i = flat_view.begin(); i != flat_view.end(); ++i) {
@@ -346,12 +348,12 @@ namespace world
 					xmMin.v = SFM::min(xmMin.v, xmPosition);
 					xmMax.v = SFM::max(xmMax.v, xmPosition);
 
-					memcpy((void* __restrict)&model->_Voxels[numAutomata], &i->voxel, sizeof(Volumetric::voxB::voxelDescPacked));
-					memcpy(&model->_State[numAutomata], &i->voxel, sizeof(Volumetric::voxB::voxelState));
-
+					passedVoxels[numAutomata] = i->voxel;
+					passedState[numAutomata] = i->state;
+					
+					numEmissive += (uint32_t const)(bool const)passedState[numAutomata].Emissive;
+					numTransparent += (uint32_t const)(bool const)passedState[numAutomata].Transparent;
 					++numAutomata;
-					numEmissive += (uint32_t const)(bool const)i->state.Emissive;
-					numTransparent += (uint32_t const)(bool const)i->state.Transparent;
 				}
 
 				model->_numVoxels = numAutomata;
@@ -374,7 +376,8 @@ namespace world
 				//tbb::parallel_sort(pa	ssedVoxels.begin(), passedVoxels.end());
 
 				// reallocate last linear buffers to new size & copy
-				
+				model->_Voxels = passedVoxels; passedVoxels = nullptr;
+				model->_State = passedState; passedState = nullptr;
 
 				_worldIndex = (uvec4_t* const __restrict)scalable_aligned_realloc((void*)_worldIndex, sizeof(uvec4_t) * numAutomata, 16);
 				__memclr_stream<16>(_worldIndex, numAutomata * sizeof(uvec4_t));

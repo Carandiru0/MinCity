@@ -5,49 +5,169 @@
 #include "MinCity.h"
 #include "cVoxelWorld.h"
 
-void __vectorcall cAbstractToolMethods::draw_grid(rect2D_t const highlight_area, int32_t const division_size, int32_t const grid_radius)
+
+void cAbstractToolMethods::pushHistory(vector<sUndoVoxel>&& undoHistory)
 {
-	constexpr float const step(Iso::MINI_VOX_STEP * 2.0f);
+	std::move(undoHistory.begin(), undoHistory.end(), std::back_inserter(_undoHistory));
+}
 
-	constexpr uint32_t const
-		color_normal(0x007f7f7f), // abgr (rgba backwards)
-		color_highlighted(0x0089E944);
+void cAbstractToolMethods::clearHighlights()
+{
+	_undoHighlight.clear();
+}
+void cAbstractToolMethods::undoHighlights()
+{
+	// undoing
+	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
+	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHighlight.crbegin(); undoVoxel != _undoHighlight.crend(); ++undoVoxel)
+	{
+		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
+	}
 
-	point2D_t const voxelIndexOrigin(MinCity::VoxelWorld.getVisibleGridCenter());// (highlight_area.center());
-	rect2D_t const max_area(p2D_subs(voxelIndexOrigin, grid_radius), p2D_adds(voxelIndexOrigin, grid_radius));
+	clearHighlights();
+}
+void cAbstractToolMethods::clearHistory()
+{
+	clearHighlights();
 
-	// make relative to world origin (gridspace to worldspace transform)
-	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+	_undoHistory.clear();
+}
+void cAbstractToolMethods::undoHistory()
+{
+	undoHighlights();
 
-	point2D_t voxelIndex;
-	for (voxelIndex.y = max_area.top; voxelIndex.y <= max_area.bottom; voxelIndex.y += division_size) {
+	// undoing
+	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
+	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
+	{
+		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
+	}
 
-		for (voxelIndex.x = max_area.left; voxelIndex.x <= max_area.right; voxelIndex.x += division_size) {
+	clearHistory();
+}
 
-			Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
-			if (pVoxel) {
-				Iso::Voxel const oVoxel(*pVoxel);
+void cAbstractToolMethods::paint()
+{
+	for (vector<sUndoVoxel>::const_iterator highlightedVoxel = _undoHighlight.cbegin(); highlightedVoxel != _undoHighlight.cend(); ++highlightedVoxel)
+	{
+		point2D_t const voxelIndex(highlightedVoxel->voxelIndex);
+		Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
 
-				if (Iso::isGroundOnly(*pVoxel)) { // only draw grid on ground
+		if (pVoxel && Iso::isEmissive(*pVoxel)) {
+			world::addLight(voxelIndex, Iso::getColor(*pVoxel));
+		}
+	}
+}
 
-					uint32_t const color((r2D_contains(highlight_area, voxelIndex) ? color_highlighted : color_normal));
+bool const __vectorcall cAbstractToolMethods::highlightVoxel(point2D_t const voxelIndex, uint32_t const color)
+{
+	// center
+	Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
 
-					XMVECTOR xmOrigin = p2D_to_v2(voxelIndex);
-					xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-					xmOrigin = XMVectorSetY(xmOrigin, -Iso::getRealHeight(oVoxel) - step);
-					xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+	if (pVoxel) {
+		Iso::Voxel oVoxel(*pVoxel);
 
-					world::addVoxel(xmOrigin, voxelIndex, color, Iso::mini::emissive);
-					/*
-					world::addVoxel(XMVectorAdd(xmOrigin, XMVectorSet(-step, 0.0f, -step, 0.0f)), voxelIndex, color, true);
-					world::addVoxel(XMVectorAdd(xmOrigin, XMVectorSet(-step, 0.0f,  step, 0.0f)), voxelIndex, color, true);
-					world::addVoxel(XMVectorAdd(xmOrigin, XMVectorSet( step, 0.0f, -step, 0.0f)), voxelIndex, color, true);
-					world::addVoxel(XMVectorAdd(xmOrigin, XMVectorSet( step, 0.0f,  step, 0.0f)), voxelIndex, color, true);
-					*/
+		if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) {
 
-				}
-			}
+			_undoHighlight.emplace_back(voxelIndex, oVoxel);
+
+			Iso::setPending(oVoxel);
+			Iso::setColor(oVoxel, color);
+			Iso::setEmissive(oVoxel);
+
+			world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+			return(true);
 		}
 	}
 
+	return(false);
 }
+void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, uint32_t const color)
+{
+	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+
+	// center
+	if (highlightVoxel(origin, color)) {
+
+		point2D_t voxelIndex;
+		bool ok;
+
+		// reset
+		voxelIndex = origin;
+		ok = false;
+
+		// -X
+		do {
+
+			voxelIndex = p2D_add(voxelIndex, point2D_t(-1, 0));
+
+			ok = world::isVoxelVisible(voxelIndex);
+			if (ok) {
+				ok = highlightVoxel(voxelIndex, color);
+			}
+
+		} while (ok);
+
+		// reset
+		voxelIndex = origin;
+		ok = false;
+
+		// +X
+		do {
+
+			voxelIndex = p2D_add(voxelIndex, point2D_t(1, 0));
+
+			ok = world::isVoxelVisible(voxelIndex);
+			if (ok) {
+				ok = highlightVoxel(voxelIndex, color);
+			}
+
+		} while (ok);
+
+		// reset
+		voxelIndex = origin;
+		ok = false;
+
+		// -Z
+		do {
+
+			voxelIndex = p2D_add(voxelIndex, point2D_t(0, -1));
+
+			ok = world::isVoxelVisible(voxelIndex);
+			if (ok) {
+				ok = highlightVoxel(voxelIndex, color);
+			}
+
+		} while (ok);
+
+		// reset
+		voxelIndex = origin;
+		ok = false;
+
+		// +Z
+		do {
+
+			voxelIndex = p2D_add(voxelIndex, point2D_t(0, 1));
+
+			ok = world::isVoxelVisible(voxelIndex);
+			if (ok) {
+				ok = highlightVoxel(voxelIndex, color);
+			}
+
+		} while (ok);
+	}
+}
+
+void __vectorcall cAbstractToolMethods::highlightArea(rect2D_t const area, uint32_t const color)
+{
+	point2D_t voxelIndex{};
+
+	for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
+
+		for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
+
+			highlightVoxel(voxelIndex, color);
+		}
+	}
+}
+

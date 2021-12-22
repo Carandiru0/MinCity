@@ -921,10 +921,31 @@ namespace world
 		return(false);
 	}
 
-	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation)
+	// Grid Space (-x,-y) to (X, Y) Coordinates Only
+	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex)
 	{
-		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, Iso::MINI_VOX_RADIUS));
+		Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+		if (pVoxel) {
+
+			XMVECTOR xmLocation(p2D_to_v2(voxelIndex));
+			xmLocation = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation);
+			xmLocation = XMVectorSetY(xmLocation, -Iso::getRealHeight(*pVoxel));
+
+			// need to transform grid space coordinates to world space coordinates and then swizzle to proper 3d coordinate
+			XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+			xmLocation = XMVectorSubtract(xmLocation, xmWorldOrigin);
+
+			return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, Iso::VOX_RADIUS));
+		}
+		
+		return(false);
 	}
+	// World Space Coordinates Only
+	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius)
+	{
+		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, voxelRadius));
+	}
+
 	bool const __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
 	{
 		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
@@ -955,6 +976,27 @@ namespace world
 		return(false); // not visible
 	}
 
+	bool const __vectorcall addLight(point2D_t const voxelIndex, uint32_t const color, float const height)
+	{
+		Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+		if (pVoxel) {
+
+			XMVECTOR xmLocation(p2D_to_v2(voxelIndex));
+			xmLocation = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation);
+			xmLocation = XMVectorSetY(xmLocation, -(Iso::getRealHeight(*pVoxel) + height));
+
+			// need to transform grid space coordinates to world space coordinates and then swizzle to proper 3d coordinate
+			XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+			xmLocation = XMVectorSubtract(xmLocation, xmWorldOrigin);
+
+			return(world::addVoxel(xmLocation, voxelIndex, color, Iso::mini::hidden | Iso::mini::emissive)); // light only   - flags this space as occupied, only one light can be added per space (minivoxel scale)
+		}																									 //				 - *will only add light if coordinates are currently visible*
+																											 // returns true (added light, visible), false (not added, not visible)
+
+		return(false); // out of world bounds
+	}
+
+
 	namespace zoning
 	{
 		void zoneArea(rect2D_t voxelArea, uint32_t const zone_type) // supports zoning-zoning overwrite, excludes any area that is not strictly ground, 
@@ -981,11 +1023,9 @@ namespace world
 
 						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
 
-							uint32_t hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
-							hash &= ~(Iso::MASK_ZONING); // clear zoning bits
-							hash |= zoning; // set zoning bits
+							Iso::setZoning(oVoxel, zoning);
+							Iso::setColor(oVoxel, world::ZONING_COLOR[zoning]);
 
-							Iso::setHash(oVoxel, Iso::GROUND_HASH, hash);
 							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 						}
 					}
@@ -1014,10 +1054,9 @@ namespace world
 
 						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) { // only apply to ground area excluding the static & dynamic instances
 
-							uint32_t hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
-							hash &= ~(Iso::MASK_ZONING); // clear zoning bits
+							Iso::clearZoning(oVoxel);
+							Iso::clearColor(oVoxel);
 
-							Iso::setHash(oVoxel, Iso::GROUND_HASH, hash);
 							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 						}
 					}
@@ -1059,24 +1098,6 @@ namespace world
 			}
 		}
 
-		return(nullptr);
-	}
-
-	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict XM_CALLCONV getVoxelAt_IfVisible(FXMVECTOR const Location)
-	{
-		Iso::Voxel const* const __restrict pVoxel = getVoxelAt(Location);
-
-		if (nullptr != pVoxel) // Test
-		{
-			// Same Test that RenderGrid Uses, simpler
-			// need to transform grid space coordinates to world space coordinates and then swizzle to proper 3d coordinate
-			XMVECTOR const xmWorldSpace = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(Location, world::getOrigin()));
-			if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmWorldSpace, Iso::VOX_RADIUS))
-			{
-				return(pVoxel);
-			}
-		}
 		return(nullptr);
 	}
 
@@ -2177,9 +2198,6 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			// R  //  // C  //  // I  //
-			static constexpr uint32_t const ZONING_COLOR[3] = { 0x00FF00, 0xFF0000, 0x00FFFF }; // bgr
-
 			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
 			XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
 
@@ -2195,23 +2213,8 @@ namespace // private to this file (anonymous)
 				groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
 
 				XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
-
-				uint32_t color(0xFFFFFF); // bgr default color for terrain
-				if (Iso::isGroundOnly(oVoxel)) {
-
-					uint32_t const hash(Iso::getHash(oVoxel, Iso::GROUND_HASH));
-					uint32_t const zoning(Iso::MASK_ZONING & hash);
-
-					if (zoning > 0) {
-
-						color = ZONING_COLOR[zoning - 1];
-					}
-				}
-				else {
-					color = 0; // no grid on ground underneath roads or other extended type voxels.
-				}
-
-				xmUVs = XMVectorSetW(xmUVs, ((float)color));
+				
+				xmUVs = XMVectorSetW(xmUVs, ((float)Iso::getColor(oVoxel)));
 
 				localGround.emplace_back(
 					voxelGround,
@@ -2240,8 +2243,8 @@ namespace // private to this file (anonymous)
 				uint32_t roadHash(0);
 				// not used roadHash |= Iso::getHeightStep(oVoxel);									//			     	                      000R 1111   // msb is reserved (5th bit)
 				// not used roadHash |= (Iso::getOcclusion(oVoxel) << 5);							//		     		                      111x xxxx
-				roadHash |= (Iso::isEmissive(oVoxel) << 8);								//                           0000 0001	  xxxx xxxx
-				roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);	// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
+				roadHash |= (Iso::isEmissive(oVoxel) << 8);											//                           0000 0001	  xxxx xxxx
+				roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);				// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
 
 				XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 
@@ -2259,12 +2262,14 @@ namespace // private to this file (anonymous)
 
 
 		template<bool const Dynamic>
-		STATIC_INLINE void XM_CALLCONV RenderModel(uint8_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
+		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint8_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
 		{
+			bool bVisible(true);
+
 			auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
 			auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
 
@@ -2274,12 +2279,15 @@ namespace // private to this file (anonymous)
 
 				if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
 					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+					bVisible = false; // voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
 				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 			}
+
+			return(bVisible);
 		}
 
 		template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y>
@@ -2363,6 +2371,8 @@ namespace // private to this file (anonymous)
 
 				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
 
+					static constexpr size_t const WORLD_GRID_SIZE_BITS = size_t(Iso::WORLD_GRID_SIZE_BITS);
+
 					miniVoxelLocalBatch& __restrict localMini(batchedMini.local());
 					miniVoxelLocalBatch& __restrict localMiniTrans(batchedMiniTrans.local());
 
@@ -2370,70 +2380,39 @@ namespace // private to this file (anonymous)
 					VoxelLocalBatch& __restrict localRoad(batchedRoad.local());
 					VoxelLocalBatch& __restrict localRoadTrans(batchedRoadTrans.local());
 
-					int32_t const	// pull out into registers from memory
+					size_t const	// pull out into registers from memory
 						y_begin(r.rows().begin()),
 						y_end(r.rows().end()),
 						x_begin(r.cols().begin()),
 						x_end(r.cols().end());
 
-					for (int32_t y = y_begin; y < y_end; ++y)
+					for (size_t y = y_begin; y < y_end; ++y)
 					{
-						int32_t x = x_begin;
+						size_t x = x_begin;
 
-						Iso::Voxel const* __restrict pVoxel = theGrid + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
+						Iso::Voxel const* __restrict pVoxel = theGrid + ((y << WORLD_GRID_SIZE_BITS) + x);
 						_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
 
-						Iso::mini::Voxel const* const* __restrict pMiniVoxels = theTemp + ((size_t(y) << size_t(Iso::WORLD_GRID_SIZE_BITS)) + size_t(x));
+						Iso::mini::Voxel const* const* __restrict pMiniVoxels = theTemp + ((y << WORLD_GRID_SIZE_BITS) + x);
 
 						for (; x < x_end; ++x)
 						{
 							point2D_t const voxelIndex(x, y); // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
 
-							Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
-							++pMiniVoxels; // sequentially access for best cache prediction
-
-							Iso::Voxel const oVoxel(*pVoxel);
-							++pVoxel; // sequentially access for best cache prediction
-
 							// Make index (row,col)relative to starting index voxel
 							// calculate origin from relative row,col
 							// Add the offset of the world origin calculated
-							// Now inside screenspacve coordinates
-							// Rendering is FRONT to BACK only (checked)
 							XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(p2D_to_v2(voxelIndex), voxelStart)); // make relative to render start position
+							bool bRenderVisible(false);
 
-							if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS)) {
-
-								if (nullptr != pMiniVoxel) {
-									RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
-								}
-
-								// ***Ground always exists*** //
-								RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
-
-								if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
-								{
-									switch (getExtendedType(oVoxel))
-									{
-									case Iso::EXTENDED_TYPE_ROAD:
-										if (Iso::isEmissive(oVoxel)) { // any emissive road is transparent
-											RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoadTrans, localRoadTrans); // trans road
-										}
-										RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoad, localRoad); // opaque road
-
-										break;
-									case Iso::EXTENDED_TYPE_WATER:
-										// todo
-										break;
-										// default should not exist //
-									}
-								} // extended
-							}
+							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
+							Iso::Voxel const oVoxel(*pVoxel);
+							++pVoxel; // sequentially access for best cache prediction
 
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -2441,12 +2420,43 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 									}
 								}
 							}
 
+							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
+							{
+								switch (getExtendedType(oVoxel))
+								{
+								case Iso::EXTENDED_TYPE_ROAD:
 
+									if (bRenderVisible || (bRenderVisible |= Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS * Iso::ROAD_SEGMENT_RADIUS))) { // if already visible will skip frustum check
+										if (Iso::isEmissive(oVoxel)) { // any emissive road is transparent
+											RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoadTrans, localRoadTrans); // trans road
+										}
+										RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoad, localRoad); // opaque road
+									}
+									break;
+								case Iso::EXTENDED_TYPE_WATER:
+									// todo
+									break;
+									// default should not exist //
+								}
+							} // extended
+
+							if (bRenderVisible || (bRenderVisible |= Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmVoxelOrigin, Iso::VOX_RADIUS))) { // if already visible will skip frustum check
+
+								// ***Ground always exists*** //
+								RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
+							}
+
+							Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
+							++pMiniVoxels; // sequentially access for best cache prediction
+
+							if (nullptr != pMiniVoxel) { // mini-voxels, if they exist for this grid cell, must be rendered. The minivoxels are dynamic and cleared / added every frame. The frustum check happens at a different location (addVoxel). All added mini voxels have already benn frustum checked.
+								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
+							}
 						} // for
 
 					} // for
@@ -2618,9 +2628,9 @@ namespace world
 
 		// Load bluenoise *** must be done here first so that noise is available
 		{
-			supernoise::blue.Load(TEXTURE_DIR L"bluenoise.8bit");
+			supernoise::blue.Load(TEXTURE_DIR L"bluenoise.ktx");
 #ifndef NDEBUG
-#ifdef DEBUG_EXPORT_BLUENOISE_KTX
+#ifdef DEBUG_EXPORT_BLUENOISE_KTX // Saved from MEMORY (float data)
 			// validation test - save blue noise texture from resulting 1D blue noise function
 			Imaging imgNoise = ImagingNew(eIMAGINGMODE::MODE_L, BLUENOISE_DIMENSION_SZ, BLUENOISE_DIMENSION_SZ);
 
@@ -2632,7 +2642,7 @@ namespace world
 				}
 			}
 
-			ImagingSaveToKTX(imgNoise, DEBUG_DIR "bluenoise_test.ktx");
+			ImagingSaveToKTX(imgNoise, DEBUG_DIR "bluenoise_test.ktx"); // R or L - Single channel
 
 			ImagingDelete(imgNoise);
 #endif
@@ -2652,7 +2662,7 @@ namespace world
 		// other textures, not part of common texture array:
 
 		// texture shaders:
-		createTextureShader(eTextureShader::WIND_FBM, supernoise::blue.getTexture2D(), true, point2D_t(256, 256), vk::Format::eR16Unorm);
+		createTextureShader(eTextureShader::WIND_FBM, supernoise::blue.getTexture2D(), true, point2D_t(256, 256), vk::Format::eR16Unorm); // texture shader uses single channel, single slice of bluenoise.
 		createTextureShader(eTextureShader::WIND_DIRECTION, _textureShader[eTextureShader::WIND_FBM].output, true, point2D_t(256, 256), vk::Format::eR16G16B16A16Unorm); // will use same dimensions as input, which is the output defined previously.
 		
 #ifndef NDEBUG
@@ -3006,8 +3016,10 @@ namespace world
 		_sim = new cSimulation();
 
 		// rain!!!
+#ifndef DEBUG_NO_RAIN
 		SAFE_DELETE(_activeRain);
 		_activeRain = new sRainInstance(XMVectorZero(), 128.0f);
+#endif
 
 #ifdef GIF_MODE
 
@@ -3182,7 +3194,7 @@ namespace world
 			//pAutoGameObj = placeProceduralInstanceAt<cAutomataGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
 			//	Volumetric::eVoxelModels_Indices::HOLOGRAM_GIRL);
 			//pAutoGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
-			//pAutoGameObj->setRule(0, 4);
+			//pAutoGameObj->setRule(3, 4);
 
 			/*
 			if (PsuedoRandom5050()) {
@@ -4770,6 +4782,12 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(11, (float)Iso::HEIGHT_SCALE));
 		constants.emplace_back(vku::SpecializationConstant(12, (int)MINIVOXEL_FACTOR));		
 	}
+	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
+	{
+		SetSpecializationConstants_VoxelTerrain_Basic_VS(constants);
+
+		constants.emplace_back(vku::SpecializationConstant(13, (float)Iso::ROAD_SEGMENT_WIDTH));
+	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
 	{
@@ -4784,6 +4802,12 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, (float)1.0f / Iso::MAX_HEIGHT_STEP));
 		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::HEIGHT_SCALE));
 		constants.emplace_back(vku::SpecializationConstant(4, (int)MINIVOXEL_FACTOR));
+	}
+	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
+	{
+		SetSpecializationConstants_VoxelTerrain_VS(constants);
+
+		constants.emplace_back(vku::SpecializationConstant(5, (float)Iso::ROAD_SEGMENT_WIDTH));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4917,9 +4941,9 @@ namespace world
 		dsu.beginImages(1U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, halfdepthImageView, vk::ImageLayout::eShaderReadOnlyOptimal);  // depth
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // blue noise
+		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // raymarch uses single channel, single slice of blue noise (*bugfix - too much noise in reflections if blue noise over time is used for raymarch offset)
 		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearRepeat, _textureShader[eTextureShader::WIND_DIRECTION].output->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // blue noise
+		dsu.image(samplerLinearRepeat, _textureShader[eTextureShader::WIND_DIRECTION].output->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(4U, 1, vk::DescriptorType::eCombinedImageSampler);
@@ -4942,11 +4966,11 @@ namespace world
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
 	{
 		// Set initial sampler value
-		dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // resolve uses single channel, all slices of blue noise
+		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, halfvolumetricImageView, vk::ImageLayout::eGeneral);
-		dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, halfreflectionImageView, vk::ImageLayout::eGeneral);
 	}
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu,
@@ -4954,18 +4978,18 @@ namespace world
 		SAMPLER_SET_STANDARD_POINT)
 	{
 		// Set initial sampler value
-		dsu.beginImages(0U, 0, vk::DescriptorType::eInputAttachment);
+		dsu.beginImages(1U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, fulldepthImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerPointClamp, halfdepthImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.image(samplerPointClamp, halfdepthImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearClamp, halfvolumetricImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // upsample uses single channel, all slices of blue noise
 		dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, halfvolumetricImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, halfreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginBuffers(5U, 0, vk::DescriptorType::eStorageBuffer);
+		dsu.beginBuffers(6U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
 	}
 	void cVoxelWorld::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu,
@@ -4977,7 +5001,7 @@ namespace world
 		dsu.image(samplerLinearClamp, colorImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 		// 2 - bluenoise
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2D()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // presentation uses single channel, all slices of blue noise
 
 		MinCity::PostProcess.UpdateDescriptorSet_PostAA(dsu, guiImageView0, guiImageView1, samplerLinearClamp);
 	}

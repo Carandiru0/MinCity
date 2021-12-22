@@ -16,12 +16,6 @@ cZoningTool::cZoningTool()
 
 }
 
-STATIC_INLINE_PURE rect2D_t const __vectorcall orientAreaToRect(point2D_t const start_pt, point2D_t const end_pt)
-{
-	// minimum = top left, maximum = bottom right
-	return(rect2D_t(p2D_min(start_pt, end_pt), p2D_max(start_pt, end_pt)));
-}
-
 void cZoningTool::setActivatedSubTool(uint32_t const subtool)
 { 
 	_ActivatedSubTool = subtool; 
@@ -49,6 +43,8 @@ void cZoningTool::setCost(int64_t const cost)
 
 void cZoningTool::paint()
 {
+	cAbstractToolMethods::paint();
+
 	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
 
 	constinit static bool bFindMaxVisibility(false);
@@ -77,7 +73,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 
 		length = (area.right - area.left) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
-		gui::draw_line(gui::axis::x, xmOrigin, origin, color, length, gui::flags::emissive);
+		//gui::draw_line(gui::axis::x, xmOrigin, origin, color, length, gui::flags::emissive);
 
 		// line from bl to br (x axis)
 		origin = area.left_bottom();
@@ -87,7 +83,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 
 		// same length = (area.right - area.left) << 1;
-		gui::draw_line(gui::axis::x, xmOrigin, origin, color, length + 1, gui::flags::emissive);
+		//gui::draw_line(gui::axis::x, xmOrigin, origin, color, length + 1, gui::flags::emissive);
 
 		// line from tl to bl (z axis)
 		origin = area.left_top();
@@ -97,7 +93,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 
 		length = (area.bottom - area.top) << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
-		gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
+		//gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
 
 		// line from tr to br (z axis)
 		origin = area.right_top();
@@ -107,7 +103,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 
 		// same length = (area.bottom - area.top) << 1;
-		gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
+		//gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
 
 		v2_rotation_t const view(world::getAzimuth() + _offsetAngle); // range is -XM_PI to XM_PI or -180 to 180 // offset angle represents the most optimal "angle" offset to switch the gui text.
 		point2D_t best_origin;
@@ -234,21 +230,37 @@ void cZoningTool::paint()
 	}
 	else { // tool is active, however the user has not dragged or clicked the mouse to create an area
 
-		point2D_t const voxelIndex(MinCity::VoxelWorld.getHoveredVoxelIndex());
+		/*
+		XMVECTOR xmOrigin;
+		point2D_t origin;
+		uint32_t length(0);
 
-		XMVECTOR xmVoxelOrigin = p2D_to_v2(voxelIndex);
+		// line from tl to tr (x axis)
+		origin = hoveredIndex;
+		xmOrigin = p2D_to_v2(origin);
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+
+		length = 50 << 1; // needs to be in minivoxels not voxels, hence the doubling of length todo the conversion.
+		gui::draw_line(gui::axis::x, xmOrigin, origin, color, length, gui::flags::emissive);
+		*/
+
+		/* addional lighting
+		XMVECTOR xmVoxelOrigin = p2D_to_v2(hoveredIndex);
 		xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVoxelOrigin);
 		xmVoxelOrigin = XMVectorSetY(xmVoxelOrigin, -10.0f);
 
 		xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, xmWorldOrigin);
 
-		world::addVoxel(xmVoxelOrigin, voxelIndex, color, Iso::mini::hidden | Iso::mini::emissive); // light only
+		world::addVoxel(xmVoxelOrigin, hoveredIndex, color, Iso::mini::hidden | Iso::mini::emissive); // light only
+		*/
 	}
 }
 
 void cZoningTool::commitZoneHistory() // commits current "zone" to grid
 {
-	clearZoneHistory();
+	undoZoneHistory();
 
 	if (_ActivatedSubTool > 0) {
 		rect2D_t const finalArea(orientAreaToRect(_segmentVoxelIndex[0], _segmentVoxelIndex[1]));
@@ -257,27 +269,16 @@ void cZoningTool::commitZoneHistory() // commits current "zone" to grid
 	}
 }
 
-void cZoningTool::clearZoneHistory() // undo's current "road" from grid
+void cZoningTool::undoZoneHistory() // undo's current "road" from grid
 {
-	// undoing
-	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
-	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHistory.crbegin(); undoVoxel != _undoHistory.crend(); ++undoVoxel)
-	{
-		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
-	}
-	_undoHistory.clear();
-}
-
-void cZoningTool::pushZoneHistory(UndoVoxel&& history)
-{
-	_undoHistory.emplace_back(std::forward<UndoVoxel&&>(history));
+	undoHistory();
 }
 
 void __vectorcall cZoningTool::PressAction(FXMVECTOR const xmMousePos)
 {
 	point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-	clearZoneHistory();
+	undoZoneHistory();
 
 	if (0 != _activePoint) { // new
 		_activePoint = 0;
@@ -348,84 +349,52 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 	}	
 }
 
-void __vectorcall cZoningTool::highlightArea(rect2D_t const area)
-{
-	if (_ActivatedSubTool > 0) {
-		point2D_t voxelIndex{};
-
-		for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
-
-			for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
-
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
-
-				if (pVoxel) {
-					Iso::Voxel oVoxel(*pVoxel);
-
-					if (Iso::isGroundOnly(oVoxel)) {
-						pushZoneHistory(UndoVoxel(voxelIndex, oVoxel));
-
-						Iso::setEmissive(oVoxel);
-
-						world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-					}
-				}
-			}
-		}
-	}
-}
 void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart)
 {
-	if (0 != _activePoint) { // have starting index?
+	if (_ActivatedSubTool > 0) { // have selected tool
+		
+		if (0 != _activePoint) { // have starting index?
 
-		static point2D_t lastEndPoint;
-		point2D_t const clampedEndPoint(MinCity::VoxelWorld.getHoveredVoxelIndex());
+			static point2D_t lastEndPoint;
+			point2D_t const clampedEndPoint(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-		if (clampedEndPoint != lastEndPoint) {
-			lastEndPoint = clampedEndPoint;
+			if (clampedEndPoint != lastEndPoint) {
+				lastEndPoint = clampedEndPoint;
 
-			clearZoneHistory();
+				// clear last highlight
+				undoZoneHistory();
 
-			highlightArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint));
+				// set highlight
+				highlightArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint), world::ZONING_COLOR[_ActivatedSubTool]);
 
-			_segmentVoxelIndex[1] = clampedEndPoint;
-			++_activePoint;
+				_segmentVoxelIndex[1] = clampedEndPoint;
+				++_activePoint;
+			}
 		}
 	}
 }
 
 void __vectorcall cZoningTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 {
-	static point2D_t lastOrigin;
-	point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
+	if (_ActivatedSubTool > 0) {  // have selected tool
 
-	if (origin != lastOrigin) { // limited to delta of hovered mouse index. Never misses the action (important).
-		
-		{ // clear last highlight
-			Iso::Voxel const* const pVoxel(world::getVoxelAt(lastOrigin));
+		if (_activePoint > 1) { // have starting & ending index?
 
-			if (pVoxel) {
-				Iso::Voxel oVoxel(*pVoxel);
-
-				Iso::clearEmissive(oVoxel);
-
-				world::setVoxelAt(lastOrigin, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-			}
 		}
-		lastOrigin = origin;
+		else { // tool is active, however the user has not dragged or clicked the mouse to create an area
 
-		{ // set highlight
-			Iso::Voxel const* const pVoxel(world::getVoxelAt(origin));
+			static point2D_t lastOrigin;
+			point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
 
-			if (pVoxel) {
-				Iso::Voxel oVoxel(*pVoxel);
+			if (origin != lastOrigin) { // limited to delta of hovered mouse index. Never misses the action (important).
 
-				if (Iso::isGroundOnly(oVoxel)) {
-					
-					Iso::setEmissive(oVoxel);
+				static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
 
-					world::setVoxelAt(origin, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-				}
+				// clear last highlight
+				undoZoneHistory();
+
+				// set highlight
+				highlightCross(origin, color);
 			}
 		}
 	}
@@ -434,7 +403,7 @@ void __vectorcall cZoningTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 // these functions should be defined last
 void cZoningTool::deactivate()
 {
-	clearZoneHistory();
+	undoZoneHistory();
 }
 
 void cZoningTool::activate()

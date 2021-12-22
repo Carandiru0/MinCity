@@ -17,20 +17,19 @@ layout(location = 0) in streamIn
 {
 	readonly vec2		uv;
 #if defined (SMAA_PASS_2)
-	readonly flat float	jitter;
-	readonly flat uint	odd_frame;
+	readonly flat float	slice;
 #endif
 
 #ifdef OVERLAY
 	readonly flat float time_delta;
 	readonly flat float time;
-	readonly flat uint  odd_frame;
+	readonly flat uint odd_frame;
 #endif
 } In;
 #define texcoord uv // alias
 
 layout (binding = 1) uniform sampler2D colorMap;
-layout (binding = 2) uniform sampler2D noiseMap;
+layout (binding = 2) uniform sampler2DArray noiseMap;	// bluenoise RG channels, 64 slices.
 
 layout (binding = 3, rgba8) writeonly restrict uniform image2D outTemporal;
 layout (binding = 4) uniform sampler2D temporalColorMap;
@@ -242,9 +241,12 @@ void main() {
 	}
 	{ // mask for bloom - bugfix: use the msaa sampler instead of temporal ssaa color provides stability when moving camera, otherwise a pulsing intensity for bloom can be seen - very distractinbg
 		vec3 color = textureLod(colorMap, In.uv, 0).rgb;
-		color = color * smoothstep(0.5f, 1.0f, max(color.r, max(color.g, color.b))); // 0.5 to 1.0 is good for bloom, don't change.
-
 		expandBlurAA(colorMap, color, In.uv, 0.5f);
+
+		const float maxi = max(color.r, max(color.g, color.b));
+
+		color = dot(color, LUMA) * smoothstep(vec3(0.5f, 0.7f, 0.9f), vec3(1), maxi.xxx); // 0.5, 0.7, 0.9 is good for bloom mask - do not change
+
 		imageStore(outBlur[0], ivec2(In.uv * ScreenResDimensions), vec4(color, 1.0f));		
 	}
 	
@@ -302,7 +304,9 @@ void main() {
 		color = textureLod(lutMap, color * LUT_SCALE + LUT_OFFSET, 0).rgb;
 		
 		// BLOOM // // *BEST APPLIED ONLY HERE* bloom after the 3D lut is applied (expanding output range) and before any HDR transforms.
-		color += textureLod(blurMap[0], In.uv, 0).rgb * (0.1f + (1.0f - luminance)); // *bugfix: times original (1.0f - luminance) preserves antialiasing.
+		const vec3 bloom = textureLod(blurMap[0], In.uv, 0).rgb;
+		const float inv_luma = 1.0f - luminance;
+		color = color + dot(bloom, vec3(inv_luma, inv_luma * 0.5f, inv_luma * 0.25f));
 	}
 #ifdef HDR
 	{ // 2.) HDR
@@ -314,22 +318,20 @@ void main() {
 										// maximum display nits customizable for user display
 	}
 #endif
-	{ // 3.) *** DITHERING - do not change, validated fft and with highpass to be of extreme quality
+	{ // 3.) *** DITHERING - do not change, validated fft and with highpass to be of extreme quality  (Isolated from temporal AA frames to not introduce any noise into temporal AA process. Only presentation sees the final frame dithered by blue noise)
 
 		// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
-		// *bluenoise RED-GREEN channel used* //
-		const vec2 noise_dual_dither = textureLod(noiseMap, (In.uv * ScreenResDimensions + vec2(In.jitter, -In.jitter)) * BLUE_NOISE_UV_SCALER, 0).rg * BLUE_NOISE_DITHER_SCALAR;
-		// this actually doesn't ruin the blue noise, mixing by luminance two different blue noises seems to isolate quite well, being
-		// one blue noise to "darker" colors and the othe blue noise to "brighter" colors isoloating very well 
-		const uint frame = In.odd_frame;
-		const float luma = dot(color, LUMA);
-		color = mix(color - noise_dual_dither[frame], color + noise_dual_dither[1U - frame], luma); // shade dithering by luminance
+		const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
 
+		// makes colors take advantage of high contrast. darker darks and brighter brights only offset by the bluenoise. This dithers the color and removes banding. Also the
+		// perceptual difference is that of seeing more color than there really is.
+		const float luma = dot(color, LUMA);
+		color = max(vec3(0), mix(color - noise_dither, color + noise_dither, luma)); // shade dithering by luminance (only clamping negative values)
+		
 		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
-		color += clamp(anamorphicFlare(In.uv) - noise_dual_dither[1U - frame], 0.0f, 1.0f);
+		color += clamp(anamorphicFlare(In.uv) - noise_dither, 0.0f, 1.0f);
 	}
 	
-	//color = pow(color, vec3(1.0f/2.2f));
 	outColor = vec4(color, 1.0f);
 
 
@@ -375,11 +377,11 @@ void main() {
 
 	interlace = aaStep( SCANLINE_INTERLEAVE, mod(In.uv.y * ScreenResDimensions.y, SCANLINE_INTERLEAVE * 2.0f - (InvScreenResDimensions.y) * 0.5f) );
 																		  // grey.shade aka luminance
-	const vec2 random = textureLod(noiseMap, In.uv.y + In.time.xx * 0.125f * grey.shade, 0).rg * interlace;
+	//const vec2 random = textureLod(noiseMap, vec3(In.uv, 0.0f)).rg;//.y + In.time.xx * 0.125f * grey.shade, 0).rg * interlace;
 	
 	// *** color is added to shade beginning here :
 	// magic cyberpunk gui animation																																	 // grey.shade aka luminance
-	vec3 gui_color = mix(gui_green * gui.shade, 1.5f * gui_bleed * gui.shade, highlight) + gui_green * gui.shade * random.r * pow(fract(In.uv.x - random.g - In.time * grey.shade), 3.0f) * 3.0f;
+	vec3 gui_color = mix(gui_green * gui.shade, 1.5f * gui_bleed * gui.shade, highlight) + gui_green * gui.shade * /*random.r **/ pow(fract(In.uv.x - /*random.g -*/ In.time * grey.shade), 3.0f) * 3.0f;
 	
 	// subpixel grille
 	vec2 subpixel;

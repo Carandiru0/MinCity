@@ -183,7 +183,7 @@ namespace gui
 								visible += (uint32_t)world::addVoxel(xmOffset2D, p2D_sub(voxelOffset, point2D_t((int32_t)space_width, 0)), 0); // fills in suitable empty space black
 							}
 							else {
-								visible += (uint32_t)world::isVoxelVisible(xmOffset2D);
+								visible += (uint32_t)world::isVoxelVisible(xmOffset2D, Iso::MINI_VOX_RADIUS);
 							}
 							++count;
 							--space_width;
@@ -195,7 +195,7 @@ namespace gui
 							visible += (uint32_t)world::addVoxel(xmOffset2D, voxelOffset, color, flags);
 						}
 						else {
-							visible += (uint32_t)world::isVoxelVisible(xmOffset2D);
+							visible += (uint32_t)world::isVoxelVisible(xmOffset2D, Iso::MINI_VOX_RADIUS);
 						}
 						++count;
 						++character_width;

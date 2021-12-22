@@ -9,21 +9,25 @@
 namespace supernoise
 {
 	cBlueNoise::cBlueNoise()
-		: _blueNoise1D(nullptr), _blueNoiseTexture(nullptr)
+		: _blueNoise1D(nullptr), _blueNoiseTexture(nullptr), _blueNoiseTextures{}
 	{
 
 	}
 
 	void cBlueNoise::Load(std::wstring_view const blueNoiseFile)
 	{
-		ImagingMemoryInstance const* imgBlueNoise = ImagingLoadRawLA(blueNoiseFile, BLUENOISE_DIMENSION_SZ, BLUENOISE_DIMENSION_SZ);
+		MinCity::TextureBoy.LoadKTXTexture<false>(_blueNoiseTextures, blueNoiseFile); // this loads the bluenoise in to the gpu texture. it should be linear (non-srgb) colorspace.
+
+		ImagingMemoryInstance const* imgBlueNoise = ImagingLoadKTX(blueNoiseFile); // this temporarily loads the blue noise into a LA Imaging Instance (linear)
 
 		if (imgBlueNoise) {
 
-			MinCity::TextureBoy.ImagingToTexture_RG<false>(imgBlueNoise, _blueNoiseTexture); // generated texture is in linear colorspace
+			// save first slice of 2D bluenoise layered image, to gpu RG texture. In some cases only a static 2D bluenoise texture is desirable. generated texture is in linear colorspace
+			MinCity::TextureBoy.ImagingToTexture_RG<false, false>(imgBlueNoise, _blueNoiseTexture);
+
 #ifndef NDEBUG
-#ifdef DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
-			ImagingSaveToKTX(imgBlueNoise, DEBUG_DIR "bluenoise_dual_channel_test.ktx");
+#ifdef DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX // SAVED from FILE
+			ImagingSaveToKTX(imgBlueNoise, DEBUG_DIR "bluenoise_test_dual_channel.ktx"); // this saves *ONLY* the first layer of the new bluenoise texture (2D Array). RG / LA components.
 #endif
 #endif
 			// capture first channel for usage outside of gpu texture scope (cpu only)
@@ -41,8 +45,8 @@ namespace supernoise
 					int32_t x(BLUENOISE_DIMENSION_SZ - 1);
 					do
 					{
-						// format is 2bytes, 2 channels - just grabbing 1st channel for 1D array
-						*pOutBytes = SFM::u8_to_float(*pBytes);
+						// format is 2bytes, 2 channels - just grabbing 1st channel for 1D array (this is the correct way)
+						*pOutBytes = SFM::u8_to_float(*pBytes);	// *do not* mix bluenoise channels to obtain one. 
 
 						++pOutBytes;
 						pBytes += 2;
@@ -61,6 +65,7 @@ namespace supernoise
 			scalable_aligned_free(_blueNoise1D); _blueNoise1D = nullptr;
 		}
 		SAFE_RELEASE_DELETE(_blueNoiseTexture);
+		SAFE_RELEASE_DELETE(_blueNoiseTextures);
 	}
 
 	cBlueNoise::~cBlueNoise()

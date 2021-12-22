@@ -499,8 +499,8 @@ bool const __vectorcall cCarGameObject::corner(state const& __restrict currentSt
 
 	// calculate biarcs
 	biarc_computeArcs(_arcs[0], _arcs[1],
-						p2D_to_v2(currentState.voxelIndex), p2D_to_v2(currentState.voxelDirection),
-						p2D_to_v2(targetState.voxelIndex), p2D_to_v2(targetState.voxelDirection));
+					  p2D_to_v2(currentState.voxelIndex), p2D_to_v2(currentState.voxelDirection),
+					  p2D_to_v2(targetState.voxelIndex), p2D_to_v2(targetState.voxelDirection));
 
 	targetState.distance = (_arcs[0].length + _arcs[1].length) * 2.0f;  // bugfix: must be 2x else car moves thru corner too fast
 
@@ -521,6 +521,7 @@ bool const cCarGameObject::forward(state const& __restrict currentState, state& 
 			
 		// Don't allow movement onto constructing / pending road
 		if (Iso::isPending(oVoxelRoad)) {
+			idle(CANCEL_IDLE); // causes car to be destroyed immediately upon return to parent function.
 			return(false);
 		}
 		
@@ -858,6 +859,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 					}
 #endif
 #endif	
+
 					(*Instance)->destroy(); // car gets destroyed		
 				}
 			}
@@ -877,7 +879,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 	}
 	else {
 		// too long idle
-		if (tNow - _this.tIdleStart > (CAR_IDLE_MAX * 2)) { // double the time to error out *only* here
+		if (tNow - _this.tIdleStart > CAR_IDLE_MAX) {
 #ifndef NDEBUG
 #ifdef DEBUG_TRAFFIC
 			if (!(*Instance)->destroyPending()) {

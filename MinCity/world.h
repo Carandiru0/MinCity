@@ -15,6 +15,9 @@ namespace world
 									COMMERCIAL = 1,
 									INDUSTRIAL = 2;
 
+	// default ||  R  ||  C  ||  I  ||
+	static constexpr uint32_t const ZONING_COLOR[4] = { 0x000000, 0xFA22F8, 0xBD2334, 0xFEFFAC }; // bgr`
+
 #define zERO 0.0f
 	read_only inline XMVECTORF32 const WORLD_CENTER{ 0.0f, 0.0f, zERO, zERO };
 	read_only inline XMVECTORF32 const WORLD_TOP{ 0.0f, -Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
@@ -60,10 +63,6 @@ namespace world
 	void __vectorcall resetVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
 	void __vectorcall resetVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR); // for dynamic only
 
-	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	bool const XM_CALLCONV isPointNotInVisibleVoxel(FXMVECTOR const Location);
-	Iso::Voxel const* const __restrict XM_CALLCONV getVoxelAt_IfVisible(FXMVECTOR const Location);
-
 	uint32_t const getVoxelsAt_AverageHeight(rect2D_t voxelArea);
 	void setVoxelHeightAt(point2D_t const voxelIndex, uint32_t const heightstep);
 	void setVoxelsHeightAt(rect2D_t voxelArea, uint32_t const heightstep);
@@ -73,10 +72,17 @@ namespace world
 	void __vectorcall recomputeGroundAdjacencyOcclusion(rect2D_t voxelArea);
 	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex);
 
-	bool const __vectorcall isVoxelVisible(FXMVECTOR const location);
+	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius = Iso::VOX_RADIUS); // y (height) coordinate is required, otherwise it's 0.0f    [Iso::VOX_RADIUS] or Iso::MINI_VOX_RADIUS
+	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex); // y (height) coordinate *not* required, automattically set to ground height.  only [Iso::VOX_RADIUS]
 
-	// voxel painting (minivoxels)  ***** addVoxel can only be called with UserInterface.Paint(), or methods invoked inside UserInterface.Paint() *****
+	// mini voxels:
+	
+	// *voxel painting ONLY* (minivoxels)  ***** addVoxel/addLight can only be called with UserInterface.Paint(), or methods invoked inside UserInterface.Paint() *****
+	// voxel / light will not persist more than one frame! using these methods
+	// *voxel painting ONLY* (minivoxels)  *****
 	bool const __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
+	bool const __vectorcall addLight(point2D_t const voxelIndex, uint32_t const color, float const height = 0.0f);
+
 
 	// zoning
 	namespace zoning

@@ -32,8 +32,6 @@ layout(location = 0) out vec4 outColor;
 #define RGBA_IMAGE 1
 #define ARRAY_IMAGE 2
 
-#define PIXEL_SIZE 5.0f /* do not change ! perfect setting visually */
-
 vec2 textureRGBA(in const vec3 uvw) // returns greyscale + alpha
 {
 	const vec4 color = textureLod(sdfTexture[pc.array_index], uvw, 0);
@@ -41,7 +39,7 @@ vec2 textureRGBA(in const vec3 uvw) // returns greyscale + alpha
 	return( vec2(dot(color.rgb, LUMA), color.a) );
 }
 
-vec2 textureRGBA(in const vec2 uv, in float pixel_size)
+vec2 textureRGBA(in const vec2 uv)
 {
 	vec3 uvw;
 	uvw.xy = uv;
@@ -52,21 +50,6 @@ vec2 textureRGBA(in const vec2 uv, in float pixel_size)
 	// *first
 	vec2 last = textureRGBA(uvw);
 	last.shade = last.shade * last.alpha;
-
-	/* *layers
-	for (uint i = 1u ; i < 8u ; ++i )
-	{
-		uvw.xy = (InvScreenResDimensions * pixel_size) * floor(uv.xy / (InvScreenResDimensions * pixel_size));
-		pixel_size = ((0.0f != --pixel_size) ? pixel_size : pixel_size - 1);
-
-		vec2 cur = textureRGBA(uvw);
-		cur.shade = mix(last.shade, cur.shade, cur.alpha);
-
-		// for the next layer //
-		last.alpha = last.alpha + cur.alpha * (1.0f - last.alpha);
-	
-		last.shade = mix(last.shade, cur.shade, last.alpha);		
-	}*/
 
 	return(last);
 }
@@ -101,7 +84,7 @@ vec2 textureSDF(in const vec2 uv)
 
 	const float half_distance_dt = fwidth(last.dist) * 0.5f;
 	
-	last.alpha = smoothstep(-half_distance_dt, half_distance_dt, last.dist); // conversion of signed distance to alpha
+	last.alpha = smoothstep(-half_distance_dt, half_distance_dt, last.dist - 0.5f ); // conversion of signed distance to alpha
 
 	return(last);
 }
@@ -117,7 +100,7 @@ void main() {
 	}
 	else /*RGBA_IMAGE or ARRAY_IMAGE*/ {
 		
-		grey = textureRGBA(fragUv, PIXEL_SIZE);
+		grey = textureRGBA(fragUv);
 	}
 
 	// greyscale

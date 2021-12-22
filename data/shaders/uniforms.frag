@@ -108,6 +108,44 @@ const float ROUGHNESS = 0.5f;
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
 #include "texturearray.glsl"
 
+// iq - https://www.iquilezles.org/www/articles/filterableprocedurals/filterableprocedurals.htm
+float filteredGrid( in vec2 uv, in const float scale, in const float thin )    // thin - greater, thick - less
+{
+	float grid = 0.0f;
+
+	// grid lines
+	uv = mod(uv * scale, 0.5f);
+
+	vec2 p;
+
+	p = uv - 0.3f; // bl
+
+	{
+		const vec2 dp = rndC(p);
+		vec2 w = max(abs(dFdx(dp)), abs(dFdy(dp)));
+		vec2 a = dp + 0.5*w;                        
+		vec2 b = dp - 0.5*w;           
+		vec2 i = (floor(a)+min(fract(a)*thin,1.0)-
+				  floor(b)-min(fract(b)*thin,1.0))/(thin*w);
+		grid += fma(i.x, (1.0 - i.y), i.y); // (herbie optimized) same as 1.0f - (1.0-i.x)*(1.0-i.y)
+	}
+
+	p = (1.0 - uv) - 0.8f; // tr
+
+	{
+		const vec2 dp = rndC(p);
+		vec2 w = max(abs(dFdx(dp)), abs(dFdy(dp)));
+		vec2 a = dp + 0.5*w;                        
+		vec2 b = dp - 0.5*w;           
+		vec2 i = (floor(a)+min(fract(a)*thin,1.0)-
+				  floor(b)-min(fract(b)*thin,1.0))/(thin*w);
+		grid += fma(i.x, (1.0 - i.y), i.y); // (herbie optimized) same as 1.0f - (1.0-i.x)*(1.0-i.y)
+	}
+
+	return(min(1.0f, grid));
+}
+
+/*
 float antialiasedGrid(in vec2 uv, in const float scale)
 {
 	// grid lines	
@@ -121,6 +159,7 @@ float antialiasedGrid(in vec2 uv, in const float scale)
 	
 	return(smoothstep(0.0f, 1.0f, grid * GOLDEN_RATIO));	// final smoothing
 }
+*/
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
@@ -136,25 +175,31 @@ void main() {
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
-
-	vec3 color = lit( vec3(terrainHeight), light_color,
-					  In._occlusion, min(1.0f, attenuation + In._emission),
-					  0.0f, ROUGHNESS,  // emission for terrain voxels is specialized by modifying attenuation above. this is used for highlighting.
-					  L, N, V);
-
 	
-	float grid = antialiasedGrid(In.world_uv.xy, 1024.0f);
+	float grid = filteredGrid(In.world_uv.xy, 1024.0f, 16.0f);
 
-	// third way ------------------------------------
 	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
-	grid *= parabola(terrainHeight, 1.7f); /*smootherstep(1.0f, 0.0f, terrainHeight)*/ // fade out as height increases
-	grid *= 1.0f - attenuation; // modulate by the abscense of light
-	grid *= In._occlusion; // ambient occlusion
- 
-	float luma = dot(color, LUMA);
 
-	color = mix(color, grid * unpackColor(In._color) * 1.0f / (1.0f + (1.0f - luma)), grid);
+	const vec3 grid_color = unpackColor(In._color) * grid;
 
+	vec3 color = lit( terrainHeight + grid_color, light_color,				// regular terrain lighting
+					  In._occlusion, attenuation,
+					  grid * In._emission * 0.5f, ROUGHNESS,
+					  L, N, V);
+	
+	const float luma = dot(color, LUMA);
+	color += grid_color * (1.0f - attenuation) * (1.0f - terrainHeight) * (1.0f - luma) * (1.0f - In._emission);
+
+	/*
+	const float emission = In._emission * grid;
+	const vec3 grid_color = unpackColor(In._color) * grid;
+	color += lit( grid_color, grid_color,					// grid lighting
+				  In._occlusion, emission,
+				  emission, ROUGHNESS,
+				  normalize(vec3(0, 1, 0)), N, V);
+	*/
+	//color = vec3(1.0f - max(0.0f, dot(N, -L))) * attenuation;
+	//color = vec3(In._occlusion);
 	outColor.rgb = color;
 }
 #elif defined(ROAD)  
@@ -183,6 +228,7 @@ void main() {
 
 	// smoother
 	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
+	road_segment.rgb *= road_segment.a; // important
 	// or ** more sharp pixelated but without any aliasing hmmm...
 	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)),In.uv_local.z), dFdx(In.uv_local.xy), dFdy(In.uv_local.xy)); 
 	
@@ -205,7 +251,7 @@ void main() {
 
 	const vec3 shineCol = 0.333333f * vec3(0.5f, 0.05f, 1.0f);
 
-	color += road_segment.a * road_segment.b * shineCol * (1.0f - exp2(-1000.0f*road_segment.b*fresnelTerm));
+	color += road_segment.b * shineCol * (1.0f - exp2(-1000.0f*road_segment.b*fresnelTerm));
 
 	outColor.rgb = color;
 
@@ -222,17 +268,18 @@ void main() {
 	const vec3 V = normalize(In.V.xyz); 
 
 	// smoother
-	const float road_tile_luma = dot(texture(_texArray[TEX_ROAD], In.road_uv.xyz).rgb, LUMA);
+	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
+	road_segment.rgb *= road_segment.a; // important
+	const float road_tile_luma = dot(road_segment.rgb, LUMA);
 	//const vec4 dFdUV = vec4( dFdx(In.uv_local.xy), dFdy(In.uv_local.xy) );
 	//const float road_tile_luma = dot(textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)), In.uv_local.z), dFdUV.xy, dFdUV.zw).rgb, LUMA);
 
 	const vec2 uv = In.road_uv.xy + vec2(0.0f, In._time*0.5f);
-	vec4 road_segment;
+
 	road_segment.a = texture(_texArray[TEX_ROAD], vec3(uv, SELECTION)).a;
+	road_segment.rgb = road_tile_luma * gui_bleed * road_segment.a;
 	// or ** more sharp pixelated but without any aliasing hmmm...
 	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(uv, vec2(64.0f, 16.0f)), SELECTION), dFdUV.xy, dFdUV.zw); 
-	
-	road_segment.rgb = road_tile_luma * gui_bleed * road_segment.a;
 
 	vec3 color;
 
@@ -312,5 +359,4 @@ void main() {
 #endif
 
 #endif // else basic
-
 

@@ -166,7 +166,7 @@ vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float o
 #endif
 		)
 { 
-	const float NdotL = max(0.0f, dot(N, L));
+	const float NdotL = 1.0f - max(0.0f, dot(N, -L)); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
 	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 
@@ -188,11 +188,13 @@ vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float o
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm);
 
+	//return(vec3(NdotL * attenuation));
+
 			// ambient reflection (ambient light not affected by fresnel) - (attenuation in this case is global, from any light source)
 	return ( unpackColor(In.ambient) + ambient_reflection * attenuation * (1.0f - specular_reflection_term) +
 			  // diffuse color .   // diffuse shading/lighting								  // specular shading/lighting					
 		     fma( voxelAlbedo * occlusion + occlusion, ( diffuse_reflection_term + specular_reflection_term * ambient_reflection ) * light_color, 
-			       // emission					// ^^^^^^ this is like a + 1.0f but instead shaded
+			       // emission				// ^^^^^^ this is like a + 1.0f but instead shaded
 			       voxelAlbedo * emission_term )
 		   );					
 

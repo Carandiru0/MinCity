@@ -54,11 +54,11 @@ public:
 	// **note bDedicatedMemory template parameter is ignored / not used in the updating context**
 
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture);  // default rgba 8bpc
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture);  // default rgba 8bpc 1D array
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
 	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture);  // default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture);	// default rgba 8bpc
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture);	// default rgba 8bpc 2D array
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
 	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture);	// default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>

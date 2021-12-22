@@ -87,7 +87,7 @@ void cTextureBoy::ImagingSequenceToTexture(ImagingSequence const* const image, v
 
 	if ((0 == image->xsize % 8) && (0 == image->ysize % 8)) {
 
-		if (nullptr != texture) { // for an update of a texture - only before a dma transfer, texture must be transitioned on the graphics queue to transferdstoptimal //
+		if (nullptr != texture) { // for an update of a texture - only before a dma transfer, texture must be transitioned on the graphics queue to transferdstoptimal // DMA
 			vku::executeImmediately(_device, *commandPool, *queue, [&](vk::CommandBuffer cb) {
 
 				texture->setLayout(cb, vk::ImageLayout::eTransferDstOptimal);
@@ -104,8 +104,8 @@ void cTextureBoy::ImagingSequenceToTexture(ImagingSequence const* const image, v
 	}
 
 	// image_offset is now equal to the image size total bytes
-	texture->upload<false>(_device, flat, image_offset, *commandPool, *queue);
-	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
+	texture->upload<false>(_device, flat, image_offset, *commandPool, *queue); // image_offset is now equal to the image size total bytes // DMA
+	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set, this also reverts texture to graphics queue from transferdstoptimal.
 
 	scalable_aligned_free(flat);
 }

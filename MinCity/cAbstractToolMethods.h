@@ -2,6 +2,8 @@
 #include "globals.h"
 #include <Math/point2D_t.h>
 #include <Utility/class_helper.h>
+#include "UndoVoxel.h"
+#include <vector>
 
 // *enumerations only*
 
@@ -31,9 +33,7 @@ public: // no data inside abstract tool - only methods
 	virtual void deactivate() = 0;
 	virtual void activate() = 0;
 
-	virtual void paint() {} // optional
-
-	static void __vectorcall draw_grid(rect2D_t const highlight_area, int32_t const division_size, int32_t const grid_radius); // common grid drawing for any tool that needs it.
+	virtual void paint();
 
 	virtual uint32_t const getActivatedSubTool() { return(SUBTOOL_RESERVED_NOT_IMPLEMENTED); } // optional
 	virtual void setActivatedSubTool(uint32_t const subtool) {} // optional
@@ -46,7 +46,40 @@ public: // no data inside abstract tool - only methods
 	virtual void __vectorcall DragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart) {};
 	virtual void __vectorcall MouseMoveAction(FXMVECTOR const xmMousePos) {};
 
-public: // no data inside abstract tool - only methods
+protected:
+	__inline vector<sUndoVoxel> const& getHistory() const { return(_undoHistory); }
+
+	template<class... Args>
+	void pushHistory(Args&&... args);
+	void pushHistory(vector<sUndoVoxel>&& undoHistory);
+	void clearHistory();
+	void undoHistory();
+
+	bool const __vectorcall highlightVoxel(point2D_t const voxelIndex, uint32_t const color);
+	void __vectorcall highlightCross(point2D_t const voxelIndex, uint32_t const color);
+	void __vectorcall highlightArea(rect2D_t const area, uint32_t const color);
+
+private:
+	void clearHighlights(); // privste, use public method clearHistory / undoHistory - simplifies derived classea implementation.
+	void undoHighlights();
+
+private:
+	vector<sUndoVoxel>				_undoHistory, _undoHighlight;
+
+
+public:
 	cAbstractToolMethods() = default;
 	virtual ~cAbstractToolMethods() = default;
 };
+
+template<class... Args>
+void cAbstractToolMethods::pushHistory(Args&&... args)
+{
+	_undoHistory.emplace_back(std::forward<Args&&...>(args...));
+}
+
+STATIC_INLINE_PURE rect2D_t const __vectorcall orientAreaToRect(point2D_t const start_pt, point2D_t const end_pt)
+{
+	// minimum = top left, maximum = bottom right
+	return(rect2D_t(p2D_min(start_pt, end_pt), p2D_max(start_pt, end_pt)));
+}

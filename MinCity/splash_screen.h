@@ -23,7 +23,7 @@ namespace {
 			bool ok;
 
 			static constexpr uint32_t const width{ 248 }, height{ 36 };
-			constinit static inline wchar_t const* const szSplash = L"minCity loading";
+			constinit static inline wchar_t const* const szSplash = L"minCity";
 
 		} splash_screen = {};
 

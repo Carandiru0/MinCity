@@ -5,6 +5,11 @@
 
 namespace Volumetric
 {
+	STATIC_INLINE_PURE XMMATRIX const XM_CALLCONV getProjectionMatrix(float const Width, float const Height,
+																	  float const MinZ, float const MaxZ)
+	{
+		return(XMMatrixOrthographicLH(Width, Height, MinZ, MaxZ));
+	}
 	STATIC_INLINE XMMATRIX const XM_CALLCONV UpdateProjection(float const ZoomFactor, size_t const framecount)
 	{
 		static constexpr float const BASE_ZOOM_LEVEL = 17.79837387625f;	// do not change, calculated from Golden Ratio
@@ -47,8 +52,8 @@ namespace Volumetric
 		tLast = tNow;
 
 		// return new projection matrix
-		return(volumetricVisibility::getProjectionMatrix(fAspect * BASE_ZOOM_LEVEL * smoothzoom, BASE_ZOOM_LEVEL * smoothzoom,
-			                                             Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
+		return(getProjectionMatrix(fAspect * BASE_ZOOM_LEVEL * smoothzoom, BASE_ZOOM_LEVEL * smoothzoom,
+			                       Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
 	}
 
 	volumetricVisibility::volumetricVisibility()

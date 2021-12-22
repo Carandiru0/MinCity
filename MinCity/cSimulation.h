@@ -5,12 +5,12 @@
 #include "IsoVoxel.h"
 #include "voxelModel.h"
 
-typedef struct new_properties {
+typedef struct properties_patch {
 
-	size_t	tiles[3]{},
-			tiles_occupied[3]{};
+	size_t	tiles[3]{},				// number of tiles for each zone type													   [residential, commercial, industrial]
+			tiles_occupied[3]{};	// of the number of tiles actually zoned, the number of tiles that have a structure built, for each zone type.
 
-} new_properties;
+} properties_patch;
 
 class cSimulation : no_copy
 {
@@ -27,10 +27,10 @@ private:
 	vector<uint32_t> _plot_sizes;
 	uint32_t		 _plot_size_index;
 
-	vector<rect2D_t> _patches;
+	vector<rect2D_t> _patches;			
 	uint32_t		 _patch_index;
 
-	vector<new_properties> _patch_properties;
+	vector<properties_patch> _patch_properties;	// per-patch properties
 
 	struct {
 
@@ -39,7 +39,7 @@ private:
 
 	} _current_packing;
 
-	struct {
+	struct : properties_patch { // accumulated world scale patch properties -- (all patches)
 
 		static inline constexpr size_t const population_per_tile[3] = { 40, 10, 20 };
 
@@ -56,11 +56,7 @@ private:
 		size_t				 population{},
 							 possible_population{};
 
-		// zoning tile counts
-		size_t				 tiles[3]{},
-							 tiles_occupied[3]{};
-
-	} _properties;
+	} _properties;  // world properties 
 
 public:
 	cSimulation();

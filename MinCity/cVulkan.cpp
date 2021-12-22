@@ -537,137 +537,141 @@ void cVulkan::CreateVolumetricResources()
 
 void cVulkan::CreateUpsampleResources()
 {
-	// Create two shaders, vertex and fragment. 
-	{ constexpr uint32_t const index = eUpsamplePipeline::RESOLVE;
+	{
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_resolve.vert.bin" }; // common for resolve stage & upsample stage
 
-		std::vector< vku::SpecializationConstant > constants;
+		// Create two shaders, vertex and fragment. 
+		{ constexpr uint32_t const index = eUpsamplePipeline::RESOLVE;
 
-		MinCity::VoxelWorld.SetSpecializationConstants_Resolve(constants);
+			std::vector< vku::SpecializationConstant > constants;
 
-		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_resolve.vert.bin" };
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample_resolve.frag.bin", constants };
+			MinCity::VoxelWorld.SetSpecializationConstants_Resolve(constants);
 
-		// Build a template for descriptor sets that use these shaders.
-		auto const samplers{ getSamplerArray
-			<eSamplerAddressing::CLAMP>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
-			)
-		};
+			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample_resolve.frag.bin", constants };
 
-		vku::DescriptorSetLayoutMaker	dslm;
-		dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // bluenoise
-		dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);  // checkered volumetrics, reflection to resolve
+			// Build a template for descriptor sets that use these shaders.
+			auto const samplers{ getSamplerArray
+				<eSamplerAddressing::CLAMP>(
+					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+				)
+			};
 
-		_upData[index].descLayout = dslm.createUnique(_device);
-		// We need to create a descriptor set to tell the shader where
-		// our buffers are.
-		vku::DescriptorSetMaker			dsm;
-		dsm.layout(*_upData[index].descLayout);
-		_upData[index].sets = dsm.create(_device, _fw.descriptorPool());
+			vku::DescriptorSetLayoutMaker	dslm;
+			dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // bluenoise
+			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);  // checkered volumetrics, reflection to resolve
 
-		// Make a default pipeline layout. This shows how pointers
-		// to resources are layed out.
-		// 
-		vku::PipelineLayoutMaker		plm;
-		plm.descriptorSetLayout(*_upData[index].descLayout);
-		_upData[index].pipelineLayout = plm.createUnique(_device);
+			_upData[index].descLayout = dslm.createUnique(_device);
+			// We need to create a descriptor set to tell the shader where
+			// our buffers are.
+			vku::DescriptorSetMaker			dsm;
+			dsm.layout(*_upData[index].descLayout);
 
-		// Make a pipeline to use the vertex format and shaders.
-		point2D const frameBufferSz(MinCity::getFramebufferSize());
-		point2D_t const downResFrameBufferSz(vku::getDownResolution(frameBufferSz));
+			// double buffered
+			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 
-		vku::PipelineMaker pm(uint32_t(downResFrameBufferSz.x), uint32_t(downResFrameBufferSz.y));
-		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
-		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
+			// Make a default pipeline layout. This shows how pointers
+			// to resources are layed out.
+			// 
+			vku::PipelineLayoutMaker		plm;
+			plm.descriptorSetLayout(*_upData[index].descLayout);
+			_upData[index].pipelineLayout = plm.createUnique(_device);
 
-		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
-		pm.depthTestEnable(VK_FALSE);
-		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+			// Make a pipeline to use the vertex format and shaders.
+			point2D const frameBufferSz(MinCity::getFramebufferSize());
+			point2D_t const downResFrameBufferSz(vku::getDownResolution(frameBufferSz));
 
-		// 2 color attachments (out) requires 2 blend states to be emplaced
-		pm.blendBegin(VK_FALSE);
-		pm.blendBegin(VK_FALSE);
+			vku::PipelineMaker pm(uint32_t(downResFrameBufferSz.x), uint32_t(downResFrameBufferSz.y));
+			pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
+			pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
-		// Create a pipeline using a renderPass
-		// leveraging down render pass, subpass index 1
-		pm.subPass(1);
-		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
+			pm.depthCompareOp(vk::CompareOp::eAlways);
+			pm.depthClampEnable(VK_FALSE); // must be false
+			pm.depthTestEnable(VK_FALSE);
+			pm.depthWriteEnable(VK_FALSE);
+			pm.cullMode(vk::CullModeFlagBits::eFront);
+			pm.frontFace(vk::FrontFace::eCounterClockwise);
 
-		auto& cache = _fw.pipelineCache();
-		_upData[index].pipeline = pm.create(_device, cache, *_upData[index].pipelineLayout, _window->downPass());
+			// 2 color attachments (out) requires 2 blend states to be emplaced
+			pm.blendBegin(VK_FALSE);
+			pm.blendBegin(VK_FALSE);
+
+			// Create a pipeline using a renderPass
+			// leveraging down render pass, subpass index 1
+			pm.subPass(1);
+			pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
+
+			auto& cache = _fw.pipelineCache();
+			_upData[index].pipeline = pm.create(_device, cache, *_upData[index].pipelineLayout, _window->downPass());
+		}
+
+		{ constexpr uint32_t const index = eUpsamplePipeline::UPSAMPLE;
+
+			std::vector< vku::SpecializationConstant > constants;
+
+			MinCity::VoxelWorld.SetSpecializationConstants_Upsample(constants);
+			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample.frag.bin", constants };
+
+			// Build a template for descriptor sets that use these shaders.
+			vku::DescriptorSetLayoutMaker	dslm;
+			dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
+			dslm.image(1U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);  // full resolution depth
+			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler());  // half resolution depth
+			dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // bluenoise
+			dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // half resolution volumetric color source
+			dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // half resolution bounce light (reflection) source
+			dslm.buffer(6U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
+
+			_upData[index].descLayout = dslm.createUnique(_device);
+			// We need to create a descriptor set to tell the shader where
+			// our buffers are.
+			vku::DescriptorSetMaker			dsm;
+			dsm.layout(*_upData[index].descLayout);
+
+			// double buffered
+			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+
+			// Make a default pipeline layout. This shows how pointers
+			// to resources are layed out.
+			// 
+			vku::PipelineLayoutMaker		plm;
+			plm.descriptorSetLayout(*_upData[index].descLayout);
+			_upData[index].pipelineLayout = plm.createUnique(_device);
+
+			// Make a pipeline to use the vertex format and shaders.
+
+			vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
+			pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
+			pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
+
+			pm.depthCompareOp(vk::CompareOp::eAlways);
+			pm.depthClampEnable(VK_FALSE); // must be false
+			pm.depthTestEnable(VK_FALSE);
+			pm.depthWriteEnable(VK_FALSE);
+			pm.cullMode(vk::CullModeFlagBits::eFront);
+			pm.frontFace(vk::FrontFace::eCounterClockwise);
+
+			// 2 color attachments (out) requires 2 blend states to be emplaced
+			pm.blendBegin(VK_FALSE);
+			pm.blendBegin(VK_FALSE);
+
+			// Create a pipeline using a renderPass
+			// leveraging up render pass, subpass index 0
+			pm.subPass(0);
+			pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
+
+	#if !defined(NDEBUG) && defined(LIVESHADER_MODE) && (LIVE_SHADER == LIVE_SHADER_UPSAMPLE)
+			liveshader::cache_pipeline_creation(pm);
+	#endif
+			auto& cache = _fw.pipelineCache();
+			_upData[index].pipeline = pm.create(_device, cache, *_upData[index].pipelineLayout, _window->upPass());
+		}
 	}
-
-
-	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" }; // common for upsample stage & blend stage
-
-
-	{ constexpr uint32_t const index = eUpsamplePipeline::UPSAMPLE;
-
-		std::vector< vku::SpecializationConstant > constants;
-
-		MinCity::VoxelWorld.SetSpecializationConstants_Upsample(constants);
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample.frag.bin", constants };
-
-		// Build a template for descriptor sets that use these shaders.
-		vku::DescriptorSetLayoutMaker	dslm;
-		dslm.image(0U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);  // full resolution depth
-		dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler());  // half resolution depth
-		dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // bluenoise
-		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // half resolution volumetric color source
-		dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // half resolution bounce light (reflection) source
-		dslm.buffer(5U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
-
-		_upData[index].descLayout = dslm.createUnique(_device);
-		// We need to create a descriptor set to tell the shader where
-		// our buffers are.
-		vku::DescriptorSetMaker			dsm;
-		dsm.layout(*_upData[index].descLayout);
-
-		// double buffered
-		_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
-		_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
-
-		// Make a default pipeline layout. This shows how pointers
-		// to resources are layed out.
-		// 
-		vku::PipelineLayoutMaker		plm;
-		plm.descriptorSetLayout(*_upData[index].descLayout);
-		_upData[index].pipelineLayout = plm.createUnique(_device);
-
-		// Make a pipeline to use the vertex format and shaders.
-
-		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
-		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
-		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
-
-		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
-		pm.depthTestEnable(VK_FALSE);
-		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
-
-		// 2 color attachments (out) requires 2 blend states to be emplaced
-		pm.blendBegin(VK_FALSE);
-		pm.blendBegin(VK_FALSE);
-
-		// Create a pipeline using a renderPass
-		// leveraging up render pass, subpass index 0
-		pm.subPass(0);
-		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
-
-#if !defined(NDEBUG) && defined(LIVESHADER_MODE) && (LIVE_SHADER == LIVE_SHADER_UPSAMPLE)
-		liveshader::cache_pipeline_creation(pm);
-#endif
-		auto& cache = _fw.pipelineCache();
-		_upData[index].pipeline = pm.create(_device, cache, *_upData[index].pipelineLayout, _window->upPass());
-	}
-
 	{ constexpr uint32_t const index = eUpsamplePipeline::BLEND;
 
+		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" };
 		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample_blend.frag.bin" };
 
 		// Build a template for descriptor sets that use these shaders.
@@ -1016,8 +1020,8 @@ void cVulkan::CreateVoxelResources()
 	{ // road voxels //
 
 		std::vector< vku::SpecializationConstant > constants_road_basic_vs, constants_road_vs, constants_road_gs, constants_road_fs;
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_Basic_VS(constants_road_basic_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_VS(constants_road_vs);
+		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_Basic_VS(constants_road_basic_vs);
+		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_VS(constants_road_vs);
 		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_GS(constants_road_gs);
 		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_FS(constants_road_fs);
 
@@ -1634,16 +1638,26 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	{ // ###### Bilateral Upsample for Volumetrics
 
 		// resolve part
-		_dsu.beginDescriptorSet(_upData[eUpsamplePipeline::RESOLVE].sets[0]);
+		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
+			_dsu.beginDescriptorSet(_upData[eUpsamplePipeline::RESOLVE].sets[resource_index]);
 
-		MinCity::VoxelWorld.UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+			// Set initial uniform buffer value
+			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
+			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-		// update descriptor set
-		_dsu.update(_device);
+			MinCity::VoxelWorld.UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+
+			// update descriptor set
+			_dsu.update(_device);
+		}
 
 		// upsample part
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 			_dsu.beginDescriptorSet(_upData[eUpsamplePipeline::UPSAMPLE].sets[resource_index]);
+
+			// Set initial uniform buffer value
+			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
+			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
 			MinCity::VoxelWorld.UpdateDescriptorSet_VolumetricLightUpsample(resource_index, _dsu, _window->depthResolvedImageView(0), _window->depthResolvedImageView(1), _window->colorVolumetricDownResImageView(), _window->colorReflectionDownResImageView(), SAMPLER_SET_STANDARD_POINT);
@@ -2160,7 +2174,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// SUBPASS - resolve //
 	s.cb.nextSubpass(vk::SubpassContents::eInline);
 
-	s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_upData[eUpsamplePipeline::RESOLVE].pipelineLayout, 0, _upData[eUpsamplePipeline::RESOLVE].sets[0], nullptr);
+	s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_upData[eUpsamplePipeline::RESOLVE].pipelineLayout, 0, _upData[eUpsamplePipeline::RESOLVE].sets[resource_index], nullptr);
 	s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _upData[eUpsamplePipeline::RESOLVE].pipeline);
 	// Post-process quad simple generation - fullscreen triangle optimized!
 	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/

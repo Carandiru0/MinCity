@@ -49,7 +49,7 @@ namespace world
 		void setRule(uint32_t const born, uint32_t const die) { _born = born; _die = die; }
 
 	private:
-		STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex);
+		STATIC_INLINE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex);
 		void autoState(Automata const&& in, VecAutomata::reference& __restrict out, VecAutomata::reference& __restrict empty);
 		void autoState(Automata const& in, VecAutomata::reference& __restrict out);
 
@@ -69,7 +69,7 @@ namespace world
 	};
 
 
-	__inline __declspec(noalias) uint32_t const __vectorcall cAutomataGameObject::encode_adjacency(uvec4_v const xmIndex)
+	__inline uint32_t const __vectorcall cAutomataGameObject::encode_adjacency(uvec4_v const xmIndex)
 	{
 		ivec4_t iIndex;
 		ivec4_v(xmIndex).xyzw(iIndex);

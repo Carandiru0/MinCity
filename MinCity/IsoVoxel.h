@@ -150,11 +150,13 @@ namespace Iso
 	// ######### Hash bits:
 
 	// ground hash bits //
-	static constexpr uint32_t const MASK_ZONING = 0x03;		//	                0011	// Ground/Not Zoned = 0, Residential = 1, Commercial = 2, Industrial = 3 (Treat as a number value - not bit position - after mask is applied)
-
+	static constexpr uint32_t const MASK_ZONING = 0x03;			//									  0011	// Ground/Not Zoned = 0, Residential = 1, Commercial = 2, Industrial = 3 (Treat as a number value - not bit position - after mask is applied)
+	static constexpr uint32_t const MASK_RESERVED = 0xFC;		//								 1111 11xx	// ground specific bits not used yet (reserved)
+	static constexpr uint32_t const MASK_COLOR = 0xFFFFFF00;	// 1111 1111 1111 1111 1111 1111 xxxx xxxx	// ground coloring BGR
 
 	// road hash bits //
-	static constexpr uint32_t const ROAD_SEGMENT_WIDTH = 11; // shader value should also match this (uniforms.vert) - must be even number
+	static constexpr uint32_t const ROAD_SEGMENT_WIDTH = 15;  // must be an odd number that is divisible by some number. critical constant tied to road tile data!
+	static constexpr float const	ROAD_SEGMENT_RADIUS = float(ROAD_SEGMENT_WIDTH) * 0.5f;
 	static constexpr int32_t const  SEGMENT_SIDE_WIDTH(ROAD_SEGMENT_WIDTH >> 1),
 									SEGMENT_SNAP_WIDTH(ROAD_SEGMENT_WIDTH + 1);
 	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_BEGIN = 0x0F;		//	                1111
@@ -172,26 +174,17 @@ namespace Iso
 			E = 2,
 			W = 3;
 	} // end ns
-	namespace ROAD_TILE { // 6 bits
+	namespace ROAD_TILE { // 6 bits (64 values maximum)
 		static constexpr uint32_t const
 			STRAIGHT = 0,
 			XING = 1,
 			FLAT = 2,
 			SELECT = 3,
-			CURVED_0 = 4,			// TL
-			CURVED_1 = 5,
-			CURVED_2 = 6,
-			CURVED_3 = 7,
-			CURVED_4 = 8,
-			CURVED_5 = 9,
-			CURVED_6 = 10,
-			CURVED_7 = 11,
-			CURVED_8 = 12,
-			CURVED_9 = 13,
-			CURVED_10 = 14;
-		// TR
-		// BR
-		// BL
+			// n curved layers per curve direction, where n is equal to road segment width. 
+			CURVED_0 = 4;			// TL
+									// TR
+									// BR
+									// BL
 	} // end ns
 	namespace ROAD_NODE_TYPE {
 		static constexpr uint32_t const
@@ -472,6 +465,35 @@ namespace Iso
 			// Set new occlusion bits
 			oVoxel.Adjacency |= (MASK_OCCLUSION_BITS & (occlusionshading << 5));
 		}
+	}
+
+	// #### Ground Only 
+	STATIC_INLINE_PURE uint32_t const getColor(Voxel const& oVoxel)
+	{
+		return((MASK_COLOR & oVoxel.Hash[GROUND_HASH]) >> 8);
+	}
+	STATIC_INLINE void setColor(Voxel& oVoxel, uint32_t const color) {  // bgr, no alpha
+
+		oVoxel.Hash[GROUND_HASH] &= ~MASK_COLOR; // clear ground color bits
+		oVoxel.Hash[GROUND_HASH] |= (MASK_COLOR & (color << 8)); // safetly set ground color bits
+	}
+	STATIC_INLINE void clearColor(Voxel& oVoxel) {
+
+		oVoxel.Hash[GROUND_HASH] &= ~MASK_COLOR; // clear ground color bits
+	}
+
+	STATIC_INLINE_PURE uint32_t const getZoning(Voxel const& oVoxel)
+	{
+		return(MASK_ZONING & oVoxel.Hash[GROUND_HASH]);
+	}
+	STATIC_INLINE void setZoning(Voxel& oVoxel, uint32_t const zoning) {
+
+		oVoxel.Hash[GROUND_HASH] &= ~MASK_ZONING; // clear zoning bits
+		oVoxel.Hash[GROUND_HASH] |= (MASK_ZONING & zoning); // safetly set zoning bits
+	}
+	STATIC_INLINE void clearZoning(Voxel& oVoxel) {
+
+		oVoxel.Hash[GROUND_HASH] &= ~MASK_ZONING; // clear zoning bits
 	}
 
 	// #### Roads

@@ -77,7 +77,7 @@ float lightmap_internal_compute_area(in const vec2 uv) {
 }
 void lightmap_internal_fetch_nn( inout vec4 light_direction_distance, inout vec3 light_color, in const float area, in const vec3 voxel) { // intended usage with nn sampling
 	
-	const vec3 voxel_coord = (voxel + 0.5f) * InvLightVolumeDimensions;
+	const vec3 voxel_coord = voxel * InvLightVolumeDimensions; // *bugfix 0.5 is not added here, see other related bugfix
 
 	vec4 light_direction_pre_distance = textureLod(volumeMap[DD], voxel_coord, 0);
 	light_direction_pre_distance.a = light_direction_pre_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
@@ -128,31 +128,35 @@ void lightmap_internal_fetch_direction_distance( out vec4 light_direction_distan
 void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// rndC sampling
-	lightmap_internal_fetch_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions));
+	lightmap_internal_fetch_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions + 0.5f));  // *bugfix - half voxel offset is exact - required
 }
 void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// rndC sampling
-	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions));
+	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions + 0.5f));  // *bugfix - half voxel offset is exact - required
 }
 #endif
-
-void getLightMap( out vec4 light_direction_distance, in const vec3 uvw ) 
-{
-	// linear sampling only (intended to not add non-linearity to sampling for direction & distance)
-	lightmap_internal_fetch_direction_distance(light_direction_distance, uvw);
-}
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions);
+	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);
 
 	// nn sampling
-	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions);
+	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 
 // main public functions:
+
+// final inverse square law equation used:
+// a = 1.0f / ( (d + 1.0) * (d + 1.0 )
+// see : https://www.desmos.com/calculator/hqksaay8ax
+float getAttenuation(in float normalized_light_distance, in const float volume_length)
+{
+	normalized_light_distance = normalized_light_distance * volume_length * 0.5f + 1.0f; // denormalization and scaling to world coordinates (actual world distance) + 1.0
+
+	return( 1.0f / (normalized_light_distance * normalized_light_distance) );
+}
 
 #ifdef FAST_LIGHTMAP
 vec3 getLightFast(out vec3 light_color, out float attenuation, out float normalized_distance, in const vec3 uvw, in const float volume_length) 
@@ -163,9 +167,7 @@ vec3 getLightFast(out vec3 light_color, out float attenuation, out float normali
 	    
 	normalized_distance = light_direction_distance.a;
 
-	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
-	
-	attenuation = 1.0f / fma(light_distance, light_distance, 1.0f);  
+	attenuation = getAttenuation(normalized_distance, volume_length); 
 
 	// light direction is stored in view space natively in xzy format
 	return(normalize(light_direction_distance.xyz));
@@ -175,10 +177,8 @@ vec3 getReflectionLightFast(out vec3 light_color, out float attenuation, in cons
 	vec4 light_direction_distance; 
 
 	getReflectionLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	    
-	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
 	
-	attenuation = 1.0f / fma(light_distance, light_distance, 1.0f);  
+	attenuation = getAttenuation(light_direction_distance.a, volume_length); 
 
 	// light direction is stored in view space natively in xzy format
 	return(normalize(light_direction_distance.xyz));
@@ -190,22 +190,10 @@ vec3 getLight(out vec3 light_color, out float attenuation, in const vec3 uvw, in
 	vec4 light_direction_distance; 
 
 	getLightMap(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	    
-	const float light_distance = light_direction_distance.a * volume_length; // denormalization and scaling to world coordinates
-	
-	attenuation = 1.0f / fma(light_distance, light_distance, 1.0f);  
+	   
+	attenuation = getAttenuation(light_direction_distance.a, volume_length); 
 
 	// light direction is stored in view space natively in xzy format
-	return(normalize(light_direction_distance.xyz));
-}
-
-vec3 getLight_DirectionDistance(in const vec3 uvw, out float d) // returns direction & distance only
-{
-	vec4 light_direction_distance; 
-
-	getLightMap(light_direction_distance, uvw); // .zw = xz normalized visible uv coords
-	d = light_direction_distance.w;
-
 	return(normalize(light_direction_distance.xyz));
 }
 

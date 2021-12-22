@@ -226,32 +226,32 @@ vec4 emitter_to_direction_distance(in const vec3 emitter_location, in const vec3
 void temporalBlendDD( in const restrict sampler3D inputTemporalDD, inout vec3 direction, inout float dist, in const vec3 uvw )
 {
 	// input Distance, Direction, are initialized to the locations first sample
-
+	const float blending = 0.01f;
 	vec4 neighbour;
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(-0.5f,0,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, abs(dist - neighbour.w));
+	dist = smin(dist, neighbour.w, blending);
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0.5f,0,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, abs(dist - neighbour.w));
+	dist = smin(dist, neighbour.w, blending);
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,-0.5f,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, abs(dist - neighbour.w));
+	dist = smin(dist, neighbour.w, blending);
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0.5f,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, abs(dist - neighbour.w));
+	dist = smin(dist, neighbour.w, blending);
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0,-0.5f), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, abs(dist - neighbour.w));
+	dist = smin(dist, neighbour.w, blending);
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0,0.5f), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, abs(dist - neighbour.w));
+	dist = smin(dist, neighbour.w, blending);
 }		
 
 vec3 temporalBlendR( in const restrict sampler3D inputTemporalR, in vec3 color, in const vec3 uvw )
