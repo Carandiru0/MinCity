@@ -288,12 +288,12 @@ void cVulkan::CreateComputeResources()
 
 			auto const samplers{ getSamplerArray
 				<eSamplerAddressing::CLAMP>(
-					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
 				)
 			};
 			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume seed (lightprobes)
-			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 3, samplers); // 3d volume pingpong input
-			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 3); // 3d volume pingpong output
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
+			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (distance & direction)
 			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (distance & direction)
@@ -1746,6 +1746,10 @@ void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
 
 inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 {
+	if (c.cb_transfer) { // **** very first gpu transfer on new frame ***
+		MinCity::VoxelWorld.Transfer(c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
+	}
+	
 	return(MinCity::VoxelWorld.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData));
 }
 
@@ -2265,8 +2269,7 @@ inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __res
 		
 	};
 
-	MinCity::VoxelWorld.Transfer(resource_index, d.cb,
-		vbos, _rtSharedData._ubo[resource_index]);
+	MinCity::VoxelWorld.Transfer(resource_index, d.cb, vbos);
 }
 
 inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o) // fully dynamic command buffer (every frame)

@@ -1,4 +1,4 @@
-#version 450
+#version 460
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_ballot : enable
 #extension GL_KHR_shader_subgroup_vote : enable
@@ -36,8 +36,8 @@ layout (push_constant) restrict readonly uniform PushConstant {
 #define OPACITY 1
 
 layout (binding = 0) uniform sampler3D seedMap[2];	// lightprobe map
-layout (binding = 1) uniform sampler3D pingpongTexture[3]; // sampling the "ping"
-layout (binding = 2, rgba32f) writeonly restrict uniform image3D pingpongImage[3];	// storing the "pong", -only to be used with imageStore (writeonly)
+layout (binding = 1) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
+layout (binding = 2, rgba32f) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
 //////////////////////////////////////////////////////////////////////////////////
 layout (binding = 3) uniform sampler3D inTemporalDD[2];	// (distance & direction) lightmap history // only signed normalized values
 layout (binding = 4, rg16_snorm) writeonly restrict uniform image3D outTemporalDD[3]; // (distance & direction) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly) // only signed normalized values
@@ -75,9 +75,9 @@ bool isLit( in const float sampled_packed_color )
 
 #ifdef SEED
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-vec4 sampleInputVolume( in const ivec3 Location ) // best jfa result with texelFetch
+vec4 sampleInputVolume( in const ivec3 Location) // best jfa result with texelFetch
 {
-	return texelFetch(seedMap[pc.index_input], Location, 0);
+	return( texelFetch(seedMap[pc.index_input], Location, 0) );
 }
 #else
 vec4 sampleInputVolume( in const ivec3 Location )
@@ -93,7 +93,7 @@ const vec3 group_size = vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
 
 shared vec4 warp_lds[GROUP_SIZE_XY][GROUP_SIZE_XY][GROUP_SIZE_Z];
 
-#define localToGlobal(local) (gl_WorkGroupID.xyz * group_size + local)
+#define localToGlobal(local) fma(gl_WorkGroupID.xyz, group_size, local)
 #define ilocalToGlobal(local) (ivec3(gl_WorkGroupID.xyz * group_size) + local)
 
 vec4 populateLDS(in const ivec3 local) {
@@ -150,7 +150,6 @@ void propogateBlocks(inout warp_local warp)
 	
 	barrier(); // required so that lds is coherent between the last writes and now reads
 
-	//[[dont_unroll]] for (uint i = 0; i < offset_count; ++i) {
 	ivec3 offset;
 	[[unroll]] for (offset.z = -1 ; offset.z <= 1 ; ++offset.z) {
 		[[unroll]] for (offset.y = -1 ; offset.y <= 1 ; ++offset.y) {
@@ -161,7 +160,7 @@ void propogateBlocks(inout warp_local warp)
 #else
 				propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offset * current_step);
 #endif
-	}}}//} // for;for;for
+	}}} // for;for;for
 }
 
 void main() 
@@ -175,22 +174,7 @@ void main()
 	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 	propogateBlocks(warp);
 
-#ifdef SEED
-	
-	// Incremental Averaging https://blog.demofox.org/2016/08/23/incremental-averaging/
-	// Average = mix(Average, NewValue, 1.0 / NewSampleCount);
-	//const vec4 Average = texelFetch(pingpongTexture[pc.index_output], ivec3(gl_GlobalInvocationID.xyz), 0);
-
-	// causes flicked warp.emitter_location = mix( Average.emitter_location, warp.emitter_location, 0.5f );
-	//warp.packed_color = packColor( mix( unpackColor(Average.packed_color), unpackColor(warp.packed_color), 0.5f) );
-	
-#endif
-
-#ifdef SEED
-	imageStore(pingpongImage[1], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp); // seed uses hard-coded output of 1 index for pingpong array. 1 = pivot
-#else
 	imageStore(pingpongImage[pc.index_output], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp);
-#endif
 }
 
 #endif // not MIP
@@ -268,9 +252,17 @@ vec3 temporalBlendR( in const restrict sampler3D inputTemporalR, in vec3 color, 
 	return(color * (1.0f/7.0f)); // 6 neighbour samples + 1 center sample
 }
 
-float attenuation(in const float d)
+/*float attenuation(in const float d)
 {
 	return(1.0f / fma(d, d, 1.0f));
+}
+*/
+// final inverse square law equation used:
+// a = 1.0f / ( (d + 1.0) * (d + 1.0 )
+// see : https://www.desmos.com/calculator/hqksaay8ax
+float attenuation(in float light_distance)  // this is half of the equation, when light volume is sampled, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
+{
+	return( 1.0f / (light_distance + 1.0f) );
 }
 
 vec3 sampleC(in const restrict sampler3D inputC, in vec3 color, in const vec3 current_location, in const float d0) 

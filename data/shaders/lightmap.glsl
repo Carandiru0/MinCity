@@ -151,11 +151,10 @@ void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in co
 // final inverse square law equation used:
 // a = 1.0f / ( (d + 1.0) * (d + 1.0 )
 // see : https://www.desmos.com/calculator/hqksaay8ax
-float getAttenuation(in float normalized_light_distance, in const float volume_length)
+float getAttenuation(in float normalized_light_distance, in const float volume_length) // this is half of the equation, when light volume is generated, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
 {
-	normalized_light_distance = normalized_light_distance * volume_length * 0.5f + 1.0f; // denormalization and scaling to world coordinates (actual world distance) + 1.0
-
-	return( 1.0f / (normalized_light_distance * normalized_light_distance) );
+	// denormalization and scaling to world coordinates (actual world distance) + 1.0
+	return( 1.0f / (fma(normalized_light_distance, volume_length, 1.0f)) );
 }
 
 #ifdef FAST_LIGHTMAP

@@ -2059,8 +2059,17 @@ namespace // private to this file (anonymous)
 	{
 		constinit static struct
 		{
-			uint32_t road_tiles_visible;
+			uint32_t road_tiles_visible = 0;
 
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+			size_t	numDynamicVoxelsRendered = 0,
+					numStaticVoxelsRendered = 0,
+					numTerrainVoxelsRendered = 0;
+
+			size_t  numLightVoxelsRendered = 0;
+#endif
+#endif
 		} inline render_state{};
 
 		// this construct significantly improves throughput of voxels, by batching the streaming stores //
@@ -2155,12 +2164,24 @@ namespace // private to this file (anonymous)
 						xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
 					);
 				}
+
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+				++render_state.numDynamicVoxelsRendered;
+#endif
+#endif
 			}
 
 			// if voxel is hidden then its just a light
 			if (emissive) {
 
 				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
+
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+				++render_state.numLightVoxelsRendered;
+#endif
+#endif
 			}
 		}
 		STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
@@ -2223,6 +2244,11 @@ namespace // private to this file (anonymous)
 					xmUVs,
 					groundHash
 				);
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+				++render_state.numTerrainVoxelsRendered;
+#endif
+#endif
 			}
 		}
 
@@ -2285,6 +2311,25 @@ namespace // private to this file (anonymous)
 				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
+
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+
+				if (bVisible) {
+					size_t const voxel_count = (size_t const)FoundModelInstance->getModel()._numVoxels;
+					if constexpr (Dynamic) {
+						render_state.numDynamicVoxelsRendered += voxel_count;
+					}
+					else {
+						render_state.numStaticVoxelsRendered += voxel_count;
+					}
+				}
+
+				// light is rendered either way //
+				size_t const voxel_count = (size_t const)FoundModelInstance->getModel()._numVoxelsEmissive;
+				render_state.numLightVoxelsRendered += voxel_count;
+#endif
+#endif
 			}
 
 			return(bVisible);
@@ -2299,8 +2344,16 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
 		{
-			render_state.road_tiles_visible = 0; // reset
+			render_state.road_tiles_visible = 0; // reset - visible road tile count very useful eg.) adding cars //
 
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+			render_state.numDynamicVoxelsRendered = 0,
+			render_state.numStaticVoxelsRendered = 0,
+			render_state.numTerrainVoxelsRendered = 0;
+			render_state.numLightVoxelsRendered = 0;
+#endif
+#endif
 			point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 
 			// Traverse Grid
@@ -3291,6 +3344,27 @@ namespace world
 		return(voxelRender::render_state.road_tiles_visible);
 	}
 
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+	size_t const cVoxelWorld::numDynamicVoxelsRendered() const
+	{
+		return(voxelRender::render_state.numDynamicVoxelsRendered);
+	}
+	size_t const cVoxelWorld::numStaticVoxelsRendered() const
+	{
+		return(voxelRender::render_state.numStaticVoxelsRendered);
+	}
+	size_t const cVoxelWorld::numTerrainVoxelsRendered() const
+	{
+		return(voxelRender::render_state.numTerrainVoxelsRendered);
+	}
+	size_t const cVoxelWorld::numLightVoxelsRendered() const
+	{
+		return(voxelRender::render_state.numLightVoxelsRendered);
+	}
+#endif
+#endif
+
 	rect2D_t const __vectorcall cVoxelWorld::getVisibleGridBounds() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
 		point2D_t const gridBounds(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z);
@@ -3837,17 +3911,34 @@ namespace world
 		return(true);
 	}
 
+	void cVoxelWorld::Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo)
+	{
+		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
+		cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER);
+
+		// ######################### STAGE 1 - UBO UPDATE (that all subsequent renderpasses require //
+		cb.updateBuffer(
+			ubo.buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform), (const void*)&_currentState.Uniform
+		);
+
+		// *Required* - solves a bug with trailing voxels, vulkan.cpp has the corresponding "acquire" operation in static command buffer operation
+		   // see https://www.khronos.org/registry/vulkan/specs/1.0/html/chap6.html#synchronization-memory-barriers under BufferMemoryBarriers
+		ubo.barrier( // ## RELEASE ## //
+			cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
+			vk::DependencyFlagBits::eByRegion,
+			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+		);
+
+		cb.end();	// ********* command buffer end is called here only //
+	}
+
 	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
-		vku::DynamicVertexBuffer* const* const& __restrict vbo, vku::UniformBuffer& __restrict ubo)
+		vku::DynamicVertexBuffer* const* const& __restrict vbo)
 	{
 		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
 		cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::DYNAMIC);
 
-		{ // ######################### STAGE 1 - UBO UPDATE, OTHER BUFFERS //
-			cb.updateBuffer(
-				ubo.buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform), (const void*)&_currentState.Uniform
-			);
-
+		{ // ######################### STAGE 1 - OTHER BUFFERS (that the static renderpass requires)
 			{
 				_buffers.shared_buffer[resource_index].uploadDeferred(cb, _buffers.reset_shared_buffer);
 				_buffers.subgroup_layer_count_max[resource_index].uploadDeferred(cb, _buffers.reset_subgroup_layer_count_max);
@@ -3862,7 +3953,18 @@ namespace world
 			vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC]->uploadDeferred(cb, voxels.visibleDynamic.opaque.stagingBuffer[resource_index], voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
 		}
 
-		{ // ######################### STAGE 3 - BUFFER BARRIERS //			
+		{ // ######################### STAGE 3 - BUFFER BARRIERS //		
+			
+			{ // ## RELEASE ## //
+				static constexpr size_t const buffer_count(2ULL);
+				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ &_buffers.shared_buffer[resource_index], &_buffers.subgroup_layer_count_max[resource_index] };
+				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
+					cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,  // first usage is in z only pass in voxel_clear.frag
+					vk::DependencyFlagBits::eByRegion,
+					vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+				);
+			}
+
 			{ // ## RELEASE ## //
 				// *Required* - solves a bug with flickering geometry, vulkan.cpp has the corresponding "acquire" operation in static command buffer operation
 				static constexpr size_t const buffer_count(4ULL);
@@ -3873,26 +3975,7 @@ namespace world
 					vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
 				);
 			}
-
-			// *Required* - solves a bug with trailing voxels, vulkan.cpp has the corresponding "acquire" operation in static command buffer operation
-			// see https://www.khronos.org/registry/vulkan/specs/1.0/html/chap6.html#synchronization-memory-barriers under BufferMemoryBarriers
-			ubo.barrier( // ## RELEASE ## //
-				cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
-				vk::DependencyFlagBits::eByRegion,
-				vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
-			);
-
-			{ // ## RELEASE ## //
-				static constexpr size_t const buffer_count(2ULL);
-				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ &_buffers.shared_buffer[resource_index], &_buffers.subgroup_layer_count_max[resource_index] };
-				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
-					cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,  // first usage is in z only pass in voxel_clear.frag
-					vk::DependencyFlagBits::eByRegion,
-					vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
-				);
-			}
 		}
-
 
 		cb.end();	// ********* command buffer end is called here only //
 

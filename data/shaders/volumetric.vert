@@ -1,8 +1,8 @@
-#version 450
+#version 460
 #extension GL_GOOGLE_include_directive : enable
 #include "shareduniform.glsl"
 
-layout(location = 0) in vec4 inPos;
+layout(location = 0) in precise vec4 inPos;
 
 writeonly layout(location = 0) out streamOut
 {
@@ -22,27 +22,26 @@ void main() {
 	// Compute eye position and ray directions in the unit cube space
 	// fragment shaders always sample with height being z component
 
-	const vec3 VolumeScale = VolumeDimensions * 0.5f;
-	const vec3 position = inPos.xyz - fractional_offset_v3() / VolumeDimensions;
+	precise const vec3 VolumeScale = VolumeDimensions * 0.5f;
+	precise const vec3 volume_translation =  vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f);
 
-	const vec3 eyePos = u._eyePos.xyz;
-	Out.rd.xzy = normalize(position - eyePos);
+	precise const vec3 position = fma(inPos.xyz, VolumeScale, -fractional_offset_v3());
+	
+	// inverted y translation, also put at groundlevel
+	gl_Position = u._viewproj * vec4(position - volume_translation, 1.0f);
+
+	precise const vec3 eyePos = u._eyePos.xyz;
+	Out.rd.xzy = normalize(position/VolumeScale - eyePos);
 	Out.eyePos.xzy = eyePos;
 
-	vec3 eyeDir = u._eyeDir.xyz;
+	precise vec3 eyeDir = u._eyeDir.xyz;
 	eyeDir.y = -eyeDir.y;  // must invert y axis here!! otherwise rotation of camera reveals incorrect depth
 	eyeDir = normalize(eyeDir);  
 	Out.eyeDir.xzy = eyeDir; // Out.eyeDir is flat, normalized and good to use normalized in fragment shaders
 
-	//Out.fractional_offset = vec3(fractional_offset(), 0.0f) / VolumeDimensions.xzy;
-
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 
 	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
-	const vec3 volume_translation = mix(vec3(-0.5f), vec3(0.0f), eyeDir * 0.5f + 0.5f) - vec3(VolumeScale.x * 0.5f, VolumeScale.y, VolumeScale.z * 0.5f);
-	
-	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewproj * vec4(fma(position, VolumeScale, volume_translation), 1.0f);	
 }
 
 /*

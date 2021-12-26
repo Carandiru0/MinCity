@@ -1,4 +1,4 @@
-#version 450 
+#version 460 
 #extension GL_GOOGLE_include_directive : enable
 
 #if defined (SMAA_PASS_2) || defined(RESOLVE) || defined(OVERLAY)

@@ -1,4 +1,4 @@
-#version 450
+#version 460
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_quad: enable
 
@@ -184,7 +184,7 @@ void main() {
 
 	vec3 color = lit( terrainHeight + grid_color, light_color,				// regular terrain lighting
 					  In._occlusion, attenuation,
-					  grid * In._emission * 0.5f, ROUGHNESS,
+					  grid * In._emission, ROUGHNESS,
 					  L, N, V);
 	
 	const float luma = dot(color, LUMA);

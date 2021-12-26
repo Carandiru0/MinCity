@@ -1869,15 +1869,13 @@ void  cNuklear::UpdateGUI()
 
 	/// debugging windows ///
 #ifdef DEBUG_FPS_WINDOW
-	static bool bMainWindowStartOpen(false), bCameraOpen(false), bInstancesOpen(false), bPerformanceOpen(false), bLightmapOpen(false);
+	static bool bMainWindowStartOpen(false), bCameraOpen(false), bInstancesOpen(false), bVoxelsOpen(false), bPerformanceOpen(false), bLightmapOpen(false);
 
 	int32_t windowHeight = 240;
-	if (bCameraOpen | bPerformanceOpen | bLightmapOpen) {
+	if (bCameraOpen | bPerformanceOpen | bLightmapOpen | bInstancesOpen | bVoxelsOpen) {
 		windowHeight = SFM::max(windowHeight, 660);
 	}
-	else if (bInstancesOpen) {
-		windowHeight = SFM::max(windowHeight, 300);
-	}
+
 	constexpr eWindowName const windowName(eWindowName::WINDOW_MINCITY);
 
 	if (nk_begin_titled(_ctx, windowName._to_string(), 
@@ -2409,6 +2407,48 @@ void  cNuklear::UpdateGUI()
 		}
 		else {
 			bInstancesOpen = false;
+		}
+
+		if (nk_tree_push(_ctx, NK_TREE_TAB, "Voxels", NK_MINIMIZED))
+		{
+			nk_layout_row_dynamic(_ctx, 32, 4);
+			{
+				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
+				nk_label(_ctx, "dynamic", NK_TEXT_LEFT);
+				nk_label(_ctx, "static", NK_TEXT_LEFT);
+				nk_label(_ctx, "terrain", NK_TEXT_LEFT);
+				nk_label(_ctx, "light", NK_TEXT_LEFT);
+				NK_POP_COLOR(_ctx);
+
+				nk_layout_row_dynamic(_ctx, 32, 4);
+
+				std::string szText;
+
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numDynamicVoxelsRendered());
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+
+				szText.clear();
+
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numStaticVoxelsRendered());
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+
+				szText.clear();
+
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numTerrainVoxelsRendered());
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+
+				szText.clear();
+
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numLightVoxelsRendered());
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+
+				szText.clear();
+			}
+			nk_tree_pop(_ctx);
+			bVoxelsOpen = true;
+		}
+		else {
+			bVoxelsOpen = false;
 		}
 #endif
 		bMainWindowStartOpen = true;

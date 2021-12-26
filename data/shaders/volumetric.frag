@@ -1,4 +1,4 @@
-#version 450
+#version 460
 #extension GL_GOOGLE_include_directive : enable
 //#extension GL_KHR_shader_subgroup_vote: enable
 #extension GL_EXT_control_flow_attributes :enable
@@ -35,7 +35,7 @@ const float SQRT_MAX_STEPS = -2.0f * sqrt(MAX_STEPS); // must be negative
 
 #define EPSILON 0.000000001f
 #define FOG_STRENGTH 0.18f
-#define SCATTER_STRENGTH (GOLDEN_RATIO*69.0f)
+#define SCATTER_STRENGTH (GOLDEN_RATIO*69.0f)  //lower = less fog scattering
 #define FOG_MAX_HEIGHT 80.0f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
@@ -205,21 +205,15 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, inout 
 
 	const float fog_max_height = InvVolumeDimensions_Z * FOG_MAX_HEIGHT;
 	const float fog_height = max(0.0f, InvVolumeDimensions_Z * FOG_MAX_HEIGHT * fog.w - uvw.z);
-	
-	transparency += fog_height;
 
 	// scattering lit fog
-	const float NdotL = max(0.0f, dot(-light_direction, fog.xyz));
 	const float opacity_light = fetch_opacity(uvw + light_direction * normalized_distance + fog.xyz * InvVolumeDimensions_Z);
-	scattering = max(0.0f, dot(-light_direction, normalize(vec3(opacity_light))));
+	scattering = 1.0f - max(0.0f, dot(-light_direction, normalize(vec3(opacity_light))));
 	scattering = fog_height * scattering;
-	scattering = scattering * (1.0f + NdotL);
+	const float NdotL = 1.0f - max(0.0f, dot(-light_direction, fog.xyz));
+	scattering = scattering * NdotL * attenuation;
 
-	//scattering = max(0.0f, dot(-light_direction, normalize(opacity_light * vec3(f))));
-
-	//
-	//scattering = mix(scattering * fog_height, scattering, f);
-	//scattering = mix(scattering, scattering * NdotL, fog.w);
+	transparency += scattering * scattering * transparency;
 
 	return(attenuation);  
 }

@@ -124,8 +124,8 @@ namespace world
 
 		bool const renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 		
-		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
-			vku::DynamicVertexBuffer* const* const& __restrict vbo, vku::UniformBuffer& __restrict ubo);
+		void Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo);
+		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer* const* const& __restrict vbo);
 		void AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
 
 		
@@ -272,6 +272,14 @@ namespace world
 		size_t const numDynamicModelInstances() const { return(_hshVoxelModelInstances_Dynamic.size()); }
 		size_t const numStaticModelInstances() const { return(_hshVoxelModelInstances_Static.size()); }
 
+#ifndef NDEBUG
+#ifdef DEBUG_VOXELS_RENDERED
+		size_t const numDynamicVoxelsRendered() const;
+		size_t const numStaticVoxelsRendered() const;
+		size_t const numTerrainVoxelsRendered() const;
+		size_t const numLightVoxelsRendered() const;
+#endif
+#endif
 		uvec4_v const __vectorcall blackbody(float const norm) const;
 
 		void makeTextureShaderOutputsReadOnly(vk::CommandBuffer const& __restrict cb);

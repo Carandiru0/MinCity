@@ -52,6 +52,8 @@
 //#define DEBUG_RAIN_COUNT
 //#define DEBUG_NO_RAIN
 //#define DEBUG_VOLUMETRIC
+//#define DEBUG_ASSERT_JFA_SEED_INDICES_OK // good validation, state is setup at runtime so this is a good dynamic test.
+#define DEBUG_VOXELS_RENDERED
 //#define DEBUG_DEPTH_CUBE\\
 // 56trr\
 // 

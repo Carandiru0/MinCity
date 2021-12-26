@@ -246,7 +246,7 @@ namespace Volumetric
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightProbeMap.imageGPUIn[resource_index]->image(), vkNames::Image::LightProbeMap);
 			}
 			
-			for (uint32_t i = 0; i < 3; ++i) {
+			for (uint32_t i = 0; i < 2; ++i) {
 				PingPongMap[i] = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);
 
@@ -285,7 +285,7 @@ namespace Volumetric
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)OpacityMap->image(), vkNames::Image::OpacityMap);
 
 			FMT_LOG(TEX_LOG, "LightProbe Volumetric data: {:n} bytes", LightProbeMap.imageGPUIn[0]->size() + LightProbeMap.imageGPUIn[1]->size());
-			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + PingPongMap[2]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size() + (LightMapHistory[0].DistanceDirection->size() + LightMapHistory[0].Color->size() + LightMapHistory[0].Reflection->size()) * TEMPORAL_VOLUMES);
+			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size() + (LightMapHistory[0].DistanceDirection->size() + LightMapHistory[0].Color->size() + LightMapHistory[0].Reflection->size()) * TEMPORAL_VOLUMES);
 			FMT_LOG(TEX_LOG, "Opacitymap [GPU Resident Only] Volumetric data: {:n} bytes", OpacityMap->size());
 
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -306,7 +306,6 @@ namespace Volumetric
 
 				PingPongMap[0]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 				PingPongMap[1]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
-				PingPongMap[2]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 
 				for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
 					LightMapHistory[i].DistanceDirection->setLayoutCompute(cb, vku::ACCESS_READWRITE);			// never changes
@@ -346,15 +345,11 @@ namespace Volumetric
 			dsu.image(samplerLinearClamp, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(1U, 2, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, PingPongMap[2]->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(2U, 1, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(2U, 2, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, PingPongMap[2]->imageView(), vk::ImageLayout::eGeneral);
 
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -420,7 +415,7 @@ namespace Volumetric
 		voxelTexture3D										LightProbeMap;
 
 		vku::IndirectBuffer* __restrict						ComputeLightDispatchBuffer;
-		vku::TextureImageStorage3D*							PingPongMap[3];
+		vku::TextureImageStorage3D*							PingPongMap[2];
 		voxelLightmapSet									LightMap; // final output
 		voxelLightmapSet									LightMapHistory[TEMPORAL_VOLUMES];
 		vku::TextureImageStorage3D*							OpacityMap;
@@ -446,13 +441,19 @@ namespace Volumetric
 			:
 			ComputeLightDispatchBuffer{ nullptr }, LightMap{ nullptr }, LightMapHistory{ nullptr }, OpacityMap{ nullptr },
 			VolumeSet{},
-			ClearStage(0),
-			PushConstants{}
+			ClearStage(0)
 
 #ifdef DEBUG_LIGHT_PROPAGATION
 			, DebugDevice(nullptr), DebugMinMaxBuffer(nullptr), DebugMinMax{ { 99999.0f, 99999.0f, 99999.0f }, { -99999.0f, -99999.0f, -99999.0f } }, DebugTexture(nullptr), DebugSlice(0)
 #endif
 		{
+			// REQUIRED initial state - *do not change or remove*
+			PushConstants.step = 0;			 // zero
+			PushConstants.index_input = 0;	 // zero
+			PushConstants.index_output = 1;  // index_output != index_input  **important
+			PushConstants.index_filter = 0;  // independent
+			
+			XMStoreFloat4x4(&PushConstants.view, XMMatrixIdentity());
 			XMStoreFloat4x4A(&ViewMatrix, XMMatrixIdentity());
 		}
 		~volumetricOpacity()
@@ -521,13 +522,17 @@ namespace Volumetric
 	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
 	__inline void volumetricOpacity<Width, Height, Depth>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input)
 	{
-		PushConstants.step = 0;
-		PushConstants.index_output = 0;
-#ifdef NDEBUG // *bugfix: there is some strange disarity between release and debug builds. These are currently set where no black flicker occurs while scrolling view on voxel lights. @todo find whats actually causing this, this workaround however works for now.
-		PushConstants.index_input = index_input; 
-#else
-		PushConstants.index_input = index_input;
+		PushConstants.step = 0; 
+
+		PushConstants.index_output = !index_input;
+		PushConstants.index_input = index_input; // seed input alternates
+
+#ifndef NDEBUG
+#ifdef DEBUG_ASSERT_JFA_SEED_INDICES_OK // good validation, state is setup at runtime so this is a good dynamic test.
+		assert_print(PushConstants.index_output != PushConstants.index_input, "[fail] jfa seed indices equal! [fail]")
 #endif
+#endif
+
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstantsJFA), reinterpret_cast<void const* const>(&PushConstants));
 
@@ -563,9 +568,10 @@ namespace Volumetric
 
 		// note: view matrix is manually updated outside of this function
 		// note: pushconstant filter index is manually updated outside of this function
-		PushConstants.index_input = index_input;
-		PushConstants.index_output = ((0 == index_input) ? 2 : 0); // treated as index_last for only filter stage in shader
-
+		//       it alternates independently so that a frame history can be made in less memory.
+		PushConstants.index_output = index_input; // this is not used in the shader @ this stage. however, it is important that this is still updated to maintain the current state of PushConstants.
+		PushConstants.index_input = index_input;  // this is the input to filter stage that is the output of the jfa stage.                                                                          
+		
 		constexpr size_t const begin(offsetof(UniformDecl::ComputeLightPushConstants, index_input));
 
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
@@ -605,7 +611,7 @@ namespace Volumetric
 		}
 		else if (c.cb_render_light) { 
 
-			constinit static bool bRecorded[2]{ false, false };
+			constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
 
 			uint32_t const resource_index(c.resource_index);
 
@@ -644,13 +650,10 @@ namespace Volumetric
 				
 				// (1 + JFA)
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
-				renderSeed(c, render_data, resource_index);
+				renderSeed(c, render_data, resource_index); // input flips with resource_index
 
 				// ( JFA ) //
-				int32_t const pivot(1),
-							  direction((((int32_t)resource_index) << 1) - 1);
-
-				uint32_t uPing((uint32_t)pivot), uPong((uint32_t)(pivot + direction));
+				uint32_t uPing(!resource_index), uPong(resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
 
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
 
@@ -684,8 +687,8 @@ namespace Volumetric
 			}
 			else {
 				// Just update layouts that will be current after this compute cb is done.
-				LightProbeMap.imageGPUIn[resource_index]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
-				LightProbeMap.imageGPUIn[!resource_index]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
+				LightProbeMap.imageGPUIn[0]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
+				LightProbeMap.imageGPUIn[1]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
 				LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
 				LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
 				LightMap.Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
@@ -699,7 +702,7 @@ namespace Volumetric
 	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
 	__inline bool const volumetricOpacity<Width, Height, Depth>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb) {
 
-		constinit static bool bRecorded[2]{ false, false };
+		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
 
 		// cheap loads reused, must be static - *bugfix: per resource state required
 		constinit static uvec4_t new_max_extents[2]{}, new_min_extents[2]{};		// these extents are before rounding to gpu memory granularity (pre-check)
