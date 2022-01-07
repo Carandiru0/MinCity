@@ -121,7 +121,7 @@ namespace world
 				fp_seconds const tDelta = tNow - instance->getCreationTime();
 				fp_seconds const tSequenceLength = milliseconds(Volumetric::Konstants::CREATION_SEQUENCE_LENGTH * maxHeight);
 
-				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp(0.0f, (float)maxHeight, SFM::saturate(tDelta / tSequenceLength)));
+				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp(0.0f, (float)maxHeight, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
 
 				// new "maximum" for destruction to limit to (height of current creation)
 				heightLimit = SFM::min(newHeight, heightLimit);
@@ -130,7 +130,7 @@ namespace world
 			fp_seconds const tSequenceLength = milliseconds(Volumetric::Konstants::DESTRUCTION_SEQUENCE_LENGTH * maxHeight);
 			if (tDelta < tSequenceLength)
 			{
-				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp((float)maxHeight, 0.0f, SFM::saturate(tDelta / tSequenceLength)));
+				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp((float)maxHeight, 0.0f, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
 
 				heightLimit = SFM::min(newHeight, heightLimit);
 
@@ -162,7 +162,7 @@ namespace world
 			if (tDelta < tSequenceLength)
 			{
 				uint32_t heightLimit(maxHeight);
-				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp(0.0f, (float)maxHeight, SFM::saturate(tDelta / tSequenceLength)));
+				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp(0.0f, (float)maxHeight, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
 
 				// new "maximum" for destruction to limit to (height of current creation)
 				heightLimit = SFM::min(newHeight, heightLimit);

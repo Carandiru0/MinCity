@@ -91,10 +91,10 @@ nk_font_stash_end(struct nk_context* const __restrict ctx, struct nk_font_atlas 
 	uint8_t const* const __restrict memToLoad = (uint8_t const* const __restrict)nk_font_atlas_bake(atlas, &width, &height, NK_FONT_ATLAS_RGBA32);
 
 	bool bLoaded(false);
-	if (MinCity::TextureBoy.KTXFileExists(FONT_DIR L"FontAtlas.ktx"))
+	if (MinCity::TextureBoy->KTXFileExists(FONT_DIR L"FontAtlas.ktx"))
 	{
 		// replace with cached BC7 version instead
-		bLoaded = MinCity::TextureBoy.LoadKTXTexture(texture, FONT_DIR L"FontAtlas.ktx");
+		bLoaded = MinCity::TextureBoy->LoadKTXTexture(texture, FONT_DIR L"FontAtlas.ktx");
 	}
 
 	if (!bLoaded) { // build new compressed texture //
@@ -108,10 +108,10 @@ nk_font_stash_end(struct nk_context* const __restrict ctx, struct nk_font_atlas 
 		ImagingDelete(imgFontBC7);
 		ImagingDelete(imgRef);
 
-		if (MinCity::TextureBoy.KTXFileExists(FONT_DIR L"FontAtlas.ktx"))
+		if (MinCity::TextureBoy->KTXFileExists(FONT_DIR L"FontAtlas.ktx"))
 		{
 			// replace with cached BC7 version instead
-			bLoaded = MinCity::TextureBoy.LoadKTXTexture(texture, FONT_DIR L"FontAtlas.ktx");
+			bLoaded = MinCity::TextureBoy->LoadKTXTexture(texture, FONT_DIR L"FontAtlas.ktx");
 		}
 	}
 	
@@ -273,7 +273,7 @@ nk_mouse_position_callback(GLFWwindow* const window, double const xpos, double c
 
 	if (nk_input.input_focused) {
 
-		XMVECTOR xmMousePos(XMVectorSet(xpos, ypos, 0.0f, 0.0f));
+		XMVECTOR xmMousePos(XMVectorSet((float)xpos, (float)ypos, 0.0f, 0.0f));
 
 		xmMousePos = SFM::clamp(xmMousePos, xmMouseCursorGlyphNegSize, p2D_to_v2(MinCity::getFramebufferSize()));	// *bugfix, best way todo with glfw - keeps mouse restricted to the renderable area +- mouse cursor size.
 		
@@ -495,15 +495,15 @@ void cNuklear::UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk
 void cNuklear::LoadGUITextures()
 {
 	// Load Textures (SDFs)
-	MinCity::TextureBoy.LoadKTXTexture(_guiTextures.create, GUI_DIR L"create.ktx");
+	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.create, GUI_DIR L"create.ktx");
 
-	MinCity::TextureBoy.LoadKTXTexture(_guiTextures.open, GUI_DIR L"open.ktx");
+	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.open, GUI_DIR L"open.ktx");
 
-	MinCity::TextureBoy.LoadKTXTexture(_guiTextures.save, GUI_DIR L"save.ktx");
+	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.save, GUI_DIR L"save.ktx");
 
-	MinCity::TextureBoy.LoadKTXTexture(_guiTextures.road, GUI_DIR L"road.ktx");
+	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.road, GUI_DIR L"road.ktx");
 
-	MinCity::TextureBoy.LoadKTXTexture(_guiTextures.zoning, GUI_DIR L"zoning.ktx");
+	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.zoning, GUI_DIR L"zoning.ktx");
 
 	// Load Image Sequences
 	_sequenceImages.static_screen[0] = ImagingLoadGIFSequence(GUI_DIR L"static.gif");
@@ -531,7 +531,7 @@ void cNuklear::LoadGUITextures()
 			}
 		}
 		
-		MinCity::TextureBoy.ImagingSequenceToTexture(_guiTextures.load_thumbnail.sequence[_guiTextures.load_thumbnail.select].sequence, _guiTextures.load_thumbnail.texture);
+		MinCity::TextureBoy->ImagingSequenceToTexture(_guiTextures.load_thumbnail.sequence[_guiTextures.load_thumbnail.select].sequence, _guiTextures.load_thumbnail.texture);
 	}
 
 	static constexpr uint32_t ICON_DIMENSIONS = 128U;
@@ -585,7 +585,7 @@ void cNuklear::LoadGUITextures()
 	});
 
 	_guiImages.offscreen = _imageVector.emplace_back( new nk_image_extended
-	{	MinCity::Vulkan.offscreenImageView2DArray(), 
+	{	MinCity::Vulkan->offscreenImageView2DArray(), 
 		(uint16_t)_frameBufferSize.x, (uint16_t)_frameBufferSize.y,
 		{ 0, 0, (uint16_t)_frameBufferSize.x, (uint16_t)_frameBufferSize.y },
 		RGBA_IMAGE
@@ -638,8 +638,8 @@ void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restr
 			nk_convert(_ctx, _cmds, &vbuf, &ebuf, &config);
 #endif
 
-			MinCity::Vulkan.uploadBufferDeferred(vbo, cb_transfer, _stagingBuffer[0][resource_index], _vertices, vbuf.needed, VERTICES_SZ);
-			MinCity::Vulkan.uploadBufferDeferred(ibo, cb_transfer, _stagingBuffer[1][resource_index], _indices, ebuf.needed, INDICES_SZ);
+			MinCity::Vulkan->uploadBufferDeferred(vbo, cb_transfer, _stagingBuffer[0][resource_index], _vertices, vbuf.needed, VERTICES_SZ);
+			MinCity::Vulkan->uploadBufferDeferred(ibo, cb_transfer, _stagingBuffer[1][resource_index], _indices, ebuf.needed, INDICES_SZ);
 
 			{ // ## RELEASE ## //
 				static constexpr size_t const buffer_count(2ULL);
@@ -647,7 +647,7 @@ void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restr
 				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
 					cb_transfer, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 					vk::DependencyFlagBits::eByRegion,
-					vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+					vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 				);
 			}
 			_bAcquireRequired = true;
@@ -660,7 +660,7 @@ void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restr
 			ubo.barrier( // ## RELEASE ## //
 				cb_transfer, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 				vk::DependencyFlagBits::eByRegion,
-				vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+				vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 			);
 
 			_bUniformSet = true;  // only needs to be uploaded once
@@ -682,7 +682,7 @@ void cNuklear::AcquireTransferQueueOwnership(vk::CommandBuffer& __restrict cb_re
 		vku::GenericBuffer::barrier(buffers, // ## ACQUIRE ## // batched 
 			cb_render, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexInput,
 			vk::DependencyFlagBits::eByRegion,
-			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
 		_bAcquireRequired = false; // must reset *here*
 	}
@@ -691,7 +691,7 @@ void cNuklear::AcquireTransferQueueOwnership(vk::CommandBuffer& __restrict cb_re
 		ubo.barrier(	// ## ACQUIRE ## //
 			cb_render, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexShader,
 			vk::DependencyFlagBits::eByRegion,
-			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
 		_bUniformAcquireRequired = false; // must reset *here*
 	}
@@ -780,7 +780,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	}
 
 	if (!nk_input.input_focused) { // only continue to process input if window is focused
-		MinCity::VoxelWorld.OnMouseInactive();
+		MinCity::VoxelWorld->OnMouseInactive();
 		return(false);
 	}
 	
@@ -788,7 +788,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	nk_input_begin(ctx);
 	//############################
 
-	if (MinCity::Nuklear.isEditControlFocused()) { // nuklear input
+	if (MinCity::Nuklear->isEditControlFocused()) { // nuklear input
 
 		for (uint32_t i = 0; i < nk_input.characters_count; ++i) {
 
@@ -851,7 +851,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			*/
 			default:
 				// (exclusively game focused) key events are all forwarded to VoxelWorld for handling //
-				MinCity::VoxelWorld.OnKey(nk_input.keys[i].key, down, ctrl);
+				MinCity::VoxelWorld->OnKey(nk_input.keys[i].key, down, ctrl);
 				break;
 			}
 		}
@@ -861,7 +861,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	{
 		XMVECTOR const xmPosition(XMLoadFloat2((XMFLOAT2* const __restrict)&nk_input.mouse_pos));
 		
-		if (MinCity::VoxelWorld.OnMouseMotion(xmPosition)) { // Hi resolution mouse motion tracking (internally chechked for high precision delta of mouse coords)
+		if (MinCity::VoxelWorld->OnMouseMotion(xmPosition)) { // Hi resolution mouse motion tracking (internally chechked for high precision delta of mouse coords)
 
 			nk_input_motion(ctx, nk_input.mouse_pos.x, nk_input.mouse_pos.y);
 				
@@ -935,33 +935,33 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 		{
 		case eMouseButtonState::LEFT_PRESSED:
 			if (!isHoveringWindow) {
-				MinCity::VoxelWorld.OnMouseLeft(eMouseButtonState::LEFT_PRESSED);
+				MinCity::VoxelWorld->OnMouseLeft(eMouseButtonState::LEFT_PRESSED);
 			}
 			break;
 		case eMouseButtonState::RIGHT_PRESSED:
 			if (!isHoveringWindow) {
-				MinCity::VoxelWorld.OnMouseRight(eMouseButtonState::RIGHT_PRESSED);
+				MinCity::VoxelWorld->OnMouseRight(eMouseButtonState::RIGHT_PRESSED);
 			}
 			break;
 		case eMouseButtonState::RELEASED:
 			if (nk_input.mouse_state.left_released) {
-				MinCity::VoxelWorld.OnMouseLeft(eMouseButtonState::RELEASED);
+				MinCity::VoxelWorld->OnMouseLeft(eMouseButtonState::RELEASED);
 			}
 			else if (nk_input.mouse_state.right_released) {
-				MinCity::VoxelWorld.OnMouseRight(eMouseButtonState::RELEASED);
+				MinCity::VoxelWorld->OnMouseRight(eMouseButtonState::RELEASED);
 			}
 			break;
 		default:
-			MinCity::VoxelWorld.OnMouseInactive();
+			MinCity::VoxelWorld->OnMouseInactive();
 			break;
 		}
 
 		if (!isHoveringWindow) {
 			if (nk_input.mouse_state.left_clicked) {
-				MinCity::VoxelWorld.OnMouseLeftClick();
+				MinCity::VoxelWorld->OnMouseLeftClick();
 			}
 			else if (nk_input.mouse_state.right_clicked) {
-				MinCity::VoxelWorld.OnMouseRightClick();
+				MinCity::VoxelWorld->OnMouseRightClick();
 			}
 		}
 	
@@ -969,13 +969,13 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	else if (isHoveringWindow) {
 
 		// only if current state is handled (no change between successive calls to this function)
-		MinCity::VoxelWorld.OnMouseInactive();
+		MinCity::VoxelWorld->OnMouseInactive();
 	}
 
 	// end mouse input
 	if (!isHoveringWindow) { // must persist outside handled...
 		if (0.0f != nk_input.scroll.y) {
-			MinCity::VoxelWorld.OnMouseScroll(nk_input.scroll.y);
+			MinCity::VoxelWorld->OnMouseScroll(nk_input.scroll.y);
 			nk_input.scroll.y = 0.0f; // must zero once handled
 		}
 	}
@@ -1236,7 +1236,7 @@ void cNuklear::draw_lut_window(tTime const& __restrict tNow, uint32_t const heig
 				bUpdateRequired = true;
 			}
 			if (nk_button_label(_ctx, "save")) {
-				if (MinCity::PostProcess.SaveMixedLUT(selected_lut, available_luts[selected_luts[0]], available_luts[selected_luts[1]], tT)) {
+				if (MinCity::PostProcess->SaveMixedLUT(selected_lut, available_luts[selected_luts[0]], available_luts[selected_luts[1]], tT)) {
 					available_luts.clear();
 				}
 			}
@@ -1246,7 +1246,7 @@ void cNuklear::draw_lut_window(tTime const& __restrict tNow, uint32_t const heig
 					tT = t;
 
 					if (tNow - tLastChanged > tUpdateInterval || bUpdateRequired) {
-						if (MinCity::PostProcess.MixLUT(available_luts[selected_luts[0]], available_luts[selected_luts[1]], tT)) {
+						if (MinCity::PostProcess->MixLUT(available_luts[selected_luts[0]], available_luts[selected_luts[1]], tT)) {
 
 							tLastChanged = tNow;
 							bUploadLUT = true;
@@ -1254,7 +1254,7 @@ void cNuklear::draw_lut_window(tTime const& __restrict tNow, uint32_t const heig
 					}
 				}
 				else if (bUploadLUT) {
-					bUploadLUT = !MinCity::PostProcess.UploadLUT(); // must be done on main thread, only uploads when lut that was last mixed has completed
+					bUploadLUT = !MinCity::PostProcess->UploadLUT(); // must be done on main thread, only uploads when lut that was last mixed has completed
 				}
 			}
 		}
@@ -1280,12 +1280,12 @@ void  cNuklear::UpdateGUI()
 	tTime const tLocal(high_resolution_clock::now());
 	static tTime tLocalLast(tLocal);
 
-	[[unlikely]] if (!MinCity::Vulkan.isRenderingEnabled()) // bugfix - crash when out of focus
+	[[unlikely]] if (!MinCity::Vulkan->isRenderingEnabled()) // bugfix - crash when out of focus
 		return;
 
 	_activeWindowRects.clear(); // reset active window rects
 	nk_clear(_ctx); // ########## ONLY PLACE THIS IS CLEARED #########  //
-	_ctx->delta_time_seconds = fp_seconds(tLocal - tLocalLast).count(); // update internal timing of context 
+	_ctx->delta_time_seconds = time_to_float(fp_seconds(tLocal - tLocalLast)); // update internal timing of context 
 	_bEditControlFocused = false; // reset
 	SetGUIDirty(); // signal upload is neccessary 
 
@@ -1314,19 +1314,19 @@ void  cNuklear::UpdateGUI()
 			nk_layout_row_static(_ctx, icon, icon, cols);
 
 			//
-			uint32_t const activeSubTool(MinCity::UserInterface.getActivatedSubToolType());
+			uint32_t const activeSubTool(MinCity::UserInterface->getActivatedSubToolType());
 
 			if (nk_sdf_hover_button(_ctx, _guiImages.road, eSubTool_Zoning::RESERVED == activeSubTool)) {
-				MinCity::UserInterface.setActivatedTool(eTools::ROADS);
+				MinCity::UserInterface->setActivatedTool(eTools::ROADS);
 			}
 			if (nk_sdf_hover_button(_ctx, _guiImages.zoning, eSubTool_Zoning::RESIDENTIAL == activeSubTool)) {
-				MinCity::UserInterface.setActivatedTool(eTools::ZONING, eSubTool_Zoning::RESIDENTIAL);
+				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::RESIDENTIAL);
 			}
 			if (nk_sdf_hover_button(_ctx, _guiImages.zoning, eSubTool_Zoning::COMMERCIAL == activeSubTool)) {
-				MinCity::UserInterface.setActivatedTool(eTools::ZONING, eSubTool_Zoning::COMMERCIAL);
+				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::COMMERCIAL);
 			}
 			if (nk_sdf_hover_button(_ctx, _guiImages.zoning, eSubTool_Zoning::INDUSTRIAL == activeSubTool)) {
-				MinCity::UserInterface.setActivatedTool(eTools::ZONING, eSubTool_Zoning::INDUSTRIAL);
+				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::INDUSTRIAL);
 			}
 			
 			nk_layout_row_dynamic(_ctx, 36, cols);
@@ -1730,7 +1730,7 @@ void  cNuklear::UpdateGUI()
 						nk_layout_row_dynamic(_ctx, 32, 4);
 
 						int32_t bSelected(false);
-						auto const& loadList = MinCity::VoxelWorld.getLoadList();
+						auto const& loadList = MinCity::VoxelWorld->getLoadList();
 						for (auto const& city : loadList) {
 
 							bSelected = (city == szSelectedCityName);
@@ -1743,13 +1743,13 @@ void  cNuklear::UpdateGUI()
 										szSelectedCityName = city;
 
 										// get thumbnail and other city info
-										if (MinCity::VoxelWorld.PreviewWorld(szSelectedCityName, std::forward<CityInfo&&>(infoSelectedCity), _guiTextures.load_thumbnail.image)) {
+										if (MinCity::VoxelWorld->PreviewWorld(szSelectedCityName, std::forward<CityInfo&&>(infoSelectedCity), _guiTextures.load_thumbnail.image)) {
 
 											// setup type for static 2D image
 											((nk_image_extended* const)_guiImages.load_thumbnail)->type = RGBA_IMAGE; // **this is a safe cast** memory is actually allocated as nk_image_extended
 
 											// update texture for thumbnail from new imaging data returned from previewworld
-											MinCity::TextureBoy.ImagingToTexture<false>(_guiTextures.load_thumbnail.image, _guiTextures.load_thumbnail.texture); // todo: this may need to be srgb....
+											MinCity::TextureBoy->ImagingToTexture<false>(_guiTextures.load_thumbnail.image, _guiTextures.load_thumbnail.texture); // todo: this may need to be srgb....
 										}
 									}
 								}
@@ -1776,7 +1776,7 @@ void  cNuklear::UpdateGUI()
 								_guiTextures.load_thumbnail.select = select;
 
 								// update texture for thumbnail from new imaging data returned from previewworld
-								MinCity::TextureBoy.ImagingSequenceToTexture(_guiTextures.load_thumbnail.sequence[select].sequence, _guiTextures.load_thumbnail.texture);
+								MinCity::TextureBoy->ImagingSequenceToTexture(_guiTextures.load_thumbnail.sequence[select].sequence, _guiTextures.load_thumbnail.texture);
 
 								// reset animation sequence
 								_guiTextures.load_thumbnail.sequence[select].tAccumulateFrame = zero_time_duration;
@@ -1879,7 +1879,7 @@ void  cNuklear::UpdateGUI()
 	constexpr eWindowName const windowName(eWindowName::WINDOW_MINCITY);
 
 	if (nk_begin_titled(_ctx, windowName._to_string(), 
-		fmt::format(FMT_STRING("MINCITY  ({:.2f} s -- {:.1f} ms)"), fp_seconds(tLocal - start()).count(), fp_seconds(MinCity::Vulkan.frameTimeAverage()).count() * 1000.0f).c_str(),
+		fmt::format(FMT_STRING("MINCITY  ({:.2f} s -- {:.1f} ms)"), fp_seconds(tLocal - start()).count(), fp_seconds(MinCity::Vulkan->frameTimeAverage()).count() * 1000.0f).c_str(),
 		nk_recti(450, 50, 600, windowHeight),
 		(!bMainWindowStartOpen ? NK_WINDOW_MINIMIZED : NK_WINDOW_BORDER) |
 		NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
@@ -1896,7 +1896,7 @@ void  cNuklear::UpdateGUI()
 		//	struct nk_rect rectFocus;
 
 		//	{;
-		//	rect2D_t const visibleBounds = MinCity::VoxelWorld.getVisibleGridBounds();
+		//	rect2D_t const visibleBounds = MinCity::VoxelWorld->getVisibleGridBounds();
 
 		//	rectFocus = nk_recti(visibleBounds.left, visibleBounds.top, visibleBounds.width(), visibleBounds.height());
 		//	}
@@ -1912,7 +1912,7 @@ void  cNuklear::UpdateGUI()
 		//			xmOrigin = XMVectorSubtract(xmOrigin, { Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE });
 
 					// update!
-		//			MinCity::VoxelWorld.setCameraOrigin(xmOrigin);
+		//			MinCity::VoxelWorld->setCameraOrigin(xmOrigin);
 		//		}
 		//	}
 		//	else {
@@ -1943,10 +1943,10 @@ void  cNuklear::UpdateGUI()
 			if (tNow - tLast > refresh) {
 				XMFLOAT3A vResult;
 				XMVECTOR xmResult;
-				xmResult = MinCity::VoxelWorld.getVolumetricOpacity().getDebugMin();
+				xmResult = MinCity::VoxelWorld->getVolumetricOpacity().getDebugMin();
 				XMStoreFloat3A(&vResult, xmResult);
 				szText[0] = fmt::format(FMT_STRING("({:.1f}, {:.1f}, {:.1f})"), vResult.x, vResult.y, vResult.z);
-				xmResult = MinCity::VoxelWorld.getVolumetricOpacity().getDebugMax();
+				xmResult = MinCity::VoxelWorld->getVolumetricOpacity().getDebugMax();
 				XMStoreFloat3A(&vResult, xmResult);
 				szText[1] = fmt::format(FMT_STRING("({:.1f}, {:.1f}, {:.1f})"), vResult.x, vResult.y, vResult.z);
 				tLast = tNow;
@@ -1955,7 +1955,7 @@ void  cNuklear::UpdateGUI()
 			nk_text(_ctx, szText[1].c_str(), szText[1].length(), NK_TEXT_ALIGN_LEFT);
 
 			nk_layout_row_dynamic(_ctx, 25, 1);
-			nk_property_int(_ctx, "slice>", 0, &MinCity::VoxelWorld.getVolumetricOpacity().getDebugSliceIndex(), MinCity::VoxelWorld.getVolumetricOpacity().getLightHeight() - 1, 1, 1);
+			nk_property_int(_ctx, "slice>", 0, &MinCity::VoxelWorld->getVolumetricOpacity().getDebugSliceIndex(), MinCity::VoxelWorld->getVolumetricOpacity().getLightHeight() - 1, 1, 1);
 
 
 			nk_tree_pop(_ctx);
@@ -2339,7 +2339,7 @@ void  cNuklear::UpdateGUI()
 				std::string szText;
 
 				XMFLOAT2A voxelWorldOrigin;
-				XMStoreFloat2A(&voxelWorldOrigin, MinCity::VoxelWorld.getOrigin());
+				XMStoreFloat2A(&voxelWorldOrigin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 
 				szText = fmt::format(FMT_STRING("{:f}"), voxelWorldOrigin.x);
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
@@ -2360,7 +2360,7 @@ void  cNuklear::UpdateGUI()
 
 				std::string szText;
 
-				point2D_t const voxelIndexHovered(MinCity::VoxelWorld.getHoveredVoxelIndex());
+				point2D_t const voxelIndexHovered(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
 				szText = fmt::format(FMT_STRING("{:d}"), voxelIndexHovered.x);
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
@@ -2387,17 +2387,17 @@ void  cNuklear::UpdateGUI()
 
 				std::string szText;
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numDynamicModelInstances());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numDynamicModelInstances());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numStaticModelInstances());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numStaticModelInstances());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numRootIndices());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numRootIndices());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
@@ -2424,22 +2424,22 @@ void  cNuklear::UpdateGUI()
 
 				std::string szText;
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numDynamicVoxelsRendered());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numDynamicVoxelsRendered());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numStaticVoxelsRendered());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numStaticVoxelsRendered());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numTerrainVoxelsRendered());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numTerrainVoxelsRendered());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
 
-				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld.numLightVoxelsRendered());
+				szText = fmt::format(FMT_STRING("{:d}"), MinCity::VoxelWorld->numLightVoxelsRendered());
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
@@ -2555,11 +2555,11 @@ void cNuklear::debug_out_nuklear(std::string const& message)
 }
 void debug_out_nuklear(std::string const message)
 {
-	MinCity::Nuklear.debug_out_nuklear(message);
+	MinCity::Nuklear->debug_out_nuklear(message);
 }
 void debug_out_nuklear_off()
 {
 	std::string const szEmpty;
-	MinCity::Nuklear.debug_out_nuklear(szEmpty);
+	MinCity::Nuklear->debug_out_nuklear(szEmpty);
 }
 #endif

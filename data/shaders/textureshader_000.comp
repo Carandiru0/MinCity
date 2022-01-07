@@ -44,7 +44,7 @@ vec4 random4(in const vec2 uv) {
 
 	// blue noise providing good results for 2D random numbers, must be in point sampling mode!
     // this returns 4 random values at once using textureGather
-    return( textureGather(inputMap, uv * BLUE_NOISE_UV_SCALER).wzxy ); // swizzled to get correct order
+    return( textureGather(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALER).wzxy ); // swizzled to get correct order (this acquires 4 samples at 4 different location from only the 1st channel .r
 }
 // Based on Morgan McGuire @morgan3d
 // https://www.shadertoy.com/view/4dS3Wd
@@ -95,7 +95,7 @@ void main()
 	// else / otherwise all dispatches fit into texture dimensions
 #endif
 
-	const vec2 uv = (gl_GlobalInvocationID.xy + pc.origin) * InvOutputDimensions * 3.0f;
+	const vec2 uv = (gl_GlobalInvocationID.xy + pc.origin) * InvOutputDimensions;
 
     vec2 q;
     q.x = fbm( uv );

@@ -109,7 +109,7 @@ namespace world
 			}
 		}
 
-		uvec4_v const black_body(MinCity::VoxelWorld.blackbody(_accumulator));
+		uvec4_v const black_body(MinCity::VoxelWorld->blackbody(_accumulator));
 		uvec4_t color;
 
 		SFM::unpack_rgba(BULB_COLOR, color);

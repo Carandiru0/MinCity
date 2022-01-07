@@ -26,7 +26,7 @@ void main()
 	gl_Position = vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
 	Out.uv = uv;
 
-#if defined (SMAA_PASS_2) || defined(RESOLVE)	// final neighbourhood blending subpass
+#if defined (SMAA_PASS_2) || defined(RESOLVE)	// final neighbourhood blending subpass or volumetric resolve
 	Out.slice = float(u._uframe & 63U); // +blue noise over time
 #endif
 

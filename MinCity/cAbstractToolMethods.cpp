@@ -84,8 +84,6 @@ bool const __vectorcall cAbstractToolMethods::highlightVoxel(point2D_t const vox
 }
 void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, uint32_t const color)
 {
-	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
-
 	// center
 	if (highlightVoxel(origin, color)) {
 

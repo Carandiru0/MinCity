@@ -31,8 +31,8 @@ namespace world
 
 		static constexpr fp_seconds const
 			LIGHT_SWITCH_INTERVAL = duration_cast<fp_seconds>(milliseconds(75));
-		static constexpr float const
-			INV_LIGHT_SWITCH_INTERVAL = 1.0f / LIGHT_SWITCH_INTERVAL.count();
+		static constexpr double const
+			INV_LIGHT_SWITCH_INTERVAL = 1.0 / LIGHT_SWITCH_INTERVAL.count();
 	public:
 		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::PoliceCarGameObject);

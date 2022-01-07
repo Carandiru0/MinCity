@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 
 
 cTextureBoy::cTextureBoy()
-	: _device(MinCity::Vulkan.getDevice()),
+	: _device(MinCity::Priv_Vulkan().getDevice()), // privaleged access required for private const reference on construction //
 	_noiseTexture(nullptr)
 {
 	_tex.array.reserve(TEXTURE_ARRAY_LENGTH + 1);
@@ -29,9 +29,9 @@ void cTextureBoy::Initialize()
 	supernoise::NewNoisePermutation();
 
 	// Generate Image
-	ImagingMemoryInstance* imageNoise = MinCity::Procedural.GenerateNoiseImageMixed(NOISE_TEXTURE_SIZE, supernoise::interpolator::SmoothStep());
+	ImagingMemoryInstance* imageNoise = MinCity::Procedural->GenerateNoiseImageMixed(NOISE_TEXTURE_SIZE, supernoise::interpolator::SmoothStep());
 
-	MinCity::TextureBoy.ImagingToTexture<false>(imageNoise, _noiseTexture); // generated texture is in linear colorspace
+	MinCity::TextureBoy->ImagingToTexture<false>(imageNoise, _noiseTexture); // generated texture is in linear colorspace
 
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_NOISEMIX_KTX
@@ -46,20 +46,20 @@ void cTextureBoy::Initialize()
 
 vk::CommandPool const& __restrict								cTextureBoy::transientPool() const
 {
-	return(MinCity::Vulkan.transientPool());
+	return(MinCity::Vulkan->transientPool());
 }
 vk::CommandPool const& __restrict							    cTextureBoy::dmaTransferPool() const
 {
-	return(MinCity::Vulkan.dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_PRIMARY));
+	return(MinCity::Vulkan->dmaTransferPool(vku::eCommandPools::DMA_TRANSFER_POOL_PRIMARY));
 	//return(transientPool()); // bug: currently images some how are in state imagesrcoptimal if the dma queue is used for there upload
 }							 // this is a workaround for now
 vk::Queue const& __restrict										cTextureBoy::graphicsQueue() const
 {
-	return(MinCity::Vulkan.graphicsQueue());
+	return(MinCity::Vulkan->graphicsQueue());
 }
 vk::Queue const& __restrict										cTextureBoy::transferQueue() const
 {
-	return(MinCity::Vulkan.transferQueue());
+	return(MinCity::Vulkan->transferQueue());
 	//return(graphicsQueue());  // bug: currently images some how are in state imagesrcoptimal if the dma queue is used for there upload
 }							  // this is a workaround for now
 

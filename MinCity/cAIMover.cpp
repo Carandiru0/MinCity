@@ -4,7 +4,7 @@
 #include <Random/superrandom.hpp>
 
 cAIMover::cAIMover() // default 1 / voxel per second & 1 / voxel radians per second **do not change these default values**
-	: _rectLocalArea{}, _rectFocusedArea{}, _tLastSteeringDuration(zero_duration), _fSpeed(1.0f), _fAngSpeed(1.0f), _fInvAngSpeed(1.0f), _hashOwner(0)
+	: _rectLocalArea{}, _rectFocusedArea{}, _tLastSteeringDuration(zero_time_duration), _fSpeed(1.0f), _fAngSpeed(1.0f), _fInvAngSpeed(1.0f), _hashOwner(0)
 {
 
 }

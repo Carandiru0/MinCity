@@ -196,7 +196,7 @@ namespace world
 				// match the hash id for found root voxels to voxelmodel
 				// write the relation between hash id and the corresponding voxel model identity
 
-				auto const world_model_state(MinCity::VoxelWorld.download_model_state());
+				auto const world_model_state(MinCity::VoxelWorld->download_model_state());
 
 				vector<uint8_t> data_gameobjects;
 				{
@@ -275,12 +275,12 @@ namespace world
 				Imaging offscreen_image = ImagingNew(eIMAGINGMODE::MODE_BGRX, frameBufferSz.x, frameBufferSz.y);
 
 				// wait until the offscreen capture is copied from gpu
-				std::atomic_flag& OffscreenCapturedFlag(MinCity::Vulkan.getOffscreenCopyStatus());
+				std::atomic_flag& OffscreenCapturedFlag(MinCity::Vulkan->getOffscreenCopyStatus());
 				while( OffscreenCapturedFlag.test_and_set() ) {	// OffscreenCapturedFlag is clear upon copy completion
 					_mm_pause();
 				}
 				// safe to query the data from offscreen buffer
-				MinCity::Vulkan.queryOffscreenBuffer((uint32_t * const __restrict)offscreen_image->block);
+				MinCity::Vulkan->queryOffscreenBuffer((uint32_t * const __restrict)offscreen_image->block);
 
 				// resample to thumbnail size
 				Imaging scaled_offscreen_image = ImagingResample(offscreen_image, offscreen_thumbnail_width, offscreen_thumbnail_height, IMAGING_TRANSFORM_BICUBIC);

@@ -4,7 +4,7 @@
 // for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
 // after modifications are made here
-// update cVulkan.cpp (CreateSharedVoxelResources) and cVoxelWorld.cpp (UpdateDescriptorSet_VoxelCommon)
+// update cVulkan->cpp (CreateSharedVoxelResources) and cVoxelWorld.cpp (UpdateDescriptorSet_VoxelCommon)
 // which adds the textures, and samplers to the "one descriptor set"
 
 // add base textures....
@@ -22,11 +22,11 @@
 // ### here:
 #ifdef __cplusplus
 
-#define SAMPLER_DEFAULT (MinCity::Vulkan.getLinearSampler<eSamplerAddressing::CLAMP>())
+#define SAMPLER_DEFAULT (MinCity::Vulkan->getLinearSampler<eSamplerAddressing::CLAMP>())
 
-#define TEX_NOISE_SAMPLER (MinCity::Vulkan.getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>())
+#define TEX_NOISE_SAMPLER (MinCity::Vulkan->getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>())
 #define TEX_TERRAIN_SAMPLER SAMPLER_DEFAULT
-#define TEX_ROAD_SAMPLER (MinCity::Vulkan.getAnisotropicSampler<eSamplerAddressing::REPEAT>())
+#define TEX_ROAD_SAMPLER (MinCity::Vulkan->getAnisotropicSampler<eSamplerAddressing::REPEAT>())
 #define TEX_BLACKBODY_SAMPLER SAMPLER_DEFAULT
 
 #endif

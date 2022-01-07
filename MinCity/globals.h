@@ -26,14 +26,12 @@
 #define INVERSE_ANSI_OFF "\x1b[27m"
 #endif
 
-#define PANNING_ENABLED // panning plays some tricks on visibility, however it is a superior control of camera / view
-
 //#define GIF_MODE
 
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-//#define LIVESHADER_MODE
+#define LIVESHADER_MODE
 
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC
@@ -54,9 +52,7 @@
 //#define DEBUG_VOLUMETRIC
 //#define DEBUG_ASSERT_JFA_SEED_INDICES_OK // good validation, state is setup at runtime so this is a good dynamic test.
 #define DEBUG_VOXELS_RENDERED
-//#define DEBUG_DEPTH_CUBE\\
-// 56trr\
-// 
+//#define DEBUG_DEPTH_CUBE
 //#define DEBUG_MOUSE_HOVER_VOXEL
 #define DEBUG_FPS_WINDOW
 //#define DEBUG_LUT_WINDOW
@@ -173,7 +169,7 @@ namespace Globals
 								 ZOOM_SPEED = 0.44f;
 
 	static constexpr double const MINZ_DEPTH = (0.01 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
-	static constexpr double const MAXZ_DEPTH = (168.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
+	static constexpr double const MAXZ_DEPTH = (200.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 42;	 // 42ms = 24fps maximum gui update interval when no input is flagging the gui to be updated

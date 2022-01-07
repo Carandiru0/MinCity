@@ -339,8 +339,8 @@ void main() {
 #elif defined (OVERLAY)	// overlay final (actual) subpass (gui overlay)
 #define SCANLINE_INTERLEAVE 2.0f
 #define FILL 0.5f
-#define BURNINTIME 58.0f	// *** note 57 is absolute minimum - black starts looking green if lower
-#define shade r
+#define BURNINTIME 116.5f // *** note 114 is absolute minimum - black starts looking green if lower
+#define shade r 
 #define alpha g
 #define shadealpha rg
 

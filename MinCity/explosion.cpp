@@ -65,7 +65,7 @@ __forceinline __declspec(noalias) bool const __vectorcall sExplosionInstance::op
 			XMVectorSetZ(vDisplacement, fRadius),
 			t_);
 
- 	out.setColor(cMinCity::VoxelWorld.blackbody(1.0f - 0.333f * SFM::abs(spheres_distance - fDistance)));
+ 	out.setColor(cMinCity::VoxelWorld->blackbody(1.0f - 0.333f * SFM::abs(spheres_distance - fDistance)));
 	//out.setColor(uvec4_v(uvec4_t{ 0,0,0xFF,0 }));
 
 	bool const in_a_sphere = (spheres_distance < fDistance);

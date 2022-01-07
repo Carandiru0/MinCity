@@ -39,7 +39,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <Utility/async_long_task.h>
 
 // ^^^^ SINGLETON INCLUDES ^^^^ // b4 MinCity.h include
-
 #define MINCITY_IMPLEMENTATION
 #include "MinCity.h"
 
@@ -105,24 +104,24 @@ void cMinCity::LoadINI()
 	int32_t const iResolutionHeight = GetPrivateProfileInt(L"RENDER_SETTINGS", L"RESOLUTION_HEIGHT", Globals::DEFAULT_SCREEN_HEIGHT, szINIFile);
 
 	if (iResolutionWidth > 0 && iResolutionHeight > 0 && iResolutionWidth <= 9999 && iResolutionHeight <= 9999) {
-		Nuklear.setFrameBufferSize(iResolutionWidth, iResolutionHeight);
+		Nuklear->setFrameBufferSize(iResolutionWidth, iResolutionHeight);
 	}
 	else {
 		// default to maximum desktop resolution
-		Nuklear.setFrameBufferSize(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+		Nuklear->setFrameBufferSize(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
 	}
 
 	bool const bFullscreenExclusive = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"FULLSCREEN_EXCLUSIVE", TRUE, szINIFile);
-	Vulkan.setFullScreenExclusiveEnabled(bFullscreenExclusive);
+	Vulkan->setFullScreenExclusiveEnabled(bFullscreenExclusive);
 
 	uint32_t const uiHDRNits = (uint32_t)GetPrivateProfileInt(L"RENDER_SETTINGS", L"HDR_NITS", TRUE, szINIFile);
-	Vulkan.setHDREnabled(0 != uiHDRNits, uiHDRNits);
+	Vulkan->setHDREnabled(0 != uiHDRNits, uiHDRNits);
 
 	bool const bVsyncEnabled = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"VSYNC", TRUE, szINIFile);
-	Vulkan.setVsyncDisabled(!bVsyncEnabled);
+	Vulkan->setVsyncDisabled(!bVsyncEnabled);
 
 	bool const bDPIAware = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"DPI_AWARE", TRUE, szINIFile);
-	Nuklear.setFrameBufferDPIAware(bDPIAware);
+	Nuklear->setFrameBufferDPIAware(bDPIAware);
 }
 
 static void window_iconify_callback(GLFWwindow* const window, int const iconified)
@@ -133,13 +132,13 @@ static void window_iconify_callback(GLFWwindow* const window, int const iconifie
 	if (iconified)
 	{
 		// The window was iconified
-		MinCity::Vulkan.OnLost(window); // critical first rendering enable/disable and pause / unpause handling
+		MinCity::Vulkan->OnLost(window); // critical first rendering enable/disable and pause / unpause handling
 		MinCity::OnFocusLost(); // other handling and update of focus member boolean
 	}
 	else
 	{
 		// The window was restored
-		MinCity::Vulkan.OnRestored(window); // critical first rendering enable/disable and pause / unpause handling
+		MinCity::Vulkan->OnRestored(window); // critical first rendering enable/disable and pause / unpause handling
 		MinCity::OnFocusRestored(); // other handling and update of focus member boolean
 	}
 }
@@ -151,18 +150,18 @@ static void window_focus_callback(GLFWwindow* const window, int const focused)
 	if (focused)
 	{
 		// The window gained input focus
-		MinCity::Vulkan.OnRestored(window); // critical first rendering enable/disable and pause / unpause handling
+		MinCity::Vulkan->OnRestored(window); // critical first rendering enable/disable and pause / unpause handling
 		MinCity::OnFocusRestored(); // other handling and update of focus member boolean
 	}
 	else
 	{
 		// The window lost input focus
-		MinCity::Vulkan.OnLost(window); // critical first rendering enable/disable and pause / unpause handling
+		MinCity::Vulkan->OnLost(window); // critical first rendering enable/disable and pause / unpause handling
 		MinCity::OnFocusLost(); // other handling and update of focus member boolean
 	}
 }
 
-bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
+NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 {
 #ifdef DEBUG_VARIABLES_ENABLED
 	InitializeDebugVariables();
@@ -201,7 +200,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	// Load Settings
 	LoadINI(); // sequence first
 
-	if (!Vulkan.LoadVulkanFramework()) {// sequence second
+	if (!Vulkan->LoadVulkanFramework()) {// sequence second
 		fmt::print(fg(fmt::color::red), "[Vulkan] failed to load framework, unsupported required extension or feature.\n");
 		return(false);
 	}
@@ -231,7 +230,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	GLFWmonitor* const primary_monitor(glfwGetPrimaryMonitor());
 
-	if (!Vulkan.isFullScreenExclusiveExtensionSupported()) { // if not exclusive fullscreen
+	if (!Vulkan->isFullScreenExclusiveExtensionSupported()) { // if not exclusive fullscreen
 
 		if (resolution < max_resolution) { // and resolution is less than the monitor solution (not borderless fullscreen)
 
@@ -250,7 +249,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	// DPI Scaling - Scales Resolution by the factor set in display setings for Windows, eg.) 125% - Only affects borderless windowed mode
 	//																								 Native resolution is used for fullscreen exclusive
-	if (Nuklear.isFramebufferDPIAware()) { // option in MinCity.ini to disable DPI Aware Scaling of resoluion
+	if (Nuklear->isFramebufferDPIAware()) { // option in MinCity.ini to disable DPI Aware Scaling of resoluion
 		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 		fmt::print(fg(fmt::color::hot_pink), "dpi awareness enabled\n");
 	}
@@ -258,7 +257,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	// Make a window
 	GLFWmonitor* monitor(nullptr); // default to "windowed" mode. Can be smaller than desktop resolution or be a "borderless full screen window"
 								   // otherwise:
-	if (Vulkan.isFullScreenExclusiveExtensionSupported()) { // if the ini setting is enabled & the extension for fullscreen exclusive is available
+	if (Vulkan->isFullScreenExclusiveExtensionSupported()) { // if the ini setting is enabled & the extension for fullscreen exclusive is available
 		monitor = primary_monitor;	// this enables native full-screen, allowing GLFW to change desktop resolution
 	}										// the actual exclusive mode is handled in the window part of vku
 	
@@ -299,10 +298,10 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	// Adjust / Update application stored value tracking for framebuffer / window size
 	glfwGetFramebufferSize(glfwwindow, &framebuffer_size.x, &framebuffer_size.y); // just in case after window reposition...
-	Nuklear.setFrameBufferSize(framebuffer_size); // always update the internally used framebuffer size
+	Nuklear->setFrameBufferSize(framebuffer_size); // always update the internally used framebuffer size
 
 	{ // output resolution info
-		point2D_t const used_resolution(Nuklear.getFramebufferSize());
+		point2D_t const used_resolution(Nuklear->getFramebufferSize());
 		fmt::print(fg(fmt::color::white), "resolution(desired):  "); fmt::print(fg(fmt::color::hot_pink), "{:d}x{:d}\n", desired_resolution.x, desired_resolution.y);
 		fmt::print(fg(fmt::color::white), "resolution(using):  "); fmt::print(fg(fmt::color::hot_pink), "{:d}x{:d}\n", used_resolution.x, used_resolution.y);
 		fmt::print(fg(fmt::color::white), "dpi scaling: "); fmt::print(fg(fmt::color::green_yellow), "{:.0f}%\n", (float(used_resolution.x) / float(desired_resolution.x)) * 100.0f);
@@ -310,19 +309,19 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	supernoise::InitializeDefaultNoiseGeneration();
 
-	if (!Vulkan.LoadVulkanWindow(glfwwindow)) { // sequence third
+	if (!Vulkan->LoadVulkanWindow(glfwwindow)) { // sequence third
 		fmt::print(fg(fmt::color::red), "[Vulkan] failed to create window surface, swap chain or other critical resources.\n");
 		return(false);
 	}
 	
-	VoxelWorld.LoadTextures();
-	Nuklear.Initialize(glfwwindow);
+	VoxelWorld->LoadTextures();
+	Nuklear->Initialize(glfwwindow);
 
-	Vulkan.CreateResources();
+	Vulkan->CreateResources();
 
-	VoxelWorld.Initialize();
+	VoxelWorld->Initialize();
 
-	Vulkan.UpdateDescriptorSetsAndStaticCommandBuffer();
+	Vulkan->UpdateDescriptorSetsAndStaticCommandBuffer();
 
 	// deferred window show / focus set
 	{
@@ -339,11 +338,11 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	// #### City pointer must be valid starting *here*
 	City = new cCity(m_szCityName);
 
-	VoxelWorld.Update(m_tNow, zero_time_duration, true, true, true);
+	VoxelWorld->Update(m_tNow, zero_time_duration, true, true, true);
 	
-	UserInterface.Initialize();
+	UserInterface->Initialize();
 
-	if (!Audio.Initialize()) {
+	if (!Audio->Initialize()) {
 		FMT_LOG_FAIL(AUDIO_LOG, "FMOD was unable to initialize!\n");
 	}
 
@@ -360,7 +359,7 @@ bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 void cMinCity::Pause(bool const bStateIsPaused)
 {
-	if (!bStateIsPaused && (eWindowType::DISABLED != Nuklear.getWindowEnabled())) // disallow changing pause state while quit, save, load, new windows are showing 
+	if (!bStateIsPaused && (eWindowType::DISABLED != Nuklear->getWindowEnabled())) // disallow changing pause state while quit, save, load, new windows are showing 
 		return;
 
 	if (bStateIsPaused) {
@@ -369,14 +368,14 @@ void cMinCity::Pause(bool const bStateIsPaused)
 			m_bPaused = true;
 			FMT_LOG(GAME_LOG, "Paused");
 		}
-		Vulkan.enableOffscreenRendering(true);  // enable rendering of offscreen rt for gui effect usage
+		Vulkan->enableOffscreenRendering(true);  // enable rendering of offscreen rt for gui effect usage
 	}
 	else {
 		if (m_bPaused) { // block if not paused, don't want to change start or last timestamps
 			m_bPaused = false;
 			FMT_LOG(GAME_LOG, "Un-Paused");
 		}
-		Vulkan.enableOffscreenRendering(false);  // disable / reset rendering of offscreen rt
+		Vulkan->enableOffscreenRendering(false);  // disable / reset rendering of offscreen rt
 	}
 }
 
@@ -470,7 +469,7 @@ void cMinCity::OnLoad()
 	_task_id_load = async_long_task::enqueue<background>([&] {
 
 		DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1));
-		VoxelWorld.LoadWorld();
+		VoxelWorld->LoadWorld();
 
 		// make sure user can see feedback of loading, regardless of how fast the saving execution took
 		FMT_LOG(GAME_LOG, "Loaded");
@@ -491,14 +490,14 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 	DispatchEvent(eEvent::PAUSE_PROGRESS); // reset progress here!
 
 	// must be done in main thread:
-	MinCity::Vulkan.enableOffscreenCopy();
+	MinCity::Vulkan->enableOffscreenCopy();
 
 	async_long_task::wait<background>(_task_id_save, "save"); // wait 1st on any saving task to complete before creating a new saving task
 
 	_task_id_save = async_long_task::enqueue<background>([&, bShutdownAfter] {
 
 		DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1));
-		VoxelWorld.SaveWorld();
+		VoxelWorld->SaveWorld();
 
 		// make sure user can see feedback of saving, regardless of how fast the saving execution took
 		FMT_LOG(GAME_LOG, "Saved");
@@ -520,11 +519,11 @@ void cMinCity::Load()
 {
 	constinit static bool bDelay(true);
 
-	int32_t const load_state(Nuklear.getLastSelectionForWindow<eWindowType::LOAD>());
+	int32_t const load_state(Nuklear->getLastSelectionForWindow<eWindowType::LOAD>());
 
 	if (eWindowLoad::IDLE == load_state) {
 
-		if (!Nuklear.enableWindow<eWindowType::LOAD>(true)) { // load window not currently shown, and now were opening it
+		if (!Nuklear->enableWindow<eWindowType::LOAD>(true)) { // load window not currently shown, and now were opening it
 
 			Pause(true); // matching unpause is in shutdown()
 		}
@@ -537,11 +536,11 @@ void cMinCity::Save(bool const bShutdownAfter) // no user prompt, immediate clea
 {
 	constinit static bool bDelay(true);
 
-	int32_t const save_state(Nuklear.getLastSelectionForWindow<eWindowType::SAVE>());
+	int32_t const save_state(Nuklear->getLastSelectionForWindow<eWindowType::SAVE>());
 
 	if (eWindowSave::IDLE == save_state) {
 
-		if (!Nuklear.enableWindow<eWindowType::SAVE>(true)) { // save window not currently shown, and now were opening it
+		if (!Nuklear->enableWindow<eWindowType::SAVE>(true)) { // save window not currently shown, and now were opening it
 
 			Pause(true); // matching unpause is in shutdown()
 		}
@@ -552,11 +551,11 @@ void cMinCity::Save(bool const bShutdownAfter) // no user prompt, immediate clea
 }
 int32_t const cMinCity::Quit(bool const bQueryStateOnly) // prompts user to quit, only returns result of prompt does not actually quit application, shutdown must be called in that case
 {
-	int32_t const quit_state(Nuklear.getLastSelectionForWindow<eWindowType::QUIT>());
+	int32_t const quit_state(Nuklear->getLastSelectionForWindow<eWindowType::QUIT>());
 	
 	if (!bQueryStateOnly && eWindowQuit::IDLE == quit_state) {
 
-		if (!Nuklear.enableWindow<eWindowType::QUIT>(true)) { // quit window not currently shown
+		if (!Nuklear->enableWindow<eWindowType::QUIT>(true)) { // quit window not currently shown
 
 			Pause(true); // matching unpause is in shutdown()
 		}
@@ -649,13 +648,13 @@ void cMinCity::UpdateWorld()
 	}
 
 	// *first*
-	VoxelWorld.clearMiniVoxels(); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface)
+	VoxelWorld->clearMiniVoxels(); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface)
 
 	// *second*
-	bool const bInputDelta = Nuklear.UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE))); // always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
+	bool const bInputDelta = Nuklear->UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE))); // always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
 
 	// *third*
-	VoxelWorld.PreUpdate(bPaused); // called every frame regardless of timing
+	VoxelWorld->PreUpdate(bPaused); // called every frame regardless of timing
 
 	// *fourth*
 	constinit static duration tAccumulate(nanoseconds(0));
@@ -676,23 +675,23 @@ void cMinCity::UpdateWorld()
 
 		tAccumulate -= delta();
 
-		VoxelWorld.Update(m_tNow, tDeltaFixedStep, bPaused, bFirstUpdate); // world/game uses regular timing, with a fixed timestep (best practice)
+		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused, bFirstUpdate); // world/game uses regular timing, with a fixed timestep (best practice)
 		bFirstUpdate = false;
 	}
 	// fractional amount for render path (uniform shader variables)
-	VoxelWorld.UpdateUniformState(fp_seconds(tAccumulate) / fp_seconds(delta())); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
+	VoxelWorld->UpdateUniformState(time_to_float(fp_seconds(tAccumulate) / fp_seconds(delta()))); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
 	// *fifth*
-	Audio.Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
+	Audio->Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
 	
 	// *sixth*
 	if (bInputDelta) {  
-		Nuklear.UpdateGUI(); // gui requires critical timing (always on, never pause gui)
+		Nuklear->UpdateGUI(); // gui requires critical timing (always on, never pause gui)
 		tLastGUI = tCriticalNow;
 	}
 	
 	// *seventh*
-	UserInterface.Paint(); // must be done after all updates to VoxelWorld
+	UserInterface->Paint(); // must be done after all updates to VoxelWorld
 	
 	// *last*
 	ProcessEvents();
@@ -700,10 +699,10 @@ void cMinCity::UpdateWorld()
 	//---------------------------------------------------------------------------------------------------------------------------------------//
 	tLast = tCriticalNow;
 
-	// bring done cpu & power usage when standing by //
+	// bring down cpu & power usage when standing by //
 	[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
-		Sleep(((DWORD const)duration_cast<milliseconds>(delta()).count()) >> 1);
 		_mm_pause();
+		Sleep(((DWORD const)duration_cast<milliseconds>(delta()).count()) >> 1);
 	}
 }
 
@@ -714,20 +713,24 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	// instead the currently used state of resources on the gpu is re-used; does not change
 	[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity) {
 		_mm_pause();
-		Sleep(1);
+		Sleep(async_long_task::beats::minimum);
 		return;
 	}
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
-	VoxelWorld.Render(resource_index);
-	Vulkan.checkStaticCommandsDirty(resource_index);
+	VoxelWorld->Render(resource_index);
+	Vulkan->checkStaticCommandsDirty(resource_index);
 }
 
 void cMinCity::Render()
 {
-	Vulkan.Render();
+	static constexpr size_t const MAGIC_NUM = 67108860;
 
-	++m_frameCount;
+	Vulkan->Render();
+
+	if (++m_frameCount >= MAGIC_NUM) { // WRAP_AROUND SAFE (at 60 frames per second, the wrap around occurs every 12 days, 22 hours, 41 minutes, 21 seconds)
+		m_frameCount = 0; // NUMBER CALCULATED >  is the highest number a 32bit float can goto while still having a resolution of +-1.0f  (frame increments by 1, and if this uint64 is converted to float in a shader for example, it needs the precision of 1 frame)
+	}
 }
 
 bool const cMinCity::DispatchEvent(uint32_t const eventType, void* const data)
@@ -740,7 +743,7 @@ bool const cMinCity::DispatchEvent(uint32_t const eventType, void* const data)
 }
 void cMinCity::ProcessEvents()
 {
-	if (glfwWindowShouldClose(Nuklear.getGLFWWindow())) {
+	if (glfwWindowShouldClose(Nuklear->getGLFWWindow())) {
 		DispatchEvent(eEvent::EXPEDITED_SHUTDOWN);
 	}
 
@@ -759,17 +762,17 @@ void cMinCity::ProcessEvents()
 			break;
 		case eEvent::PAUSE_PROGRESS:
 			if (new_event.second) {
-				Nuklear.setPauseProgress(*((uint32_t const* const)new_event.second));
+				Nuklear->setPauseProgress(*((uint32_t const* const)new_event.second));
 			}
 			else {
-				Nuklear.setPauseProgress(0);
+				Nuklear->setPauseProgress(0);
 			}
 			break;
 		case eEvent::REVERT_EXCLUSIVITY:
 			m_eExclusivity = eExclusivity::DEFAULT;
 			break;
 		case eEvent::REFRESH_LOADLIST:
-			VoxelWorld.RefreshLoadList();
+			VoxelWorld->RefreshLoadList();
 			break;
 		case eEvent::SAVE:
 			if (new_event.second) {
@@ -788,7 +791,7 @@ void cMinCity::ProcessEvents()
 		//quit & expedited shutdown
 		case eEvent::QUIT:
 		{
-			if (eWindowQuit::PENDING & Nuklear.getLastSelectionForWindow<eWindowType::QUIT>()) {
+			if (eWindowQuit::PENDING & Nuklear->getLastSelectionForWindow<eWindowType::QUIT>()) {
 				Shutdown(Quit(true));
 			}
 		}
@@ -830,7 +833,7 @@ void cMinCity::OnFocusLost()
 	if (eExclusivity::DEFAULT == m_eExclusivity) {
 		m_eExclusivity = eExclusivity::STANDBY;
 	}
-
+	SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
 }
 void cMinCity::OnFocusRestored()
 {
@@ -840,6 +843,7 @@ void cMinCity::OnFocusRestored()
 	}
 
 	SetForegroundWindow(glfwGetWin32Window(g_glfwwindow));  // enable foreground window for the now foreground process
+	SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
 }
 
 __declspec(noinline) static bool SetProcessPrivilege(
@@ -1027,7 +1031,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 		}
 	}
 
-	// turn off windows managwd power throttliny of this process
+	// turn off windows managed power throttling off for this process
 	{
 		PROCESS_POWER_THROTTLING_STATE PowerThrottling{};
 		PowerThrottling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
@@ -1097,11 +1101,55 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 	return(num_hw_threads);
 }
 
+// *********************************************************************************************************************************************************************************************************************************************************************** //
 
+namespace { // anonymous namespace private to this file only
+
+	static inline struct { // <--make contigous in memory
+
+		cVulkan					Vulkan;
+		cTextureBoy				TextureBoy;
+		cPostProcess			PostProcess;
+		cNuklear				Nuklear;
+		world::cVoxelWorld		VoxelWorld;
+		world::cProcedural		Procedural;
+		cUserInterface			UserInterface;
+		cAudio					Audio;
+
+	} _; // special access
+
+} // privleged access only in Cleanup, CriticalCleanup & CriticalInit *no where else*
+
+
+	// this is the main interface to these singletons
+	// optimized to remove the "hidden" guarded access that would be present if accessed directly
+	// the pointers are all constinit so no guard check is required
+	// the actual instances are now properly assigned to the pointers.
+constinit inline cVulkan* const					cMinCity::Vulkan{ &_.Vulkan };
+constinit inline cTextureBoy* 					cMinCity::TextureBoy{ &_.TextureBoy };
+constinit inline cPostProcess* 					cMinCity::PostProcess{ &_.PostProcess };
+constinit inline cNuklear* const				cMinCity::Nuklear{ &_.Nuklear };
+constinit inline world::cVoxelWorld* const		cMinCity::VoxelWorld{ &_.VoxelWorld };
+constinit inline world::cProcedural*			cMinCity::Procedural{ &_.Procedural };
+constinit inline cUserInterface* const			cMinCity::UserInterface{ &_.UserInterface };
+constinit inline cAudio* const					cMinCity::Audio{ &_.Audio };
+
+// privledged access only - do not use unless required //
+cVulkan const& cMinCity::Priv_Vulkan() { return(_.Vulkan); }
+
+// *********************************************************************************************************************************************************************************************************************************************************************** //
 
 extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
+	// secure process:
+
+	// setup zero dynamic code execution
+	PROCESS_MITIGATION_DYNAMIC_CODE_POLICY policy{};
+	policy.ProhibitDynamicCode = 1;
+
+	SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &policy, sizeof(PROCESS_MITIGATION_DYNAMIC_CODE_POLICY));
+
 	// setup secure loading of dlls, should be done before loading any dlls, or creation of any threads under this process (including dlls creating threads)
 	{
 		SetDllDirectory(L""); // disallow *live loading* dll's in process current directory (LoadLibrary())
@@ -1161,6 +1209,13 @@ __declspec(noinline) void cMinCity::CriticalInit()
 			splash_screen::StartTimer();
 		}
 	}
+
+	// todo: for some odd reason, externals are missing in build if these singletons are defined * const
+	// so for now they are defined * no const
+	// -they are properly initialized even before this, in the code above (constinit initialization)
+	cMinCity::TextureBoy = &_.TextureBoy;
+	cMinCity::PostProcess = &_.PostProcess;
+	cMinCity::Procedural = &_.Procedural;
 }
 
 __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
@@ -1169,19 +1224,21 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 
 	splash_screen::Release();
 
+	// safe to bypass singleton pointers in CleanUp & CriticalCleanup *only* //
+
 	// huge memory leak bugfix
-	Vulkan.WaitPresentIdle();
-	Vulkan.WaitDeviceIdle();
+	_.Vulkan.WaitPresentIdle();
+	_.Vulkan.WaitDeviceIdle();
 
 	SAFE_DELETE(City);
 
-	Audio.CleanUp();
-	Nuklear.CleanUp();
-	PostProcess.CleanUp();
-	VoxelWorld.CleanUp();
-	TextureBoy.CleanUp();
+	_.Audio.CleanUp();
+	_.Nuklear.CleanUp();
+	_.PostProcess.CleanUp();
+	_.VoxelWorld.CleanUp();
+	_.TextureBoy.CleanUp();
 
-	Vulkan.Cleanup(glfwwindow);  /// should be LAST //
+	_.Vulkan.Cleanup(glfwwindow);  /// should be LAST //
 }
 
 __declspec(noinline) void cMinCity::CriticalCleanup()

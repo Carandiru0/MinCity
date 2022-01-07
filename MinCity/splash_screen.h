@@ -267,7 +267,7 @@ namespace {
 				bool bKill(false),
 					 bUpdate(false);
 
-				float fTDeltaNormalized = tDeltaLong.count() / timeMax.count();
+				float fTDeltaNormalized = time_to_float(tDeltaLong / timeMax);
 				if (fTDeltaNormalized > 1.0f) {
 					fTDeltaNormalized = 1.0f;
 					bKill = true;
@@ -293,7 +293,8 @@ namespace {
 					splash_screen::KillTimer();
 				}
 				else {
-					Sleep(10);
+					_mm_pause();
+					Sleep(10); // yield this background thread every iteration
 				}
 			}
 

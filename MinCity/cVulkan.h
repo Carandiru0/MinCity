@@ -7,7 +7,7 @@
 
 #define VKU_SURFACE "VK_KHR_win32_surface"
 
-#include <vku/vku_framework.hpp>	// this is the one and only place vku_framework.hpp can be included, use cVulkan.h (prefer)
+#include <vku/vku_framework.hpp>	// this is the one and only place vku_framework.hpp can be included, use cVulkan->h (prefer)
 
 // ^^^^^^^ this is the only area of program that should include these files *****
 #include <Utility/class_helper.h>
@@ -181,7 +181,7 @@ private:
 
 public:
 	// Common Accessors //
-	vk::Device&	__restrict										getDevice() { return(_device); }
+	vk::Device const&	__restrict								getDevice() const { return(_device); }
 	vk::Queue const& __restrict									graphicsQueue() const { return(_window->graphicsQueue()); }
 	vk::Queue const& __restrict									computeQueue(uint32_t const index = 0) const { return(_window->computeQueue(index)); }
 	vk::Queue const& __restrict									transferQueue(uint32_t const index = 0) const { return(_window->transferQueue(index)); }
@@ -470,7 +470,8 @@ public: // ### public skeleton
 			}
 		} light;
 
-		struct compute_texture {
+		/*
+		[[deprecated]] struct compute_texture {
 			vk::UniquePipelineLayout		pipelineLayout;
 			vk::UniquePipeline				pipeline[eTextureShader::_size()];
 			vk::UniqueDescriptorSetLayout	descLayout;
@@ -485,6 +486,7 @@ public: // ### public skeleton
 				descLayout.release();
 			}
 		} texture;
+		*/
 
 	} sCOMPUTEDATA;
 private: // ### private instance
@@ -745,7 +747,7 @@ void cVulkan::CreateVoxelResource(
 	}
 	
 	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-	pm.depthClampEnable(VK_FALSE); // must be false
+	pm.depthClampEnable(VK_TRUE); // want depth clamping behaviour (think near-z hole filling) for voxel rasterization shaders.
 
 	if constexpr (isClear) {
 		pm.depthCompareOp(vk::CompareOp::eNever);
@@ -811,7 +813,7 @@ void cVulkan::CreateVoxelChildResource(
 	pm.frontFace(vk::FrontFace::eClockwise);
 
 	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-	pm.depthClampEnable(VK_FALSE); // must be false
+	pm.depthClampEnable(VK_TRUE);  // want depth clamping behaviour (think near-z hole filling) for voxel rasterization shaders.
 	pm.depthTestEnable(VK_TRUE);
 	pm.depthWriteEnable(VK_FALSE); // *** bugfix: required for proper sorting of radial grid whether its opaque or transparent!
 

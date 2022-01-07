@@ -352,7 +352,7 @@ STATIC_INLINE_PURE result const __vectorcall require_building_adjacent_to_road(I
 
 		uint32_t const hash(Iso::getHash(oVoxel, Iso::STATIC_HASH));
 
-		auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(hash);
+		auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(hash);
 
 		if (instance) {
 
@@ -764,7 +764,7 @@ void __vectorcall cSimulation::process_zoning(rect2D_t const simArea, fp_seconds
 
 			point2D_t const origin( p2D_add(returned.area.center(), voxelOffset) );
 
-			if (nullptr != MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cBuildingGameObject, false>(origin, pendingModel, common_flags)) {
+			if (nullptr != MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cBuildingGameObject, false>(origin, pendingModel, common_flags)) {
 
 				FMT_LOG(GAME_LOG, "spawned {:s} @ ({:d},{:d})", (_current_packing.zoning == 0 ? "residential" : (_current_packing.zoning == 1 ? "commercial" : "industrial")), origin.x, origin.y);
 			}
@@ -800,7 +800,7 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 		_properties.population = population;
 		_properties.possible_population = possible_population;
 
-		alignas(16) float const growth((float)(((double)possible_population) / ((double)population + 1.0)) * (1.0f + tDelta.count()));
+		alignas(16) float const growth((float) (((double)possible_population) / ((double)population + 1.0)) * (1.0 + tDelta.count()) );
 
 		alignas(16) float occupancy[3];
 
@@ -836,7 +836,7 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 			xmDemand = XMLoadFloat3A(&demand);
 			xmDemand = XMVectorSubtract(XMVectorReplicate(1.0f), xmDemand);
 			xmDemand = SFM::bellcurve(xmDemand);
-			xmDemand = SFM::lerp(XMLoadFloat3A(&_properties.demand), xmDemand, tDelta.count() * seed);
+			xmDemand = SFM::lerp(XMLoadFloat3A(&_properties.demand), xmDemand, time_to_float(tDelta) * seed);
 			XMStoreFloat3A(&_properties.demand, xmDemand);
 		}
 
@@ -856,7 +856,7 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 				_tAccumulateLod[0] -= packing::interval[0];
 			} while (_tAccumulateLod[0] > packing::interval[0]);
 
-			simArea = r2D_add(MinCity::VoxelWorld.getVisibleGridBoundsClamped(), point2D_t(Iso::WORLD_GRID_HALFSIZE)); // convert to local  ( -x, -y )...( x, y )  to  ( 0, 0 )...( x, y )
+			simArea = r2D_add(MinCity::VoxelWorld->getVisibleGridBoundsClamped(), point2D_t(Iso::WORLD_GRID_HALFSIZE)); // convert to local  ( -x, -y )...( x, y )  to  ( 0, 0 )...( x, y )
 		}
 		else if (_tAccumulateLod[1] > packing::interval[1]) {
 

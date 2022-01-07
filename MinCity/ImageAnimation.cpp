@@ -92,7 +92,7 @@ void ImageAnimation::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __
 			for (uint32_t i = 0; i < sequence->count; ++i) { 
 				tFrameDuration += milliseconds(sequence->images[i].delay);
 			}
-			tFrameDuration = milliseconds(SFM::round_to_u32(float(tFrameDuration.count()) / float(SFM::max(1U, sequence->count))));
+			tFrameDuration = milliseconds(SFM::round_to_u32(time_to_float(fp_seconds(tFrameDuration) / double(SFM::max(1U, sequence->count)))));
 			// limits
 			tFrameDuration = std::max(MINIMUM_FRAME_DURATION, tFrameDuration);
 			tFrameDuration = std::min(MAXIMUM_FRAME_DURATION, tFrameDuration);
@@ -112,7 +112,7 @@ void ImageAnimation::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __
 				loops = 1;
 			}
 			else {
-				loops = SFM::max(1U, SFM::round_to_u32(float(tAnimDuration.count()) / float(tLoopDuration.count())));
+				loops = SFM::max(1U, SFM::round_to_u32(time_to_float(fp_seconds(tAnimDuration) / fp_seconds(tLoopDuration))));
 			}
 
 			status = LOADED;

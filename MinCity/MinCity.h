@@ -88,10 +88,9 @@ public:
 	static __inline void setCityName(std::string_view const& szCityName) { m_szCityName = szCityName; }
 
 	// Main Init //
-	__declspec(noinline) static void CriticalInit();
-	__declspec(noinline) static void CriticalCleanup();
-
-	static bool const Initialize(struct GLFWwindow*& glfwwindow);
+	NO_INLINE static void CriticalInit();
+	NO_INLINE static void CriticalCleanup();
+	NO_INLINE static bool const Initialize(struct GLFWwindow*& glfwwindow);
 
 	// Main Update & Render //
 	static void UpdateWorld();
@@ -124,19 +123,20 @@ private:
 	static void OnLoad();
 	static void OnSave(bool const bShutdownAfter);
 /* #####################################_S I N G L E T O N S_######################################### */
-public:
-	static class cVulkan					Vulkan;
-	static class cTextureBoy				TextureBoy;
-	static class cPostProcess				PostProcess;
-	static class cNuklear					Nuklear;
-	static class world::cVoxelWorld			VoxelWorld;
-	static class world::cProcedural			Procedural;
-	static class cUserInterface				UserInterface;
-	static class cAudio						Audio;
-	static class cCity*						City;	// any access of City outside of this class is promised this pointer
-													// is never null during runtime (after initialization)
+public: // constinit requirement
+	constinit static class cVulkan* const				Vulkan;
+	constinit static class cTextureBoy*					TextureBoy;
+	constinit static class cPostProcess*				PostProcess;
+	constinit static class cNuklear* const				Nuklear;
+	constinit static class world::cVoxelWorld* const	VoxelWorld;
+	constinit static class world::cProcedural*			Procedural;
+	constinit static class cUserInterface* const		UserInterface;
+	constinit static class cAudio* const				Audio;
+	constinit static class cCity*						City;	// any access of City outside of this class is promised this pointer
+																// is never null during runtime (after initialization)
 /* ################################################################################################### */
-
+	// privledged access only - do not use unless required //
+	static cVulkan const& Priv_Vulkan();
 private:
 	constinit static uint32_t			m_eExclusivity; // *only safe to set from main thread*
 	constinit static size_t				m_frameCount;
@@ -163,15 +163,6 @@ __forceinline size_t const frame() { return(cMinCity::getFrameCount()); }
 
 #ifdef MINCITY_IMPLEMENTATION
 
-inline cVulkan				cMinCity::Vulkan;
-inline cTextureBoy			cMinCity::TextureBoy;
-inline cPostProcess			cMinCity::PostProcess;
-inline cNuklear				cMinCity::Nuklear;
-inline world::cVoxelWorld	cMinCity::VoxelWorld;
-inline world::cProcedural	cMinCity::Procedural;
-inline cUserInterface		cMinCity::UserInterface;
-inline cAudio				cMinCity::Audio;
-
 constinit inline uint32_t					cMinCity::m_eExclusivity{}; // *only safe to set from main thread*
 constinit inline size_t						cMinCity::m_frameCount = 0;
 inline tTime const							cMinCity::m_tStart{ high_resolution_clock::now() }; // always valid time
@@ -190,8 +181,8 @@ constinit inline cCity*						cMinCity::City(nullptr);
 inline tbb::concurrent_queue<std::pair<uint32_t, void*>> cMinCity::m_events;
 
 // Common Accessors // 
-point2D_t const __vectorcall	cMinCity::getFramebufferSize() { return(Nuklear.getFramebufferSize()); }
-float const						cMinCity::getFramebufferAspect() { return(Nuklear.getFramebufferAspect()); }
+point2D_t const __vectorcall	cMinCity::getFramebufferSize() { return(Nuklear->getFramebufferSize()); }
+float const						cMinCity::getFramebufferAspect() { return(Nuklear->getFramebufferAspect()); }
 
 
 // special global functions outside of any namespace or class (definitions) //

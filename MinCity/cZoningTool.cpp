@@ -50,7 +50,7 @@ void cZoningTool::paint()
 	constinit static bool bFindMaxVisibility(false);
 
 	// make relative to world origin (gridspace to worldspace transform)
-	XMVECTOR const xmWorldOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
+	XMVECTOR const xmWorldOrigin(world::getOrigin());
 
 	if (_activePoint > 1) { // have starting & ending index?
 
@@ -276,7 +276,7 @@ void cZoningTool::undoZoneHistory() // undo's current "road" from grid
 
 void __vectorcall cZoningTool::PressAction(FXMVECTOR const xmMousePos)
 {
-	point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
+	point2D_t const origin(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
 	undoZoneHistory();
 
@@ -320,7 +320,7 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 		if (lastCount == Volumetric::getVoxelModelCount<Volumetric::eVoxelModels_Static::BUILDING_RESIDENTAL>())
 			lastCount = 0;
 
-		pGameObject = MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cBuildingGameObject, Volumetric::eVoxelModels_Static::BUILDING_RESIDENTAL>(MinCity::VoxelWorld.getHoveredVoxelIndex(),
+		pGameObject = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cBuildingGameObject, Volumetric::eVoxelModels_Static::BUILDING_RESIDENTAL>(MinCity::VoxelWorld->getHoveredVoxelIndex(),
 			lastCount,
 			common_flags);
 
@@ -330,7 +330,7 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 		if (lastCount == Volumetric::getVoxelModelCount<Volumetric::eVoxelModels_Static::BUILDING_COMMERCIAL>())
 			lastCount = 0;
 
-		pGameObject = MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cBuildingGameObject, Volumetric::eVoxelModels_Static::BUILDING_COMMERCIAL>(MinCity::VoxelWorld.getHoveredVoxelIndex(),
+		pGameObject = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cBuildingGameObject, Volumetric::eVoxelModels_Static::BUILDING_COMMERCIAL>(MinCity::VoxelWorld->getHoveredVoxelIndex(),
 			lastCount,
 			common_flags);
 
@@ -340,7 +340,7 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 		if (lastCount == Volumetric::getVoxelModelCount<Volumetric::eVoxelModels_Static::BUILDING_INDUSTRIAL>())
 			lastCount = 0;
 
-		pGameObject = MinCity::VoxelWorld.placeNonUpdateableInstanceAt<world::cBuildingGameObject, Volumetric::eVoxelModels_Static::BUILDING_INDUSTRIAL>(MinCity::VoxelWorld.getHoveredVoxelIndex(),
+		pGameObject = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cBuildingGameObject, Volumetric::eVoxelModels_Static::BUILDING_INDUSTRIAL>(MinCity::VoxelWorld->getHoveredVoxelIndex(),
 			lastCount,
 			common_flags);
 
@@ -356,7 +356,7 @@ void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR 
 		if (0 != _activePoint) { // have starting index?
 
 			static point2D_t lastEndPoint;
-			point2D_t const clampedEndPoint(MinCity::VoxelWorld.getHoveredVoxelIndex());
+			point2D_t const clampedEndPoint(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
 			if (clampedEndPoint != lastEndPoint) {
 				lastEndPoint = clampedEndPoint;
@@ -384,7 +384,7 @@ void __vectorcall cZoningTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 		else { // tool is active, however the user has not dragged or clicked the mouse to create an area
 
 			static point2D_t lastOrigin;
-			point2D_t const origin(MinCity::VoxelWorld.getHoveredVoxelIndex());
+			point2D_t const origin(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
 			if (origin != lastOrigin) { // limited to delta of hovered mouse index. Never misses the action (important).
 

@@ -4,6 +4,7 @@
 #include <Math/superfastmath.h>
 #include <atomic>
 #include "ComputeLightConstants.h"
+#include "world.h"
 
 #include <Imaging/Imaging/Imaging.h>
 #include <Utility/mem.h>
@@ -75,7 +76,7 @@ public:
 		// convert from world space to light space
 		//            &
 		// storing current minimum & maximum
-		uvec4_v const new_max( SFM::ceil_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMax))) );
+		uvec4_v const new_max( SFM::ceil_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMax))) );  // also transforming from world-space coordinates to light volume space.
 		uvec4_v const new_min( SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmMin))) );
 
 		if (uvec4_v::all<3>(new_min < new_max)) { // *bugfix only update the publicly accessible extents if the new min/max is valid.
@@ -84,7 +85,9 @@ public:
 		}
 
 		// copy internal cache to write-combined memory (staging buffer) using streaming stores
-		// this fully replaces the volume for the stagingBuffer irregardless of current light bounds min & max (important) (this effectively reduces the need to clear the gpu - writecombined *staging* buffer)
+		// this fully replaces the volume for the stagingBuffer irregardless of current light bounds min & max (important)
+		// no clearing is then required. this does update the whole volume, so a fast threaded copy is beneficial here.
+		// on the actual staging -> gpu copy (this is copy to staging [write-combined memory]) the bounds min, max are used to actually only upload the minimum volume area that has updated.
 		size_t const size(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
 		__memcpy_threaded<32>(stagingBuffer.map(), _cache, size, 
 						      size / hw_concurrency); // faster copy with 32 - guarnteed that size is multiple of XMFLOAT4A (16) x2 (32) - due to the entire volume using a size that is always an even number. Otherwise this would be 1 off and the _16 would have to be used
@@ -203,13 +206,14 @@ private:
 
 	// there is no bounds checking, values are expected to be within bounds esxcept handling of -1 +1 for seededing X & Z Axis for seeding puposes.
 public:
-	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
+	__declspec(safebuffers) void __vectorcall seed(XMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
 		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Width, Height, Depth>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		uvec4_t uiIndex;
-		SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
+		SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, XMVectorAdd(xmPosition, world::getFractionalOffset())))).xyzw(uiIndex);   // -applying fractional offset *not* to actual light emitter location, *only* the derived 3d texture index(see below) required for smoother lighting.
+																																											// safe to add here, not doubling adding fractional offset. cannot add to actual position stored in texture however, it's double-added. *just the index/3d texture coordinate location*
 
 		// slices ordered by Z 
 		// (z * xMax * yMax) + (y * xMax) + x;

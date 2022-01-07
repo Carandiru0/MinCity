@@ -318,7 +318,7 @@ namespace Volumetric
 
 		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 		{
-			// full volume dimensions //
+			// full world volume dimensions //
 			constants.emplace_back(vku::SpecializationConstant(0, (float)Width)); // should be width
 			constants.emplace_back(vku::SpecializationConstant(1, (float)Depth)); // should be depth
 			constants.emplace_back(vku::SpecializationConstant(2, (float)Height)); // should be height
@@ -331,7 +331,7 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(7, 1.0f / (float)LightDepth)); // should be inv depth
 			constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)LightHeight)); // should be inv height
 
-			constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::MINI_VOX_SIZE * 0.5f)); // should be minivoxsize * 0.5f
+			constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::MINI_VOX_SIZE*0.5f)); // should be minivoxsize * 0.5f (0.5f for only compute shader provides better smoother light propogation)
 		}
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const

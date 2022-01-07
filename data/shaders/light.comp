@@ -53,7 +53,7 @@ layout (constant_id = 1) const float WorldDimensions_Depth = 0.0f;
 layout (constant_id = 2) const float WorldDimensions_Height = 0.0f;
 #define WorldDimensions vec3(WorldDimensions_Width, WorldDimensions_Depth, WorldDimensions_Height)
 
-// "Light Volume" mod n of World Visible Volume
+// "Light Volume"
 layout (constant_id = 3) const float VolumeDimensions_Width = 0.0f;
 layout (constant_id = 4) const float VolumeDimensions_Depth = 0.0f;
 layout (constant_id = 5) const float VolumeDimensions_Height = 0.0f;
@@ -350,7 +350,7 @@ void main()
 	{	// distance & direction ###
 		
 		vec4 current_direction_distance = emitter_to_direction_distance(current_warp.emitter_location, current_location);
-		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;
+		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy).xzy;  // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
 
 		// temporal interpolation 
 		current_direction_distance.w = normalize_distance(current_direction_distance.w);

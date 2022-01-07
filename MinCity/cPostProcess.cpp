@@ -59,7 +59,7 @@ bool const cPostProcess::LoadLUT(std::wstring_view filenamepath)
 	lut = ImagingLoadLUT(filenamepath);
 	if (nullptr != lut) {
 		
-		MinCity::TextureBoy.ImagingToTexture(lut, _lutTex);
+		MinCity::TextureBoy->ImagingToTexture(lut, _lutTex);
 		bReturn = true;
 
 		ImagingDelete(lut); lut = nullptr;
@@ -181,10 +181,10 @@ bool const cPostProcess::UploadLUT()
 	if (!async_long_task::wait<background, true>(_task_id_mix_luts, "lutmix")) {
 		if (nullptr != _lut) {
 			if (nullptr == _lutTex) {
-				MinCity::TextureBoy.ImagingToTexture(_lut, _lutTex);
+				MinCity::TextureBoy->ImagingToTexture(_lut, _lutTex);
 			}
 			else {
-				MinCity::TextureBoy.UpdateTexture(_lut->block, _lutTex);
+				MinCity::TextureBoy->UpdateTexture(_lut->block, _lutTex);
 			}
 
 			ImagingDelete(_lut); _lut = nullptr;

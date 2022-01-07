@@ -43,7 +43,7 @@ int32_t const cAISkyMover::conditionOfRouteVoxel(point2D_t const voxelIndex)
 
 			// get height of model
 			auto const ModelInstanceHash = Iso::getHash(oVoxel, Iso::STATIC_HASH);
-			auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(ModelInstanceHash);
+			auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(ModelInstanceHash);
 
 			if (FoundModelInstance) {
 

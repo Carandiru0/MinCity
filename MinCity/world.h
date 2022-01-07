@@ -33,8 +33,10 @@ namespace world
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset);
 
-	// World Space (-x,-y) to (X, Y) Coordinates Only - (Camera Origin) - not swizzled
+	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*
 	XMVECTOR const __vectorcall getOrigin();
+	XMVECTOR const __vectorcall getOriginNoFractionalOffset(); // used only in rendering - use getOrigin() instead
+	XMVECTOR const __vectorcall getFractionalOffset(); // beware double adding the fractional offset to a transformation that will later be multiplied by the view matrix. the view matrix already contains the fractional offset translation!
 
 	v2_rotation_t const& getAzimuth();
 
@@ -77,7 +79,7 @@ namespace world
 
 	// mini voxels:
 	
-	// *voxel painting ONLY* (minivoxels)  ***** addVoxel/addLight can only be called with UserInterface.Paint(), or methods invoked inside UserInterface.Paint() *****
+	// *voxel painting ONLY* (minivoxels)  ***** addVoxel/addLight can only be called with UserInterface->Paint(), or methods invoked inside UserInterface->Paint() *****
 	// voxel / light will not persist more than one frame! using these methods
 	// *voxel painting ONLY* (minivoxels)  *****
 	bool const __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)

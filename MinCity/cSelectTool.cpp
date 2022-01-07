@@ -18,7 +18,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 
 	if (_selectedDynamic && 0 != _selectedInstanceHash) {
 
-		auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(_selectedInstanceHash);
+		auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(_selectedInstanceHash);
 
 		if (instance) {
 
@@ -31,7 +31,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 			XMVECTOR const xmLoc(instance->getLocation());
 			float fElevation = instance->getElevation();
 
-			float const tDelta(fp_seconds(delta()).count());
+			float const tDelta(time_to_float(fp_seconds(delta())));
 
 			switch (key)
 			{
@@ -108,13 +108,13 @@ void cSelectTool::clear_selection()
 	if (0 != _selectedInstanceHash) {
 
 		if (_selectedDynamic) {
-			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(_selectedInstanceHash);
+			auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(_selectedInstanceHash);
 			if (instance) {
 				//instance->setHighlighted(false);
 			}
 		}
 		else {
-			auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(_selectedInstanceHash);
+			auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(_selectedInstanceHash);
 			if (instance) {
 				//instance->setHighlighted(false);
 			}
@@ -131,7 +131,7 @@ void __vectorcall cSelectTool::ClickAction(FXMVECTOR const xmMousePos)
 	clear_selection();
 
 	// indicate selection ...
-	point2D_t const voxelIndex(MinCity::VoxelWorld.getHoveredVoxelIndex());
+	point2D_t const voxelIndex(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
 	Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
 
@@ -156,7 +156,7 @@ void __vectorcall cSelectTool::ClickAction(FXMVECTOR const xmMousePos)
 			if (0 != hash) {
 
 				if (Iso::STATIC_HASH == index) {
-					auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(hash);
+					auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(hash);
 
 					if (instance) {
 						//instance->setHighlighted(true);
@@ -167,7 +167,7 @@ void __vectorcall cSelectTool::ClickAction(FXMVECTOR const xmMousePos)
 					}
 				}
 				else {
-					auto const instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
+					auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash);
 
 					if (instance) {
 						//instance->setHighlighted(true);

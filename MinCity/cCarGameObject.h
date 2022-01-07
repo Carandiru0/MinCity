@@ -220,10 +220,10 @@ namespace world
 	template<typename T>
 	STATIC_INLINE void cCarGameObject::CreateCar(int32_t carModelIndex)
 	{
-		if (0 == MinCity::VoxelWorld.getRoadVisibleCount())
+		if (0 == MinCity::VoxelWorld->getRoadVisibleCount())
 			return;
 
-		rect2D_t const area(MinCity::VoxelWorld.getVisibleGridBounds());
+		rect2D_t const area(MinCity::VoxelWorld->getVisibleGridBounds());
 
 		point2D_t const randomVoxelIndex = world::getRandomVoxelIndexInArea(area);
 		point2D_t randomRoadEdgeVoxelIndex;
@@ -277,7 +277,7 @@ namespace world
 					// finally attempt creating instance of model previousky selected at random
 					using flags = Volumetric::eVoxelModelInstanceFlags;
 
-					T* const pGameObj = MinCity::VoxelWorld.placeUpdateableInstanceAt<T, Volumetric::eVoxelModels_Dynamic::CARS>(
+					T* const pGameObj = MinCity::VoxelWorld->placeUpdateableInstanceAt<T, Volumetric::eVoxelModels_Dynamic::CARS>(
 						initialState.voxelIndex, carModelIndex,
 						flags::INSTANT_CREATION);  // instant creation must be used, as any delay would invalidate the current collision test above
 

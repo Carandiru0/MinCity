@@ -152,7 +152,7 @@ namespace world
 			uint32_t const hash = Iso::getHash(oVoxel, i);
 			if (0 != hash && excludeHash != hash) {
 
-				auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
+				auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash);
 
 				if (FoundModelInstance) {
 
@@ -178,7 +178,7 @@ namespace world
 			uint32_t const hash = Iso::getHash(oVoxel, i);
 			if (0 != hash && excludeHash != hash) {
 
-				auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
+				auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash);
 
 				if (FoundModelInstance) {
 
@@ -247,7 +247,7 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 			uint32_t const hash = Iso::getHash(oVoxel, i);
 			if (0 != hash && Iso::isOwner(oVoxel, i)) {
 
-				auto const FoundModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash);
+				auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash);
 
 				if (FoundModelInstance) {
 
@@ -776,7 +776,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 		// t = d/v
 		// d = vt
 		bool end_of_state(false);
-		float const dt = _speed * tDelta.count();		// distance to add this frame
+		float const dt = _speed * time_to_float(tDelta);		// distance to add this frame
 		float accumulator(_this.accumulator);
 
 		if ((accumulator += dt) >= _this.targetState.distance) {	// when distance travelled exceeds total distance
@@ -953,7 +953,7 @@ void cCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& _
 
 	if (tNow - tLastAttempt > milliseconds(CAR_CREATE_INTERVAL)) {
 
-		uint32_t const road_tiles_visible(MinCity::VoxelWorld.getRoadVisibleCount());
+		uint32_t const road_tiles_visible(MinCity::VoxelWorld->getRoadVisibleCount());
 
 		uint32_t const maximum_cars((road_tiles_visible / TILES_PER_CAR) >> 1); // half of the maximum road length that is visible
 

@@ -160,7 +160,7 @@ void __vectorcall cPoliceCarGameObject::OnUpdate(tTime const& __restrict tNow, f
 
 			if (light_state::CHANGING == _this.stateLights) {
 
-				float const tFade(_this.tLastLights.count() * INV_LIGHT_SWITCH_INTERVAL);
+				float const tFade(time_to_float(_this.tLastLights * INV_LIGHT_SWITCH_INTERVAL));
 
 				_this.colorBlueLight = SFM::lerp(_this.colorBlueLight, 0, tFade);
 				_this.colorRedLight = SFM::lerp(_this.colorRedLight, 0, tFade);

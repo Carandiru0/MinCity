@@ -144,7 +144,7 @@ namespace world
 		// set lights that are partially or fully on
 		uint32_t const lastLightOnIndex((0 == _this.idleLightOnIndex ? NUM_LIGHTS - 1 : _this.idleLightOnIndex - 1));
 
-		_this.colorLights[lastLightOnIndex] = SFM::lerp(MASK_COLOR_WHITE, 0, 1.0f / fInterval.count());
+		_this.colorLights[lastLightOnIndex] = SFM::lerp(MASK_COLOR_WHITE, 0, 1.0f / time_to_float(fInterval));
 		_this.colorLights[_this.idleLightOnIndex] = MASK_COLOR_WHITE;
 	}
 

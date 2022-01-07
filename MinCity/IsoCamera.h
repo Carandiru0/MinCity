@@ -6,6 +6,9 @@
 // https://en.wikipedia.org/wiki/Isometric_video_game_graphics#/media/File:Graphical_projection_comparison.png
 // 35.264 degrees up, 45 degrees left - True Isometric View Projection (requires orthographic projection matrix)
 /*        +  eye
+         /|
+        / |
+	   /  |
 	  /   |
 	 /    |
 	/     |

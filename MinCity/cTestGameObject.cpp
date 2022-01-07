@@ -102,7 +102,7 @@ namespace world
 			}
 		}
 
-		uvec4_v const black_body(MinCity::VoxelWorld.blackbody(_accumulator));
+		uvec4_v const black_body(MinCity::VoxelWorld->blackbody(_accumulator));
 		uvec4_t color;
 		
 		SFM::unpack_rgba(BULB_COLOR, color);
@@ -153,7 +153,7 @@ namespace world
 #else
 		v2_rotation_t vOrient( (*Instance)->getAzimuth() );
 
-		vOrient += tDelta.count() * 0.5f;
+		vOrient += time_to_float(tDelta) * 0.5f;
 			
 		(*Instance)->setAzimuth(vOrient);
 

@@ -8,7 +8,7 @@
 namespace world
 {
 	static constexpr fp_seconds const	CHANGE_DURATION = fp_seconds(milliseconds(150));
-	static constexpr float const		INV_CHANGE_DURATION = 1.0f / CHANGE_DURATION.count();
+	static constexpr double const		INV_CHANGE_DURATION = 1.0 / CHANGE_DURATION.count();
 
 	static constexpr int32_t const CHANCE_VIDEOSCREEN = 15;
 
@@ -145,7 +145,7 @@ namespace world
 				if ((_accumulator[i] += tDelta) <= CHANGE_DURATION) {
 
 					// Fade light turning off
-					_color_signal[i] = SFM::lerp(_last_color_signal[i], 0, _accumulator[i].count() * INV_CHANGE_DURATION);
+					_color_signal[i] = SFM::lerp(_last_color_signal[i], 0, time_to_float(_accumulator[i] * INV_CHANGE_DURATION));
 				}
 				else {
 					// instant on new color after turn off

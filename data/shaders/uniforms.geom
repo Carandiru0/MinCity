@@ -153,8 +153,7 @@ void EmitVxlVertex(in const vec3 center, in const vec3 tangent)
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
 	// so no need for eyePos
 
-	//Out.V.xzy = normalize(/*vec3(0)*/ - transformPositionToViewSpace(worldPos)); // transforming position mat4 required so position is relative to view origin
-	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));
+	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
 #endif																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
 	
 	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways

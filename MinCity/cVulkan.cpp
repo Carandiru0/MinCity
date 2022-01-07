@@ -186,14 +186,14 @@ void cVulkan::CreateNuklearResources()
 {
 	std::vector< vku::SpecializationConstant > constants;
 
-	MinCity::VoxelWorld.SetSpecializationConstants_Nuklear(constants);
+	MinCity::VoxelWorld->SetSpecializationConstants_Nuklear(constants);
 
 	// Create two shaders, vertex and fragment. 
-	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "nuklear.vert.bin" };
-	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "nuklear.frag.bin", constants };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "Nuklear.vert.bin" };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "Nuklear.frag.bin", constants };
 
 	// Build a template for descriptor sets that use these shaders.
-	size_t const imageCount(MinCity::Nuklear.getImageCount());
+	size_t const imageCount(MinCity::Nuklear->getImageCount());
 
 	std::vector<vk::Sampler> samplers; // dynamically replicated to conform with function below for images
 	samplers.reserve(imageCount);
@@ -239,7 +239,7 @@ void cVulkan::CreateNuklearResources()
 	pm.vertexAttribute(1, 0, vk::Format::eR8G8B8A8Uint, (uint32_t)offsetof(VertexDecl::nk_vertex, color));
 
 	pm.depthCompareOp(vk::CompareOp::eAlways);			// For GUI, depth is completely disabled, always infront and doesn't need to test depth either
-	pm.depthClampEnable(VK_FALSE); // must be false
+	pm.depthClampEnable(VK_FALSE);
 	pm.depthTestEnable(VK_FALSE);
 	pm.depthWriteEnable(VK_FALSE);
 	pm.cullMode(vk::CullModeFlagBits::eBack);
@@ -314,7 +314,7 @@ void cVulkan::CreateComputeResources()
 		_comData.light.sets = dsm.create(_device, _fw.descriptorPool());
 
 		std::vector< vku::SpecializationConstant > constants;
-		MinCity::VoxelWorld.SetSpecializationConstants_ComputeLight(constants);
+		MinCity::VoxelWorld->SetSpecializationConstants_ComputeLight(constants);
 
 		// SEED & JFA  //
 
@@ -361,8 +361,8 @@ void cVulkan::CreateComputeResources()
 		}
 	}
 
-	// texture shaders -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	{
+	// [[deprecated]] texture shaders -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	/* {
 		// shared/common among texture shaders:
 		{
 			// Build a template for descriptor sets that use these shaders.
@@ -397,7 +397,7 @@ void cVulkan::CreateComputeResources()
 			wszFile = SHADER_BINARY_DIR + wszFile;
 
 			std::vector< vku::SpecializationConstant > constants_textureshader;
-			MinCity::VoxelWorld.SetSpecializationConstants_TextureShader(constants_textureshader, shader);	// each textureshader can have distinct specialization constants
+			MinCity::VoxelWorld->SetSpecializationConstants_TextureShader(constants_textureshader, shader);	// each textureshader can have distinct specialization constants
 
 			vku::ShaderModule const comp{ _device, wszFile, constants_textureshader };
 
@@ -409,7 +409,7 @@ void cVulkan::CreateComputeResources()
 			auto& cache = _fw.pipelineCache();
 			_comData.texture.pipeline[shader] = pm.createUnique(_device, cache, *_comData.texture.pipelineLayout);
 		}
-	}
+	}*/
 }
 
 void cVulkan::CreateVolumetricResources()
@@ -417,10 +417,10 @@ void cVulkan::CreateVolumetricResources()
 	std::vector< vku::SpecializationConstant > constantsVS, constantsFS;
 		
 	// Create two shaders, vertex and fragment. 
-	MinCity::VoxelWorld.SetSpecializationConstants_VolumetricLight_VS(constantsVS);
+	MinCity::VoxelWorld->SetSpecializationConstants_VolumetricLight_VS(constantsVS);
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "volumetric.vert.bin", constantsVS };
 
-	MinCity::VoxelWorld.SetSpecializationConstants_VolumetricLight_FS(constantsFS);
+	MinCity::VoxelWorld->SetSpecializationConstants_VolumetricLight_FS(constantsFS);
 	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "volumetric.frag.bin", constantsFS };
 
 	// Build a template for descriptor sets that use these shaders.
@@ -433,10 +433,8 @@ void cVulkan::CreateVolumetricResources()
 	dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
 	dslm.image(1U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);  // half-res depth
 	dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // blue noise
-	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::REPEAT>());  // fog
-	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
-	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
-	dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1); // writeonly visibility, volumetrics output
+	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
+	dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
 #ifdef DEBUG_VOLUMETRIC
 	dslm.buffer(10U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 #endif	
@@ -456,20 +454,21 @@ void cVulkan::CreateVolumetricResources()
 	// 
 	vku::PipelineLayoutMaker		plm;
 	plm.descriptorSetLayout(*_volData.descLayout);
+
 	_volData.pipelineLayout = plm.createUnique(_device);
 
 	// todo:  Unit Cube static vbo & ibo here
 	// Setup vertices indices for a cube
 	{
 		VertexDecl::just_position const vertices[] = {
-			{ { 0.0f,  0.0f,  1.0f }, },
-			{ { 1.0f,  0.0f,  1.0f }, },
+			{ { -1.0f,  -1.0f,  1.0f }, },
+			{ { 1.0f,  -1.0f,  1.0f }, },
 			{ { 1.0f,  1.0f,  1.0f }, },
-			{ { 0.0f,  1.0f,  1.0f }, },
-			{ { 0.0f,  0.0f,  0.0f }, },
-			{ { 1.0f,  0.0f,  0.0f }, },
-			{ { 1.0f,  1.0f,  0.0f }, },
-			{ { 0.0f,  1.0f,  0.0f }, },
+			{ { -1.0f,  1.0f,  1.0f }, },
+			{ { -1.0f,  -1.0f,  -1.0f }, },
+			{ { 1.0f,  -1.0f,  -1.0f }, },
+			{ { 1.0f,  1.0f,  -1.0f }, },
+			{ { -1.0f,  1.0f,  -1.0f }, },
 		};
 
 		alignas(16) uint16_t const indices[] = {
@@ -499,17 +498,18 @@ void cVulkan::CreateVolumetricResources()
 	pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::just_position));
 	pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::just_position, position));
 
-	pm.depthCompareOp(vk::CompareOp::eAlways);
-	pm.depthClampEnable(VK_FALSE); // must be false
-	pm.depthTestEnable(VK_TRUE);		// for volume rendering, depth testing can be enabled if culling back faces, and clockwise frontfaces
-	pm.depthWriteEnable(VK_FALSE);		// no depthwrites, as tarnsparency is used here
-	pm.cullMode(vk::CullModeFlagBits::eBack);			// if camera goes inside volume, culling front faces and counter clockwise must be used
-	pm.frontFace(vk::FrontFace::eClockwise);			// see https://www.willusher.io/webgl/2019/01/13/volume-rendering-with-webgl
-														// in Mincity camera zoom is done with projection matrix - so view matrix is never inside volume!
-														// allowing depth testing to be enabled!
-
-	// ################################
-	pm.stencilTestEnable(VK_TRUE); // only stencil
+	pm.depthCompareOp(vk::CompareOp::eAlways);								// volumetric raymarch - half resolution framebuffer, and additionally checkerboarded. [1/8 rays / fullresolution pixel]
+	pm.depthClampEnable(VK_FALSE);											// * * * * * superior speed and quality (blue noise temporal checkerboard is flawless reconstruction), additionally bilateraly upscale to full resolution framebuffer used in final blending.
+	pm.depthTestEnable(VK_FALSE);											// for volume rendering, for *best* results:
+	pm.depthWriteEnable(VK_FALSE);											//  - depth testing and writing disabled.
+	pm.cullMode(vk::CullModeFlagBits::eFront);								//  - culling front faces and counter clockwise must be used
+	pm.frontFace(vk::FrontFace::eCounterClockwise);							//    (chosen based on whether the volume intersects the near plane or far plane. volume closest to near plane. 
+																			//  - in the volumetric shader:
+																			//     - top of file: layout(early_fragment_tests) in;
+																			//		 (working optimization, and if not enabled flickering of transparent surfaces witnessed)
+																			//
+	// ################################										// - stencil buffer enabled
+	pm.stencilTestEnable(VK_TRUE); // only stencil							//   (used for alternating checkerboard rendering)
 	vk::StencilOpState const stencilOp{
 		/*vk::StencilOp failOp_ =*/ vk::StencilOp::eKeep,
 		/*vk::StencilOp passOp_ =*/ vk::StencilOp::eKeep,
@@ -545,7 +545,7 @@ void cVulkan::CreateUpsampleResources()
 
 			std::vector< vku::SpecializationConstant > constants;
 
-			MinCity::VoxelWorld.SetSpecializationConstants_Resolve(constants);
+			MinCity::VoxelWorld->SetSpecializationConstants_Resolve(constants);
 
 			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample_resolve.frag.bin", constants };
 
@@ -587,7 +587,7 @@ void cVulkan::CreateUpsampleResources()
 			pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 			pm.depthCompareOp(vk::CompareOp::eAlways);
-			pm.depthClampEnable(VK_FALSE); // must be false
+			pm.depthClampEnable(VK_FALSE);
 			pm.depthTestEnable(VK_FALSE);
 			pm.depthWriteEnable(VK_FALSE);
 			pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -610,7 +610,7 @@ void cVulkan::CreateUpsampleResources()
 
 			std::vector< vku::SpecializationConstant > constants;
 
-			MinCity::VoxelWorld.SetSpecializationConstants_Upsample(constants);
+			MinCity::VoxelWorld->SetSpecializationConstants_Upsample(constants);
 			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "upsample.frag.bin", constants };
 
 			// Build a template for descriptor sets that use these shaders.
@@ -647,7 +647,7 @@ void cVulkan::CreateUpsampleResources()
 			pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 			pm.depthCompareOp(vk::CompareOp::eAlways);
-			pm.depthClampEnable(VK_FALSE); // must be false
+			pm.depthClampEnable(VK_FALSE);
 			pm.depthTestEnable(VK_FALSE);
 			pm.depthWriteEnable(VK_FALSE);
 			pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -699,7 +699,7 @@ void cVulkan::CreateUpsampleResources()
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE);
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
 		pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -757,7 +757,7 @@ void cVulkan::CreateDepthResolveResources()
 	pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 	pm.depthCompareOp(vk::CompareOp::eAlways);
-	pm.depthClampEnable(VK_FALSE); // must be false
+	pm.depthClampEnable(VK_FALSE); 
 	pm.depthTestEnable(VK_FALSE);
 	pm.depthWriteEnable(VK_FALSE);
 	pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -821,7 +821,7 @@ void cVulkan::CreatePostAAResources()
 	std::vector< vku::SpecializationConstant > constants;
 
 	// Create two unique shaders per pass, vertex and fragment. 
-	MinCity::VoxelWorld.SetSpecializationConstants_PostAA(constants);
+	MinCity::VoxelWorld->SetSpecializationConstants_PostAA(constants);
 
 	// Make 5 distict pipelines to use the vertex format and shaders.
 	vku::ShaderModule const vertcommon_{ _device, SHADER_BINARY_DIR "postquad.vert.bin", constants }; // common except for last 2 passes
@@ -829,7 +829,7 @@ void cVulkan::CreatePostAAResources()
 	{ // temporal resolve subpass + anamorphic mask downsample + blur mask downsample
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
 		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
 		pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -848,7 +848,7 @@ void cVulkan::CreatePostAAResources()
 	{ // blur downsampled horizontally + anamorphic reduction
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
 		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
 		pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -867,7 +867,7 @@ void cVulkan::CreatePostAAResources()
 	{ // blur downsampled vertically
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
 		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE);
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
 		pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -888,13 +888,13 @@ void cVulkan::CreatePostAAResources()
 		// *** this clears the current vector of constants, and replaces it with the spec constants w/Maximum Nits defined
 		constants.clear();
 		// required for the last 2 passes / pipelines if HDR is on
-		MinCity::VoxelWorld.SetSpecializationConstants_PostAA_HDR(constants);
+		MinCity::VoxelWorld->SetSpecializationConstants_PostAA_HDR(constants);
 	}
 
 	{ // final pass aa + blur upsample + dithering + anamorphic flare	
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
 		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
 		pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -921,7 +921,7 @@ void cVulkan::CreatePostAAResources()
 	{ // overlay final(actual) subpass(gui overlay)
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
 		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
 		pm.cullMode(vk::CullModeFlagBits::eFront);
@@ -970,10 +970,10 @@ void cVulkan::CreateVoxelResources()
 	{ // terrain voxels //
 
 		std::vector< vku::SpecializationConstant > constants_terrain_basic_vs, constants_terrain_vs, constants_terrain_gs, constants_terrain_fs;
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_Basic_VS(constants_terrain_basic_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_VS(constants_terrain_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_GS(constants_terrain_gs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelTerrain_FS(constants_terrain_fs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelTerrain_Basic_VS(constants_terrain_basic_vs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelTerrain_VS(constants_terrain_vs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelTerrain_GS(constants_terrain_gs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelTerrain_FS(constants_terrain_fs);
 
 		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_height.vert.bin", constants_terrain_vs };
 		vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_height.geom.bin", constants_terrain_gs };
@@ -1020,10 +1020,10 @@ void cVulkan::CreateVoxelResources()
 	{ // road voxels //
 
 		std::vector< vku::SpecializationConstant > constants_road_basic_vs, constants_road_vs, constants_road_gs, constants_road_fs;
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_Basic_VS(constants_road_basic_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_VS(constants_road_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_GS(constants_road_gs);
-		MinCity::VoxelWorld.SetSpecializationConstants_VoxelRoad_FS(constants_road_fs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_Basic_VS(constants_road_basic_vs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_VS(constants_road_vs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_GS(constants_road_gs);
+		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_FS(constants_road_fs);
 
 		vk::DeviceSize gpuSize{};
 
@@ -1092,10 +1092,10 @@ void cVulkan::CreateVoxelResources()
 	{ // static & dynamic voxels //
 
 		std::vector< vku::SpecializationConstant > constants_voxel_basic_vs, constants_voxel_vs, constants_voxel_gs, constants_voxel_fs;
-		MinCity::VoxelWorld.SetSpecializationConstants_Voxel_Basic_VS(constants_voxel_basic_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_Voxel_VS(constants_voxel_vs);
-		MinCity::VoxelWorld.SetSpecializationConstants_Voxel_GS(constants_voxel_gs);
-		MinCity::VoxelWorld.SetSpecializationConstants_Voxel_FS(constants_voxel_fs);
+		MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS(constants_voxel_basic_vs);
+		MinCity::VoxelWorld->SetSpecializationConstants_Voxel_VS(constants_voxel_vs);
+		MinCity::VoxelWorld->SetSpecializationConstants_Voxel_GS(constants_voxel_gs);
+		MinCity::VoxelWorld->SetSpecializationConstants_Voxel_FS(constants_voxel_fs);
 
 		vku::ShaderModule const geom_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
 		vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms.geom.bin", constants_voxel_gs };
@@ -1202,7 +1202,7 @@ void cVulkan::CreateVoxelResources()
 			// VOXEL_SHADER_TRANS
 			{			
 				std::vector< vku::SpecializationConstant > constants_voxel_frag_trans(constants_voxel_fs);
-				MinCity::VoxelWorld.AddSpecializationConstants_Voxel_FS_Transparent(constants_voxel_frag_trans);
+				MinCity::VoxelWorld->AddSpecializationConstants_Voxel_FS_Transparent(constants_voxel_frag_trans);
 					
 				vku::ShaderModule const frag_voxeltrans_{ _device, SHADER_BINARY_DIR "uniforms_trans.frag.bin", constants_voxel_frag_trans };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_TRANS>(
@@ -1252,7 +1252,7 @@ void cVulkan::CreateVoxelResources()
 			{	
 				// rain specializes voxel size
 				std::vector< vku::SpecializationConstant > constants_voxel_rain_vs;
-				MinCity::VoxelWorld.SetSpecializationConstants_VoxelRain_VS(constants_voxel_rain_vs);
+				MinCity::VoxelWorld->SetSpecializationConstants_VoxelRain_VS(constants_voxel_rain_vs);
 
 				vku::ShaderModule const vert_dynamic_trans_rain_{ _device, SHADER_BINARY_DIR "uniforms_trans_dynamic.vert.bin", constants_voxel_rain_vs };
 
@@ -1346,8 +1346,8 @@ void cVulkan::CreateSharedVoxelResources()
 void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 {
 	std::vector< vku::SpecializationConstant > constants_voxel_vs, constants_voxel_fs;
-	MinCity::VoxelWorld.SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, true);
-	MinCity::VoxelWorld.SetSpecializationConstants_Voxel_ClearMask_FS(constants_voxel_fs);
+	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, true);
+	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_ClearMask_FS(constants_voxel_fs);
 
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
 	vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
@@ -1374,7 +1374,7 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 		// all opaque geometry must be rendered first 
 		// no further writes to the alpha channel, preserve until overlay/transparency pass
 		pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE);
 		pm.depthTestEnable(VK_TRUE);	// dependent on depth test, all opaque geometry must be rendered first
 		pm.depthWriteEnable(VK_FALSE);  // no depth writes on voxel clear alpha mask *important*
 
@@ -1429,7 +1429,7 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 		// all opaque geometry must be rendered first 
 		// no further writes to the alpha channel, preserve until overlay/transparency pass
 		pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-		pm.depthClampEnable(VK_FALSE); // must be false
+		pm.depthClampEnable(VK_FALSE);
 		pm.depthTestEnable(VK_TRUE);	// dependent on depth test, all opaque geometry must be rendered first
 		pm.depthWriteEnable(VK_FALSE);  // no depth writes on voxel clear alpha mask *important*
 
@@ -1490,7 +1490,7 @@ void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they 
 	// all opaque geometry must be rendered first 
 	// no further writes to the alpha channel, preserve until overlay/transparency pass
 	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-	pm.depthClampEnable(VK_FALSE); // must be false
+	pm.depthClampEnable(VK_FALSE); 
 	pm.depthTestEnable(VK_TRUE);	// dependent on depth test, all opaque geometry must be rendered first
 	pm.depthWriteEnable(VK_FALSE);  // no depth writes on voxel clear alpha mask *important*
 
@@ -1561,20 +1561,20 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 // Update the descriptor sets for the shader uniforms.
 	{ // ###### Compute
 		_dsu.beginDescriptorSet(_comData.light.sets[0]);
-		MinCity::VoxelWorld.UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD_POINT);
+		MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD_POINT);
 
 		// update descriptor set (still called)
 		_dsu.update(_device);
 
-		// ###### Texture Shaders (Compute)
-		for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
+		// [[deprecated]] ###### Texture Shaders (Compute)
+		/*for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
 		{
 			_dsu.beginDescriptorSet(_comData.texture.sets[shader][0]);
-			MinCity::VoxelWorld.UpdateDescriptorSet_TextureShader(_dsu, shader, SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_TextureShader(_dsu, shader, SAMPLER_SET_STANDARD_POINT);
 
 			// update descriptor set (still called)
 			_dsu.update(_device);
-		}
+		}*/
 	}
 	
 	{ // ###### Nuklear
@@ -1585,7 +1585,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 		_dsu.buffer(_nkData._ubo.buffer(), 0, sizeof(UniformDecl::nk_uniform));
 
 		// Set initial sampler value
-		MinCity::Nuklear.UpdateDescriptorSet(_dsu, getLinearSampler());
+		MinCity::Nuklear->UpdateDescriptorSet(_dsu, getLinearSampler());
 
 		// update descriptor set
 		_dsu.update(_device);
@@ -1599,7 +1599,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld.UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(), SAMPLER_SET_STANDARD_POINT_ANISO);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(), SAMPLER_SET_STANDARD_POINT_ANISO);
 			
 			// update descriptor set
 			_dsu.update(_device);
@@ -1613,7 +1613,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			MinCity::VoxelWorld.UpdateDescriptorSet_Voxel_ClearMask(resource_index, _dsu);
+			MinCity::VoxelWorld->UpdateDescriptorSet_Voxel_ClearMask(resource_index, _dsu);
 
 			// update descriptor set
 			_dsu.update(_device);
@@ -1629,7 +1629,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld.UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
 
 			// update descriptor set
 			_dsu.update(_device);
@@ -1645,7 +1645,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			MinCity::VoxelWorld.UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
 
 			// update descriptor set
 			_dsu.update(_device);
@@ -1660,7 +1660,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld.UpdateDescriptorSet_VolumetricLightUpsample(resource_index, _dsu, _window->depthResolvedImageView(0), _window->depthResolvedImageView(1), _window->colorVolumetricDownResImageView(), _window->colorReflectionDownResImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightUpsample(resource_index, _dsu, _window->depthResolvedImageView(0), _window->depthResolvedImageView(1), _window->colorVolumetricDownResImageView(), _window->colorReflectionDownResImageView(), SAMPLER_SET_STANDARD_POINT);
 			
 			// update descriptor set
 			_dsu.update(_device);
@@ -1697,7 +1697,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld.UpdateDescriptorSet_PostAA(_dsu, _window->lastColorImageView(), _window->guiImageView(0), _window->guiImageView(1), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA(_dsu, _window->lastColorImageView(), _window->guiImageView(0), _window->guiImageView(1), SAMPLER_SET_STANDARD_POINT);
 
 			// update descriptor set
 			_dsu.update(_device);
@@ -1721,36 +1721,36 @@ namespace vku
 
 bool const cVulkan::renderCompute(vku::compute_pass&& __restrict c)
 {
-	return(MinCity::Vulkan._renderCompute(std::forward<vku::compute_pass&& __restrict>(c)));
+	return(MinCity::Vulkan->_renderCompute(std::forward<vku::compute_pass&& __restrict>(c)));
 }
 void cVulkan::renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
 {
-	MinCity::Vulkan._renderStaticCommandBuffer(std::forward<vku::static_renderpass&&>(s));
+	MinCity::Vulkan->_renderStaticCommandBuffer(std::forward<vku::static_renderpass&&>(s));
 }
 void cVulkan::renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d)
 {
-	MinCity::Vulkan._renderDynamicCommandBuffer(std::forward<vku::dynamic_renderpass&&>(d));
+	MinCity::Vulkan->_renderDynamicCommandBuffer(std::forward<vku::dynamic_renderpass&&>(d));
 }
 void cVulkan::renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o)
 {
-	MinCity::Vulkan._renderOverlayCommandBuffer(std::forward<vku::overlay_renderpass&&>(o));
+	MinCity::Vulkan->_renderOverlayCommandBuffer(std::forward<vku::overlay_renderpass&&>(o));
 }
 void cVulkan::renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp)
 {
-	MinCity::Vulkan._renderPresentCommandBuffer(std::forward<vku::present_renderpass&&>(pp));
+	MinCity::Vulkan->_renderPresentCommandBuffer(std::forward<vku::present_renderpass&&>(pp));
 }
 void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
 {
-	MinCity::Vulkan._gpuReadback(cb, resource_index);
+	MinCity::Vulkan->_gpuReadback(cb, resource_index);
 }
 
 inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 {
 	if (c.cb_transfer) { // **** very first gpu transfer on new frame ***
-		MinCity::VoxelWorld.Transfer(c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
+		MinCity::VoxelWorld->Transfer(c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
 	}
 	
-	return(MinCity::VoxelWorld.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData));
+	return(MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData)); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
 }
 
 void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (& __restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount)
@@ -1895,7 +1895,7 @@ void cVulkan::barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_
 	_mouseBuffer[resource_index].barrier(	// ## ACQUIRE ## //
 		cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost,
 		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getTransferQueueIndex()
+		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getTransferQueueIndex()
 	);
 }
 
@@ -1954,7 +1954,7 @@ void cVulkan::barrierOffscreenBuffer(vk::CommandBuffer& cb) const
 	_offscreenBuffer.barrier(	// ## ACQUIRE ## //
 		cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eHost,
 		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead, MinCity::Vulkan.getGraphicsQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eHostRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 	);
 }
 
@@ -2089,8 +2089,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// ### current state for opacity map will always be general at this point, no need to transition layouts //
 	
-	// transition alll textureshader outputs to shaderreadonlyoptimal
-	MinCity::VoxelWorld.makeTextureShaderOutputsReadOnly(s.cb);
+	// [[deprecated]] transition alll textureshader outputs to shaderreadonlyoptimal
+	// MinCity::VoxelWorld->makeTextureShaderOutputsReadOnly(s.cb);
 
 	// prepare halfres target for writes in depth resolve fragment shader
 	_window->depthResolvedImage(1).setLayout(s.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY);
@@ -2102,16 +2102,16 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 		vku::GenericBuffer::barrier(buffers, // ## ACQUIRE ## // batched 
 			s.cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexInput,
 			vk::DependencyFlagBits::eByRegion,
-			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
 	}
 	// transfer queue ownership of main uniform buffer *required* see voxelworld.cpp Transfer() function
 	_rtSharedData._ubo[resource_index].barrier(	// ## ACQUIRE ## //
 		s.cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexShader,
 		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan.getTransferQueueIndex(), MinCity::Vulkan.getGraphicsQueueIndex()
+		vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 	);
-	MinCity::VoxelWorld.AcquireTransferQueueOwnership(resource_index, s.cb);
+	MinCity::VoxelWorld->AcquireTransferQueueOwnership(resource_index, s.cb);
 
 	// #### Z RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiZ, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
@@ -2140,14 +2140,14 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	{ // required at this point, light:
 		static constexpr size_t const image_count(3ULL); // batched
-		std::array<vku::GenericImage* const, image_count> const images{ MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->DistanceDirection, MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->Color, MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().LightMap->Reflection };
+		std::array<vku::GenericImage* const, image_count> const images{ MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().LightMap->DistanceDirection, MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().LightMap->Color, MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().LightMap->Reflection };
 
 		vku::GenericImage::setLayout<image_count>(images, s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 	}
 
 	// prepare for usage in fragment shader (raymarching)
 	vku::TextureImageStorage3D
-		* const __restrict OpacityMap(MinCity::VoxelWorld.getVolumetricOpacity().getVolumeSet().OpacityMap);
+		* const __restrict OpacityMap(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap);
 	OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY, 
 		                                                                 vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
@@ -2269,7 +2269,7 @@ inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __res
 		
 	};
 
-	MinCity::VoxelWorld.Transfer(resource_index, d.cb, vbos);
+	MinCity::VoxelWorld->Transfer(resource_index, d.cb, vbos);
 }
 
 inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o) // fully dynamic command buffer (every frame)
@@ -2277,7 +2277,7 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 	uint32_t const resource_index(o.resource_index);
 
 	if (nullptr != o.cb_transfer) {
-		MinCity::Nuklear.Upload(resource_index, *o.cb_transfer, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
+		MinCity::Nuklear->Upload(resource_index, *o.cb_transfer, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
 	}
 	else if (nullptr != o.cb_render ) // rendering
 	{
@@ -2290,7 +2290,7 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 		// prepare for usage in fragment shader, transparent voxels do not modify the opacity map so its layout is left unmodified
 		_window->colorReflectionImage().setLayout(*o.cb_render, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
-		MinCity::Nuklear.AcquireTransferQueueOwnership(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
+		MinCity::Nuklear->AcquireTransferQueueOwnership(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
 
 		o.cb_render->beginRenderPass(o.rpbi, vk::SubpassContents::eInline);
 
@@ -2353,7 +2353,7 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 		o.cb_render->nextSubpass(vk::SubpassContents::eInline); // SUBPASS - Nuklear 2D GUI Overlay *bugfix, must be in seperate dedicated pass or else performance suffers greatly! //
 		{
 			RenderingInfo const nk_renderInfo(o.rpbi, _nkData.pipelineLayout, _nkData.pipeline, _nkData.descLayout, _nkData.sets);
-			MinCity::Nuklear.Render(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo, nk_renderInfo);
+			MinCity::Nuklear->Render(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo, nk_renderInfo);
 		}
 
 		// ############# TRANSPARENCY END PASS ################################################ //
@@ -2374,7 +2374,7 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
 
-	MinCity::PostProcess.Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
+	MinCity::PostProcess->Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
 
 	// *** Command buffer ends
 	pp.cb.end();

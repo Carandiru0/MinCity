@@ -18,7 +18,7 @@ struct sRoute /*: private no_copy*/
 	tTime					tStart;
 
 	sRoute()
-		: position{}, direction{}, tDuration{ zero_duration }, fInvDuration(0.0f), tStart{ zero_time_point }
+		: position{}, direction{}, tDuration{ zero_time_duration }, fInvDuration(0.0f), tStart{ zero_time_point }
 	{
 		XMStoreFloat2A(&direction.vStart, v2_rotation_t().v2());	// bugfix: direction vectors must be initialized correctly for default rotation (cos=1.0f,sin=0.0f)
 		XMStoreFloat2A(&direction.vTarget, v2_rotation_t().v2());

@@ -122,7 +122,7 @@ __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMV
     float const fdrop_speed = SFM::lerp(MIN_DROP_SPEED, MAX_DROP_SPEED, ((float)drop_speed) * Inv255);
 
     // v = d/t 
-    float fnew_drop_distance = fdrop_distance - fdrop_speed * getLocalTimeDelta().count();
+    float fnew_drop_distance = fdrop_distance - fdrop_speed * time_to_float(getLocalTimeDelta());
 
     // wrap around if less than zero, but calculate a new random speed for new drop if so
     if (fnew_drop_distance < 0.0f) { // drop has hit bottom
@@ -187,7 +187,7 @@ bool const UpdateRain(tTime const tNow, RainInstance* const __restrict Instance)
     {
         fp_seconds const tDelta(tNow - *tLast);
 
-        Instance->setLocation(world::getOrigin());
+        Instance->setLocation(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
         //Instance->getRotation() += tDelta.count() * 3.250005f;
         Instance->getRotation() = world::getAzimuth();  // bugfix:need root of rain transform billboarded, each rain drop has a unique transform added to this later, otherwise while rotating view the rain can all dissappear at certain angles
 

@@ -171,7 +171,7 @@ namespace world
 
 			for (uint32_t sign = 0; sign < data.sign_count; ++sign) {
 
-				auto * const pSignModelInstance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(data.hash[sign]);
+				auto * const pSignModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(data.hash[sign]);
 				if (pSignModelInstance) {
 
 					cTrafficSignGameObject* const pSign = pSignModelInstance->getOwnerGameObject<cTrafficSignGameObject>();

@@ -44,7 +44,7 @@
 #endif
 
 // 4.)
-// cVulkan:: Under the Chosen Pipeline Creation (cVulkan.cpp code section for pipelines)
+// cVulkan:: Under the Chosen Pipeline Creation (cVulkan->cpp code section for pipelines)
 /* eg.)
 #if !defined(NDEBUG) && defined(LIVESHADER_MODE) && (LIVE_SHADER == LIVE_SHADER_UPSAMPLE)
 	liveshader::cache_pipeline_creation(pm);

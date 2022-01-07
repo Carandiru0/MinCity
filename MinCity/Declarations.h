@@ -82,6 +82,8 @@ namespace BufferDecl
 
 namespace UniformDecl
 {
+	// vbs >
+	
 	// BUFFER alignment should not be explicity specified on struct, rather use alignment rules of Vulkan spec and do ordering of struct members manually
 
 	struct no_vtable VoxelSharedUniform {
@@ -92,20 +94,22 @@ namespace UniformDecl
 		XMVECTOR	eyePos;
 		XMVECTOR	eyeDir;
 		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
-		XMVECTOR	aligned_data1;	// .x = max light distance
+
 		uint32_t	frame; // must be last
 	};
 	struct no_vtable nk_uniform {
 		XMMATRIX	projection;
 	};
-	struct no_vtable DebugStorageBuffer {
-		XMVECTOR	numbers;
-		bool		toggles[4];
-		float		history[1024][1024];
-	};
 
+	// push constants > 
+	
 	// alignment on push constants is natural (ie float = 4bytes) to maximize availabilty of restricted size available to use (128 bytes)
 	// Up to **128** bytes of immediate data. (Vulkan minimum spec is 128bytes, also is my Radeon 290 Limit)
+	
+	typedef struct no_vtable alignas(4) TextureShaderPushConstants { // 4+4+4 = 12 bytes
+		XMFLOAT2	origin;
+		float		frame_or_time;	// customizable per textureshader requirements
+	} TextureShaderPushConstants;
 
 	typedef struct no_vtable alignas(4) NuklearPushConstants { // 4+4 = 8 bytes
 		uint32_t array_index,
@@ -135,10 +139,13 @@ namespace UniformDecl
 	struct no_vtable alignas(4) ComputeLightPushConstants : ComputeLightPushConstantsFilter {
 	};
 
-	typedef struct no_vtable alignas(4) TextureShaderPushConstants { // 4 = 4 bytes
-		XMFLOAT2	origin;
-		float		frame_or_time;	// customizable per textureshader requirements
-	} TextureShaderPushConstants;
+#ifndef NDEBUG
+	struct no_vtable DebugStorageBuffer {
+		XMVECTOR	numbers;
+		bool		toggles[4];
+		float		history[1024][1024];
+	};
+#endif
 
 } // end ns UniformDecl
 

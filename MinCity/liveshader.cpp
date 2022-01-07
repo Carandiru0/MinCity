@@ -66,11 +66,11 @@ namespace liveshader
 
 // EDIT HERE //
 #if (LIVE_SHADER == LIVE_SHADER_VOLUMETRIC)
-			MinCity::VoxelWorld.SetSpecializationConstants_VolumetricLight_VS(constantsVS);
-			MinCity::VoxelWorld.SetSpecializationConstants_VolumetricLight_FS(constantsFS);
+			MinCity::VoxelWorld->SetSpecializationConstants_VolumetricLight_VS(constantsVS);
+			MinCity::VoxelWorld->SetSpecializationConstants_VolumetricLight_FS(constantsFS);
 #endif
 #if (LIVE_SHADER == LIVE_SHADER_UPSAMPLE)
-			MinCity::VoxelWorld.SetSpecializationConstants_Upsample(constantsFS);
+			MinCity::VoxelWorld->SetSpecializationConstants_Upsample(constantsFS);
 #endif
 			vku::ShaderModule vert_{ device, SHADER_BINARY_DIR LIVE_SHADER_VERT, constantsVS };
 			vku::ShaderModule frag_{ device, SHADER_BINARY_DIR LIVE_SHADER_FRAG, constantsFS };
@@ -85,7 +85,7 @@ namespace liveshader
 			pm.replace_shader(1, vk::ShaderStageFlagBits::eFragment, frag_);	
 			/*******/
 			
-			MinCity::Vulkan.WaitDeviceIdle();
+			MinCity::Vulkan->WaitDeviceIdle();
 			auto& cache = fw.pipelineCache();
 			pipeline_out = std::move(pm.create(device, cache, *pipelineLayout, renderPass));
 

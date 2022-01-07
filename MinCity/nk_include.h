@@ -20,7 +20,7 @@
 #define NK_MAX SFM::max
 #define NK_MIN SFM::min
 #define NK_VSNPRINTF vsnprintf
-#include <nuklear.h>     
+#include <Nuklear.h>     
 #include <DirectXPackedVector.h>
 #include <cctype>
 #include "nk_custom.h"

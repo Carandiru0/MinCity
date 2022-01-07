@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "cToolProvider.h"
 
-// implementation is defined "cNuklear.cpp" ONLY for nuklear single-file header lib
+// implementation is defined "cNuklear->cpp" ONLY for nuklear single-file header lib
 #include "nk_custom.h"
 
 cToolProvider::cToolProvider()

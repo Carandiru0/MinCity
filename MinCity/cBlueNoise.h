@@ -37,8 +37,8 @@ namespace supernoise
 		constexpr uint32_t const					size() const { return(DIMENSIONS * DIMENSIONS); }
 
 		// **both channels are available in texture form
-		vku::TextureImage2DArray* const& __restrict		getTexture2DArray() const { return(_blueNoiseTextures); }	// 2D Layered Texture (w/ bluenoise over time)
-		vku::TextureImage2D* const& __restrict			getTexture2D() const { return(_blueNoiseTexture); }			// 2D Texture
+		vku::TextureImage2DArray* const& __restrict		getTexture2DArray() const { return(_blueNoiseTextures); }	// 2D Layered Texture (w/ bluenoise over time) [RG]
+		vku::TextureImage2D* const& __restrict			getTexture2D() const { return(_blueNoiseTexture); }			// 2D Texture [RG]
 
 		// initialize //
 		void Load(std::wstring_view const blueNoiseFile);

@@ -14,7 +14,7 @@ namespace world
 	}
 
 	cAutomataGameObject::cAutomataGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_, Volumetric::voxelModel_Dynamic* const& model_)
-		: tProceduralGameObject(instance_, model_), _accumulator(zero_duration), _born(0), _die(0), _firstUpdate(true), _changed(false)
+		: tProceduralGameObject(instance_, model_), _accumulator(zero_time_duration), _born(0), _die(0), _firstUpdate(true), _changed(false)
 	{
 		instance_->setOwnerGameObject<cAutomataGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cAutomataGameObject::OnVoxel);

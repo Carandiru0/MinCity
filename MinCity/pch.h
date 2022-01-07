@@ -9,6 +9,33 @@
 #endif
 
 #define NOMINMAX
+#define NOGDICAPMASKS //- CC_*, LC_*, PC_*, CP_*, TC_*, RC_
+#define NOMENUS //- MF_ *
+#define NOSYSCOMMANDS //- SC_ *
+#define NORASTEROPS //- Binary and Tertiary raster ops
+#define OEMRESOURCE //- OEM Resource values
+#define NOATOM //- Atom Manager routines
+#define NOCLIPBOARD //- Clipboard routines
+#define NOCOLOR //- Screen colors
+#define NODRAWTEXT //- DrawText() and DT_ *
+#define NOKERNEL //- All KERNEL defines and routines
+#define NOMB -// MB_ * andMessageBox()
+#define NOMEMMGR //- GMEM_*, LMEM_*, GHND, LHND, associated routines
+#define NOMETAFILE //- typedef METAFILEPICT
+#define NOOPENFILE //- OpenFile(), OemToAnsi, AnsiToOem, and OF_*
+#define NOSCROLL //- SB_ * andscrolling routines
+#define NOSERVICE //- All Service Controller routines, SERVICE_ equates, etc.
+#define NOSOUND //- Sound driver routines
+#define NOTEXTMETRIC //- typedef TEXTMETRICand associated routines
+#define NOWH //- SetWindowsHook and WH_ *
+#define NOWINOFFSETS //- GWL_*, GCL_*, associated routines
+#define NOCOMM //- COMM driver routines
+#define NOKANJI //- Kanji support stuff.
+#define NOHELP //- Help engine interface.
+#define NOPROFILER //- Profiler interface.
+#define NODEFERWINDOWPOS //- DeferWindowPos routines
+#define NOMCX //- Modem Configuration Extensions
+
 #define _SECURE_SCL 0 
 #define _ITERATOR_DEBUG_LEVEL 0
 #define _SILENCE_CXX17_UNCAUGHT_EXCEPTION_DEPRECATION_WARNING

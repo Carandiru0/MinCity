@@ -282,7 +282,7 @@ namespace world
 										pReadPointer += bytes;
 									}
 
-									MinCity::VoxelWorld.upload_model_state(data_rootIndex, data_models_static, data_models_dynamic);
+									MinCity::VoxelWorld->upload_model_state(data_rootIndex, data_models_static, data_models_dynamic);
 								}
 								
 								{ // load gameobject specific data //
@@ -316,9 +316,9 @@ namespace world
 													bool bDynamic(true); // default to dynamic
 													Volumetric::voxelModelInstanceBase* instance(nullptr);
 
-													instance = MinCity::VoxelWorld.lookupVoxelModelInstance<true>(hash); // search dynamic
+													instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash); // search dynamic
 													if (!instance) {
-														instance = MinCity::VoxelWorld.lookupVoxelModelInstance<false>(hash); // search static
+														instance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(hash); // search static
 														bDynamic = false;
 													}
 													

@@ -69,8 +69,6 @@ namespace world
 		{
 			UniformDecl::VoxelSharedUniform		Uniform;
 			
-			XMVECTOR						gridOffset;
-			XMVECTOR						pan;
 			float							time;
 			float							zoom;
 		} UniformState;
@@ -93,20 +91,18 @@ namespace world
 		
 		point2D_t const	__vectorcall		getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
 
-		XMVECTOR const __vectorcall	getOrigin() const; // World Space (-x,-y) ... (x,y) - not swizzled
 		v2_rotation_t const&		getAzimuth() const;
 		float const					getZoomFactor() const;
 		UniformState const& __vectorcall getCurrentState() const { return(_currentState); }
 
 
 		// Accessors
-		vku::TextureImage2D* const&					getTerrainTexture() const { return(_terrainTexture); }
-		Volumetric::voxelOpacity const& __restrict	getVolumetricOpacity() const { return(_OpacityMap); }
+		vku::TextureImage2D* const&								getTerrainTexture() const { return(_terrainTexture); }
+		Volumetric::voxelOpacity const& __restrict				getVolumetricOpacity() const { return(_OpacityMap); }
 
 		// Mutators //
-		Volumetric::voxelOpacity& __restrict		getVolumetricOpacity() { return(_OpacityMap); }
+		Volumetric::voxelOpacity& __restrict					getVolumetricOpacity() { return(_OpacityMap); }
 
-		void			XM_CALLCONV setCameraOrigin(FXMVECTOR const xmOrigin);
 		void					    invalidateMotion() { _bMotionInvalidate = true; }
 		
 		// Accesorry //
@@ -115,7 +111,8 @@ namespace world
 		void __vectorcall translateCamera(point2D_t const vDir);
 		void XM_CALLCONV translateCamera(FXMVECTOR const xmDisplacement);
 		void XM_CALLCONV translateCameraOrient(FXMVECTOR const xmDisplacement);
-		void resetCameraAngleZoom();
+		void resetCameraAngleZoom(); // gradual over time
+		void resetCamera(); // immediatte
 
 		// Main Methods //
 		void LoadTextures(); // 1st
@@ -190,7 +187,7 @@ namespace world
 		void SetSpecializationConstants_Voxel_ClearMask_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void AddSpecializationConstants_Voxel_FS_Transparent(std::vector<vku::SpecializationConstant>& __restrict constants);
 		
-		void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
+		// [[deprecated]] void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
 
 		// macros for sampler sets
 #define SAMPLER_SET_SINGLE vk::Sampler const& sampler
@@ -199,7 +196,7 @@ namespace world
 #define SAMPLER_SET_STANDARD_POINT_ANISO vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT);
-		void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
+		//[[deprecated]] void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
 
 		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
@@ -282,10 +279,10 @@ namespace world
 #endif
 		uvec4_v const __vectorcall blackbody(float const norm) const;
 
-		void makeTextureShaderOutputsReadOnly(vk::CommandBuffer const& __restrict cb);
+		// [[deprecated]] void makeTextureShaderOutputsReadOnly(vk::CommandBuffer const& __restrict cb);
 	private:
-		void createTextureShader(uint32_t const shader, std::wstring_view const szInputTexture);
-		void createTextureShader(uint32_t const shader, vku::GenericImage* const& __restrict input, bool const referenced = false, point2D_t const shader_dimensions = point2D_t{}, vk::Format const format = vk::Format::eB8G8R8A8Unorm);
+		// [[deprecated]] void createTextureShader(uint32_t const shader, std::wstring_view const szInputTexture);
+		// [[deprecated]] void createTextureShader(uint32_t const shader, vku::GenericImage* const& __restrict input, bool const referenced = false, point2D_t const shader_dimensions = point2D_t{}, vk::Format const format = vk::Format::eB8G8R8A8Unorm);
 
 		// placeXXXInstanceAt specializations
 		cCopterGameObject* const placeCopterInstanceAt(point2D_t const voxelIndex);
@@ -316,12 +313,14 @@ namespace world
 		// ###############
 
 	private:
-		UniformState				_lastState, _currentState, _targetState;
-		
+		UniformState						  _lastState, _currentState, _targetState;
+
 		vku::TextureImage2D*		_terrainTexture;
 		vku::TextureImage2DArray*	_roadTexture;
 		vku::TextureImage2D*		_blackbodyTexture;
-		struct {
+
+		/*
+		[[deprecated]] struct {
 			vku::GenericImage*						input;	// can use any texture type as input
 			vku::TextureImageStorage2D*				output;
 			vku::IndirectBuffer*					indirect_buffer;
@@ -332,6 +331,7 @@ namespace world
 			bool									referenced;	// input texture points to a already allocated texture for usage
 
 		} _textureShader[eTextureShader::_size()];
+		*/
 
 		ImagingMemoryInstance*		_blackbodyImage;
 
