@@ -22,7 +22,7 @@ namespace world
 			MAX_CARS = 2;
 
 		static constexpr float const
-			MIN_SPEED = 36.0f,
+			MIN_SPEED = 50.0f,
 			PURSUIT_SPEED = MIN_SPEED * 1.5f;
 
 		static constexpr uint32_t const

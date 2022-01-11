@@ -77,15 +77,15 @@ float transparency_weight(in const float clearmask) // normalizes input (sample 
 {
 	return(clearmask * In._inv_weight_maximum); // order independence is maintained if the result is a.) linear, b.) not inverted - must multiply alpha by this result, order is not dependent on color being multiplied by this weight
 }
-float refraction_color(out vec3 out_refraction, in const restrict sampler2D grabPassMap, in const vec3 V, in const float density) // fixes up refraction so objects in front of the current fragment/object are not included.
+float refraction_color(out vec3 out_refraction, in const restrict sampler2D grabPassMap, in const float density) // fixes up refraction so objects in front of the current fragment/object are not included.
 {
 	vec2 uv = (gl_FragCoord.xy * InvScreenResDimensions);
 	
 	const vec4 backbuffer_color = textureLod(grabPassMap, uv, 0);	// sample the backbuffer (contains correct state, no gui, only opaques-all rendered)
 	const float weight = transparency_weight(backbuffer_color.a);
 
-	uv += normalize(V.xz) * 0.05f * density;	// nicely offsets texture coordinates following the contour of density (externally calculated - matches roads, shockwave density, etc)
-												// along the current view direction
+	uv += 0.05f * density;	// nicely offsets texture coordinates following the contour of density (externally calculated - matches roads, shockwave density, etc)
+												// *bugfix: "singularity" on transparents only, remove view direction - not neccessary
 
 	const vec4 refracted_backbuffer_color = textureLod(grabPassMap, uv, 0); // sample again with refraction offset
 	const float weight_refracted = transparency_weight(refracted_backbuffer_color.a);

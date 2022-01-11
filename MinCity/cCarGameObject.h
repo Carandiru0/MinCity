@@ -49,7 +49,7 @@ namespace world
 			TILES_PER_CAR = 6;
 
 		static constexpr float const
-			MIN_SPEED = 36.0f;
+			MIN_SPEED = 50.0f;
 
 		static constexpr tTime const
 			CANCEL_IDLE = tTime{ std::chrono::nanoseconds(1) };

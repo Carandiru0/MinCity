@@ -160,8 +160,6 @@ namespace voxB
 			uint32_t RGBA;
 		};
 
-		uint8_t	OcclusionCount; // 8 neighbours checked 0 - 8 inclusive
-
 
 		inline __m128i const XM_CALLCONV  getPosition() const { return(_mm_setr_epi32(x, y, z, 0)); }
 		
@@ -176,7 +174,7 @@ namespace voxB
 			Above	= (0 != (BIT_ADJ_ABOVE & Adj));
 		}
 
-		inline uint32_t const			  getOcclusion() const { return( (((uint32_t)OcclusionCount) << 3U) | (Occlusion_Right << 2U) | (Occlusion_Left << 1U) | (Occlusion_Corner) ); }
+		inline uint32_t const			  getOcclusion() const { return( (Occlusion_Right << 2U) | (Occlusion_Left << 1U) | (Occlusion_Corner) ); }
 
 		inline voxelNormal const		  getNormal() const { return(voxelNormal(getAdjacency())); }
 
@@ -189,29 +187,27 @@ namespace voxB
 		{	
 			return(Data != rhs.Data);
 		}
-		inline voxelDescPacked(voxCoord const Coord, uint8_t const Adj, uint8_t const Occlusion, uint8_t const OcclusionCount_, uint32_t const inColor)
+		inline voxelDescPacked(voxCoord const Coord, uint8_t const Adj, uint8_t const Occlusion, uint32_t const inColor)
 			: x(Coord.x), y(Coord.y), z(Coord.z),
 				Left(0 != (BIT_ADJ_LEFT & Adj)), Right(0 != (BIT_ADJ_RIGHT & Adj)), Front(0 != (BIT_ADJ_FRONT & Adj)),
 			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)),
 			    Occlusion_Corner(Iso::OCCLUSION_SHADING_CORNER == (Iso::OCCLUSION_SHADING_CORNER & Occlusion)),
 			    Occlusion_Left(Iso::OCCLUSION_SHADING_SIDE_LEFT == (Iso::OCCLUSION_SHADING_SIDE_LEFT & Occlusion)),
 			    Occlusion_Right(Iso::OCCLUSION_SHADING_SIDE_RIGHT == (Iso::OCCLUSION_SHADING_SIDE_RIGHT & Occlusion)),
-				OcclusionCount(OcclusionCount_),
 				Color(inColor), Alpha(0)
 		{}
 		voxelDescPacked() = default;
 
 		voxelDescPacked(voxelDescPacked const& rhs) noexcept
-			: Data(rhs.Data), RGBA(rhs.RGBA), OcclusionCount(rhs.OcclusionCount)
+			: Data(rhs.Data), RGBA(rhs.RGBA)
 		{}
 		voxelDescPacked(voxelDescPacked&& rhs) noexcept
-			: Data(rhs.Data), RGBA(rhs.RGBA), OcclusionCount(rhs.OcclusionCount)
+			: Data(rhs.Data), RGBA(rhs.RGBA)
 		{}
 		voxelDescPacked const& operator=(voxelDescPacked const& rhs) noexcept
 		{
 			Data = rhs.Data;
 			RGBA = rhs.RGBA;
-			OcclusionCount = rhs.OcclusionCount;
 
 			return(*this);
 		}
@@ -219,7 +215,6 @@ namespace voxB
 		{
 			Data = rhs.Data;
 			RGBA = rhs.RGBA;
-			OcclusionCount = rhs.OcclusionCount;
 			 
 			return(*this);
 		}

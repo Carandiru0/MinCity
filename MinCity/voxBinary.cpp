@@ -155,11 +155,10 @@ STATIC_INLINE bool const CompareTag( uint32_t const TagSz, uint8_t const * __res
 
 // simple (slow) linear search
 static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restrict source, VoxelData const* __restrict pVoxels, 
-								  uint8_t& __restrict Adjacency, uint8_t& __restrict Occlusion, uint8_t& __restrict OcclusionCount)
+								  uint8_t& __restrict Adjacency, uint8_t& __restrict Occlusion)
 {
 	static constexpr uint32_t const uiMaxOcclusion( 9 + 8 ); // 9 above, 8 sides
 	
-	uint8_t pendingOcclusionCount(0);
 	uint8_t pendingAdjacency(0), pendingOcclusion(0);
 	Adjacency = 0;
 	
@@ -190,7 +189,6 @@ static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restric
 							pendingAdjacency |= BIT_ADJ_ABOVE;
 						}
 						else { // occlusion mask tests
-							++pendingOcclusionCount;
 
 							if (0 != YDelta) {
 								if (0 == XDelta) // same x axis
@@ -252,7 +250,6 @@ static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restric
 	
 	Adjacency = pendingAdjacency;	// face culling used for voxels that are not removed
 	Occlusion = pendingOcclusion;
-	OcclusionCount = pendingOcclusionCount;
 
 	return(0 != uiOcclusion);
 }
@@ -456,11 +453,10 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 				VecVoxels::reference v = tmpVectors.local();
 				for (uint32_t i = r.begin(); i != r.end(); ++i) {
 
-					uint8_t pendingOcclusionCount;
 					uint8_t pendingAdjacency, pendingOcclusion;
 					VoxelData curVoxel(*(rootVoxel + i));
 
-					if (BuildAdjacency(numVoxels, curVoxel, rootVoxel, pendingAdjacency, pendingOcclusion, pendingOcclusionCount)) {
+					if (BuildAdjacency(numVoxels, curVoxel, rootVoxel, pendingAdjacency, pendingOcclusion)) {
 
 						uint32_t color(0);
 						if (0 != curVoxel.paletteIndex) {
@@ -468,7 +464,7 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 							color = (i < numVoxelsFirstStack ? pPaletteRoot[0][curVoxel.paletteIndex - 1] : pPaletteRoot[1][curVoxel.paletteIndex - 1]) & 0x00FFFFFF; // no alpha
 						}
 						v.emplace_back(voxelDescPacked(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y),
-							pendingAdjacency, pendingOcclusion, pendingOcclusionCount, color));
+							pendingAdjacency, pendingOcclusion, color));
 					}
 				}
 			}

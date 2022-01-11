@@ -297,6 +297,10 @@ public:
 	}
 
 private:
+	constexpr uint32_t const getIndirectActiveCountOffset(uint32_t const vertexBuffer /*eVoxelVertexBuffer*/) const;
+	void CreateIndirectActiveCountBuffer();
+	void UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t const resource_index);
+
 	template<bool const isDynamic = false, bool const isBasic = false, bool const isClear = false, bool const isTransparent = false>
 	void CreateVoxelResource(	cVulkan::sRTDATA& rtData, vk::RenderPass const& renderPass, uint32_t const width, uint32_t const height,
 								vku::ShaderModule const& __restrict vert,
@@ -349,7 +353,7 @@ private:
 	void renderComplete(); // triggered internally on Render Completion (after final queue submission / present by vku framework
 
 	void renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (&__restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount);
-	void clearAllVoxels(vku::static_renderpass&& __restrict s);
+	void clearAllVoxels(vku::present_renderpass&& __restrict s);  // <-- this one clears the opacitymap
 
 	void copyMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const;
 	void barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const;
@@ -361,6 +365,8 @@ private:
 	vku::Framework					_fw;
 	vku::Window* 					_window;
 
+	vku::IndirectBuffer* __restrict _indirectActiveCount;
+	vku::GenericBuffer				_activeCountBuffer;
 	vku::GenericBuffer				_mouseBuffer[2];
 
 	vk::UniqueImageView				_offscreenImageView2DArray;

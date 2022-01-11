@@ -25,9 +25,9 @@ static constexpr milliseconds const LIFETIME_ANIMATION = milliseconds(9999999999
 
 static constexpr float const MAX_STREAK_LENGTH = 11.0f;
 
-static constexpr float const SPEED_SCALE = 0.05f * Iso::MINI_VOX_STEP;
-static constexpr float const MAX_DROP_SPEED = 5.0f * SFM::GOLDEN_RATIO * SPEED_SCALE,
-                             MIN_DROP_SPEED = SFM::GOLDEN_RATIO * SFM::GOLDEN_RATIO * SPEED_SCALE;
+static constexpr float const SPEED_SCALE = 0.1333333f * SFM::GOLDEN_RATIO_ZERO * Iso::MINI_VOX_SIZE;
+static constexpr float const MAX_DROP_SPEED = 9.0f * SPEED_SCALE,
+                             MIN_DROP_SPEED = 7.0f * SPEED_SCALE;
 
 inline vector<Volumetric::xRow>	RainInstance::RainRows;  // vector memory is persistance across instances
 inline Imaging RainInstance::_imgRain[eRainImageType::COUNT]{ nullptr };   // only one global instance for rain is required, so only need one image                                                                                                                                                                                                                                 // only one shockwave instance is active at a time                                                                                                                                                                                                                                       // this improves performance and stability
@@ -89,17 +89,21 @@ __vectorcall sRainInstance::sRainInstance(FXMVECTOR const WorldCoordOrigin, floa
 }
 
 // voxel_op_fnRain
-read_only inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getWidth()), float(Volumetric::voxelOpacity::getDepth()), 0.0f, 0.0f };
+read_only inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getWidth()), float(Volumetric::voxelOpacity::getDepth()), 1.0f, 1.0f };
 __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMVECTOR const vDisplacement, float const tLocal, Volumetric::voxelShaderDesc&& __restrict out) const
 {
     static constexpr float const Inv255 = 1.0f / 255.0f;
 
+    // *frame progression based algorithm* does not depend on time progression, only on frame progression - so any call to this function advances the rain drop simulation for each raindrop new or old 
+    // - can't be "paused" -
+    // *bugfix: now pauses properly see MinCity.cpp StageResources()
+    
     // vDisplacement is in -1.0f...1.0f range, convert to 0.0f...1.0f range and scale by rain image dimensions
     XMVECTOR xmPixel = XMVectorMultiply(SFM::__fma(vDisplacement, _mm_set1_ps(0.5f), _mm_set1_ps(0.5f)), _xmRainDimensions);
     // clamp to image dimensions //
     xmPixel = SFM::min(_xmRainDimensions, xmPixel);
     xmPixel = SFM::max(XMVectorZero(), xmPixel);
-    
+
     point2D_t const pixel2D(SFM::floor_to_u32(xmPixel).v);
     uint32_t const pixel(pixel2D.y * Volumetric::voxelOpacity::getWidth() + pixel2D.x);
     
@@ -185,10 +189,8 @@ bool const UpdateRain(tTime const tNow, RainInstance* const __restrict Instance)
 
     if (std::nullopt != tLast)	// still alive?
     {
-        fp_seconds const tDelta(tNow - *tLast);
-
         Instance->setLocation(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
-        //Instance->getRotation() += tDelta.count() * 3.250005f;
+
         Instance->getRotation() = world::getAzimuth();  // bugfix:need root of rain transform billboarded, each rain drop has a unique transform added to this later, otherwise while rotating view the rain can all dissappear at certain angles
 
 #ifdef DEBUG_RANGE

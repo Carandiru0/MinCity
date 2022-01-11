@@ -2222,15 +2222,12 @@ namespace // private to this file (anonymous)
 		static inline VoxelThreadBatch batchedGround, batchedRoad, batchedRoadTrans;
 
 
-		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
-			XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
-
-			if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
+			if (XMVector3GreaterOrEqual(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z), XMVectorZero())) // validate
 			{
 				// **** HASH FORMAT 32bits available //
 
@@ -2261,15 +2258,12 @@ namespace // private to this file (anonymous)
 		}
 
 
-		STATIC_INLINE void XM_CALLCONV RenderRoad(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		STATIC_INLINE void XM_CALLCONV RenderRoad(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
 			VoxelLocalBatch& __restrict localRoad)
 		{
-			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex
-			XMVECTOR const xmIndex(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z)));
-
-			if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero()))
+			if (XMVector3GreaterOrEqual(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z), XMVectorZero())) // validate
 			{
 				// **** HASH FORMAT 32bits available //
 
@@ -3922,9 +3916,6 @@ namespace world
 
 	void cVoxelWorld::Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo)
 	{
-		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
-		cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER);
-
 		// ######################### STAGE 1 - UBO UPDATE (that all subsequent renderpasses require //
 		cb.updateBuffer(
 			ubo.buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform), (const void*)&_currentState.Uniform
@@ -3937,8 +3928,6 @@ namespace world
 			vk::DependencyFlagBits::eByRegion,
 			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
-
-		cb.end();	// ********* command buffer end is called here only //
 	}
 
 	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
@@ -4345,7 +4334,7 @@ namespace world
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
 		//pack into vector for uniform buffer layout																			   // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
-		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.y, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
+		_currentState.Uniform.aligned_data0 = XMVectorSet(0.0f, 0.0f, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
 
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4395,7 +4384,7 @@ namespace world
 		_targetState.zoom = oCamera.ZoomFactor;
 		
 		// move state to last target
-		UpdateUniformState(bFirstUpdate ? 1.0f : 0.0f);
+		UpdateUniformState(((float)bFirstUpdate));
 	}
 	void cVoxelWorld::PreUpdate(bool const bPaused) // *** timing is unreliable in this function, do not use time in this function
 	{
@@ -4406,20 +4395,11 @@ namespace world
 	{
 		tTime const tStart(start());
 
-		// 35.264 degrees up, 45 degrees left - True Isometric View Projection (requires orthographic projection matrix)
-		/*          +  eye
-				  / |
-				/   |
-			  /     |
-			+-------+
-		lookat				for 120 units -z, at 35.264 degrees lookat angle, height equals 84.85158 units +y
-		*/
-
 		// ***** Anything that will affect uniform state BEFORE
 		/*XMVECTOR const xmOrigin =*/ UpdateCamera(tNow, tDelta);
 
 		//###########################################################//
-		UpdateUniformStateTarget(critical_now(), tStart, bFirstUpdateProgram);
+		UpdateUniformStateTarget(now(), tStart, bFirstUpdateProgram);
 		//###########################################################//
 		
 		// ***** Anything that uses uniform state updates AFTER
@@ -4731,7 +4711,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)(downResFrameBufferSz.x)));// // half-res frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)(downResFrameBufferSz.y)));// // half-res frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE (too bright if multiplied by 0.5f or SFM::GOLDEN_RATIO_ZERO) 
 
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getWidth()));		  // should be width
@@ -4809,7 +4789,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE
+		constants.emplace_back(vku::SpecializationConstant(4, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
 
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
@@ -4828,7 +4808,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE
+		constants.emplace_back(vku::SpecializationConstant(4, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
 
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
@@ -4956,7 +4936,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE
+		constants.emplace_back(vku::SpecializationConstant(4, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
 
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth

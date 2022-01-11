@@ -98,7 +98,7 @@ void main() {
 	//const float density = 1.0f - (In._extra_data + normalize(subgroupInclusiveAdd(In._extra_data).xxx)).x * 0.5f;
 	
 	vec3 color;
-	const float weight = refraction_color(color, colorMap, V, 1.0f);
+	const float weight = refraction_color(color, colorMap, 1.0f);
 
 	/*
 	lit_color = mix(lit_color, color.rgb, 1.0f - density);

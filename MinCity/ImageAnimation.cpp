@@ -188,25 +188,34 @@ void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desire
 		}
 	}
 
-	int32_t const random_index((forced_sequence >= 0 ? forced_sequence : PsuedoRandomNumber(0, gif_count[micro])));
-	
-	std::string const szFile(fmt::format(FMT_STRING("anim_{:03d}.gif"), random_index));
+	uint32_t limit(gif_count[micro]);
+	bool exists(false);
 
-	std::wstring wszFile(szFile.begin(), szFile.end());
+	do
+	{
+		int32_t const random_index((forced_sequence >= 0 ? forced_sequence : PsuedoRandomNumber(0, gif_count[micro])));
 
-	if (micro) {
-		wszFile = (GIF_DIR L"micro/") + wszFile;
-		desired_width = 0; // for micro default to native gif width (which imaging does on zeros paased in for either width or height
-	}
-	else {
-		wszFile = GIF_DIR + wszFile;
-	}
+		std::string const szFile(fmt::format(FMT_STRING("anim_{:03d}.gif"), random_index));
 
-	if (fs::exists(wszFile)) {
+		std::wstring wszFile(szFile.begin(), szFile.end());
 
-		next_sequence = ImagingLoadGIFSequence(wszFile, desired_width, desired_height);
-		return;
-	}
+		if (micro) {
+			wszFile = (GIF_DIR L"micro/") + wszFile;
+			desired_width = 0; // for micro default to native gif width (which imaging does on zeros paased in for either width or height
+		}
+		else {
+			wszFile = GIF_DIR + wszFile;
+		}
+
+		exists = fs::exists(wszFile);
+
+		if (exists) {
+
+			next_sequence = ImagingLoadGIFSequence(wszFile, desired_width, desired_height);
+			return;
+		}
+
+	} while (!exists && 0 != --limit); // *bugfix - loading gif consistent now.
 
 	next_sequence = nullptr;
 }

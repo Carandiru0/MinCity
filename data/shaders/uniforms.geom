@@ -26,12 +26,12 @@ layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far s
 layout(location = 0) in streamIn
 {
 	readonly flat vec3	right, forward, up;
-	readonly flat uint   adjacency;
+	readonly flat uint  adjacency;
 	readonly flat vec2	world_uv;
 #ifndef BASIC
 	readonly flat float   ambient;
-	readonly flat float	 color;
-	readonly flat float   occlusion;
+	readonly flat float	  color;
+	readonly flat vec2    occlusion;
 	readonly flat float   emission;
 #endif
 } In[];
@@ -39,11 +39,11 @@ layout(location = 0) in streamIn
 layout(location = 0) in streamIn
 {
 	readonly flat vec3	right, forward, up;
-	readonly flat vec4   corners;
+	readonly flat vec4  corners;
 	readonly flat vec2	world_uv;
 #ifndef BASIC
 	readonly flat float   ambient;
-	readonly flat float   occlusion;
+	readonly flat vec2    occlusion;
 	readonly flat float   emission;
 	readonly flat vec4    extra;
 #endif
@@ -58,11 +58,11 @@ layout(location = 0) in streamIn
 #endif
 #ifndef BASIC
 	readonly flat float   ambient;
-	readonly flat float	 color;
-	readonly flat float   occlusion;
+	readonly flat float	  color;
+	readonly flat vec2    occlusion;
 	readonly flat float   emission;
 	readonly flat vec4    extra;
-	readonly flat float	 passthru;
+	readonly flat float	  passthru;
 #endif
 } In[];
 #endif
@@ -256,9 +256,13 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif // not basic
 
 	EmitVxlVertex(center, tangent);
-}
 
-	EndPrimitive();
+	EndPrimitive(); // *bugfix: if endprimitive is not used per quad - there are cases where the voxel trianglestrip is not drawing a "face" of the cube
+					//          which is very hard to isolate as its rare, < 2% of all voxels drawn for exammple with ground. 
+					//			by emitting a unique triangle strip quad, 3 times individually for the voxel's faces this problem is avoided
+					//			the optimal vertex count emission per primitive from a geometry shader is actually 4.
+					//			so this works out really well!
+}
 
 } // end BeginQuad
 
@@ -279,9 +283,7 @@ void main() {
 #ifdef _color
 	Out._color = In[0].color;
 #endif
-#ifdef _occlusion
-	Out._occlusion = In[0].occlusion;
-#endif
+
 #ifdef _emission
 	Out._emission = In[0].emission;
 #endif
@@ -315,6 +317,13 @@ void main() {
 
 #endif  // basic
 	
+#ifndef BASIC
+#ifdef _occlusion
+	const float occlusion = In[0].occlusion.y * (1.0f - In[0].occlusion.x); // x = occulders , y = occulsion darkness
+	Out._occlusion = occlusion;
+#endif
+#endif
+
 #ifndef ROAD // only top quad is required for roads
 	// RIGHT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {
@@ -373,7 +382,12 @@ void main() {
 #undef _normal
 	}
 
+// visible faces of a voxel is always 3 at any point of time, so only half the number of vertices in a cube actually need to be emitted from geometry shade, as a single primitive.
+
+// maximum 3 quads generated for any given input point.
+// 4 vertices/quad  - >  12 vertices/voxel
+
 // endprimitive is inherent at end of shader, so it does not need to be explicitly called
-// it is only used when multiple primitives are emitted by geometry shader
+// it is only used when multiple primitives are emitted by a geometry shader
 }
 

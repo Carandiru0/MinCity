@@ -1,4 +1,5 @@
 {
+  "ExtractionTool": 1,
   "AutomaticExtraction": true,
   "CMakeCommandsFile": "",
   "AdditionalPreprocessorDefinitions": "_MT",
@@ -6,5 +7,6 @@
   "AdditionalForceIncludes": "",
   "AdditionalCommandLine": "-v",
   "EnableWarnings": true,
+  "PDBLocation": "",
   "ParserOutputFolder": ""
 }

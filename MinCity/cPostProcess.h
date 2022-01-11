@@ -58,9 +58,6 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 {
 	uint32_t const resource_index(pp.resource_index);
 
-	// begin "actual render pass"
-	pp.cb.beginRenderPass(pp.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
-
 	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout, 0, render_data.sets[resource_index], nullptr);
 	
 	// ----- temporal resolve "psuedo-pass"
@@ -93,7 +90,7 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	pp.cb.draw(3, 1, 0, 0);
 
 
-
+	// gui overlay pass
 	pp.cb.nextSubpass(vk::SubpassContents::eInline); // actual subpass
 
 	// -------- final overlay gui blend subpass
@@ -101,9 +98,6 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	// Post-process quad simple generation - fullscreen triangle optimized!
 	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
 	pp.cb.draw(3, 1, 0, 0);
-
-	// end "acual render pass"
-	pp.cb.endRenderPass();
 }
 
 

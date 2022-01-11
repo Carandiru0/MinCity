@@ -190,17 +190,8 @@ void main() {
 	const float luma = dot(color, LUMA);
 	color += grid_color * (1.0f - attenuation) * (1.0f - terrainHeight) * (1.0f - luma) * (1.0f - In._emission);
 
-	/*
-	const float emission = In._emission * grid;
-	const vec3 grid_color = unpackColor(In._color) * grid;
-	color += lit( grid_color, grid_color,					// grid lighting
-				  In._occlusion, emission,
-				  emission, ROUGHNESS,
-				  normalize(vec3(0, 1, 0)), N, V);
-	*/
-	//color = vec3(1.0f - max(0.0f, dot(N, -L))) * attenuation;
-	//color = vec3(In._occlusion);
 	outColor.rgb = color;
+	//outColor.rgb = vec3(terrainHeight * In._occlusion);
 }
 #elif defined(ROAD)  
 
@@ -292,7 +283,7 @@ void main() {
 						L, N, V, fresnelTerm);
 						    
 	vec3 refract_color;
-	const float weight = refraction_color(refract_color, colorMap, V, decal_luminance);
+	const float weight = refraction_color(refract_color, colorMap, decal_luminance);
 	color.rgb = road_segment.rgb + mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
 
 	outColor = applyTransparency(color, road_segment.a, weight);
@@ -340,7 +331,7 @@ void main() {
 	const float density = 1.0f - In._occlusion;
 
 	vec3 refract_color;  
-	const float weight = refraction_color(refract_color, colorMap, V, density);                                                    
+	const float weight = refraction_color(refract_color, colorMap, density);                                                    
          
 	                     
 	const float accurate = InvVolumeDimensions_Z * (128.0f);                                                              

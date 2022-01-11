@@ -1008,7 +1008,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 	}
 
 	// elevation 
-	while ( !p2D_sub(endPoint, currentPoint).isZero() )  //(endPoint.x != currentPoint.x || endPoint.y != currentPoint.y)
+	while (!p2D_sub(endPoint, currentPoint).isZero())  //(endPoint.x != currentPoint.x || endPoint.y != currentPoint.y)
 	{
 		bool bExistingCancel(false);
 
@@ -1089,9 +1089,17 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 					// bugfix: update the beginning height of the segment (h0 would be used by next segment)
 					if (existingDirection == encoded_direction) {
 						currentSegment.h0 = Iso::getRoadHeightStepEnd(oVoxel);
+
+						if (!segments.empty()) {
+							segments.back().h1 = Iso::getRoadHeightStepBegin(oVoxel);
+						}
 					}
 					else {
 						currentSegment.h0 = Iso::getRoadHeightStepBegin(oVoxel);
+
+						if (!segments.empty()) {
+							segments.back().h1 = Iso::getRoadHeightStepEnd(oVoxel);
+						}
 					}
 				}
 
@@ -1194,7 +1202,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 
 					// for each perpindicular side, find the next node 
 					{
-						int32_t stepsaved[2]{ 1, 1 };
+						int32_t stepsaved[2]{ 0, 0 };
 						bool searching[2]{ true,true }; // will contain false if node was found
 						Iso::Voxel oSideVoxelSaved[2]{}; // will contain the last voxel for each side (node or end of road)
 
@@ -1208,16 +1216,22 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 							getAdjacentSides(currentPoint, encoded_direction, Iso::SEGMENT_SIDE_WIDTH + step, sidePoint, pSideVoxel);
 
 							for (uint32_t side = 0; side < 2; ++side) {
-								if (searching[side] && pSideVoxel[side]) { // skips search when finished side.
-									oSideVoxelSaved[side] = *pSideVoxel[side];
+								if (searching[side]) { // skips search when finished side.
 
-									if (Iso::isRoad(oSideVoxelSaved[side])) {
-										searching[side] = !Iso::isRoadNode(oSideVoxelSaved[side]); // xing or corner
+									if (pSideVoxel[side]) {
+										oSideVoxelSaved[side] = *pSideVoxel[side];
+
+										if (Iso::isRoad(oSideVoxelSaved[side])) {
+											searching[side] = !Iso::isRoadNode(oSideVoxelSaved[side]); // xing or corner
+											stepsaved[side] = step;
+										}
+										else {
+											searching[side] = false; // end of straight road
+										}
 									}
 									else {
-										searching[side] = false; // end of straight road
+										searching[side] = false; // end of world
 									}
-									stepsaved[side] = step;
 								}
 							}
 
@@ -1228,94 +1242,107 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 						// then interpolate from current to the result of the search for each perpindicular road.
 						int32_t const startHeightStep(currentSegment.h1);
 						int32_t currentSideHeightStep[2]{ startHeightStep, startHeightStep };
-						bool grading[2]{ true,true };
+						bool grading[2]{ stepsaved[0] > 0, stepsaved[1] > 0 };
 
-						int32_t const total_steps[2]{ stepsaved[0] - 1, stepsaved[1] - 1 };
+						int32_t const total_steps[2]{ stepsaved[0], stepsaved[1] };
 
 						step = 1; // reset
 						
 						do
 						{
-							point2D_t sidePoint[2]{};
-							Iso::Voxel const* pSideVoxel[2]{ nullptr };
+							grading[0] &= step <= total_steps[0];
+							grading[1] &= step <= total_steps[1];
 
-							getAdjacentSides(currentPoint, encoded_direction, Iso::SEGMENT_SIDE_WIDTH + step, sidePoint, pSideVoxel);
+							if (grading[0] | grading[1]) {
 
-							for (uint32_t side = 0; side < 2; ++side) {
-								if (grading[side] && pSideVoxel[side]) { // skips grading when finished/side
-									Iso::Voxel oSideVoxel(*pSideVoxel[side]);
+								point2D_t sidePoint[2]{};
+								Iso::Voxel const* pSideVoxel[2]{ nullptr };
 
-									if (Iso::isRoad(oSideVoxel)) {
+								getAdjacentSides(currentPoint, encoded_direction, Iso::SEGMENT_SIDE_WIDTH + step, sidePoint, pSideVoxel);
 
-										if (Iso::isRoadEdge(oSideVoxel)) {
-											pushHistory(UndoVoxel(sidePoint[side], oSideVoxel));
+								for (uint32_t side = 0; side < 2; ++side) {
+									if (grading[side]) { // skips grading when finished/side
 
-											uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
+										if (pSideVoxel[side]) {
+											Iso::Voxel oSideVoxel(*pSideVoxel[side]);
 
-											bool begin_start;
+											if (Iso::isRoad(oSideVoxel)) {
 
-											switch (side_direction)
-											{
-											case Iso::ROAD_DIRECTION::N:
-											case Iso::ROAD_DIRECTION::E:
+												if (Iso::isRoadEdge(oSideVoxel)) {
+													pushHistory(UndoVoxel(sidePoint[side], oSideVoxel));
 
-												begin_start = side;
-												break;
-											case Iso::ROAD_DIRECTION::S:
-											case Iso::ROAD_DIRECTION::W:
+													uint32_t const side_direction(Iso::getRoadDirection(oSideVoxel));
 
-												begin_start = !side;
-												break;
-											} // end switch
+													bool begin_start;
 
-											int32_t grade_heightstep;
+													switch (side_direction)
+													{
+													case Iso::ROAD_DIRECTION::N:
+													case Iso::ROAD_DIRECTION::E:
 
-											if (begin_start) {
+														begin_start = side;
+														break;
+													case Iso::ROAD_DIRECTION::S:
+													case Iso::ROAD_DIRECTION::W:
 
-												Iso::setRoadHeightStepBegin(oSideVoxel, currentSideHeightStep[side]);
+														begin_start = !side;
+														break;
+													} // end switch
 
-												int32_t const targetHeightStep(Iso::getRoadHeightStepEnd(oSideVoxelSaved[side]));
-												float const current = SFM::smoothstep(float(startHeightStep), float(targetHeightStep), float(step - 1) / float(total_steps[side]));
+													int32_t grade_heightstep;
 
-												grade_heightstep = SFM::round_to_i32(current);
+													if (begin_start) {
 
-												Iso::setRoadHeightStepEnd(oSideVoxel, grade_heightstep);
+														Iso::setRoadHeightStepBegin(oSideVoxel, currentSideHeightStep[side]);
 
+														int32_t const targetHeightStep(Iso::getRoadHeightStepEnd(oSideVoxelSaved[side]));
+														float const current = SFM::smoothstep(float(startHeightStep), float(targetHeightStep), float(step - 1) / float(total_steps[side]));
+
+														grade_heightstep = SFM::round_to_i32(current);
+
+														Iso::setRoadHeightStepEnd(oSideVoxel, grade_heightstep);
+
+													}
+													else {
+
+														Iso::setRoadHeightStepEnd(oSideVoxel, currentSideHeightStep[side]);
+
+														int32_t const targetHeightStep(Iso::getRoadHeightStepBegin(oSideVoxelSaved[side]));
+														float const current = SFM::smoothstep(float(startHeightStep), float(targetHeightStep), float(step - 1) / float(total_steps[side]));
+
+														grade_heightstep = SFM::round_to_i32(current);
+
+														Iso::setRoadHeightStepBegin(oSideVoxel, grade_heightstep);
+													}
+
+													// move ground under road up to match
+													int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep, currentSideHeightStep[side]) - SFM::max(0, SFM::abs((int32_t)Iso::getRoadHeightStepBegin(oSideVoxel) - (int32_t)Iso::getRoadHeightStepEnd(oSideVoxel) - 1)));
+													ConditionRoadGround(sidePoint[side], side_direction, groundHeightStep, oSideVoxel);
+
+													// done.
+													world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
+
+													currentSideHeightStep[side] = grade_heightstep;
+												}
+												else {
+													grading[side] = false; // node
+												}
 											}
 											else {
-
-												Iso::setRoadHeightStepEnd(oSideVoxel, currentSideHeightStep[side]);
-
-												int32_t const targetHeightStep(Iso::getRoadHeightStepBegin(oSideVoxelSaved[side]));
-												float const current = SFM::smoothstep(float(startHeightStep), float(targetHeightStep), float(step - 1) / float(total_steps[side]));
-
-												grade_heightstep = SFM::round_to_i32(current);
-
-												Iso::setRoadHeightStepBegin(oSideVoxel, grade_heightstep);
+												grading[side] = false; // end of road
 											}
-
-											// move ground under road up to match
-											int32_t const groundHeightStep = SFM::max(0, SFM::min(grade_heightstep, currentSideHeightStep[side]) - SFM::max(0, SFM::abs((int32_t)Iso::getRoadHeightStepBegin(oSideVoxel) - (int32_t)Iso::getRoadHeightStepEnd(oSideVoxel) - 1)));
-											ConditionRoadGround(sidePoint[side], side_direction, groundHeightStep, oSideVoxel);
-
-											// done.
-											world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
-
-											currentSideHeightStep[side] = grade_heightstep;
 										}
 										else {
-											grading[side] = false; // node
+											grading[side] = false; // end of world
 										}
 									}
-									else {
-										grading[side] = false; // end of road
-									}
 								}
+
+								++step;
 							}
 
-							++step;
 						} while (grading[0] | grading[1]);
-					}
+					} 
 
 
 				} // centernode

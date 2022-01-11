@@ -79,7 +79,7 @@ void main() {
 	const float density = (1.0f - In._passthru);
 	       
 	vec3 refract_color;
-	const float weight = refraction_color(refract_color, colorMap, V, density * (1.0f - fresnelTerm) * 0.5f);
+	const float weight = refraction_color(refract_color, colorMap, density * (1.0f - fresnelTerm) * 0.5f);
 
 	vec3 color = lit_color + mix(refract_color, reflect_color, fresnelTerm) * LIGHT_EFFECT_SCALE + unpackColor(In.ambient) * 10.0f * LIGHT_EFFECT_SCALE;
 

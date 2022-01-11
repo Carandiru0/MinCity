@@ -67,7 +67,7 @@ layout(location = 0) out streamOut
 #ifndef BASIC
 	writeonly flat float   ambient;
 	writeonly flat float   color;
-	writeonly flat float   occlusion;
+	writeonly flat vec2    occlusion;
 	writeonly flat float   emission;
 #endif
 } Out;
@@ -79,7 +79,7 @@ writeonly layout(location = 0) out streamOut
 	flat vec2	world_uv;
 #ifndef BASIC
 	flat float   ambient;
-	flat float   occlusion;
+	flat vec2    occlusion;
 	flat float   emission;
 	flat vec4    extra;
 #endif
@@ -95,7 +95,7 @@ writeonly layout(location = 0) out streamOut
 #ifndef BASIC
 	flat float   ambient;
 	flat float	 color;
-	flat float   occlusion;
+	flat vec2    occlusion;
 	flat float   emission;
 	flat vec4    extra;
 	flat float	 passthru;
@@ -158,8 +158,8 @@ const uint  NORTH = 0U,
 #define SHIFT_OCCLUSION 5U
 #define SHIFT_EMISSION 12U
 const uint MASK_ADJACENCY =  0x1FU;		/*           0000 0000 0001 1111 */
-const uint MASK_OCCLUSION = 0xFE0U;		/*           0000 1111 111x xxxx */ 
-const uint MASK_EMISSION = 0x1000U;		/*			 0001 xxxx xxxx xxxx */ 
+const uint MASK_OCCLUSION = 0xE0U;		/*           0000 0000 111x xxxx */ 
+const uint MASK_EMISSION = 0x1000U;		/*			 0001 RRRR xxxx xxxx */ 
 #if defined(DYNAMIC) && defined(TRANS) 
 #define SHIFT_TRANSPARENCY 13U
 const uint MASK_TRANSPARENCY = 0x6000U;	/*			 011x xxxx xxxx xxxx */ 
@@ -177,8 +177,7 @@ const uint OCCLUSION_SHADING_CORNER = (1U << 0U),
 		   OCCLUSION_SHADING_SIDE_RIGHT = (1U << 2U);
 
 // excellent ao curve values
-const vec4 ao_curve = vec4(0.5f, 0.4233f, 0.415f, 0.4f) * 2.0f;
-const float inv_max_occlusion_count = 1.0f / 8.0f; // 0 - 8 inclusive, 8 neighbours checked
+const vec4 ao_curve = vec4(0.5f, 0.4233f, 0.415f, 0.4f)*2.0f;
 
 // https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
 //function vertexAO(side1, side2, corner) {
@@ -187,20 +186,22 @@ const float inv_max_occlusion_count = 1.0f / 8.0f; // 0 - 8 inclusive, 8 neighbo
 //  }
 //  return 3 - (side1 + side2 + corner)
 //}
-														//     *count*  *shading*																
-void ao_voxel(const uint occlusion)  // shifted down already :    1111        111
-{														//				0b1111111
-												   // count mask: 0x78
-												   // count shift:   3
-
+																								
+void ao_voxel(const uint occlusion, const uint adjacent)  
+{														
 	// maximum value 3 in the way this is done, good for index into vec4 (ao_curve)
 	const uint truth = uint(
 		(OCCLUSION_SHADING_CORNER & occlusion) +
 		((OCCLUSION_SHADING_SIDE_LEFT & occlusion) >> 1U) +
 		((OCCLUSION_SHADING_SIDE_RIGHT & occlusion) >> 2U)   
 	);
-	// 1.0f - ((float)OcclusionCount * INV_MAXOCCLUSION_COUNT)
-	Out.occlusion = ao_curve[truth] * (1.0f - (float( (0x78U & occlusion) >> 3U ) * inv_max_occlusion_count));
+
+	const float occulders = float(truth) / float(uint(0x7u)); // 8 values - normalized 
+	const float neighbours = float(adjacent) / float(uint(0xFu)); // 16 values - normalized
+
+	// output occculsion to geometry shader is a vector [occulsion ratio, occlusion darkness]
+	Out.occlusion = vec2((occulders - neighbours) * 0.5f + 0.5f, pow(ao_curve[truth], neighbours)); // occlusion darkness - a curve defining this voxels overal occlusion based on how occulders ^ neighbours total. 
+																	   // A lot of range in value, but so far defined at the voxel. the geometry shader uses this input data to get the occlusion down to the vertex level of the voxel.
 }
 #endif
 
@@ -250,7 +251,16 @@ void main() {
   const uint hash = floatBitsToUint(inWorldPos.w);
  
 #if !(defined(ROAD)) // not road
-  Out.adjacency = (hash & MASK_ADJACENCY);
+  
+  const uint adjacent_count = (hash & MASK_ADJACENCY);
+  Out.adjacency = adjacent_count;
+
+#if !defined(BASIC)
+
+	// ambient occlusion calculated once per voxel, permutations used for all quads
+	ao_voxel((hash & MASK_OCCLUSION) >> SHIFT_OCCLUSION, adjacent_count); // optimization, moved from gs to vs
+	
+#endif
 #endif
 
 #if defined(HEIGHT) || defined(ROAD) // terrain/road voxels only
@@ -359,13 +369,6 @@ void main() {
 #endif
 #endif
   }
-
-#if !defined(BASIC)
-
-	// ambient occlusion calculated once per voxel, permutations used for all quads
-	ao_voxel((hash & MASK_OCCLUSION) >> SHIFT_OCCLUSION); // optimization, moved from gs to vs
-	
-#endif
 
 #ifndef CLEAR
 #ifdef BASIC

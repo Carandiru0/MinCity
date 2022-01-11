@@ -429,13 +429,13 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 					p2D_to_v2(currentState.voxelIndex), p2D_to_v2(currentState.voxelDirection),
 					p2D_to_v2(targetState.voxelIndex), p2D_to_v2(targetState.voxelDirection));
 
-				targetState.distance = (_arcs[0].length + _arcs[1].length) * 2.0f; // bugfix: must be 2x else car moves too fast thru xing
-				return(true);
+				targetState.distance = (_arcs[0].length + _arcs[1].length) * SFM::GOLDEN_RATIO; // old bugfix: must be 2x else car moves too fast thru xing
+				return(true);																	// *bugfix: the arc length distance is off. Multiplying by the golden ratio (arbitrary) is a better value than 2.0f (less speed change difference in xings & corners)
 			}
 
 			// straight thru intersection
-			targetState.distance = XMVectorGetX(XMVector2Length(p2D_to_v2(p2D_sub(voxelRoadTarget, _this.currentState.voxelIndex)))) * 2.0f; // bugfix: must be 2x else car moves too fast thru xing
-
+			targetState.distance = XMVectorGetX(XMVector2Length(p2D_to_v2(p2D_sub(voxelRoadTarget, _this.currentState.voxelIndex)))) * SFM::GOLDEN_RATIO; // old bugfix: must be 2x else car moves too fast thru xing
+																																						  // *bugfix: the arc length distance is off. Multiplying by the golden ratio (arbitrary) is a better value than 2.0f (less speed change difference in xings & corners)
 			return(true);
 		}
 	}
@@ -502,7 +502,7 @@ bool const __vectorcall cCarGameObject::corner(state const& __restrict currentSt
 					  p2D_to_v2(currentState.voxelIndex), p2D_to_v2(currentState.voxelDirection),
 					  p2D_to_v2(targetState.voxelIndex), p2D_to_v2(targetState.voxelDirection));
 
-	targetState.distance = (_arcs[0].length + _arcs[1].length) * 2.0f;  // bugfix: must be 2x else car moves thru corner too fast
+	targetState.distance = (_arcs[0].length + _arcs[1].length) * SFM::GOLDEN_RATIO;  // bugfix: the arc length distance is off. Multiplying by the golden ratio (arbitrary) is a better value than 2.0f (less speed change difference in xings & corners)
 
 	return(true);
 }

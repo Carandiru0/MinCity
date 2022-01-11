@@ -18,9 +18,6 @@ namespace Volumetric
 	class alignas(16) volumetricVisibility
 	{
 	public:
-		static constexpr float const MIN_LIGHT_RADIUS_SCALAR = 3.00f; // Using inverse square law, light would be 10% of its original intensity
-
-	public:
 		// accessors //
 		__inline XMMATRIX const XM_CALLCONV getViewMatrix() const { return(XMLoadFloat4x4A(&_matView)); }
 		__inline XMMATRIX const XM_CALLCONV getProjectionMatrix() const { return(XMLoadFloat4x4A(&_matProj)); } 
