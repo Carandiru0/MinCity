@@ -14,15 +14,15 @@
 typedef tbb::enumerable_thread_specific< XMFLOAT3A > Bounds; // per thread instance
 
 // 3D Version ################################################################################################ //
-template< typename XMFLOAT4A, uint32_t const LightWidth, uint32_t const LightHeight, uint32_t const LightDepth,
-							  uint32_t const Width, uint32_t const Height, uint32_t const Depth>
+template< typename XMFLOAT4A, uint32_t const LightWidth, uint32_t const LightHeight, uint32_t const LightDepth,  // non-uniform size ok for light volume
+							  uint32_t const Size>				 // uniform size ok for world visible volume
 struct alignas(CACHE_LINE_BYTES) lightBuffer3D : public writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
 	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x00, 0xFF, 0xFF, 0xFF };
 
-	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Width),  1.0f / float(Height),  1.0f / float(Depth), 0.0f }; // needs to be xyz
+	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Size),  1.0f / float(Size),  1.0f / float(Size), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightWidth),  float(LightHeight),  float(LightDepth), 0.0f }; // needs to be xyz
-	constinit static inline XMVECTORF32 const _xmWorldLimitMax{ float(Width),  float(Depth),  float(Height), 0.0f }; // needs to be xzy
+	constinit static inline XMVECTORF32 const _xmWorldLimitMax{ float(Size),  float(Size),  float(Size), 0.0f }; // needs to be xzy
 	
 public:
 	// access - readonly
@@ -208,7 +208,7 @@ private:
 public:
 	__declspec(safebuffers) void __vectorcall seed(XMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
-		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Width, Height, Depth>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
+		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Size>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		uvec4_t uiIndex;

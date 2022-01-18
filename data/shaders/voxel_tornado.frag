@@ -32,16 +32,18 @@ layout(location = 0) out vec4 outColor;
 //layout (constant_id = 1) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
-
-layout (constant_id = 4) const float VolumeLength = 0.0f;
-layout (constant_id = 5) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 6) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 7) const float LightVolumeDimensions_Z = 0.0f; 
-layout (constant_id = 8) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 9) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 10) const float InvLightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 4) const float VolumeDimensions = 0.0f;
+layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
+layout (constant_id = 6) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
+layout (constant_id = 7) const float InvVolumeLength = 0.0f; // <---- is ok, not scaled by voxel size.
+layout (constant_id = 8) const float LightVolumeDimensions_X = 0.0f;
+layout (constant_id = 9) const float LightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 10) const float LightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 11) const float InvLightVolumeDimensions_X = 0.0f;
+layout (constant_id = 12) const float InvLightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 13) const float InvLightVolumeDimensions_Z = 0.0f; 
 #define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
-#define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)  
+#define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
 
 layout (binding = 3) uniform sampler3D volumeMap[2];
 #if defined(TRANS)
@@ -68,9 +70,9 @@ vec3 haze(in vec3 color, in const vec3 reflect_color, in const float fresnelTerm
 void main() {
   
     vec3 light_color;
-	float attenuation;
+	vec4 Ld;
 
-	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength); 
+	getLight(light_color, Ld, In.uv.xyz); 
 	 
 	vec3 N = normalize(vec3(2.0f * In._passthru, -In._passthru, 2.0f * In._passthru));//vec3(0.0f, 1.0f, 0.0f);//normalize(In.normal);//vec3(0.0f, 1.0f, 0.0f);
 	vec3 V = normalize(In.V.xyz);  
@@ -78,9 +80,9 @@ void main() {
 	vec3 reflect_color;
 	float fresnelTerm;
 	vec3 lit_color = lit( SHOCKWAVE_BASE_COLOR * light_color, light_color,
-						 1.0f, attenuation,
+						 1.0f, getAttenuation(Ld.dist, VolumeLength),
 	                     In._emission, ROUGHNESS,
-						 L, N, V, reflect_color, fresnelTerm );
+						 Ld.dir, N, V, reflect_color, fresnelTerm );
     
 	// shockwave dynamic density - working do not change // In._extra_data = distance
 	const float density = 1.0f - (In._passthru + normalize(subgroupInclusiveAdd(In._passthru).xxx)).x * 0.5f;

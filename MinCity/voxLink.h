@@ -13,8 +13,9 @@ namespace world {
 
 namespace Volumetric
 {
-#pragma warning( disable : 4359 )						// 512x512x512 (World Volume Size) //
-	using voxelOpacity = Volumetric::volumetricOpacity<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
+#pragma warning( disable : 4359 )						// 512x512x512 (World Visible Volume Size) //
+	static_assert(Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X == (Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X | Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y | Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z), "world visible volume must have uniform dimensions");
+	using voxelOpacity = Volumetric::volumetricOpacity<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X>;
 	using voxelVisibility = Volumetric::volumetricVisibility;
 
 	typedef struct voxLink

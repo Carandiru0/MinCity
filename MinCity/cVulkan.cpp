@@ -66,7 +66,7 @@ inline cVulkan::sVOLUMETRICLIGHTDATA cVulkan::_volData( _rtSharedData._ubo );
 inline cVulkan::sUPSAMPLEDATA cVulkan::_upData[eUpsamplePipeline::_size()];
 
 cVulkan::cVulkan()
-	: _fw{}, _window{ nullptr }, _device{}, _frameTimingAverage{}, _OffscreenCopied{}, _indirectActiveCount(nullptr)
+	: _fw{}, _window{ nullptr }, _device{}, _frameTimingAverage{}, _OffscreenCopied{}, _indirectActiveCount{ nullptr, nullptr }
 {
 
 }
@@ -461,14 +461,14 @@ void cVulkan::CreateVolumetricResources()
 	// Setup vertices indices for a cube
 	{
 		VertexDecl::just_position const vertices[] = {
-			{ { -1.0f,  -1.0f,  1.0f }, },
-			{ { 1.0f,  -1.0f,  1.0f }, },
+			{ { 0.0f,  0.0f,  1.0f }, },
+			{ { 1.0f,  0.0f,  1.0f }, },
 			{ { 1.0f,  1.0f,  1.0f }, },
-			{ { -1.0f,  1.0f,  1.0f }, },
-			{ { -1.0f,  -1.0f,  -1.0f }, },
-			{ { 1.0f,  -1.0f,  -1.0f }, },
-			{ { 1.0f,  1.0f,  -1.0f }, },
-			{ { -1.0f,  1.0f,  -1.0f }, },
+			{ { 0.0f,  1.0f,  1.0f }, },
+			{ { 0.0f,  0.0f,  0.0f }, },
+			{ { 1.0f,  0.0f,  0.0f }, },
+			{ { 1.0f,  1.0f,  0.0f }, },
+			{ { 0.0f,  1.0f,  0.0f }, },
 		};
 
 		alignas(16) uint16_t const indices[] = {
@@ -1027,7 +1027,7 @@ void cVulkan::CreateVoxelResources()
 
 		vk::DeviceSize gpuSize{};
 
-		// main vertex buffer for rooad
+		// main vertex buffer for road
 		gpuSize = Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(VertexDecl::VoxelNormal); 
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 			totalSize += gpuSize;
@@ -1200,11 +1200,8 @@ void cVulkan::CreateVoxelResources()
 			vku::ShaderModule const geom_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans.geom.bin", constants_voxel_gs };
 
 			// VOXEL_SHADER_TRANS
-			{			
-				std::vector< vku::SpecializationConstant > constants_voxel_frag_trans(constants_voxel_fs);
-				MinCity::VoxelWorld->AddSpecializationConstants_Voxel_FS_Transparent(constants_voxel_frag_trans);
-					
-				vku::ShaderModule const frag_voxeltrans_{ _device, SHADER_BINARY_DIR "uniforms_trans.frag.bin", constants_voxel_frag_trans };
+			{							
+				vku::ShaderModule const frag_voxeltrans_{ _device, SHADER_BINARY_DIR "uniforms_trans.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_TRANS>(
 					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_trans_, frag_voxeltrans_, 0U);
@@ -1289,6 +1286,7 @@ void cVulkan::CreateSharedVoxelResources()
 	// TEXTURE_ARRAY_LENGTH is purposely fixed as defined for glsl shader which cannot be dynamic //
 	vk::Sampler const samplers_tex_array[TEXTURE_ARRAY_LENGTH]{ 
 		TEX_NOISE_SAMPLER, 
+		TEX_BLUE_NOISE_SAMPLER,
 		TEX_TERRAIN_SAMPLER, 
 		TEX_ROAD_SAMPLER,
 		TEX_BLACKBODY_SAMPLER
@@ -1296,15 +1294,16 @@ void cVulkan::CreateSharedVoxelResources()
 	
 	auto const samplers_common{ getSamplerArray
 			<eSamplerAddressing::CLAMP>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear (3d texture samplers, etc)
+				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear (3d texture samplers, etc)
 			)
 	};
+
 
 	{ // voxels common ("one descriptor set")
 		vku::DescriptorSetLayoutMaker	dslm;
 		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eGeometry, 1);
 		dslm.buffer(1U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex, 1);
-		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers_common);							// 3d textures (light)
+		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 3, samplers_common);							// 3d textures (light & opacity)
 		dslm.image(4U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);											// 2d texture(ambient light reflection)
 		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, TEXTURE_ARRAY_LENGTH, samplers_tex_array);			// 2d texture array
 		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &samplers_common[0]);					// 2d texture (last color backbuffer)
@@ -1569,8 +1568,10 @@ void cVulkan::CreateIndirectActiveCountBuffer() // required critical buffer need
 	using buf = vk::BufferUsageFlagBits;
 	using pfb = vk::MemoryPropertyFlagBits;
 
-	_activeCountBuffer = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_ONLY, true, true); // persistantly mapped
-	_indirectActiveCount = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
+	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_ONLY, true, true); // persistantly mapped
+	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_ONLY, true, true); // persistantly mapped
+	_indirectActiveCount[0] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
+	_indirectActiveCount[1] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
 }
 
 void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t const resource_index)
@@ -1607,12 +1608,9 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 	// this is in the beginning of the frame, coherent before any usage of the indirect buffer.
 	// always updates the counts (active voxels)
 	vk::DrawIndirectCommand const* const updateDrawCommand(drawCommand);
-	_activeCountBuffer.updateLocal(updateDrawCommand, sizeof(drawCommand)); // template cannot use an array of drawCommands, so give it a pointer to the array's first element in memory. All elements are copied as the size copied is equal to the total number of elements.
+	_activeCountBuffer[resource_index].updateLocal(updateDrawCommand, sizeof(drawCommand)); // template cannot use an array of drawCommands, so give it a pointer to the array's first element in memory. All elements are copied as the size copied is equal to the total number of elements.
 
-	if (_indirectActiveCount) {
-
-		_indirectActiveCount->uploadDeferred(cb, _activeCountBuffer); // fast single copy to gpu only indirect draw buffer - only once per frame.
-	}
+	_indirectActiveCount[resource_index]->uploadDeferred(cb, _activeCountBuffer[resource_index]); // fast single copy to gpu only indirect draw buffer - only once per frame.
 }
 
 // macros for sampler sets
@@ -1817,8 +1815,6 @@ inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
 		c.cb_transfer.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb_transfer, vkNames::CommandBuffer::TRANSFER);
 
-		UpdateIndirectActiveCountBuffer(c.cb_transfer, c.resource_index);
-
 		MinCity::VoxelWorld->Transfer(c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
 
 		c.cb_transfer.end();
@@ -1903,7 +1899,7 @@ void cVulkan::clearAllVoxels(vku::present_renderpass&& __restrict s)  // for cle
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.drawIndirect(_indirectActiveCount->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_DYNAMIC), 1, 0);
+		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_DYNAMIC), 1, 0);
 	}
 
 	{ // static voxels
@@ -1912,7 +1908,7 @@ void cVulkan::clearAllVoxels(vku::present_renderpass&& __restrict s)  // for cle
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.drawIndirect(_indirectActiveCount->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_STATIC), 1, 0);
+		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_STATIC), 1, 0);
 	}
 
 	{ // terrain
@@ -1921,7 +1917,7 @@ void cVulkan::clearAllVoxels(vku::present_renderpass&& __restrict s)  // for cle
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.drawIndirect(_indirectActiveCount->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_TERRAIN), 1, 0);
+		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_TERRAIN), 1, 0);
 	}
 }
 
@@ -2127,8 +2123,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	vk::CommandBufferBeginInfo bi{}; // static cb may persist across multiple frames if no changes in vbo active sizes
 	s.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(s.cb, vkNames::CommandBuffer::STATIC);
 	
-	// setup opacity map, old layout is undefined or don't care
-	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout<true>(s.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
+	// setup opacity map, internal image layout state only needs update here as it's image layout is carried forward from the last present.
+	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eGeneral);
 
 	// [[deprecated]] transition alll textureshader outputs to shaderreadonlyoptimal
 	// MinCity::VoxelWorld->makeTextureShaderOutputsReadOnly(s.cb);
@@ -2190,6 +2186,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
 																					 vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
+	UpdateIndirectActiveCountBuffer(s.cb, resource_index); // indirect draw active counts are transferred here, they are then only used by the clear opacity map operation in the final pass / present.
+
 	// #### HALF RESOLUTION RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiHalf, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
 
@@ -2224,8 +2222,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	s.cb.draw(3, 1, 0, 0);
 
 	s.cb.endRenderPass();
- 
-
 
 	// #### FULL RESOLUTION RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiFull, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
@@ -2403,8 +2399,15 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
 
-	// prepare for usage in vertex shader (general layout) - clearing opacity map // using don't care undefined old state seems to fix the validation error, and still clearing the volume of this frames voxels works just fine
-	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout<true>(pp.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
+	// prepare for usage in vertex shader (general layout) - clearing opacity map 
+	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // required to update internal image state - present command buffer is reused and only recorded once at init.
+	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(pp.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
+	
+	_indirectActiveCount[pp.resource_index]->barrier( // required b4 usage //
+		pp.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
+		vk::DependencyFlagBits::eByRegion,
+		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eIndirectCommandRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
+	);
 
 	// begin "actual render pass"
 	pp.cb.beginRenderPass(pp.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
@@ -2657,7 +2660,9 @@ void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 	// Wait until all drawing is done and then kill the window.
 	WaitDeviceIdle();
 
-	SAFE_RELEASE_DELETE(_indirectActiveCount);
+	_activeCountBuffer[0].release(); _activeCountBuffer[1].release();
+	SAFE_RELEASE_DELETE(_indirectActiveCount[0]); SAFE_RELEASE_DELETE(_indirectActiveCount[1]);
+
 	_mouseBuffer[0].release(); _mouseBuffer[1].release();
 	_offscreenBuffer.release();
 

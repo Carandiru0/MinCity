@@ -187,10 +187,10 @@ namespace // private to this file (anonymous)
 } // end ns
 
 // ####### Private Init methods
-static void ComputeGroundAdjacencyOcclusion()
+static void ComputeGroundAdjacency()
 {
 	// entire grid
-	recomputeGroundAdjacencyOcclusion(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
+	recomputeGroundAdjacency(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
 }
 
 static uint32_t const RenderNoiseImagePixel(float const u, float const v, supernoise::interpolator::functor const& interp)
@@ -291,8 +291,6 @@ void cVoxelWorld::GenerateGround()
 			oVoxel.Desc = Iso::TYPE_GROUND;
 			oVoxel.MaterialDesc = 0;		// Initially visibility is set off on all voxels until ComputeGroundOcclusion()
 
-			// Set the height based on perlin noise
-			// There are only 8 distinct height levels used 
 			if (uNoiseHeight > GROUND_HEIGHT_NOISE[0]) {
 				Iso::setHeightStep(oVoxel, 15);
 			}
@@ -351,8 +349,8 @@ void cVoxelWorld::GenerateGround()
 
 	ImagingDelete(imageNoise);
 
-	// Compute visibility and ambient occlusion based on neighbour occupancy
-	ComputeGroundAdjacencyOcclusion();
+	// Compute adjacency based on neighbour occupancy
+	ComputeGroundAdjacency();
 }
 
 static void UpdateFollow(tTime const& __restrict tNow)
@@ -544,7 +542,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	
 	point2D_t voxelIndex(v2_to_p2D(xmOrigin));
 
-	point2D_t const visibleRadius(p2D_half(point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z))); // want radius, hence the half value
+	point2D_t const visibleRadius(p2D_half(point2D_t(Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z))); // want radius, hence the half value
 
 	// get starting voxel in TL corner of screen
 	voxelIndex = p2D_sub(voxelIndex, visibleRadius);
@@ -960,7 +958,7 @@ namespace world
 		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
 		[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
-			&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
+					   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 		{
 			uvec4_v const uvIndex = SFM::floor_to_u32(XMVectorAdd(xmIndex, _mm_set1_ps(0.5f)));
 			uvec4_t uiIndex;
@@ -1575,7 +1573,7 @@ namespace world
 		smoothRow(voxelArea.left_bottom(), width_height.x);
 	}
 
-	void __vectorcall recomputeGroundAdjacencyOcclusion(rect2D_t voxelArea)
+	void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
 	{
 		// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
 		voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
@@ -1598,61 +1596,34 @@ namespace world
 
 					Iso::Voxel const* __restrict pNeighbour(nullptr);
 					uint32_t const curVoxelHeightStep(Iso::getHeightStep(oVoxel));
-					uint8_t OcclusionShading(0);
 					uint8_t Adjacency(0);
 
-					// old layout: //
-					/*
-
-											  [NBR_TL]
-								   [NBR_L]				   [NBR_T]
-						NBR_BL					VOXEL					NBR_TR
-									NBR_B					NBR_R
-												NBR_BR
-
-					*/
 					// Therefore the neighbours of a voxel, follow same isometric layout/order //
 					/*
 
-											  [NBR_TR]
+											   NBR_TR
 								   [NBR_T]				   [NBR_R]
 						NBR_TL					VOXEL					NBR_BR
-									NBR_L					NBR_B
+									[NBR_L]				   [NBR_B]
 												NBR_BL
 					*/
 
-					// Side Left = NBR_T (ao.x)
+					// Side Back = NBR_T
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_T]);
 					if (nullptr != pNeighbour) {
 						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
-						if (neighbourHeightStep > curVoxelHeightStep) {
-							OcclusionShading |= Iso::OCCLUSION_SHADING_SIDE_LEFT;
-						}
 
 						// adjacency
 						if (neighbourHeightStep >= curVoxelHeightStep) {
 
 							Adjacency |= (1 << Volumetric::adjacency::back);
 						}
-
 					}
 
-					// Corner = NBR_TR (ao.y)
-					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_TR]);
-					if (nullptr != pNeighbour) {
-
-						if (Iso::getHeightStep(*pNeighbour) > curVoxelHeightStep) {
-							OcclusionShading |= Iso::OCCLUSION_SHADING_CORNER;
-						}
-					}
-
-					// Side Right = NBR_R (ao.z)
+					// Side Right = NBR_R
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_R]);
 					if (nullptr != pNeighbour) {
 						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
-						if (neighbourHeightStep > curVoxelHeightStep) {
-							OcclusionShading |= Iso::OCCLUSION_SHADING_SIDE_RIGHT;
-						}
 
 						// adjacency
 						if (neighbourHeightStep >= curVoxelHeightStep) {
@@ -1661,17 +1632,7 @@ namespace world
 						}
 					}
 
-
-					// finally, if no flags were set on occlusion, flag as such
-					if (0 == OcclusionShading) {
-						Iso::clearOcclusion(oVoxel);
-					}
-					else {	// other wise save computed ao shading
-						Iso::setOcclusion(oVoxel, OcclusionShading);
-					}
-
-
-					// Side Left = NBR_L (ao.z)
+					// Side Left = NBR_L
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_L]);
 					if (nullptr != pNeighbour) {
 						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
@@ -1683,7 +1644,7 @@ namespace world
 						}
 					}
 
-					// Side Front = NBR_B (ao.z)
+					// Side Front = NBR_B
 					pNeighbour = world::getNeighbour(voxelIterate, ADJACENT[NBR_B]);
 					if (nullptr != pNeighbour) {
 						uint32_t const neighbourHeightStep(Iso::getHeightStep(*pNeighbour));
@@ -1712,9 +1673,9 @@ namespace world
 		}
 	}
 
-	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex)
+	void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 	{
-		recomputeGroundAdjacencyOcclusion(rect2D_t{ voxelIndex, voxelIndex });
+		recomputeGroundAdjacency(rect2D_t{ voxelIndex, voxelIndex });
 	}
 
 	// Random //
@@ -2227,14 +2188,17 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			if (XMVector3GreaterOrEqual(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z), XMVectorZero())) // validate
+			XMVECTOR const xmIndex(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z));
+
+			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
+						   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 			{
 				// **** HASH FORMAT 32bits available //
 
 				// Build hash //
 				uint32_t groundHash(0);
 				groundHash |= Iso::getAdjacency(oVoxel);			//				0001 1111
-				groundHash |= (Iso::getOcclusion(oVoxel) << 5);		//				111x xxxx
+																	//				RRRx xxxx
 				groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
 				groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
 
@@ -2263,7 +2227,10 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
 			VoxelLocalBatch& __restrict localRoad)
 		{
-			if (XMVector3GreaterOrEqual(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z), XMVectorZero())) // validate
+			XMVECTOR const xmIndex(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z));
+
+			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
+						   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 			{
 				// **** HASH FORMAT 32bits available //
 
@@ -2389,8 +2356,8 @@ namespace // private to this file (anonymous)
 				voxelReset.x = 0;
 			}
 
-			point2D_t voxelEnd = p2D_add(voxelReset, iterations);
-			voxelEnd = p2D_min(voxelEnd, point2D_t(Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE));
+			point2D_t const voxelEnd = p2D_min(p2D_add(voxelReset, iterations), point2D_t(Iso::WORLD_GRID_SIZE));
+
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			voxelEnd.y -= lines_missing;
 #endif
@@ -2500,11 +2467,8 @@ namespace // private to this file (anonymous)
 								}
 							} // extended
 
-							if (bRenderVisible || (bRenderVisible |= Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmVoxelOrigin, Iso::VOX_RADIUS))) { // if already visible will skip frustum check
-
-								// ***Ground always exists*** //
-								RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
-							}
+							// ***Ground always exists*** // *bugfix: frustum culling ground leaves empty space in an undefined state. for example, raymarched reflections disappear if camera is too close *do not change*
+							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
 
 							Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
 							++pMiniVoxels; // sequentially access for best cache prediction
@@ -2693,6 +2657,7 @@ namespace world
 		// Load bluenoise *** must be done here first so that noise is available
 		{
 			supernoise::blue.Load(TEXTURE_DIR L"bluenoise.ktx");
+			MinCity::TextureBoy->AddTextureToTextureArray(supernoise::blue.getTexture2DArray(), TEX_BLUE_NOISE);
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_BLUENOISE_KTX // Saved from MEMORY (float data)
 			// validation test - save blue noise texture from resulting 1D blue noise function
@@ -3549,7 +3514,7 @@ namespace world
 		__streaming_store_fence(); // ensure "streaming" clears are coherent
 
 		// GRID RENDER //
-		voxelRender::RenderGrid<Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z>(
+		voxelRender::RenderGrid<Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z>(
 			oCamera.voxelIndex_TopLeft,
 			MappedVoxels_Terrain,
 			MappedVoxels_Road[Volumetric::eVoxelType::opaque], MappedVoxels_Road[Volumetric::eVoxelType::trans],
@@ -4697,9 +4662,7 @@ namespace world
 	void cVoxelWorld::SetSpecializationConstants_VolumetricLight_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // all shader variables in vertex shader deal natively with position in xyz form
 	{
 		// volume dimensions																				 // xyz
-		constants.emplace_back(vku::SpecializationConstant(0, (float)Volumetric::voxelOpacity::getWidth()));  // should be width
-		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getHeight())); // should be height
-		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getDepth()));  // should be depth
+		constants.emplace_back(vku::SpecializationConstant(0, (float)Volumetric::voxelOpacity::getSize()));  // should be world volume size
 	}
 	void cVoxelWorld::SetSpecializationConstants_VolumetricLight_FS(std::vector<vku::SpecializationConstant>& __restrict constants) // all shader variables should be swizzled to xzy into fragment shader for texture lookup optimization. (ie varying vertex->fragnent shader variables)
 	{
@@ -4714,27 +4677,23 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE (too bright if multiplied by 0.5f or SFM::GOLDEN_RATIO_ZERO) 
 
 		// volume dimensions //																					// xzy
-		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getWidth()));		  // should be width
-		constants.emplace_back(vku::SpecializationConstant(6,  (float)Volumetric::voxelOpacity::getDepth()));		  // should be depth
-		constants.emplace_back(vku::SpecializationConstant(7,  (float)Volumetric::voxelOpacity::getHeight()));		  // should be height
-		constants.emplace_back(vku::SpecializationConstant(8,  1.0f / (float)Volumetric::voxelOpacity::getWidth()));  // should be width
-		constants.emplace_back(vku::SpecializationConstant(9,  1.0f / (float)Volumetric::voxelOpacity::getDepth()));  // should be depth
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getSize()));		  // should be size
+		constants.emplace_back(vku::SpecializationConstant(6,  1.0f / (float)Volumetric::voxelOpacity::getInvSize()));  // should be inverse size
 
 		// light volume dimensions //																				// xzy
-		constants.emplace_back(vku::SpecializationConstant(11, (float)Volumetric::voxelOpacity::getLightWidth()));		   // should be width
-		constants.emplace_back(vku::SpecializationConstant(12, (float)Volumetric::voxelOpacity::getLightDepth()));		   // should be depth
-		constants.emplace_back(vku::SpecializationConstant(13, (float)Volumetric::voxelOpacity::getLightHeight()));		   // should be height
-		constants.emplace_back(vku::SpecializationConstant(14, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth()));  // should be width
-		constants.emplace_back(vku::SpecializationConstant(15, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth()));  // should be depth
-		constants.emplace_back(vku::SpecializationConstant(16, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth()));		   // should be width
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth()));		   // should be depth
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight()));		   // should be height
+		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth()));  // should be width
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth()));  // should be depth
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
 
 		// For depth reconstruction from hardware depth buffer
 		// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 		constexpr double ZFar = Globals::MAXZ_DEPTH;
 		constexpr double ZNear = Globals::MINZ_DEPTH;
-		constants.emplace_back(vku::SpecializationConstant(17, (float)ZFar)); 
-		constants.emplace_back(vku::SpecializationConstant(18, (float)ZNear)); 
+		constants.emplace_back(vku::SpecializationConstant(13, (float)ZFar)); 
+		constants.emplace_back(vku::SpecializationConstant(14, (float)ZNear)); 
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Nuklear(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4789,15 +4748,19 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
+		constants.emplace_back(vku::SpecializationConstant(7, (float)(Volumetric::voxelOpacity::getInvVolumeLength()))); // should be 1 / World Volume Length
 
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(9, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height;
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(10, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
+		constants.emplace_back(vku::SpecializationConstant(13, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4808,24 +4771,26 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
+		constants.emplace_back(vku::SpecializationConstant(7, (float)(Volumetric::voxelOpacity::getInvVolumeLength()))); // should be 1 / World Volume Length
 
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(9, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(10, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
+		constants.emplace_back(vku::SpecializationConstant(13, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)(bMiniVoxel ? (Iso::MINI_VOX_SIZE) : Iso::VOX_SIZE))); // VS is dependent on type of voxel for geometry size
 		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getHeight())); // should be height
-		constants.emplace_back(vku::SpecializationConstant(3, (float)Volumetric::voxelOpacity::getDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 
 		XMFLOAT3A transformBias, transformInv;
 
@@ -4833,13 +4798,13 @@ namespace world
 		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisibleXYZ);
 
 		// do not swizzle or change order
-		constants.emplace_back(vku::SpecializationConstant(4, (float)transformBias.x));
-		constants.emplace_back(vku::SpecializationConstant(5, (float)transformBias.y));
-		constants.emplace_back(vku::SpecializationConstant(6, (float)transformBias.z));
+		constants.emplace_back(vku::SpecializationConstant(2, (float)transformBias.x));
+		constants.emplace_back(vku::SpecializationConstant(3, (float)transformBias.y));
+		constants.emplace_back(vku::SpecializationConstant(4, (float)transformBias.z));
 
-		constants.emplace_back(vku::SpecializationConstant(7, (float)transformInv.x));
-		constants.emplace_back(vku::SpecializationConstant(8, (float)transformInv.y));
-		constants.emplace_back(vku::SpecializationConstant(9, (float)transformInv.z));
+		constants.emplace_back(vku::SpecializationConstant(5, (float)transformInv.x));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)transformInv.y));
+		constants.emplace_back(vku::SpecializationConstant(7, (float)transformInv.z));
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4847,15 +4812,15 @@ namespace world
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 
-		constants.emplace_back(vku::SpecializationConstant(10, (float)1.0f / Iso::MAX_HEIGHT_STEP));
-		constants.emplace_back(vku::SpecializationConstant(11, (float)Iso::HEIGHT_SCALE));
-		constants.emplace_back(vku::SpecializationConstant(12, (int)MINIVOXEL_FACTOR));		
+		constants.emplace_back(vku::SpecializationConstant(8, (float)1.0f / Iso::MAX_HEIGHT_STEP));
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::HEIGHT_SCALE));
+		constants.emplace_back(vku::SpecializationConstant(10, (int)MINIVOXEL_FACTOR));		
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		SetSpecializationConstants_VoxelTerrain_Basic_VS(constants);
 
-		constants.emplace_back(vku::SpecializationConstant(13, (float)Iso::ROAD_SEGMENT_WIDTH));
+		constants.emplace_back(vku::SpecializationConstant(11, (float)Iso::ROAD_SEGMENT_WIDTH));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
@@ -4867,7 +4832,7 @@ namespace world
 		SetSpecializationConstants_Voxel_VS_Common(constants, false);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
 		constants.emplace_back(vku::SpecializationConstant(2, (float)1.0f / Iso::MAX_HEIGHT_STEP));
 		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::HEIGHT_SCALE));
 		constants.emplace_back(vku::SpecializationConstant(4, (int)MINIVOXEL_FACTOR));
@@ -4936,15 +4901,19 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
+		constants.emplace_back(vku::SpecializationConstant(7, (float)(Volumetric::voxelOpacity::getInvVolumeLength()))); // should be 1 / World Volume Length
 
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(9, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(10, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
+		constants.emplace_back(vku::SpecializationConstant(13, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4960,11 +4929,6 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(1, (float)frameBufferSize.y));// // frame buffer height
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
-	}
-	void cVoxelWorld::AddSpecializationConstants_Voxel_FS_Transparent(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		constants.emplace_back(vku::SpecializationConstant(11, (float)Volumetric::voxelOpacity::getHeight())); // should be height
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getHeight())); // should be inv height
 	}
 	/*
 	[[deprecated]] void cVoxelWorld::SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader)
@@ -5086,6 +5050,8 @@ namespace world
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.beginImages(3U, 2, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(4U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
@@ -5094,6 +5060,9 @@ namespace world
 
 		dsu.beginImages(5U, TEX_NOISE, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_NOISE_SAMPLER, rTextures[TEX_NOISE]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		dsu.beginImages(5U, TEX_BLUE_NOISE, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(TEX_BLUE_NOISE_SAMPLER, rTextures[TEX_BLUE_NOISE]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		dsu.beginImages(5U, TEX_TERRAIN, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_TERRAIN_SAMPLER, rTextures[TEX_TERRAIN]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);

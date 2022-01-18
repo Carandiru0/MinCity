@@ -62,6 +62,11 @@ namespace Iso
 #define MINIVOXEL_FACTOR_BITS Iso::VOXELS_GRID_SLOT_XZ_BITS_2N
 
 	static constexpr uint32_t const
+		OVER_SCREEN_VOXELS_XZ = 256,
+		OVER_SCREEN_VOXELS_X = OVER_SCREEN_VOXELS_XZ,
+		OVER_SCREEN_VOXELS_Z = OVER_SCREEN_VOXELS_XZ;
+
+	static constexpr uint32_t const
 		SCREEN_VOXELS_XZ = 256,
 		SCREEN_VOXELS_X = SCREEN_VOXELS_XZ,		// must be be even numbers, maximum zoom out affects this value so screen grid is fully captured in its bounds
 		SCREEN_VOXELS_Y = 256,					// this is "up", needs to be measured
@@ -122,7 +127,8 @@ namespace Iso
 
 	// ######### MaterialDesc bits:
 
-	// ### TYPE_ALL_VOXELS ###  * 0b00011111 are free to use!!
+	// ### TYPE_ALL_VOXELS ###
+	static constexpr uint8_t const MASK_ADJACENCY_BITS = 0b00011111;
 	static constexpr uint8_t const MASK_EMISSION_BITS = 0b00100000;
 	static constexpr uint8_t const
 		EMISSION_SHADING_NONE = 0,
@@ -135,15 +141,6 @@ namespace Iso
 		EXTENDED_TYPE_WATER = 1,
 		EXTENDED_TYPE_RESERVED0 = 2,
 		EXTENDED_TYPE_RESERVED1 = 3;
-
-	// ######### Adjacency bits:
-	static constexpr uint8_t const MASK_ADJACENCY_BITS = 0b00011111;
-	static constexpr uint8_t const MASK_OCCLUSION_BITS = 0b11100000;
-	static constexpr uint8_t const
-		OCCLUSION_SHADING_NONE = 0,
-		OCCLUSION_SHADING_CORNER = (1 << 0),
-		OCCLUSION_SHADING_SIDE_LEFT = (1 << 1),
-		OCCLUSION_SHADING_SIDE_RIGHT = (1 << 2);
 
 	// ######### Hash bits:
 
@@ -216,8 +213,7 @@ namespace Iso
 	typedef struct sVoxel
 	{
 		uint8_t Desc;								// Type of Voxel + Attributes
-		uint8_t MaterialDesc;						// Deterministic SubType
-		uint8_t Adjacency;							// Adjacency and Occlusion
+		uint8_t MaterialDesc;						// Deterministic SubType and Adjacency
 		uint8_t Owner;								// Owner Indices
 		uint32_t Hash[HASH_COUNT];					// Index 0 = Ground / Extended Hash
 													// Index 1 = Static Model
@@ -439,30 +435,16 @@ namespace Iso
 
 	}
 	STATIC_INLINE_PURE uint8_t const getAdjacency(Voxel const& oVoxel) {
-		return(MASK_ADJACENCY_BITS & oVoxel.Adjacency);
+		return(MASK_ADJACENCY_BITS & oVoxel.MaterialDesc);
 	}
 	STATIC_INLINE void clearAdjacency(Voxel& oVoxel) {
 		// Clear adjacency bits
-		oVoxel.Adjacency &= (~MASK_ADJACENCY_BITS);
+		oVoxel.MaterialDesc &= (~MASK_ADJACENCY_BITS);
 	}
 	STATIC_INLINE void setAdjacency(Voxel& oVoxel, uint8_t const adjacency) {
 		clearAdjacency(oVoxel);
 		// Set new adjacency bits
-		oVoxel.Adjacency |= (MASK_ADJACENCY_BITS & adjacency);
-	}
-	STATIC_INLINE_PURE uint8_t const getOcclusion(Voxel const& oVoxel) {
-		return((MASK_OCCLUSION_BITS & oVoxel.Adjacency) >> 5);
-	}
-	STATIC_INLINE void clearOcclusion(Voxel& oVoxel) {
-		// Clear occlusion bits
-		oVoxel.Adjacency &= (~MASK_OCCLUSION_BITS);
-	}
-	STATIC_INLINE void setOcclusion(Voxel& oVoxel, uint8_t const occlusionshading) {
-		clearOcclusion(oVoxel);
-		if (OCCLUSION_SHADING_NONE != occlusionshading) {
-			// Set new occlusion bits
-			oVoxel.Adjacency |= (MASK_OCCLUSION_BITS & (occlusionshading << 5));
-		}
+		oVoxel.MaterialDesc |= (MASK_ADJACENCY_BITS & adjacency);
 	}
 
 	// #### Ground Only 

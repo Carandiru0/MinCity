@@ -185,7 +185,6 @@ namespace world
 		void SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
 		void SetSpecializationConstants_Voxel_ClearMask_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
-		void AddSpecializationConstants_Voxel_FS_Transparent(std::vector<vku::SpecializationConstant>& __restrict constants);
 		
 		// [[deprecated]] void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
 
@@ -601,8 +600,8 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 					smoothRect(vWorldArea);
 
 					// go around perimeter doing lerp between border
-					// *required* recompute adjacency & occlusion for area as height of voxels has changed
-					recomputeGroundAdjacencyOcclusion(vWorldArea);
+					// *required* recompute adjacency for area as height of voxels has changed
+					recomputeGroundAdjacency(vWorldArea);
 				}
 				// root is special
 

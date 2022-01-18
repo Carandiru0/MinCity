@@ -17,6 +17,7 @@ namespace Volumetric
 	
 	class alignas(16) volumetricVisibility
 	{
+		static constexpr float const ERROR_COMPENSATION = 1.05; // 5% error removed
 	public:
 		// accessors //
 		__inline XMMATRIX const XM_CALLCONV getViewMatrix() const { return(XMLoadFloat4x4A(&_matView)); }
@@ -53,7 +54,7 @@ namespace Volumetric
 	__inline bool const XM_CALLCONV volumetricVisibility::SphereTestFrustum(FXMVECTOR const xmPosition, float const fRadius) const
 	{
 		// Load the sphere.
-		XMVECTOR const vRadius(XMVectorNegate(XMVectorReplicate(fRadius)));
+		XMVECTOR const vRadius(XMVectorNegate(XMVectorReplicate(fRadius * ERROR_COMPENSATION)));	// allow error % over
 
 		// Set w of the center to one so we can dot4 with all consecutive planes.
 		XMVECTOR const vCenter(XMVectorInsert<0, 0, 0, 0, 1>(xmPosition, XMVectorSplatOne()));
@@ -96,8 +97,8 @@ namespace Volumetric
 	template <bool const skip_near_plane>
 	__inline bool const XM_CALLCONV volumetricVisibility::AABBTestFrustum(FXMVECTOR const xmPosition, FXMVECTOR const xmExtents) const
 	{
-		// Load the box.
-		XMVECTOR const vExtents(XMVectorNegate(xmExtents));
+		// Load the box.		// used to negate vector, now negation is included in scale
+		XMVECTOR const vExtents(XMVectorScale(xmExtents, -ERROR_COMPENSATION)); // allow error % over 
 
 		// Set w of the center to one so we can dot4 with all consecutive planes.
 		XMVECTOR const vCenter(XMVectorInsert<0, 0, 0, 0, 1>(xmPosition, XMVectorSplatOne()));

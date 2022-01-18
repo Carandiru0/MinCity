@@ -34,7 +34,7 @@ const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float PHASE_FUNCTION = 1.0 / (4.0 * PI); // Isotropic
 
 #define EPSILON 0.000000001f
-#define FOG_SATURATION (GOLDEN_RATIO_ZERO * 0.5f) // [higher] = brighter, more "popout" of lit fog - will washout if too high, [lower] = darker, less "popout" of lit fog - will washout if too low.
+#define FOG_SATURATION (GOLDEN_RATIO_ZERO * 1.0f) // [higher] = brighter, more "popout" of lit fog - will washout if too high, [lower] = darker, less "popout" of lit fog - will washout if too low.
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
 //#define DEBUG_VOLUMETRIC
@@ -80,27 +80,21 @@ layout (binding = 4, rgba8) writeonly restrict uniform image2D outImage[2]; // r
 
 // "World Visible Volume"			 // xzy (as set in specialization constants for volumetric fragment shader)
 layout (constant_id = 4) const float VolumeLength = 0.0f; // <--- *beware this is scaled by voxel size, for lighting only
-layout (constant_id = 5) const float VolumeDimensions_X = 0.0f;
-layout (constant_id = 6) const float VolumeDimensions_Y = 0.0f;
-layout (constant_id = 7) const float VolumeDimensions_Z = 0.0f;
-layout (constant_id = 8) const float InvVolumeDimensions_X = 0.0f;
-layout (constant_id = 9) const float InvVolumeDimensions_Y = 0.0f;
-layout (constant_id = 10) const float InvVolumeDimensions_Z = 0.0f;
-#define VolumeDimensions vec3(VolumeDimensions_X, VolumeDimensions_Y, VolumeDimensions_Z)
-#define InvVolumeDimensions vec3(InvVolumeDimensions_X, InvVolumeDimensions_Y, InvVolumeDimensions_Z)
+layout (constant_id = 5) const float VolumeDimensions = 0.0f;
+layout (constant_id = 6) const float InvVolumeDimensions = 0.0f;
 
 // "Light Volume"
-layout (constant_id = 11) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 12) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 13) const float LightVolumeDimensions_Z = 0.0f;
-layout (constant_id = 14) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 15) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 16) const float InvLightVolumeDimensions_Z = 0.0f;
+layout (constant_id = 7) const float LightVolumeDimensions_X = 0.0f;
+layout (constant_id = 8) const float LightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 9) const float LightVolumeDimensions_Z = 0.0f;
+layout (constant_id = 10) const float InvLightVolumeDimensions_X = 0.0f;
+layout (constant_id = 11) const float InvLightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 12) const float InvLightVolumeDimensions_Z = 0.0f;
 #define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
 #define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
 
-layout (constant_id = 17) const float ZFar = 0.0f;
-layout (constant_id = 18) const float ZNear = 0.0f;
+layout (constant_id = 13) const float ZFar = 0.0f;
+layout (constant_id = 14) const float ZNear = 0.0f;
 
 #define FAST_LIGHTMAP
 #include "lightmap.glsl"
@@ -140,7 +134,7 @@ float fetch_opacity( in const vec3 uvw ) { // interpolates opacity - note if emi
 }
 float extract_emission( in const float sampling ) // this includes transparent voxels that are emissive, result is positive either opaque or transparent
 {
-	return( max( 0.0f, (abs(sampling) - 0.5f) * 2.0f ) );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
+	return( max( 0.0f, abs(sampling) - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
 }
 float fetch_emission( in const vec3 uvw ) { // interpolates emission
 	return( extract_emission(fetch_opacity_emission(uvw)) ); 
@@ -150,7 +144,7 @@ bool bounced(in const float opacity)
 {
 	// simple, prevents volumetrics being intersected with geometry and prevents further steps correctly so that voxels behind
 	// an opaque voxel are not marched causing strange issues like emission affecting transmission etc.
-	return( (opacity - BOUNCE_EPSILON) > 0.0f ); // maybe faster to test against zero with fast sign test
+	return( (opacity - BOUNCE_EPSILON) >= 0.0f ); // maybe faster to test against zero with fast sign test
 }
 float fetch_opacity_reflection( in const vec3 p ) { // hit test for reflections - note if emissive, is also opaque
 	
@@ -177,7 +171,7 @@ output.wsNormal = -normalize(grad);
  
 vec3 computeNormal(in const vec3 uvw)
 {
-	const vec4 voxel_offset = vec4(InvVolumeDimensions, 0.0f);
+	const vec4 voxel_offset = vec4(InvVolumeDimensions.xxx, 0.0f);
 
 	vec3 gradient;	
 	// trilinear sampling + centered differences
@@ -204,8 +198,8 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
 float fetch_light_volumetric( out vec3 light_color, out float scattering, in const float emission, in const float transparency, in const vec3 random_hemi_up, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 		
-	float attenuation, normalized_distance;
-	const vec3 light_direction = getLightFast(light_color, attenuation, normalized_distance, offset(uvw), VolumeLength);
+	float attenuation;
+	const vec3 light_direction = getLightFast(light_color, attenuation, offset(uvw), VolumeLength);
 
 	// directional derivative - equivalent to dot(N,L) operation
 	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -297,7 +291,7 @@ void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, i
 	float scattering;
 	lightAmount = fetch_light_volumetric(light_color, scattering, emission, transparency, random_hemi_up, p, opacity, dt);
 	
-	fogAmount = 1.0f - exp(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
+	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
 }
 
 void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec4 random_hemi_up, in const vec3 p, in const float dt)
@@ -319,7 +313,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec4 ran
 
 	// Area Light-------------------------------------------------------------------------------
     const vec3 Li = fma(sigmaS, lightAmount, lightAmount) * light_color * PHASE_FUNCTION; // incoming light
-	const float sigma_dt = exp(-sigmaE * lightAmount);
+	const float sigma_dt = exp2(-sigmaE * lightAmount);
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
@@ -367,9 +361,9 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 	// allow reflections visible at same distance that was travelled from eye to bounce
 	interval_length = interval_remaining = min(dt * MAX_STEPS, interval_length - interval_remaining) * BOUNCE_INTERVAL;
 
-	dt = 2.0f * dt;	// reflection step is double, faster
 	p += dt * rd;	// first reflected move to next point
-
+	//dt = 2.0f * dt;	// reflection step is double, faster
+	
 	float opacity = 0.0f;
 	vec4 stored_reflection = voxel;
 	{ //  begin new reflection raymarch to find reflected surface

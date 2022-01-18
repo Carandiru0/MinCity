@@ -52,10 +52,10 @@ namespace world
 	
 	/*
 
-							   [NBR_TR]
+							   NBR_TR
 					[NBR_T]				   [NBR_R]
 		NBR_TL					VOXEL					NBR_BR
-					NBR_L					NBR_B
+					[NBR_L]				   [NBR_B]
 								NBR_BL
 	*/
 	static constexpr uint32_t const
@@ -71,24 +71,27 @@ namespace world
 
 namespace Volumetric
 {
+	BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to the below bit shift values
+		below  = 5, // not used for adjacency in voxel desc, but needed for automata or any neighbourhood search that requires "below"
+		left   = 4,
+		right  = 3,
+		front  = 2,
+		back   = 1,
+		above  = 0
+	);
+
 	// for voxelModel.h
 	namespace voxB
 	{
+		// USED DURING RUNTIME TO CULL FACES
+		// 
 		// match inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
 		static constexpr uint32_t const
-			BIT_ADJ_LEFT = (1 << 4),				// ""														""
-			BIT_ADJ_RIGHT = (1 << 3),				// ""														""
-			BIT_ADJ_FRONT = (1 << 2),				// ""														""
-			BIT_ADJ_BACK = (1 << 1),				// ""														""
-			BIT_ADJ_ABOVE = (1 << 0);				// USED DURING RUNTIME TO CULL FACES
+			BIT_ADJ_LEFT  = (1 << adjacency::left),				
+			BIT_ADJ_RIGHT = (1 << adjacency::right),			
+			BIT_ADJ_FRONT = (1 << adjacency::front),				
+			BIT_ADJ_BACK  = (1 << adjacency::back),				
+			BIT_ADJ_ABOVE = (1 << adjacency::above);				
 	} // end ns
 
-	BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to the above bit shift values
-		below = 5, // not used for adjacency in voxel desc, but needed for automata or any neighbourhood search that requires "below"
-		left = 4,
-		right = 3,
-		front = 2,
-		back = 1,
-		above = 0
-	);
 } // end ns

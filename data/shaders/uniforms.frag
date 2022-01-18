@@ -52,29 +52,33 @@ void main() {
 //layout (constant_id = 1) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
-
-layout (constant_id = 4) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
-layout (constant_id = 5) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 6) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 7) const float LightVolumeDimensions_Z = 0.0f; 
-layout (constant_id = 8) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 9) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 10) const float InvLightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 4) const float VolumeDimensions = 0.0f;
+layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
+layout (constant_id = 6) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
+layout (constant_id = 7) const float InvVolumeLength = 0.0f; // <---- is ok, not scaled by voxel size.
+layout (constant_id = 8) const float LightVolumeDimensions_X = 0.0f;
+layout (constant_id = 9) const float LightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 10) const float LightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 11) const float InvLightVolumeDimensions_X = 0.0f;
+layout (constant_id = 12) const float InvLightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 13) const float InvLightVolumeDimensions_Z = 0.0f; 
 #define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
 #define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
 
-#if defined(TRANS) && !defined(ROAD)
-layout (constant_id = 11) const float VolumeDimensions_Z = 0.0f;
-layout (constant_id = 12) const float InvVolumeDimensions_Z = 0.0f;
-#endif
 
 #define DD 0
 #define COLOR 1
-layout (binding = 3) uniform sampler3D volumeMap[2];
+#define OPACITY 2
+layout (binding = 3) uniform sampler3D volumeMap[3];
 #if defined(TRANS)
 layout (binding = 6) uniform sampler2D colorMap;
 #endif
 layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
+
+// binding 5:
+// for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
+// for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
+#include "texturearray.glsl"
 
 // roughness = inverse of specular reflectivity
 // so higher value = less specular reflection
@@ -100,13 +104,68 @@ const float ROUGHNESS = 0.5f;
 #include "lightmap.glsl"
 #include "lighting.glsl"
     
+float extract_opacity( in const float sampling ) // this includes transparent voxels, however result is negative if transparent
+{
+	return( clamp(sampling * 2.0f, -1.0f, 1.0f) ); // if opaque greatest value is 0.5f, want a value no greater than 1.0f - this is affected by emission
+}
+float extract_emission( in const float sampling ) // this includes transparent voxels that are emissive, result is positive either opaque or transparent
+{
+	return( max( 0.0f, abs(sampling) - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
+}
+
+float opacity( in const float sampling ) {
+
+	return( max(0.0f, extract_opacity(sampling)) ); // only opaques
+}
+// iq - voxel occlusion //
+// https://www.iquilezles.org/www/articles/voxellines/voxellines.htm
+float getOcclusion(in vec3 uvw) 
+{
+#if defined(T2D)
+	uvw = uvw + InvVolumeDimensions; // *bugfix - to align the ao properly, the half texel offset is required
+#else									 // since terrain voxels are double the size of a minivoxel, terrain requires 2x the half texel offset to align properly on the same grid, which is defined in minivoxels. 512x512x512
+	uvw = uvw + 0.5f * InvVolumeDimensions; // this was a difficult bug *do not change*
+#endif
+
+	vec4 vc;
+	// sides
+	vc.x = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 0, 1,-1)).r ); // front
+	vc.y = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 0,-1,-1)).r ); // back
+	vc.z = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3(-1, 0,-1)).r ); // left
+	vc.w = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 1, 0,-1)).r ); // right
+
+	vec4 vd;
+	// corners
+	vd.x = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3(-1, 1,-1)).r ); // down
+	vd.y = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3(-1,-1,-1)).r ); // left
+	vd.z = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 1,-1,-1)).r ); // up
+	vd.w = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 1, 1,-1)).r ); // right
+
+	const vec2 st = 1.0f - uvw.xy;
+
+	// sides
+	const vec4 wa = vec4( uvw.x, st.x, uvw.y, st.y ) * vc;
+
+	// corners
+	const vec4 wb = vec4(uvw.x * uvw.y,
+						 st.x  * uvw.y,
+						 st.x  * st.y,
+						 uvw.x * st.y) * vd * (1.0f - vc.xzyw) * (1.0f - vc.zywx);
+	
+	const float occlusion = 1.0f - (wa.x + wa.y + wa.z + wa.w + wb.x + wb.y + wb.z + wb.w) / 8.0f;
+
+	return(occlusion*occlusion);
+}
+
+float fetch_bluenoise(in const vec2 pixel)
+{
+	return( textureLod(_texArray[TEX_BLUE_NOISE], vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).x ); // *bluenoise RED channel used*
+}
+
+
 
 // terrain, w/lighting 
 #if defined(T2D) 
-
-// for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
-// for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
-#include "texturearray.glsl"
 
 // iq - https://www.iquilezles.org/www/articles/filterableprocedurals/filterableprocedurals.htm
 float filteredGrid( in vec2 uv, in const float scale, in const float thin )    // thin - greater, thick - less
@@ -167,15 +226,17 @@ float antialiasedGrid(in vec2 uv, in const float scale)
 void main() {
   
 	vec3 light_color;
-	float attenuation; 
+	vec4 Ld;
 
-	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength);
-																   // bugfix: y is flipped. simplest to correct here.
+	getLight(light_color, Ld, In.uv.xyz);
+	Ld.att = getAttenuation(Ld.dist, VolumeLength);
+	
+																							// bugfix: y is flipped. simplest to correct here.
 	const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
-	
+
 	float grid = filteredGrid(In.world_uv.xy, 1024.0f, 16.0f);
 
 	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
@@ -183,15 +244,18 @@ void main() {
 	const vec3 grid_color = unpackColor(In._color) * grid;
 
 	vec3 color = lit( terrainHeight + grid_color, light_color,				// regular terrain lighting
-					  In._occlusion, attenuation,
+					  getOcclusion(In.uv.xyz), Ld.att,
 					  grid * In._emission, ROUGHNESS,
-					  L, N, V);
+					  Ld.dir, N, V);
 	
 	const float luma = dot(color, LUMA);
-	color += grid_color * (1.0f - attenuation) * (1.0f - terrainHeight) * (1.0f - luma) * (1.0f - In._emission);
+	color += grid_color * (1.0f - Ld.att) * (1.0f - terrainHeight) * (1.0f - luma) * (1.0f - In._emission);
 
 	outColor.rgb = color;
-	//outColor.rgb = vec3(terrainHeight * In._occlusion);
+	
+	//outColor = vec3(attenuation);
+	//outColor.rgb = vec3(visibility);
+	//outColor.rgb = vec3(getOcclusion(In.uv.xyz));//vec3(terrainHeight * In._occlusion);
 }
 #elif defined(ROAD)  
 
@@ -199,10 +263,6 @@ void main() {
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 
-// for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
-// for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
-#include "texturearray.glsl"
-#include "common.glsl"
 #ifdef TRANS
 const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
 #endif
@@ -210,6 +270,12 @@ const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
 void main() {
   
 #ifndef TRANS
+
+	vec3 light_color;
+	vec4 Ld;
+
+	getLight(light_color, Ld, In.uv.xyz);
+	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 	float fresnelTerm;
 
@@ -223,20 +289,15 @@ void main() {
 	// or ** more sharp pixelated but without any aliasing hmmm...
 	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)),In.uv_local.z), dFdx(In.uv_local.xy), dFdy(In.uv_local.xy)); 
 	
-	vec3 light_color;
-	float attenuation;
-
-	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength);
-
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz); 
 
-	const float decal_luminance = min(1.0f, road_segment.g * attenuation * attenuation * 2.0f);
+	const float decal_luminance = min(1.0f, road_segment.g * Ld.att * Ld.att * 2.0f);
 	vec3 reflection;
 	vec3 color = lit( road_segment.rgb, light_color,
-					  1.0f, attenuation,
+					  1.0f, Ld.att,
 	                  decal_luminance, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g)),
-					  L, N, V, reflection, fresnelTerm );
+					  Ld.dir, N, V, reflection, fresnelTerm );
 
 	color = mix(color, unpackColor(In.ambient) + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
 
@@ -245,15 +306,18 @@ void main() {
 	color += road_segment.b * shineCol * (1.0f - exp2(-1000.0f*road_segment.b*fresnelTerm));
 
 	outColor.rgb = color;
+	
+	//outColor.rgb = vec3(attenuation);
 
 #else  // roads, "transparent selection"
 
 #define SELECTION 3.0f
 
 	vec3 light_color;
-	float attenuation;
+	vec4 Ld;
 
-	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength);
+	getLight(light_color, Ld, In.uv.xyz);
+	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz); 
@@ -274,13 +338,13 @@ void main() {
 
 	vec3 color;
 
-	const float decal_luminance = road_segment.a * attenuation * attenuation;
+	const float decal_luminance = road_segment.a * Ld.att * Ld.att;
 	float fresnelTerm;  // feedback from lit
 	color.rgb = lit( road_segment.rgb, light_color,	// todo roads need actual street lights for proper lighting or else too dark
 						1.0f, // occlusion
-						min(1.0f, attenuation + decal_luminance),
+						min(1.0f, Ld.att + decal_luminance),
 						road_segment.a * 20.0f, ROUGHNESS, // emission, roughness   
-						L, N, V, fresnelTerm);
+						Ld.dir, N, V, fresnelTerm);
 						    
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, decal_luminance);
@@ -299,20 +363,22 @@ void main() {
 void main() {        
     
 	vec3 light_color;    
-	float attenuation;   
-	 
-	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength);
-	
+	vec4 Ld;
+
+	getLight(light_color, Ld, In.uv.xyz);
+
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);                            
 			        
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColor(In._color), light_color,
-						    In._occlusion, attenuation,
-	                        In._emission, ROUGHNESS,
-						    L, N, V );
+						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
+	                    In._emission, ROUGHNESS,
+						Ld.dir, N, V );
 
+	//outColor.rgb = vec3(attenuation);
+	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
 #else     
 #define SCROLL_SPEED GOLDEN_RATIO
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
@@ -321,28 +387,32 @@ void main() {
 
 	float fresnelTerm;  // feedback from lit      
 	const vec3 lit_color = lit( unpackColor(In._color), light_color,
-						    In._occlusion, attenuation,
+						    1.0f, getAttenuation(Ld.dist, VolumeLength),
 	                        In._emission, ROUGHNESS,
-						    L, N, V, fresnelTerm );
+						    Ld.dir, N, V, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //
 
 	// using occlusion for approx density to add some dynamics to refraction
-	const float density = 1.0f - In._occlusion;
+	const float density = 1.0f - fresnelTerm;
 
 	vec3 refract_color;  
 	const float weight = refraction_color(refract_color, colorMap, density);                                                    
          
-	                     
-	const float accurate = InvVolumeDimensions_Z * (128.0f);                                                              
-	const float scanline = aaStep( accurate, mod(In.uv.z * VolumeDimensions_Z + mod(SCROLL_SPEED * In._time, VolumeDimensions_Z), accurate * 1.5f * 1.5f)) * (N.z * 0.5f + 0.5f);
+	vec3 color = mix(lit_color, refract_color * lit_color, density);
+
+	outColor = applyTransparency( color, In._transparency + density*density, weight );
+
+	/*
+	const float accurate = InvVolumeDimensions * (128.0f);                                                              
+	const float scanline = aaStep( accurate, mod(In.uv.z * VolumeDimensions + mod(SCROLL_SPEED * In._time, VolumeDimensions), accurate * 1.5f * 1.5f)) * (N.z * 0.5f + 0.5f);
 	
 	vec3 color = mix(lit_color * (1.0f - density), refract_color + lit_color, fresnelTerm * 2.0f);      
 
 	color *= min(1.0f, scanline + 0.5f);
 	  
 	outColor = applyTransparency( color, ( In._transparency ) + (scanline * 0.5f) * density*density, weight );
-
+	*/
 	//outColor = vec4(weight.xxx, 1.0f);                                   
 #endif
 

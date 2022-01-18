@@ -31,7 +31,6 @@ layout(location = 0) in streamIn
 #ifndef BASIC
 	readonly flat float   ambient;
 	readonly flat float	  color;
-	readonly flat vec2    occlusion;
 	readonly flat float   emission;
 #endif
 } In[];
@@ -43,7 +42,6 @@ layout(location = 0) in streamIn
 	readonly flat vec2	world_uv;
 #ifndef BASIC
 	readonly flat float   ambient;
-	readonly flat vec2    occlusion;
 	readonly flat float   emission;
 	readonly flat vec4    extra;
 #endif
@@ -59,7 +57,6 @@ layout(location = 0) in streamIn
 #ifndef BASIC
 	readonly flat float   ambient;
 	readonly flat float	  color;
-	readonly flat vec2    occlusion;
 	readonly flat float   emission;
 	readonly flat vec4    extra;
 	readonly flat float	  passthru;
@@ -280,6 +277,8 @@ void main() {
 	// ** Per voxel ops *** //
 #ifndef BASIC
 	Out.ambient = In[0].ambient;
+	Out.slice = float(u._uframe & 63U); // +blue noise over time
+
 #ifdef _color
 	Out._color = In[0].color;
 #endif
@@ -317,13 +316,6 @@ void main() {
 
 #endif  // basic
 	
-#ifndef BASIC
-#ifdef _occlusion
-	const float occlusion = In[0].occlusion.y * (1.0f - In[0].occlusion.x); // x = occulders , y = occulsion darkness
-	Out._occlusion = occlusion;
-#endif
-#endif
-
 #ifndef ROAD // only top quad is required for roads
 	// RIGHT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {

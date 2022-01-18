@@ -37,38 +37,35 @@ layout (binding = 1, r8_snorm) restrict uniform image3D opacityMap;
 layout (binding = 1, r8_snorm) writeonly restrict uniform image3D opacityMap;
 #endif
 
-layout (constant_id = 1) const float VolumeDimensions_X = 0.0f;
-layout (constant_id = 2) const float VolumeDimensions_Y = 0.0f;
-layout (constant_id = 3) const float VolumeDimensions_Z = 0.0f;
-#define VolumeDimensions vec3(VolumeDimensions_X, VolumeDimensions_Y, VolumeDimensions_Z)
+layout (constant_id = 1) const float VolumeDimensions = 0.0f;
+
 // corresponding to volume dimensions
 const vec3 TransformToIndexScale = vec3(2.0f, -2.0f, 2.0f);
-layout (constant_id = 4) const float TransformToIndexBias_X = 0.0f;
-layout (constant_id = 5) const float TransformToIndexBias_Y = 0.0f;
-layout (constant_id = 6) const float TransformToIndexBias_Z = 0.0f;
+layout (constant_id = 2) const float TransformToIndexBias_X = 0.0f;
+layout (constant_id = 3) const float TransformToIndexBias_Y = 0.0f;
+layout (constant_id = 4) const float TransformToIndexBias_Z = 0.0f;
 #define TransformToIndexBias vec3(TransformToIndexBias_X, TransformToIndexBias_Y, TransformToIndexBias_Z)
-layout (constant_id = 7) const float InvToIndex_X = 0.0f;
-layout (constant_id = 8) const float InvToIndex_Y = 0.0f;
-layout (constant_id = 9) const float InvToIndex_Z = 0.0f;
+layout (constant_id = 5) const float InvToIndex_X = 0.0f;
+layout (constant_id = 6) const float InvToIndex_Y = 0.0f;
+layout (constant_id = 7) const float InvToIndex_Z = 0.0f;
 #define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
 #elif defined(HEIGHT) || defined(ROAD) // NOT BASIC:
 
-layout (constant_id = 1) const float VolumeDimensions_Y = 0.0f;
+layout (constant_id = 1) const float VolumeDimensions = 0.0f;
 
 #endif // BASIC
 
 #if defined(HEIGHT) // terrain
-layout(location = 0) out streamOut
+writeonly layout(location = 0) out streamOut
 {
-	writeonly flat vec3	right, forward; flat vec3 up; // needs r/w
-	writeonly flat uint adjacency;
-	writeonly flat vec2	world_uv;
+	flat vec3	right, forward, up;
+	flat uint   adjacency;
+	flat vec2	world_uv;
 #ifndef BASIC
-	writeonly flat float   ambient;
-	writeonly flat float   color;
-	writeonly flat vec2    occlusion;
-	writeonly flat float   emission;
+	flat float   ambient;
+	flat float   color;
+	flat float   emission;
 #endif
 } Out;
 #elif defined(ROAD) // road
@@ -79,7 +76,6 @@ writeonly layout(location = 0) out streamOut
 	flat vec2	world_uv;
 #ifndef BASIC
 	flat float   ambient;
-	flat vec2    occlusion;
 	flat float   emission;
 	flat vec4    extra;
 #endif
@@ -95,7 +91,6 @@ writeonly layout(location = 0) out streamOut
 #ifndef BASIC
 	flat float   ambient;
 	flat float	 color;
-	flat vec2    occlusion;
 	flat float   emission;
 	flat vec4    extra;
 	flat float	 passthru;
@@ -106,20 +101,19 @@ writeonly layout(location = 0) out streamOut
 
 #if defined(HEIGHT) || defined(ROAD)
 #ifdef BASIC
-layout (constant_id = 10) const float INV_MAX_HEIGHT_STEPS = 0.0f;
-layout (constant_id = 11) const float HEIGHT_SCALE = 0.0f;
-layout (constant_id = 12) const int MINIVOXEL_FACTOR = 1;
+layout (constant_id = 8) const float INV_MAX_HEIGHT_STEPS = 0.0f;
+layout (constant_id = 9) const float HEIGHT_SCALE = 0.0f;
+layout (constant_id = 10) const int MINIVOXEL_FACTOR = 1;
 #else
 layout (constant_id = 2) const float INV_MAX_HEIGHT_STEPS = 0.0f;
 layout (constant_id = 3) const float HEIGHT_SCALE = 0.0f;
 layout (constant_id = 4) const int MINIVOXEL_FACTOR = 1;
 #endif
 
-#define SHIFT_OCCLUSION 5U
 #define SHIFT_EMISSION 8U
 #define SHIFT_HEIGHTSTEP 12U
 const uint MASK_ADJACENCY = 0x1FU;		/*			 0000 0000 0001 1111 */
-const uint MASK_OCCLUSION = 0xE0U;		/*           0000 0000 111x xxxx */ 
+const uint MASK_RESERVED = 0xE0U;		/*           0000 0000 RRRx xxxx */ // free to use
 const uint MASK_EMISSION = 0x100U;		/*           0000 0001 xxxx xxxx */
 const uint MASK_HEIGHTSTEP = 0xF000U;	/*			 1111 000x xxxx xxxx */
 #if defined(DYNAMIC) && defined(TRANS)  
@@ -129,13 +123,12 @@ const uint MASK_TRANSPARENCY = 0x600U;	/*			 xxxx 011x xxxx xxxx */
 
 #if defined(ROAD)  
 #ifdef BASIC
-layout (constant_id = 13) const float ROAD_WIDTH = 0.0f;
+layout (constant_id = 11) const float ROAD_WIDTH = 0.0f;
 #else
 layout (constant_id = 5) const float ROAD_WIDTH = 0.0f;
 #endif
 
 #undef MASK_ADJACENCY // not used for roads //
-#undef MASK_OCCLUSION // not used for roads //
 #undef MASK_EMISSION
 #define SHIFT_ROAD_HEIGHTSTEP_BEGIN 9U
 #define SHIFT_ROAD_HEIGHTSTEP_END 13U
@@ -155,10 +148,9 @@ const uint  NORTH = 0U,
 
 #else // not HEIGHT/ROAD
 
-#define SHIFT_OCCLUSION 5U
 #define SHIFT_EMISSION 12U
 const uint MASK_ADJACENCY =  0x1FU;		/*           0000 0000 0001 1111 */
-const uint MASK_OCCLUSION = 0xE0U;		/*           0000 0000 111x xxxx */ 
+const uint MASK_RESERVED = 0xE0U;		/*           0000 0000 RRRx xxxx */ // free to use
 const uint MASK_EMISSION = 0x1000U;		/*			 0001 RRRR xxxx xxxx */ 
 #if defined(DYNAMIC) && defined(TRANS) 
 #define SHIFT_TRANSPARENCY 13U
@@ -172,37 +164,6 @@ const uint MASK_TRANSPARENCY = 0x6000U;	/*			 011x xxxx xxxx xxxx */
 const float INV_MAX_TRANSPARENCY = (1.0f / 4.0f);	// 4 levels of transparency (0.25f, 0.5f, 0.75f, 1.0f)
 #endif
 
-const uint OCCLUSION_SHADING_CORNER = (1U << 0U),
-		   OCCLUSION_SHADING_SIDE_LEFT = (1U << 1U),
-		   OCCLUSION_SHADING_SIDE_RIGHT = (1U << 2U);
-
-// excellent ao curve values
-const vec4 ao_curve = vec4(0.5f, 0.4233f, 0.415f, 0.4f)*2.0f;
-
-// https://0fps.net/2013/07/03/ambient-occlusion-for-minecraft-like-worlds/
-//function vertexAO(side1, side2, corner) {
-//  if(side1 && side2) {
-//    return 0
-//  }
-//  return 3 - (side1 + side2 + corner)
-//}
-																								
-void ao_voxel(const uint occlusion, const uint adjacent)  
-{														
-	// maximum value 3 in the way this is done, good for index into vec4 (ao_curve)
-	const uint truth = uint(
-		(OCCLUSION_SHADING_CORNER & occlusion) +
-		((OCCLUSION_SHADING_SIDE_LEFT & occlusion) >> 1U) +
-		((OCCLUSION_SHADING_SIDE_RIGHT & occlusion) >> 2U)   
-	);
-
-	const float occulders = float(truth) / float(uint(0x7u)); // 8 values - normalized 
-	const float neighbours = float(adjacent) / float(uint(0xFu)); // 16 values - normalized
-
-	// output occculsion to geometry shader is a vector [occulsion ratio, occlusion darkness]
-	Out.occlusion = vec2((occulders - neighbours) * 0.5f + 0.5f, pow(ao_curve[truth], neighbours)); // occlusion darkness - a curve defining this voxels overal occlusion based on how occulders ^ neighbours total. 
-																	   // A lot of range in value, but so far defined at the voxel. the geometry shader uses this input data to get the occlusion down to the vertex level of the voxel.
-}
 #endif
 
 //#ifdef ROAD
@@ -229,8 +190,6 @@ vec3 v3_rotate_azimuth(in const vec3 p)
 
 void main() {
   
-  vec3 worldPos = inWorldPos.xyz;
-
   { // orientation output vectors right, forward, up
 	const float size = VOX_SIZE;
 
@@ -243,24 +202,24 @@ void main() {
 #else
 	Out.right   = vec3(size, 0.0f, 0.0f);
 	Out.forward	= vec3(0.0f, 0.0f, size);
+#if !defined(HEIGHT) // not terrain (done below)
 	Out.up      = vec3(0.0f, size, 0.0f);
 #endif
-
+#endif
   }
 
   const uint hash = floatBitsToUint(inWorldPos.w);
- 
-#if !(defined(ROAD)) // not road
-  
-  const uint adjacent_count = (hash & MASK_ADJACENCY);
-  Out.adjacency = adjacent_count;
 
-#if !defined(BASIC)
+#if defined(HEIGHT) // terrain only
 
-	// ambient occlusion calculated once per voxel, permutations used for all quads
-	ao_voxel((hash & MASK_OCCLUSION) >> SHIFT_OCCLUSION, adjacent_count); // optimization, moved from gs to vs
-	
+  const float heightstep = max(VOX_SIZE, float(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP)));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
+  const float real_height = heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE;
+  Out.up      = vec3(0.0f, real_height, 0.0f);
+  const float voxel_height = real_height * float(MINIVOXEL_FACTOR);  // range [0.0f ... VolumeDimensions_Y]
 #endif
+
+#if !(defined(ROAD)) // not road
+  Out.adjacency = (hash & MASK_ADJACENCY);
 #endif
 
 #if defined(HEIGHT) || defined(ROAD) // terrain/road voxels only
@@ -295,17 +254,9 @@ void main() {
 
 #endif // !basic
 
-#if defined(HEIGHT) || defined(ROAD) // terrain/road voxels only
+   vec3 worldPos = inWorldPos.xyz;
 
-#if defined(HEIGHT) // terrain
-  {
-	const float heightstep = max(VOX_SIZE, float(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP)));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
-	Out.up.y *= heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE;
-  }
-	const float voxel_height = Out.up.y * float(MINIVOXEL_FACTOR);  // range [0.0f ... VolumeDimensions_Y]
-
-
-#else // road
+#if defined(ROAD) // road voxels only
 
 #ifndef BASIC
 	Out.extra.x = float((hash & MASK_ROAD_TILE) >> SHIFT_ROAD_TILE);
@@ -360,7 +311,8 @@ void main() {
   }
 #endif
 
-#endif
+  // out position //
+  gl_Position = vec4(worldPos, 1.0f);
 
   {
 #ifndef BASIC
@@ -377,9 +329,6 @@ void main() {
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
 #endif
 #endif // clear
-
-	// out position //
-	gl_Position = vec4(worldPos, 1.0f);
 
 #if defined(BASIC) && !defined(ROAD) // only basic past this point
 
@@ -426,10 +375,10 @@ else // already filled with opaque block
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
-  const int ivoxel_height = int(floor(voxel_height));
+  const int ivoxel_height = int(floor(voxel_height)) + 1; // *bugfix: -1 yields correct height
 
   ivec3 iminivoxel;
-									// *bugfix: -1 yields correct height
+									
   [[dependency_infinite]] for( iminivoxel.y = ivoxel_height - 1; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth

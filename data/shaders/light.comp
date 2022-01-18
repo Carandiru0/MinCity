@@ -48,10 +48,9 @@ layout (binding = 8) uniform sampler3D inTemporalR[2];	// (reflection color) lig
 layout (binding = 9, rgba8) writeonly restrict uniform image3D outTemporalR[3]; // (reflection color) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly)
 
 // "World Visible Volume"
-layout (constant_id = 0) const float WorldDimensions_Width = 0.0f;
-layout (constant_id = 1) const float WorldDimensions_Depth = 0.0f;
-layout (constant_id = 2) const float WorldDimensions_Height = 0.0f;
-#define WorldDimensions vec3(WorldDimensions_Width, WorldDimensions_Depth, WorldDimensions_Height)
+layout (constant_id = 0) const float WorldDimensions = 0.0f;
+layout (constant_id = 1) const float WorldLength = 0.0f;
+layout (constant_id = 2) const float InvWorldLength = 0.0f;
 
 // "Light Volume"
 layout (constant_id = 3) const float VolumeDimensions_Width = 0.0f;
@@ -189,8 +188,7 @@ float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_
 }
 float normalize_distance(in const float d) // normalized distance, [0.0f ... 1.0f]
 {
-	const float inv_max_distance = 1.0f/length(WorldDimensions);
-	return(d * inv_max_distance * 2.0f - 1.0f);
+	return(d * InvWorldLength * 2.0f - 1.0f);
 }
 vec3 emitter_to_direction(in const vec3 emitter_location, in const vec3 current_location)
 {
@@ -269,7 +267,7 @@ vec3 sampleC(in const restrict sampler3D inputC, in vec3 color, in const vec3 cu
 {
 	const float volume_distance = d0 * length(VolumeDimensions);
 
-	color = color * attenuation(d0 * length(WorldDimensions) * VOX_SIZE);
+	color = color * attenuation(d0 * WorldLength * VOX_SIZE);
 
 	vec4 neighbour;
 	neighbour = textureLod(inputC, (gl_GlobalInvocationID.xyz + volume_distance * vec3(-1,0,0)) * InvVolumeDimensions, 0);

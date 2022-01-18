@@ -958,7 +958,7 @@ void __vectorcall cRoadTool::ConditionRoadGround(
 	}//for offset
 
 	// ** required for any changes in terrain height ** //
-	world::recomputeGroundAdjacencyOcclusion(rect2D(mini, maxi));
+	world::recomputeGroundAdjacency(rect2D(mini, maxi));
 }
 
 bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, point2D_t const endPoint)
@@ -1780,7 +1780,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 					// make ground match height of road where traffic sign will be placed
 					Iso::setHeightStep(oXingVoxel, Iso::getHeightStep(oVoxel));
 					world::setVoxelAt(xingPoint[xing], std::forward<Iso::Voxel const&& __restrict>(oXingVoxel));
-					world::recomputeGroundAdjacencyOcclusion(xingPoint[xing]);
+					world::recomputeGroundAdjacency(xingPoint[xing]);
 
 					world::cTrafficSignGameObject* const pGameObject = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cTrafficSignGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(
 						xingPoint[xing],
@@ -1873,7 +1873,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 		// make ground match height of road where lamp/sign will be placed
 		Iso::setHeightStep(oSideVoxel, Iso::getHeightStep(oVoxel));
 		world::setVoxelAt(sidePoint[side], std::forward<Iso::Voxel const&& __restrict>(oSideVoxel));
-		world::recomputeGroundAdjacencyOcclusion(sidePoint[side]);
+		world::recomputeGroundAdjacency(sidePoint[side]);
 
 		if (bNSEW) {
 			rotation = lamp_post_side ? rotation : v2_rotation_constants::v180;

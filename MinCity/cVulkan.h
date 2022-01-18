@@ -365,8 +365,9 @@ private:
 	vku::Framework					_fw;
 	vku::Window* 					_window;
 
-	vku::IndirectBuffer* __restrict _indirectActiveCount;
-	vku::GenericBuffer				_activeCountBuffer;
+	vku::double_buffer<vku::IndirectBuffer* __restrict> _indirectActiveCount;
+	vku::double_buffer<vku::GenericBuffer>				_activeCountBuffer;
+
 	vku::GenericBuffer				_mouseBuffer[2];
 
 	vk::UniqueImageView				_offscreenImageView2DArray;

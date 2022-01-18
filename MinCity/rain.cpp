@@ -47,10 +47,10 @@ STATIC_INLINE_PURE void newDrop(uint8_t& __restrict rdrop_speed)
 __vectorcall sRainInstance::sRainInstance(FXMVECTOR const WorldCoordOrigin, float const Radius)
     : sRadialGridInstance(WorldCoordOrigin, Radius, LIFETIME_ANIMATION, RainRows)
 {
-    setScale((float)Volumetric::voxelOpacity::getHeight());
+    setScale((float)Volumetric::voxelOpacity::getSize());
     setStepScale((float)Volumetric::Konstants::VOXEL_RAIN_SCALE);
 
-    constexpr uint32_t const width(Volumetric::voxelOpacity::getWidth()), height(Volumetric::voxelOpacity::getDepth());
+    constexpr uint32_t const width(Volumetric::voxelOpacity::getSize()), height(Volumetric::voxelOpacity::getSize());
 
     // only created once and shared among instances //
     if (nullptr == _imgRain[0]) {
@@ -89,7 +89,7 @@ __vectorcall sRainInstance::sRainInstance(FXMVECTOR const WorldCoordOrigin, floa
 }
 
 // voxel_op_fnRain
-read_only inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getWidth()), float(Volumetric::voxelOpacity::getDepth()), 1.0f, 1.0f };
+read_only inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getSize()), float(Volumetric::voxelOpacity::getSize()), 1.0f, 1.0f };
 __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMVECTOR const vDisplacement, float const tLocal, Volumetric::voxelShaderDesc&& __restrict out) const
 {
     static constexpr float const Inv255 = 1.0f / 255.0f;
@@ -105,7 +105,7 @@ __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMV
     xmPixel = SFM::max(XMVectorZero(), xmPixel);
 
     point2D_t const pixel2D(SFM::floor_to_u32(xmPixel).v);
-    uint32_t const pixel(pixel2D.y * Volumetric::voxelOpacity::getWidth() + pixel2D.x);
+    uint32_t const pixel(pixel2D.y * Volumetric::voxelOpacity::getSize() + pixel2D.x);
     
     uint8_t& __restrict rdrop_distance(sRainInstance::_imgRain[sRainInstance::DISTANCE]->block[pixel]);
     uint32_t const drop_distance(rdrop_distance);

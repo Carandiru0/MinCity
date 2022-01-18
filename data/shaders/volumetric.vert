@@ -14,21 +14,17 @@ writeonly layout(location = 0) out streamOut
 } Out;
 
 // "World Visible Volume"			 // xyz
-layout (constant_id = 0) const float WorldDimensions_Width = 0.0f;
-layout (constant_id = 1) const float WorldDimensions_Height = 0.0f;
-layout (constant_id = 2) const float WorldDimensions_Depth = 0.0f;
-#define WorldDimensions vec3(WorldDimensions_Width, WorldDimensions_Height, WorldDimensions_Depth)
+layout (constant_id = 0) const float WorldDimensions = 0.0f;
 
 const vec2 resolution = vec2(1400, 1040);
 void main() {
  			
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 
-	precise const vec3 VolumeDimensions = WorldDimensions;
-	precise vec3 volume_translation = vec3(VolumeDimensions.x * 0.5f, VolumeDimensions.y, VolumeDimensions.z * 0.5f);
+	precise vec3 volume_translation = vec3(WorldDimensions * 0.5f, WorldDimensions, WorldDimensions * 0.5f);
 	volume_translation = -0.5f - (volume_translation - inPos.xyz); // this perfectly aligns the center of the volume *do not change*
 
-	precise vec3 position = fma(inPos.xyz, VolumeDimensions, volume_translation);
+	precise vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
 	// inverted y translation, also put at groundlevel
 	gl_Position = u._viewproj * vec4(position * 0.5f, 1.0f);
@@ -42,8 +38,7 @@ void main() {
 	// fragment shaders always sample with height being z component
 	precise vec3 eyeDir = u._eyeDir.xyz; // isometric camera direction
 	eyeDir.y = -eyeDir.y;  // must invert y axis here!! otherwise rotation of camera reveals incorrect depth
-	eyeDir = normalize(eyeDir);  
-	Out.eyeDir.xzy = eyeDir; // Out.eyeDir is flat, normalized and good to use in fragment shaders
+	Out.eyeDir.xzy = normalize(eyeDir); // Out.eyeDir is flat, normalized and good to use in fragment shaders
 	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
 
 	Out.slice = float(u._uframe & 63U); // +blue noise over time

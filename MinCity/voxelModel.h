@@ -139,9 +139,7 @@ namespace voxB
 					Front : 1,
 					Back : 1,
 					Above : 1,
-					Occlusion_Corner : 1,			// bits 30 : 32, Occlusion (0/1) binary
-					Occlusion_Left : 1,
-					Occlusion_Right : 1;
+					Material : 3;					// bits 30 : 32, Material (0/1) 8 values
 	
 			};
 			
@@ -174,7 +172,7 @@ namespace voxB
 			Above	= (0 != (BIT_ADJ_ABOVE & Adj));
 		}
 
-		inline uint32_t const			  getOcclusion() const { return( (Occlusion_Right << 2U) | (Occlusion_Left << 1U) | (Occlusion_Corner) ); }
+		inline uint32_t const			  getMaterial() const { return( Material ); }
 
 		inline voxelNormal const		  getNormal() const { return(voxelNormal(getAdjacency())); }
 
@@ -187,13 +185,11 @@ namespace voxB
 		{	
 			return(Data != rhs.Data);
 		}
-		inline voxelDescPacked(voxCoord const Coord, uint8_t const Adj, uint8_t const Occlusion, uint32_t const inColor)
+		inline voxelDescPacked(voxCoord const Coord, uint8_t const Adj, uint32_t const inColor)
 			: x(Coord.x), y(Coord.y), z(Coord.z),
 				Left(0 != (BIT_ADJ_LEFT & Adj)), Right(0 != (BIT_ADJ_RIGHT & Adj)), Front(0 != (BIT_ADJ_FRONT & Adj)),
 			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)),
-			    Occlusion_Corner(Iso::OCCLUSION_SHADING_CORNER == (Iso::OCCLUSION_SHADING_CORNER & Occlusion)),
-			    Occlusion_Left(Iso::OCCLUSION_SHADING_SIDE_LEFT == (Iso::OCCLUSION_SHADING_SIDE_LEFT & Occlusion)),
-			    Occlusion_Right(Iso::OCCLUSION_SHADING_SIDE_RIGHT == (Iso::OCCLUSION_SHADING_SIDE_RIGHT & Occlusion)),
+				Material(0),
 				Color(inColor), Alpha(0)
 		{}
 		voxelDescPacked() = default;
@@ -486,7 +482,7 @@ namespace voxB
 						uint32_t hash(0);
 
 						hash |= voxel.getAdjacency();					//           0000 0000 0001 1111
-						hash |= (voxel.getOcclusion() << 5);			//           0000 1111 111x xxxx
+																		//           0000 RRRR RRRx xxxx
 						hash |= (Emissive << 12);						// 0000 0000 0001 xxxx xxxx xxxx
 
 						if (!EmissionOnly)

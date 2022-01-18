@@ -31,14 +31,16 @@ layout(location = 0) out vec4 outColor;
 //layout (constant_id = 1) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
-
-layout (constant_id = 4) const float VolumeLength = 0.0f;
-layout (constant_id = 5) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 6) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 7) const float LightVolumeDimensions_Z = 0.0f; 
-layout (constant_id = 8) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 9) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 10) const float InvLightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 4) const float VolumeDimensions = 0.0f;
+layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
+layout (constant_id = 6) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
+layout (constant_id = 7) const float InvVolumeLength = 0.0f; // <---- is ok, not scaled by voxel size.
+layout (constant_id = 8) const float LightVolumeDimensions_X = 0.0f;
+layout (constant_id = 9) const float LightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 10) const float LightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 11) const float InvLightVolumeDimensions_X = 0.0f;
+layout (constant_id = 12) const float InvLightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 13) const float InvLightVolumeDimensions_Z = 0.0f; 
 #define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
 #define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
 
@@ -61,9 +63,9 @@ const float ROUGHNESS = 0.11f;
 void main() {
   
     vec3 light_color;
-	float attenuation;
+	vec4 Ld;
 
-	const vec3 L = getLight(light_color, attenuation, In.uv.xyz, VolumeLength); 
+	getLight(light_color, Ld, In.uv.xyz); 
 
 	vec3 N = normalize(In.N.xyz);
 	vec3 V = normalize(In.V.xyz);  
@@ -72,9 +74,9 @@ void main() {
 	float fresnelTerm;
 
 	const vec3 lit_color = lit( normalize(unpackColor(In.ambient)), light_color,
-						 1.0f, attenuation, 
+						 1.0f, getAttenuation(Ld.dist, VolumeLength), 
 	                     In._emission, ROUGHNESS,
-						 L, N, V, reflect_color, fresnelTerm );
+						 Ld.dir, N, V, reflect_color, fresnelTerm );
     
 	const float density = (1.0f - In._passthru);
 	       

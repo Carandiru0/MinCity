@@ -37,11 +37,12 @@ void cToolProvider::setActivatedTool(uint32_t const uiToolType, std::optional<ui
 		break;
 	}
 
-	if (std::nullopt != uiSubTool) {
-		_ActivatedTool->setActivatedSubTool(*uiSubTool);
-	}
-
 	if (nullptr != _ActivatedTool) {
+
+		if (std::nullopt != uiSubTool) {
+			_ActivatedTool->setActivatedSubTool(*uiSubTool);
+		}
+
 		_ActivatedTool->activate();
 	}
 }

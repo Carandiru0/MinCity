@@ -71,8 +71,8 @@ namespace world
 	rect2D_t const voxelArea_grow(rect2D_t const voxelArea, point2D_t const grow);
 	void smoothRect(rect2D_t voxelArea);
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	void __vectorcall recomputeGroundAdjacencyOcclusion(rect2D_t voxelArea);
-	void __vectorcall recomputeGroundAdjacencyOcclusion(point2D_t const voxelIndex);
+	void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea);
+	void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex);
 
 	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius = Iso::VOX_RADIUS); // y (height) coordinate is required, otherwise it's 0.0f    [Iso::VOX_RADIUS] or Iso::MINI_VOX_RADIUS
 	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex); // y (height) coordinate *not* required, automattically set to ground height.  only [Iso::VOX_RADIUS]

@@ -60,19 +60,19 @@ namespace Volumetric
 	};
 #endif
 
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth > // xyz format
+	template< uint32_t const Size > // "uniform world volume size"
 	class alignas(16) volumetricOpacity
 	{
 	public:
 		static constexpr uint32_t const TEMPORAL_VOLUMES = 2;	// last n frames
 	public:
-		static constexpr uint32_t const
-			LightWidth = (Width >> ComputeLightConstants::LIGHT_MOD_WIDTH_BITS),
-			LightHeight = (Height >> ComputeLightConstants::LIGHT_MOD_HEIGHT_BITS),
-			LightDepth = (Depth >> ComputeLightConstants::LIGHT_MOD_DEPTH_BITS);
+		static constexpr uint32_t const // "non-uniform light volume size"
+			LightWidth = (Size >> ComputeLightConstants::LIGHT_MOD_WIDTH_BITS),
+			LightHeight = (Size >> ComputeLightConstants::LIGHT_MOD_HEIGHT_BITS),
+			LightDepth = (Size >> ComputeLightConstants::LIGHT_MOD_DEPTH_BITS);
 
 	private:
-		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightWidth, LightHeight, LightDepth, Width, Height, Depth>;
+		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightWidth, LightHeight, LightDepth, Size>;
 
 		static constexpr uint32_t const PING = ePingPongMap::PING, PONG = ePingPongMap::PONG;
 		static constexpr uint32_t const getStepMax() {
@@ -122,10 +122,8 @@ namespace Volumetric
 			PING_PONG_CHAIN_LAST_INDEX = getPingPongChainLastIndex();
 
 	public:
-		static inline XMVECTOR const __vectorcall	getDimensions() { return(XMLoadFloat3A(&Dimensions)); } // xyz format
-		static inline constexpr uint32_t const		getWidth() { return(Width); }
-		static inline constexpr uint32_t const		getHeight() { return(Height); }
-		static inline constexpr uint32_t const		getDepth() { return(Depth); }
+		static inline constexpr uint32_t const		getSize() { return(Size); }
+		static inline constexpr float const			getInvSize() { return(1.0f/((float)Size)); }
 		static inline float const					getVolumeLength() { return(VolumeLength); }
 		static inline float const					getInvVolumeLength() { return(InvVolumeLength); }
 
@@ -166,12 +164,12 @@ namespace Volumetric
 		// Main Methods //
 		void commit(uint32_t const resource_index, size_t const hw_concurrency) const { // this method will quickly [map, copy, unmap] to gpu write-combined stagingBuffer, no reads of this buffer of any kind
 														   // private write-combined memory copy - no *reading* *warning* *severe* *performance degradation if one reads from a write-combined gpu buffer*
-			const_cast<volumetricOpacity<Width, Height, Depth>* __restrict>(this)->MappedVoxelLights.commit(LightProbeMap.stagingBuffer[resource_index], hw_concurrency);
+			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.commit(LightProbeMap.stagingBuffer[resource_index], hw_concurrency);
 		}
 
 		void clear() const { // happens before a comitt, does not require stagingbuffer to clear, all safe memory
 
-			const_cast<volumetricOpacity<Width, Height, Depth>* __restrict>(this)->MappedVoxelLights.clear();
+			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.clear();
 		}
 
 		void release() {
@@ -183,7 +181,7 @@ namespace Volumetric
 
 			SAFE_RELEASE_DELETE(ComputeLightDispatchBuffer);
 
-			for (uint32_t i = 0; i < 3; ++i) {
+			for (uint32_t i = 0; i < 2; ++i) {
 				SAFE_RELEASE_DELETE(PingPongMap[i]);
 			}
 
@@ -279,7 +277,7 @@ namespace Volumetric
 			}
 
 			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-				Width, Depth, Height, 1U, vk::Format::eR8Snorm, false, true);
+				Size, Size, Size, 1U, vk::Format::eR8Snorm, false, true);
 			VolumeSet.OpacityMap = OpacityMap;
 
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)OpacityMap->image(), vkNames::Image::OpacityMap);
@@ -319,9 +317,9 @@ namespace Volumetric
 		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 		{
 			// full world volume dimensions //
-			constants.emplace_back(vku::SpecializationConstant(0, (float)Width)); // should be width
-			constants.emplace_back(vku::SpecializationConstant(1, (float)Depth)); // should be depth
-			constants.emplace_back(vku::SpecializationConstant(2, (float)Height)); // should be height
+			constants.emplace_back(vku::SpecializationConstant(0, (float)Size)); // should be world volume uniform size (width=height=depth)
+			constants.emplace_back(vku::SpecializationConstant(1, (float)VolumeLength)); // should be world volume length (diagonal from min to max of volume extents)
+			constants.emplace_back(vku::SpecializationConstant(2, (float)InvVolumeLength)); // should be inverse world volume length
 
 			// light volume dimensions //
 			constants.emplace_back(vku::SpecializationConstant(3, (float)LightWidth)); // should be width
@@ -421,8 +419,7 @@ namespace Volumetric
 		vku::TextureImageStorage3D*							OpacityMap;
 		voxelVolumeSet										VolumeSet;
 
-		constinit static inline XMFLOAT3A const				Dimensions{ float(Width), float(Height), float(Depth) };
-		static inline float const							VolumeLength = (std::hypot(float(Width), float(Height), float(Depth))),
+		static inline float const							VolumeLength = (std::hypot(float(Size), float(Size), float(Size))),
 															InvVolumeLength = (1.0f / VolumeLength);
 
 		int32_t												ClearStage;
@@ -463,8 +460,8 @@ namespace Volumetric
 	};
 
 #ifdef DEBUG_LIGHT_PROPAGATION
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::resetMinMax() const
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::resetMinMax() const
 	{
 		inline XMVECTORF32 const xmResetMin{ 99999.0f, 99999.0f, 99999.0f };
 		inline XMVECTORF32 const xmResetMax{ -99999.0f, -99999.0f, -99999.0f };
@@ -478,8 +475,8 @@ namespace Volumetric
 			//DebugMinMaxBuffer->flush(*DebugDevice);
 		}
 	}
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::updateMinMax()
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::updateMinMax()
 	{
 		if (DebugDevice) {
 			//DebugMinMaxBuffer->invalidate(*DebugDevice);
@@ -488,8 +485,8 @@ namespace Volumetric
 			DebugMinMaxBuffer->unmap(*DebugDevice);
 		}
 	}
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::renderDebugLight(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDEBUGLIGHTDATA const& __restrict render_data) const
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::renderDebugLight(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDEBUGLIGHTDATA const& __restrict render_data) const
 	{
 		// common descriptor set and pipline layout to MINMAX and BLIT, seperate pipelines
 		c.cb_render.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.pipelineLayout, 0, render_data.sets[0], nullptr);
@@ -519,8 +516,8 @@ namespace Volumetric
 	}
 #endif
 
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input)
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input)
 	{
 		PushConstants.step = 0; 
 
@@ -540,8 +537,8 @@ namespace Volumetric
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::renderJFA(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data,
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::renderJFA(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data,
 		uint32_t const index_input, uint32_t const index_output, uint32_t const step)
 	{
 		PushConstants.step = step;
@@ -556,8 +553,8 @@ namespace Volumetric
 		// otherwise each dispatch() must upload to GPU that information
 	}
 
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::renderFilter(
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::renderFilter(
 		vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data,
 		uint32_t const index_input)
 	{
@@ -583,8 +580,8 @@ namespace Volumetric
 		// otherwise each dispatch() must upload to GPU that information
 	}
 	/* native vulkan command clearcolorimage is 2x faster than this
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline void volumetricOpacity<Width, Height, Depth>::clearOpacityVolume(vku::compute_gpu_function const& __restrict  c, struct cVulkan::sCOMPUTECLEARVOLUMEDATA const& __restrict render_data) const
+	template< uint32_t Size >
+	__inline void volumetricOpacity<Size>::clearOpacityVolume(vku::compute_gpu_function const& __restrict  c, struct cVulkan::sCOMPUTECLEARVOLUMEDATA const& __restrict render_data) const
 	{
 		static constexpr uint32_t const	// clearing shader can have higher total local size as it is simpler
 			SHADER_LOCAL_SIZE_BITS = 3U, // 2^3 = 8
@@ -602,8 +599,8 @@ namespace Volumetric
 
 	}*/
 
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline bool const volumetricOpacity<Width, Height, Depth>::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
+	template< uint32_t Size >
+	__inline bool const volumetricOpacity<Size>::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
 		if (c.cb_transfer_light)
 		{
@@ -699,8 +696,8 @@ namespace Volumetric
 	}
 
 	// returns true when "dirty" status should be set, so that compute shader knows it needs to run
-	template< uint32_t const Width, uint32_t const Height, uint32_t const Depth >
-	__inline bool const volumetricOpacity<Width, Height, Depth>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb) {
+	template< uint32_t Size >
+	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb) {
 
 		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
 

@@ -155,11 +155,11 @@ STATIC_INLINE bool const CompareTag( uint32_t const TagSz, uint8_t const * __res
 
 // simple (slow) linear search
 static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restrict source, VoxelData const* __restrict pVoxels, 
-								  uint8_t& __restrict Adjacency, uint8_t& __restrict Occlusion)
+								  uint8_t& __restrict Adjacency)
 {
 	static constexpr uint32_t const uiMaxOcclusion( 9 + 8 ); // 9 above, 8 sides
 	
-	uint8_t pendingAdjacency(0), pendingOcclusion(0);
+	uint8_t pendingAdjacency(0);
 	Adjacency = 0;
 	
 	uint32_t uiOcclusion(uiMaxOcclusion - 1);
@@ -187,37 +187,6 @@ static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restric
 						
 						if ( 0 == (XDelta | YDelta) ) { // same x,y
 							pendingAdjacency |= BIT_ADJ_ABOVE;
-						}
-						else { // occlusion mask tests
-
-							if (0 != YDelta) {
-								if (0 == XDelta) // same x axis
-								{
-									if (SYDelta < 0) { // 1 unit left...
-										pendingOcclusion |= Iso::OCCLUSION_SHADING_SIDE_RIGHT;
-									}
-									else /*if ( 1 == SYDelta )*/ { // 1 unit right...
-										pendingOcclusion |= Iso::OCCLUSION_SHADING_SIDE_LEFT;
-									}
-								}
-							}
-							if (0 != XDelta) {
-								if (0 == YDelta) // same y axis
-								{
-									if (SXDelta < 0) { // 1 unit left...
-										pendingOcclusion |= Iso::OCCLUSION_SHADING_SIDE_LEFT;
-									}
-									else /*if ( 1 == SXDelta )*/ { // 1 unit right...
-										pendingOcclusion |= Iso::OCCLUSION_SHADING_SIDE_RIGHT;
-									}
-								}
-							}
-							if (0 != YDelta) {
-								if (0 != XDelta) // must be corner
-								{
-									pendingOcclusion |= Iso::OCCLUSION_SHADING_CORNER;
-								}
-							}
 						}
 					}
 					
@@ -249,7 +218,6 @@ static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restric
 	} while ( 0 != --numVoxels && 0 != uiOcclusion);
 	
 	Adjacency = pendingAdjacency;	// face culling used for voxels that are not removed
-	Occlusion = pendingOcclusion;
 
 	return(0 != uiOcclusion);
 }
@@ -453,18 +421,18 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 				VecVoxels::reference v = tmpVectors.local();
 				for (uint32_t i = r.begin(); i != r.end(); ++i) {
 
-					uint8_t pendingAdjacency, pendingOcclusion;
+					uint8_t pendingAdjacency;
 					VoxelData curVoxel(*(rootVoxel + i));
 
-					if (BuildAdjacency(numVoxels, curVoxel, rootVoxel, pendingAdjacency, pendingOcclusion)) {
+					if (BuildAdjacency(numVoxels, curVoxel, rootVoxel, pendingAdjacency)) {
 
 						uint32_t color(0);
 						if (0 != curVoxel.paletteIndex) {
 							// resolve color from palette using the palette index of this voxel
 							color = (i < numVoxelsFirstStack ? pPaletteRoot[0][curVoxel.paletteIndex - 1] : pPaletteRoot[1][curVoxel.paletteIndex - 1]) & 0x00FFFFFF; // no alpha
 						}
-						v.emplace_back(voxelDescPacked(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y),
-							pendingAdjacency, pendingOcclusion, color));
+						v.emplace_back(voxelDescPacked(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), // *note -> swizzle of y and z here
+													   pendingAdjacency, color));
 					}
 				}
 			}

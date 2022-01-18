@@ -11,6 +11,7 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	flat vec4 extra;	
 	flat float ambient;
 #ifndef BASIC
+	flat float slice; // *blue-noise over time
 #if defined(HEIGHT) || defined(ROAD)
 	vec2 world_uv;
 #ifdef ROAD
@@ -24,10 +25,11 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 {
 	readonly vec4 uv;			// uv:  xyz always reserved for light volume uv relative coords
 	readonly vec4 N;
-	readonly vec4 V;	
+	readonly vec4 V;
 	readonly flat vec4 extra;	
 	readonly flat float ambient;
 #ifndef BASIC
+	readonly flat float slice; // *blue-noise over time
 #if defined(T2D) || defined(ROAD)
 	readonly vec2 world_uv;
 #ifdef ROAD
@@ -41,8 +43,8 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 
 #define i_extra_00 uv.w			// *                          -special case careful this is also reserved entire uv vector (uv.xyzw) pass thru to fragment shader
-#define i_extra_0 N.w			// *						  -occlusion
-#define i_extra_1 V.w			// *						  -emission
+#define i_extra_0 N.w			// *						  - free, not used
+#define i_extra_1 V.w			// *						  - emission
 #define f_extra_0 extra.x		// *						  - packed color
 #define f_extra_1 extra.y		// *						  - transparency
 #define f_extra_2 extra.z		// *                          - pass thru inverse weight maximum (transparency weighting max for this frame)
@@ -53,7 +55,6 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 // defaults //
 #define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
-#define _occlusion i_extra_0
 #define _emission i_extra_1
 #define _color f_extra_0
 #define _time f_extra_3
@@ -71,7 +72,6 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 #ifdef ROAD
 
-#undef _occlusion
 #undef _transparency
 #undef _color
 
