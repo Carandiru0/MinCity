@@ -7,25 +7,25 @@
 
 namespace Iso
 {
-	constexpr double       const EYE_DISTANCE				= (Globals::MAXZ_DEPTH - Globals::MINZ_DEPTH) * -0.5; // *do not change* // (see xmEyePt_Iso below)
+	static constexpr double       const EYE_DISTANCE				= (Globals::MAXZ_DEPTH - Globals::MINZ_DEPTH) * -0.5; // *do not change* // (see xmEyePt_Iso below)
 
 	// True Isometric (TOO LOW):								  
-	constexpr XMFLOAT3A   const TRUE_ISOMETRIC_ANGLES		= { 0.52359877559829887308f, 0.52359877559829887308f, 0.0f };   // in radians  x,y,z ( 30 degrees, 30 degrees, 0 degrees )
-	constexpr XMFLOAT3A   const TRUE_ISOMETRIC				= { EYE_DISTANCE * 0.86602540378443864676, EYE_DISTANCE * 0.5, EYE_DISTANCE * 0.5 };		// x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const TRUE_ISOMETRIC_ANGLES		= { 0.52359877559829887308f, 0.52359877559829887308f, 0.0f };   // in radians  x,y,z ( 30 degrees, 30 degrees, 0 degrees )
+	static constexpr XMFLOAT3A   const TRUE_ISOMETRIC				= { EYE_DISTANCE * 0.86602540378443864676, EYE_DISTANCE * 0.5, EYE_DISTANCE * 0.5 };		// x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 	
 
 	// 2:1 (Psuedo/Dimetric) Isometric (TOO HIGH):			  
-	constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC_ANGLES		= { XM_PIDIV4, XM_PIDIV4, 0.0f };  // in radians  x,y,z ( 45 degrees, 45 degrees, 0 degrees )
-	constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC			= { EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC_ANGLES		= { XM_PIDIV4, XM_PIDIV4, 0.0f };  // in radians  x,y,z ( 45 degrees, 45 degrees, 0 degrees )
+	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC			= { EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 	
 
 	// Balanced Isometric (JUST RIGHT):							
-	constexpr XMFLOAT3A   const BALANCED_ISOMETRIC_ANGLES	= { 0.58177641733144319231f, XM_PIDIV4, 0.0f };  // in radians   x,y,z ( 33.333 degrees, 45 degrees, 0 degrees )
-	constexpr XMFLOAT3A   const BALANCED_ISOMETRIC			= { EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.54950897807080603526, EYE_DISTANCE * 0.7071067811865475244 };  // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC_ANGLES	= { 0.58177641733144319231f, XM_PIDIV4, 0.0f };  // in radians   x,y,z ( 33.333 degrees, 45 degrees, 0 degrees )
+	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC			= { EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.54950897807080603526, EYE_DISTANCE * 0.7071067811865475244 };  // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= BALANCED_ISOMETRIC_ANGLES;
-	constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= BALANCED_ISOMETRIC;
+	static constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= BALANCED_ISOMETRIC_ANGLES;
+	static constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= BALANCED_ISOMETRIC;
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	read_only inline XMVECTORF32 const
@@ -47,20 +47,15 @@ namespace Iso
 																															// So it looks pretty fricking 3D to me, or maybe I have no depth perception in my eye sight! 
 																															// *or* provably for the special case of a strictly isometric voxel engine - parallel orthographic projection is the best solution!
 
-	constexpr float const																									
-		CAMERA_SCROLL_DISTANCE = 2.5f,
+	static constexpr fp_seconds const
+		CAMERA_SCROLL_DELAY = fp_seconds(milliseconds(333));
+	static constexpr float const
+		CAMERA_SCROLL_DISTANCE = 1.5f,
 		CAMERA_TRANSLATE_SPEED = SFM::GOLDEN_RATIO * 2.0f, // good speed minimum
 		CAMERA_DAMPING = 0.09f;
-	constexpr uint32_t const
+	static constexpr uint32_t const
 		CAMERA_DISTANCE_RESET_MILLISECONDS = 50,	// affects speed
 		CAMERA_VELOCITY_RESET_SECONDS = 4;			// stopping time
-
-	constexpr uint32_t const
-		OFFSCREEN_HEIGHT = (WORLD_GRID_SIZE),
-		OFFSCREEN_WIDTH = (OFFSCREEN_HEIGHT << 1);
-
-	constexpr float const MINIMAP_CAMERA_ZOOM = 360.0f;
-	constexpr float const MINIMAP_CAMERA_ASPECT = (((float)Iso::OFFSCREEN_WIDTH) / ((float)Iso::OFFSCREEN_HEIGHT));
 
 } // end ns
 

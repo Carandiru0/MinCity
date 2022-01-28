@@ -361,8 +361,8 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 	// allow reflections visible at same distance that was travelled from eye to bounce
 	interval_length = interval_remaining = min(dt * MAX_STEPS, interval_length - interval_remaining) * BOUNCE_INTERVAL;
 
+	dt = 2.0f * dt;	// reflection step is double, faster
 	p += dt * rd;	// first reflected move to next point
-	//dt = 2.0f * dt;	// reflection step is double, faster
 	
 	float opacity = 0.0f;
 	vec4 stored_reflection = voxel;
@@ -381,7 +381,7 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 										reflection_avg);
 				reflection_avg *= 0.5f; // averaging reflections if passing thru transparent voxels. (decreasing magnitude averaging)
 
-				if (opacity_sample >= 0.0f) { // looks better (transparency) with >= vs >
+				if (opacity_sample >= 0.0f || reflection_avg < 0.25f) { // looks better (transparency) with >= vs >
 					break;	// hit reflected *opaque surface*
 				}
 			}
@@ -455,7 +455,7 @@ void main() {
 	
 	// adjust start position by "bluenoise step"
 	const vec2 blue_noise = fetch_bluenoise(gl_FragCoord.xy);
-	const float jittered_interval = dt * blue_noise.y * 0.5f; // jittered offset should be equal to half a step.
+	const float jittered_interval = dt * blue_noise.y * 0.25f; // jittered offset should be equal to 1/4 a step (hides visual noise, still effective).
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset

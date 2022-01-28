@@ -298,7 +298,7 @@ private:
 
 	struct sequenceImages
 	{
-		static constexpr uint32_t const	STATIC_IMAGE_COUNT = 3;
+		static constexpr uint32_t const	STATIC_IMAGE_COUNT = 1;
 
 		ImagingSequence
 			* static_screen[STATIC_IMAGE_COUNT] = { nullptr };

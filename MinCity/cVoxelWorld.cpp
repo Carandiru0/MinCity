@@ -497,8 +497,18 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 			);
 
 			if (!vScroll.isZero()) {
-				translateCamera(vScroll);
-				_bMotionDelta = true; // override so that dragging continue
+				
+				_tBorderScroll -= delta();
+				_tBorderScroll = fp_seconds(SFM::max(0.0, _tBorderScroll.count()));
+
+				if (zero_time_duration == _tBorderScroll) {
+					translateCamera(vScroll);
+					_bMotionDelta = true; // override so that dragging continue
+				}
+			}
+			else {
+				_tBorderScroll += delta();
+				_tBorderScroll = fp_seconds(SFM::min(Iso::CAMERA_SCROLL_DELAY.count(), _tBorderScroll.count()));
 			}
 		}
 
@@ -775,6 +785,7 @@ void cVoxelWorld::setOcclusionInstances()
 
 			if (instance) {
 				instance->setFaded(true);
+				//instance->setTransparency(Volumetric::eVoxelTransparency::ALPHA_100);
 				hasOcclusion = Globals::LOADED;
 			}
 		}
@@ -786,6 +797,7 @@ void cVoxelWorld::setOcclusionInstances()
 
 			if (instance) {
 				instance->setFaded(true);
+				//instance->setTransparency(Volumetric::eVoxelTransparency::ALPHA_100);
 				hasOcclusion = Globals::LOADED;
 			}
 		}
@@ -855,8 +867,9 @@ void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 											break;
 										}
 									}
-									
+
 									if (excluded) {
+
 										// add to set of unique instance hashes
 										uint32_t const set = (uint32_t const)(Iso::STATIC_HASH != i);
 										_occlusion.fadedInstances[set].emplace(hash);
@@ -867,10 +880,21 @@ void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 					}
 				}
 
-				// adjust instances to faded
-				setOcclusionInstances();
+				_occlusion.tToOcclude -= delta();
+				_occlusion.tToOcclude = fp_seconds(SFM::max(0.0, _occlusion.tToOcclude.count()));
+
+				if (zero_time_duration == _occlusion.tToOcclude) {
+
+					// adjust instances to faded
+					setOcclusionInstances();
+
+				}
 			}
 		}
+	}
+	else {
+		_occlusion.tToOcclude += delta();
+		_occlusion.tToOcclude = fp_seconds(SFM::min(Volumetric::Konstants::OCCLUSION_DELAY.count(), _occlusion.tToOcclude.count()));
 	}
 }
 
@@ -1715,7 +1739,7 @@ namespace world
 			vector<uint32_t>::iterator iterCurrent;
 
 			do {
-				uint32_t const pending_direction = (uint32_t const)PsuedoRandomNumber32(0, enabledDirections.size() - 1);
+				uint32_t const pending_direction = (uint32_t const)PsuedoRandomNumber32(0, (int32_t)(enabledDirections.size()) - 1);
 
 				for (vector<uint32_t>::iterator iter = enabledDirections.begin(); iter != enabledDirections.end(); ++iter) {
 					if (pending_direction == *iter) {
@@ -2587,7 +2611,7 @@ namespace world
 		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, _sim(nullptr),
 		_vMouse{}, _lastOcclusionQueryValid(false), _onLoadedRequired(false),
 		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
-		_blackbodyImage(nullptr),
+		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
 		_activeExplosion(nullptr), _activeTornado(nullptr), _activeShockwave(nullptr), _activeRain(nullptr)
 #ifdef DEBUG_STORAGE_BUFFER
@@ -2595,6 +2619,7 @@ namespace world
 #endif
 	{
 		Volumetric::VolumetricLink = new Volumetric::voxLink{ *this, _OpacityMap, _Visibility };
+		_occlusion.tToOcclude = Volumetric::Konstants::OCCLUSION_DELAY;
 	}
 
 	//
@@ -4678,7 +4703,7 @@ namespace world
 
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getSize()));		  // should be size
-		constants.emplace_back(vku::SpecializationConstant(6,  1.0f / (float)Volumetric::voxelOpacity::getInvSize()));  // should be inverse size
+		constants.emplace_back(vku::SpecializationConstant(6,  (float)Volumetric::voxelOpacity::getInvSize()));  // should be inverse size
 
 		// light volume dimensions //																				// xzy
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth()));		   // should be width
@@ -4943,9 +4968,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)(input_extents.depth - 1)));// // number of frames - 1 (has to be from input texture extents
 	}
 	*/
-	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_STANDARD_POINT)
+	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder)
 	{
-		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearClamp);
+		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearBorder);
 	}
 	/*
 	[[deprecated]] void cVoxelWorld::UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT)

@@ -175,7 +175,7 @@ constinit inline bool						cMinCity::m_bPaused = false;		// state refers to a "l
 constinit inline bool						cMinCity::m_bFocused = false;		// start time of app is safetly swapped, so at no given point of time is it errornous
 constinit inline bool						cMinCity::m_bGradualStartingUp = true;	// start time of app will reset during very first call of Update()
 constinit inline size_t						cMinCity::m_hwCoreCount = 1;
-inline std::string							cMinCity::m_szCityName = "";
+inline std::string							cMinCity::m_szCityName = Globals::TITLE;
 constinit inline cCity*						cMinCity::City(nullptr);
 
 inline tbb::concurrent_queue<std::pair<uint32_t, void*>> cMinCity::m_events;

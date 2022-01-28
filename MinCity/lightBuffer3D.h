@@ -212,7 +212,7 @@ public:
 
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		uvec4_t uiIndex;
-		SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, XMVectorAdd(xmPosition, world::getFractionalOffset())))).xyzw(uiIndex);   // -applying fractional offset *not* to actual light emitter location, *only* the derived 3d texture index(see below) required for smoother lighting.
+		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax,XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);   // -applying fractional offset *not* to actual light emitter location, *only* the derived 3d texture index(see below) required for smoother lighting.
 																																											// safe to add here, not doubling adding fractional offset. cannot add to actual position stored in texture however, it's double-added. *just the index/3d texture coordinate location*
 
 		// slices ordered by Z 

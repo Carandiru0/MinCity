@@ -20,7 +20,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 // ##### DO NOT CHANGE ANY OF THESE VALUES - TWEAKED FOR PERFORMANCE AND GOOD VISUAL COMPROMISE
 
-static constexpr int32_t const RAIN_VOLUME_DENSITY = 26;  // percentage of volume that is visible
+static constexpr int32_t const RAIN_VOLUME_DENSITY = 15;  // percentage of volume that is visible
 static constexpr milliseconds const LIFETIME_ANIMATION = milliseconds(99999999999);
 
 static constexpr float const MAX_STREAK_LENGTH = 11.0f;
@@ -89,7 +89,7 @@ __vectorcall sRainInstance::sRainInstance(FXMVECTOR const WorldCoordOrigin, floa
 }
 
 // voxel_op_fnRain
-read_only inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getSize()), float(Volumetric::voxelOpacity::getSize()), 1.0f, 1.0f };
+constinit static inline XMVECTORF32 const _xmRainDimensions{ float(Volumetric::voxelOpacity::getSize()) * 0.5f, float(Volumetric::voxelOpacity::getSize()) * 0.5f, 1.0f, 1.0f };
 __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMVECTOR const vDisplacement, float const tLocal, Volumetric::voxelShaderDesc&& __restrict out) const
 {
     static constexpr float const Inv255 = 1.0f / 255.0f;

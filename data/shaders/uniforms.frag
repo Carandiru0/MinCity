@@ -399,14 +399,15 @@ void main() {
 	vec3 refract_color;  
 	const float weight = refraction_color(refract_color, colorMap, density);                                                    
          
-	vec3 color = mix(lit_color, refract_color * lit_color, density);
+	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency*density*density);
 
-	outColor = applyTransparency( color, In._transparency + density*density, weight );
+	outColor = applyTransparency( color, In._transparency + In._transparency*density*density, weight );
 
 	/*
 	const float accurate = InvVolumeDimensions * (128.0f);                                                              
-	const float scanline = aaStep( accurate, mod(In.uv.z * VolumeDimensions + mod(SCROLL_SPEED * In._time, VolumeDimensions), accurate * 1.5f * 1.5f)) * (N.z * 0.5f + 0.5f);
-	
+	float scanline = aaStep( accurate, triangle_wave(mod(In.uv.z * VolumeDimensions + mod(SCROLL_SPEED * In._time, VolumeDimensions), accurate * 1.5f * 1.5f))) * (N.z * 0.5f + 0.5f);
+	//scanline = triangle_wave(scanline);
+
 	vec3 color = mix(lit_color * (1.0f - density), refract_color + lit_color, fresnelTerm * 2.0f);      
 
 	color *= min(1.0f, scanline + 0.5f);

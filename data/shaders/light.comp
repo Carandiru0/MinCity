@@ -18,7 +18,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "transform.glsl"
 
 #define GROUP_SIZE_XY 8
-#define GROUP_SIZE_Z 4
+#define GROUP_SIZE_Z 8 // must match ComputeLightConstants.h
 
 layout (local_size_x = GROUP_SIZE_XY, local_size_y = GROUP_SIZE_XY, local_size_z = GROUP_SIZE_Z) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
 
@@ -88,12 +88,10 @@ vec4 sampleInputVolume( in const ivec3 Location )
 
 // ###################################################################################################################################
 #if !defined(MIP)
-const vec3 group_size = vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z);
-
 shared vec4 warp_lds[GROUP_SIZE_XY][GROUP_SIZE_XY][GROUP_SIZE_Z];
 
-#define localToGlobal(local) fma(gl_WorkGroupID.xyz, group_size, local)
-#define ilocalToGlobal(local) (ivec3(gl_WorkGroupID.xyz * group_size) + local)
+#define localToGlobal(local) fma(gl_WorkGroupID.xyz, vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z), local)
+#define ilocalToGlobal(local) (ivec3(gl_WorkGroupID.xyz * vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)) + local)
 
 vec4 populateLDS(in const ivec3 local) {
 
@@ -103,17 +101,19 @@ vec4 populateLDS(in const ivec3 local) {
 	// barrier moved to propogateBlocks
 	return( warp );
 }
-
+//vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
 vec4 group_load(in const ivec3 location) {
 
-	[[branch]] if (subgroupAll(all(greaterThanEqual(location, ivec3(0))) && all(lessThan(location, ivec3(group_size))))) {
+	const bool bZero = all(greaterThanEqual(location, ivec3(0)));
+	const bool bGroup = bZero && all(lessThan(location, ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)));
+
+	if (subgroupAll( bGroup ) || bGroup) { // fast subgroup & group paths
 
 		return( warp_lds[location.x][location.y][location.z] );
 	}
-	else {
-
-		return( sampleInputVolume(ilocalToGlobal(location)) );
-	}
+	// regular path - border texture addressing on texture sampler so out of bounds are handled with no light returned.
+	return( sampleInputVolume(ilocalToGlobal(location)) );
+	
 	/*
 	return(
 	subgroupAll(all(greaterThanEqual(location, ivec3(0))) && all(lessThan(location, ivec3(GROUP_SIZE)))) ?

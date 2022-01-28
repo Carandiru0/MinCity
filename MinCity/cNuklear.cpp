@@ -487,8 +487,6 @@ void cNuklear::UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk
 		image->handle.id = array_slot;
 		++array_slot;
 	}
-
-
 }
 
 
@@ -507,8 +505,6 @@ void cNuklear::LoadGUITextures()
 
 	// Load Image Sequences
 	_sequenceImages.static_screen[0] = ImagingLoadGIFSequence(GUI_DIR L"static.gif");
-	_sequenceImages.static_screen[1] = ImagingLoadGIFSequence(GUI_DIR L"static2.gif");
-	_sequenceImages.static_screen[2] = ImagingLoadGIFSequence(GUI_DIR L"static3.gif");
 
 	// Assign Images or Image Sequences to Textures
 

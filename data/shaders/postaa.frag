@@ -156,7 +156,7 @@ vec3 anamorphicFlare(in const vec2 uv)
 {
 	const float flare = textureLod(anamorphicMap[1], uv / vec2(128, 1), 0).r;
 
-	vec3 color = flare * vec3(0.005, 0.0, 6.0) * 8e-3;
+	vec3 color = flare * vec3(1.055, 0.0, 6.0) * 8e-3;
 
 	// Compress dynamic range.
     color.rgb *= 6.0;
@@ -329,7 +329,8 @@ void main() {
 		color = max(vec3(0), mix(color - noise_dither, color + noise_dither, luma)); // shade dithering by luminance (only clamping negative values)
 		
 		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
-		color += clamp(anamorphicFlare(In.uv) - noise_dither, 0.0f, 1.0f);
+		const vec3 flare = anamorphicFlare(In.uv);
+		color += color * clamp( flare + flare * noise_dither, 0.0f, 1.0f);
 	}
 	
 	outColor = vec4(color, 1.0f);

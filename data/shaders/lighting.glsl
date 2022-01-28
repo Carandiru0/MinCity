@@ -53,7 +53,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // do not change any code - this is a HARD problem to solve, infact a known problem in graphics is transparent over transparent rendering
 // there is no depth buffer, so which one gets rendered first
 //
-// this algorithm leverages a mask that is rendered prior defing a pixels density (additive framebuffer of "hits" for only transparent objects)
+// this algorithm leverages a mask that is rendered prior defining a pixels density (additive framebuffer of "hits" for only transparent objects)
 // the weight is normalized here by the calculated maximum of the entire visible framebuffer
 // this weight is carefully applied differently to color and alpha
 //

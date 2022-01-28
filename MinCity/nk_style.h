@@ -10,6 +10,7 @@ nk_set_style(struct nk_context *ctx, enum theme theme)
 	struct nk_color table[NK_COLOR_COUNT];
 	
     table[NK_COLOR_TEXT] = nk_la(227, 255);
+
     table[NK_COLOR_WINDOW] = nk_la(16, 150);
     table[NK_COLOR_HEADER] = nk_la(8, 150);
     table[NK_COLOR_BORDER] = nk_la(64, 150);

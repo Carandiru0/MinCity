@@ -46,6 +46,8 @@ namespace Volumetric
 		static constexpr uint32_t const CREATION_SEQUENCE_LENGTH((DESTRUCTION_SEQUENCE_LENGTH + (DESTRUCTION_SEQUENCE_LENGTH << 1)) << 1);			// ""				""	""					""
 		
 		static constexpr float const VOXEL_RAIN_SCALE = 0.5f;
+
+		static constexpr fp_seconds const OCCLUSION_DELAY = fp_seconds(milliseconds(500));
 	
 	} // end ns
 } // end ns

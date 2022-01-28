@@ -375,7 +375,7 @@ else // already filled with opaque block
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
-  const int ivoxel_height = int(floor(voxel_height)) + 1; // *bugfix: -1 yields correct height
+  const int ivoxel_height = int(floor(voxel_height)) + 1; // *bugfix: +1 yields correct height and the minimum.
 
   ivec3 iminivoxel;
 									

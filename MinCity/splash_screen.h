@@ -13,17 +13,20 @@ namespace {
 
 			HBITMAP hSplash;
 			void* image_bits;
-			
+
+			ImagingSequence* sequence;
 			Imaging splashi;
-			Imaging splash0;
-			Imaging splash1;
+			ImagingMemoryInstance const* splash0;
+			ImagingMemoryInstance const* splash1;
+			uint32_t frame;
+
 			void* hTimerThread;
 			std::atomic_flag hTimerThreadCancel;
 			tTime tStart;
 			bool ok;
 
-			static constexpr uint32_t const width{ 248 }, height{ 36 };
-			constinit static inline wchar_t const* const szSplash = L"minCity";
+			static constexpr uint32_t const width{ 511 }, height{ 511 };
+			constinit static inline wchar_t const* const szSplash = L"loading";
 
 		} splash_screen = {};
 
@@ -86,50 +89,38 @@ namespace {
 
 		static bool const LoadSplashScreen()
 		{
-			Imaging imageSplash0L = ImagingLoadRawL(TEXTURE_DIR "mincity_0.8bit", splash_screen.width, splash_screen.height);
-			Imaging imageSplash1L = ImagingLoadRawL(TEXTURE_DIR "mincity_1.8bit", splash_screen.width, splash_screen.height);
+			if (nullptr == splash_screen.sequence) { // only allow loading once //
 
-			if (imageSplash0L && imageSplash1L) {
+				splash_screen.sequence = ImagingLoadGIFSequence(GUI_DIR L"intro.gif");
 
-				Imaging imageSplash0(nullptr);
-				Imaging imageSplash1(nullptr);
-
-				imageSplash0 = ImagingNew(MODE_BGRX, splash_screen.width, splash_screen.height);
-				imageSplash1 = ImagingNew(MODE_BGRX, splash_screen.width, splash_screen.height);
-
-				if (imageSplash0 && imageSplash1) {
-
-					Parallel_Gray2BGRX(imageSplash0->image, imageSplash0L->image, splash_screen.width, splash_screen.height);
-					Parallel_Gray2BGRX(imageSplash1->image, imageSplash1L->image, splash_screen.width, splash_screen.height);
-
-					ImagingDelete(imageSplash0L); imageSplash0L = nullptr;
-					ImagingDelete(imageSplash1L); imageSplash1L = nullptr;
-
-					if (imageSplash0->xsize == imageSplash1->xsize
-						&& imageSplash0->ysize == imageSplash1->ysize)
-					{
-						splash_screen.splashi = ImagingNew(MODE_BGRX, splash_screen.width, splash_screen.height);
-
-						if (splash_screen.splashi) {
-							splash_screen.splash0 = imageSplash0; imageSplash0 = nullptr;
-							splash_screen.splash1 = imageSplash1; imageSplash1 = nullptr;
-
-							return(true);
-						}
-					}
-					else {
-
-						ImagingDelete(imageSplash0); imageSplash0 = nullptr;
-						ImagingDelete(imageSplash1); imageSplash1 = nullptr;
-					}
-				}
 			}
+
+			if (splash_screen.sequence) {
+				
+				splash_screen.splashi = ImagingNew(MODE_BGRX, splash_screen.sequence->xsize, splash_screen.sequence->ysize);
+
+				return(true);
+			}
+
 
 			return(false);
 		}
 
 		static ImagingMemoryInstance const* const CurrentSplashScreen(float const tInterp)
 		{
+			if (splash_screen.splashi) {
+				uint32_t frame(splash_screen.frame);
+
+				splash_screen.splash0 = (ImagingMemoryInstance const* const)&splash_screen.sequence->images[(frame) & (splash_screen.sequence->count - 1)];
+
+				splash_screen.splash1 = (ImagingMemoryInstance const* const)&splash_screen.sequence->images[(frame + 1) & (splash_screen.sequence->count - 1)];
+
+				if (++frame >= splash_screen.sequence->count) {
+					frame = 0;
+				}
+				splash_screen.frame = frame;
+			}
+
 			if (splash_screen.splash0 && splash_screen.splash1) {
 
 				ImagingLerp(splash_screen.splashi, splash_screen.splash0, splash_screen.splash1, tInterp);
@@ -185,14 +176,14 @@ namespace {
 
 			// use the source image's alpha channel for blending
 
-			BLENDFUNCTION blend = { 0 };
-			blend.BlendOp = AC_SRC_OVER;
-			blend.SourceConstantAlpha = 255;
-			blend.AlphaFormat = AC_SRC_ALPHA;
+			//BLENDFUNCTION blend = { 0 };
+			//blend.BlendOp = AC_SRC_OVER;
+			//blend.SourceConstantAlpha = 255;
+			//blend.AlphaFormat = AC_SRC_ALPHA;
 
 			// paint the window (in the right location) with the alpha-blended bitmap
 			BOOL const hr = UpdateLayeredWindow(hwndSplash, hdcScreen, &ptOrigin, &sizeSplash,
-				hdcMem, &ptZero, (COLORREF)0, &blend, ULW_ALPHA);
+				hdcMem, &ptZero, (COLORREF)0, nullptr, ULW_OPAQUE);
 
 			// delete temporary objects
 			SelectObject(hdcMem, hbmpOld);
@@ -226,14 +217,13 @@ namespace {
 				splash_screen.hSplash = nullptr;
 			}
 
+			// splash_screen.splashi is allocated, splash_screen.splash0 &splash_screen.splash1 are just references
 			if (splash_screen.splashi) {
 				ImagingDelete(splash_screen.splashi); splash_screen.splashi = nullptr;
 			}
-			if (splash_screen.splash0) {
-				ImagingDelete(splash_screen.splash0); splash_screen.splash0 = nullptr;
-			}
-			if (splash_screen.splash1) {
-				ImagingDelete(splash_screen.splash1); splash_screen.splash1 = nullptr;
+
+			if (splash_screen.sequence) {
+				ImagingDelete(splash_screen.sequence);
 			}
 
 			if (splash_screen.hWnd) {
@@ -300,6 +290,7 @@ namespace {
 
 			_endthread();
 			splash_screen.hTimerThread = nullptr;
+			Release();
 		}
 
 		__declspec(noinline) static void StartTimer()

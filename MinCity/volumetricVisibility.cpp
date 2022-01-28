@@ -10,49 +10,34 @@ namespace Volumetric
 	{
 		return(XMMatrixOrthographicLH(Width, Height, MinZ, MaxZ));
 	}
-	STATIC_INLINE XMMATRIX const XM_CALLCONV UpdateProjection(float const ZoomFactor, size_t const framecount)
+	STATIC_INLINE XMMATRIX const XM_CALLCONV UpdateProjection(float ZoomFactor, size_t const framecount)
 	{
 		static constexpr float const BASE_ZOOM_LEVEL = 17.79837387625f;	// do not change, calculated from Golden Ratio
 
-		static tTime tLast(critical_now());
-		static fp_seconds tLastDelta(delta());
-		static float LastZoomFactor(ZoomFactor);
-
-		point2D_t const framebufferSz(MinCity::getFramebufferSize());
-		XMVECTOR xmFrameBufferSz;
-
-		xmFrameBufferSz =  p2D_to_v2(framebufferSz);
-
-		// with blue noise jittered offset added to frame buffer width/height, calculate new aspect ratio (width/height)
-		float jitter = supernoise::blue.get1D(framecount);
-										// always negative			// always positive
-		jitter = ((framecount & 1) ? -SFM::abs(jitter - 0.5f) : SFM::abs(jitter - 0.5f));
-
-		// add signed jitter to width / height, will be subpixel jitter
-		xmFrameBufferSz = XMVectorAdd(xmFrameBufferSz, XMVectorDivide(_mm_set1_ps(jitter), xmFrameBufferSz));
+		/// *********************************************************************************** do not change, precise subpixel offset (verified) ****************************************************************************///
+		XMVECTOR const xmFrameBufferSz(p2D_to_v2(MinCity::getFramebufferSize()));
 
 		// aspect ratio
 		XMFLOAT2A vFrameBufferSz;
 		XMStoreFloat2A(&vFrameBufferSz, xmFrameBufferSz);
 		float const fAspect = vFrameBufferSz.x / vFrameBufferSz.y;
 
-		// lerp the zooming for extra smooth zoom
-		tTime const tNow(critical_now());
-		fp_seconds const tDelta(tNow - tLast);
+		// with blue noise jittered offset added to frame buffer width/height, calculate new aspect ratio (width/height)
+		float jitter = supernoise::blue.get1D(framecount);
+										// always negative			// always positive
+		jitter = ((framecount & 1) ? -SFM::abs(jitter - 0.5f) : SFM::abs(jitter - 0.5f)); // half-pixel offset maximum magnitude in either direction, total distance between two extremes is one pixel.
 
-		float const smoothzoom = (float)SFM::lerp((double)LastZoomFactor, (double)ZoomFactor, tDelta / (fp_seconds(delta()) + tLastDelta));
+		// simplify & pre-scale
+		ZoomFactor = ZoomFactor * BASE_ZOOM_LEVEL;
 
-		if (ZoomFactor != LastZoomFactor) {
+		XMVECTOR xmJitter = XMVectorDivide(XMVectorReplicate(jitter), xmFrameBufferSz); 
+		xmJitter = XMVectorScale(xmJitter, ZoomFactor); // simplify & pre-scale
 
-			if (0.0 != tDelta.count()) {
-				tLastDelta = tDelta;
-				LastZoomFactor = smoothzoom;
-			}
-		}
-		tLast = tNow;
+		XMFLOAT2A vJitterSz;
+		XMStoreFloat2A(&vJitterSz, xmJitter);
 
-		// return new projection matrix
-		return(getProjectionMatrix(fAspect * BASE_ZOOM_LEVEL * smoothzoom, BASE_ZOOM_LEVEL * smoothzoom,
+		// return new projection matrix - jitter applied - Temporal Antialiasing Post Process shader can use the subpixel jitter and produce a better neighbourhood clamping result. Effectively the subpixel component of the anti-aliasing.
+		return(getProjectionMatrix(SFM::__fma(fAspect, ZoomFactor, vJitterSz.x), ZoomFactor + vJitterSz.y,
 			                       Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
 	}
 

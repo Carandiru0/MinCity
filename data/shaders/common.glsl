@@ -108,9 +108,9 @@ float parabola( in const float x ) // optimized version for k = 2
     return( y*y );
 }
 // triangle wave
-float triangle_wave(in const float time) 
+float triangle_wave(in const float t) 
 {
-	return(abs(fract(time) * 2.0f - 1.0f));
+	return(abs(fract(t) * 2.0f - 1.0f));
 }
 
 // differential blending

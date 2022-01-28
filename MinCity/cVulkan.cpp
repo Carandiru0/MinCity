@@ -287,7 +287,7 @@ void cVulkan::CreateComputeResources()
 			vku::DescriptorSetLayoutMaker	dslm;
 
 			auto const samplers{ getSamplerArray
-				<eSamplerAddressing::CLAMP>(
+				<eSamplerAddressing::BORDER>(
 					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
 				)
 			};
@@ -1625,7 +1625,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 // Update the descriptor sets for the shader uniforms.
 	{ // ###### Compute
 		_dsu.beginDescriptorSet(_comData.light.sets[0]);
-		MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, SAMPLER_SET_STANDARD_POINT);
+		MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::BORDER>());
 
 		// update descriptor set (still called)
 		_dsu.update(_device);
@@ -2576,16 +2576,26 @@ void cVulkan::enableOffscreenCopy()
 static void setHdrMetadata(vk::HdrMetadataEXT& metadata)
 {
 	// Mastered on LG DisplayHDR 400 (Vesa certified 400nit maximum luminance) ST2084 BT.2020
+	// these numbers are ITU-R BT.2020 color primaries.
+	// https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2020-2-201510-I!!PDF-E.pdf
 	metadata.displayPrimaryRed.x = 0.708f;
 	metadata.displayPrimaryRed.y = 0.292f;
 	metadata.displayPrimaryGreen.x = 0.170f;
 	metadata.displayPrimaryGreen.y = 0.797f;
 	metadata.displayPrimaryBlue.x = 0.131f;
 	metadata.displayPrimaryBlue.y = 0.046f;
-	metadata.minLuminance = 0.0f;
-	metadata.maxLuminance = 400.0f; // This will cause tonemapping to happen on display end as long as it's greater than display's actual queried max luminance. The look will change and it will be display dependent!
+
+	// most vibrant dark to hi contrast ratio when metadata.maxFrameAverageLightLevel = metadata.maxContentLightLevel = metadata.maxLuminance (nits) from the original content creators own monitor. I got a weak 400 nit HDR monitor (it's bright enough, any friggen brighter and I would be concerned with my eyes and very low frequency red colors borderlining the infrared spectrum. thats laser beam wavelengths - is that possible?
+	metadata.minLuminance = 0.0f;   // --------- notes on HDR10 and standards research done - might forget them. https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2020-2-201510-I!!PDF-E.pdf (easy to follow document solved in post processing final HDR steps (conversion to extended color primary bt.2020 then using the steps as outlined in the standards document)).
+	metadata.maxLuminance = 400.0f; // This will cause tonemapping to happen on display end as long as it's greater than display's actual queried max luminance. The look will change and it will be display dependent! 
+									// --------- (adapts to varying brighness [nits] that exist in HDR Vesa Certified displays. range [100 .... 4000+] nits) -------- imagine the limit, 10000+ nits. how far back should you be. Then there
+									// --------- is the proprietary standard DolbyHDR which has a limit of 40,000 nits. In a dark room that thing is illuminating everything extremely powerful. Where do these screens actually exist?
+									// --------- So instead of paying $$$ for license an open standard exists HDR10, which is backed by Vesa - the original standards organization for the majority of monitors.
+									// --------- HDR10 is far more successful in terms of usage currently vs DolbyHDR being limited to select few actual instalations in the world. No consumer displays exist that use DolbyHDR, it's all HDR10.
 	metadata.maxContentLightLevel = 400.0f;
 	metadata.maxFrameAverageLightLevel = 400.0f; // max and average content light level data will be used to do tonemapping on display
+	metadata.whitePoint.x = 0.3127f;
+	metadata.whitePoint.y = 0.3290f;
 }
 
 void cVulkan::OnRestored(struct GLFWwindow* const glfwwindow)

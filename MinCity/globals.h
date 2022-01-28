@@ -168,7 +168,7 @@ namespace Globals
 #endif
 								 ZOOM_SPEED = 0.44f;
 
-	static constexpr double const MINZ_DEPTH = (0.001 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
+	static constexpr double const MINZ_DEPTH = (0.1 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
 	static constexpr double const MAXZ_DEPTH = (200.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 

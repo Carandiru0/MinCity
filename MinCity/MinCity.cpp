@@ -44,9 +44,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #include "RedirectIO.h"
 
-#define SPLASH_SCREEN_IMPLEMENTATION
-#include "splash_screen.h"
-
 // private global variables //
 namespace // private to this file (anonymous)
 {
@@ -327,8 +324,6 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	{
 		glfwSetWindowIconifyCallback(glfwwindow, window_iconify_callback);
 		glfwSetWindowFocusCallback(glfwwindow, window_focus_callback);
-
-		splash_screen::Release();
 
 		glfwShowWindow(glfwwindow);
 
@@ -698,12 +693,6 @@ void cMinCity::UpdateWorld()
 
 	//---------------------------------------------------------------------------------------------------------------------------------------//
 	tLast = tCriticalNow;
-
-	// bring down cpu & power usage when standing by //
-	[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
-		_mm_pause();
-		Sleep(((DWORD const)duration_cast<milliseconds>(delta()).count()) >> 1);
-	}
 }
 
 STATIC_INLINE_PURE bool const durations_to_seeds(int64_t& __restrict s0, int64_t& __restrict s1, fp_seconds const t0, fp_seconds const t1)
@@ -755,6 +744,12 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity) {
 		_mm_pause();
 		Sleep(async_long_task::beats::minimum);
+
+		// bring down cpu & power usage when standing by //
+		[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
+			_mm_pause();
+			Sleep(((DWORD const)duration_cast<milliseconds>(delta()).count()));
+		}
 		return;
 	}
 
@@ -775,7 +770,7 @@ void cMinCity::StageResources(uint32_t const resource_index)
 		fp_seconds const tApp(now() - start()); // app run time - not using critical_now() specifically to capture when the world has actually updated.
 		int64_t now_seed( last_seed );
 
-		if (durations_to_seeds(last_seed, now_seed, tAppLast, tApp)) {
+		[[likely]] if (durations_to_seeds(last_seed, now_seed, tAppLast, tApp)) {
 			SetSeed(now_seed); // reset to new seed
 			last_seed = now_seed; // save as last seed to be used
 			tAppLast = tApp; // update the last app time this whole comparison is about.
@@ -915,6 +910,7 @@ void cMinCity::OnFocusLost()
 void cMinCity::OnFocusRestored()
 {
 	m_bFocused = true;
+
 	if (eExclusivity::STANDBY == m_eExclusivity) {
 		m_eExclusivity = eExclusivity::DEFAULT;
 	}
@@ -1273,20 +1269,6 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	RedirectIOToFile(); // *** must be just before the splash screen
 #endif
 	
-	if (splash_screen::LoadSplashScreen()) {
-
-		ImagingMemoryInstance const* const imageCurrent = splash_screen::CurrentSplashScreen(0.0f);
-
-		if (imageCurrent) {
-
-			splash_screen::RegisterWindowClass(g_hInstance);
-			HWND const hWndSplash = splash_screen::CreateSplashWindow(g_hInstance);
-			splash_screen::SetSplashImage(hWndSplash, splash_screen::splash_screen.hSplash);
-			ShowWindow(hWndSplash, SW_SHOWNORMAL);
-			splash_screen::StartTimer();
-		}
-	}
-
 	// todo: for some odd reason, externals are missing in build if these singletons are defined * const
 	// so for now they are defined * no const
 	// -they are properly initialized even before this, in the code above (constinit initialization)
@@ -1298,8 +1280,6 @@ __declspec(noinline) void cMinCity::CriticalInit()
 __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 {
 	async_long_task::cancel_all();
-
-	splash_screen::Release();
 
 	// safe to bypass singleton pointers in CleanUp & CriticalCleanup *only* //
 

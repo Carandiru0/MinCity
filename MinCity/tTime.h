@@ -26,7 +26,7 @@ static constexpr float const _to_float(double const d) { return((float)(d)); }
 
 static_assert(std::chrono::treat_as_floating_point<fp_seconds::rep>::value, "Rep required to be double precision floating point");
 
-static constexpr size_t const FRAME_UPDATE_INTERVAL_NS = 36666666ULL; // in nanoseconds (maximizes precision)
+static constexpr size_t const FRAME_UPDATE_INTERVAL_NS = 16666666ULL; // in nanoseconds (maximizes precision) *do not modify*
 static constexpr nanoseconds const fixed_delta_duration = nanoseconds(FRAME_UPDATE_INTERVAL_NS);
 static constexpr nanoseconds const fixed_delta_x2_duration = nanoseconds(FRAME_UPDATE_INTERVAL_NS<<1ULL);
 

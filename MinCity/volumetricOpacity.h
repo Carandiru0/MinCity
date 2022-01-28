@@ -332,17 +332,17 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::MINI_VOX_SIZE*0.5f)); // should be minivoxsize * 0.5f (0.5f for only compute shader provides better smoother light propogation)
 		}
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const
+		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder) const
 		{
 			dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn[0]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			dsu.image(samplerLinearBorder, LightProbeMap.imageGPUIn[0]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 			dsu.beginImages(0U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn[1]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			dsu.image(samplerLinearBorder, LightProbeMap.imageGPUIn[1]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
@@ -352,9 +352,9 @@ namespace Volumetric
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 			dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
@@ -364,9 +364,9 @@ namespace Volumetric
 			dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
@@ -377,9 +377,9 @@ namespace Volumetric
 			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(8U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearClamp, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearBorder, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(9U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
@@ -520,7 +520,6 @@ namespace Volumetric
 	__inline void volumetricOpacity<Size>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input)
 	{
 		PushConstants.step = 0; 
-
 		PushConstants.index_output = !index_input;
 		PushConstants.index_input = index_input; // seed input alternates
 
