@@ -1,7 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_KHR_shader_subgroup_ballot : enable
+//#extension GL_KHR_shader_subgroup_ballot : enable
 #extension GL_KHR_shader_subgroup_vote : enable
+#extension GL_KHR_shader_subgroup_quad : enable
 #extension GL_EXT_control_flow_attributes : enable
 
 /* Copyright (C) 20xx Jason Tully - All Rights Reserved
@@ -18,7 +19,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "transform.glsl"
 
 #define GROUP_SIZE_XY 8
-#define GROUP_SIZE_Z 8 // must match ComputeLightConstants.h
+#define GROUP_SIZE_Z 4 // must match ComputeLightConstants.h
 
 layout (local_size_x = GROUP_SIZE_XY, local_size_y = GROUP_SIZE_XY, local_size_z = GROUP_SIZE_Z) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
 
@@ -74,15 +75,27 @@ bool isLit( in const float sampled_packed_color )
 
 #ifdef SEED
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-vec4 sampleInputVolume( in const ivec3 Location) // best jfa result with texelFetch
+vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
 {
-	return( texelFetch(seedMap[pc.index_input], Location, 0) );
+	vec4 samp = textureLod(seedMap[pc.index_input], (read_location) * InvVolumeDimensions, 0);
+	samp.xyz += normalize(current_location - samp.xyz) * fract((current_location - read_location)); // smooths changes when scrolling BIG TIME.
+
+	return( samp );
 }
 #else
-vec4 sampleInputVolume( in const ivec3 Location )
+vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
 {
 	// input image is dynamically set with push constant
-	return( texelFetch(pingpongTexture[pc.index_input], Location, 0) );	// best jfa result with texelFetch
+
+	// this collects the corners omitted from the moore neighbour, still allowing far less samples (13) vs the classical (27) neighbour-hood lookup.
+	// also very well smooths the result. samples++
+	vec4 s0 = textureLod(pingpongTexture[pc.index_input], (read_location) * InvVolumeDimensions, 0);
+
+	const vec3 f = fract(current_location - read_location);
+	s0.xyz += normalize(current_location - subgroupQuadSwapVertical(s0.xyz)) * f;
+	s0.xyz += normalize(current_location - subgroupQuadSwapHorizontal(s0.xyz)) * f;
+	
+	return( s0 );
 }
 #endif
 
@@ -91,28 +104,27 @@ vec4 sampleInputVolume( in const ivec3 Location )
 shared vec4 warp_lds[GROUP_SIZE_XY][GROUP_SIZE_XY][GROUP_SIZE_Z];
 
 #define localToGlobal(local) fma(gl_WorkGroupID.xyz, vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z), local)
-#define ilocalToGlobal(local) (ivec3(gl_WorkGroupID.xyz * vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)) + local)
 
-vec4 populateLDS(in const ivec3 local) {
+vec4 populateLDS(in const vec3 current_location, in const ivec3 local_location) {
 
-	const warp_local warp = sampleInputVolume(ilocalToGlobal(local));
-	warp_lds[local.x][local.y][local.z] = warp;
+	const warp_local warp = sampleInputVolume(current_location, localToGlobal(local_location));
+	warp_lds[local_location.x][local_location.y][local_location.z] = warp;
 
 	// barrier moved to propogateBlocks
 	return( warp );
 }
 //vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
-vec4 group_load(in const ivec3 location) {
+vec4 group_load( in const vec3 current_location, in const ivec3 local_location ) {
 
-	const bool bZero = all(greaterThanEqual(location, ivec3(0)));
-	const bool bGroup = bZero && all(lessThan(location, ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)));
+	const bool bZero = all(greaterThanEqual(local_location, ivec3(0)));
+	const bool bGroup = bZero && all(lessThan(local_location, ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)));
 
 	if (subgroupAll( bGroup ) || bGroup) { // fast subgroup & group paths
 
-		return( warp_lds[location.x][location.y][location.z] );
+		return( warp_lds[local_location.x][local_location.y][local_location.z] );
 	}
 	// regular path - border texture addressing on texture sampler so out of bounds are handled with no light returned.
-	return( sampleInputVolume(ilocalToGlobal(location)) );
+	return( sampleInputVolume(current_location, localToGlobal(local_location)) );
 	
 	/*
 	return(
@@ -126,7 +138,7 @@ vec4 group_load(in const ivec3 location) {
 
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
 
-	const warp_local read_warp = group_load(read_location);
+	const warp_local read_warp = group_load(current_location, read_location);
 
 	[[flatten]] if ( isLit(read_warp.packed_color) ) {	// new
 			
@@ -139,16 +151,33 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 		}
 	}
 }
-void propogateBlocks(inout warp_local warp)
+
+// moore neighbour hood (3D) (less samples and produces acceptable results)
+const ivec3 offsets[] = ivec3[]( ivec3(-1,  0,  -1 ),
+								 ivec3( 1,  0,  -1 ),
+								 ivec3( 0, -1,  -1 ),
+								 ivec3( 0,  1,  -1 ),
+								
+								 ivec3(-1,  0,   0 ),
+								 ivec3( 0,  0,   0 ),
+								 ivec3( 1,  0,   0 ),
+								 ivec3( 0, -1,   0 ),
+								 ivec3( 0,  1,   0 ),
+								 
+								 ivec3(-1,  0,   1 ),
+								 ivec3( 1,  0,   1 ),
+								 ivec3( 0, -1,   1 ),
+								 ivec3( 0,  1,   1 ) );
+
+void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 {
-	const vec3 current_location = localToGlobal(gl_LocalInvocationID.xyz) * InvVolumeDimensions * WorldDimensions;
 #ifndef SEED
 	const int current_step = pc.current_step;
 #endif
 	float current_distance = 99999999999.9f;
 	
 	barrier(); // required so that lds is coherent between the last writes and now reads
-
+	/*
 	ivec3 offset;
 	[[unroll]] for (offset.z = -1 ; offset.z <= 1 ; ++offset.z) {
 		[[unroll]] for (offset.y = -1 ; offset.y <= 1 ; ++offset.y) {
@@ -160,20 +189,37 @@ void propogateBlocks(inout warp_local warp)
 				propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offset * current_step);
 #endif
 	}}} // for;for;for
+	*/
+
+	for (uint i = 0 ; i < offsets.length() ; ++i) {
+
+#ifdef SEED
+		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offsets[i]);
+#else
+		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offsets[i] * current_step);
+#endif
+	}
 }
 
 void main() 
 {
-/* // this is allowable 128x128x64 divided by local size is ok, no remainder so bounds are respected inherently
 	{ // #### Required Bounds Check //
-		if ( any(greaterThanEqual(gl_GlobalInvocationID.xyz - VolumeDimensions, vec3(0))) )
+		if ( any(greaterThanEqual(localToGlobal(gl_LocalInvocationID.xyz) - VolumeDimensions, vec3(0))) )
 			return;
 	}
-*/
-	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
-	propogateBlocks(warp);
 
-	imageStore(pingpongImage[pc.index_output], ilocalToGlobal(ivec3(gl_LocalInvocationID.xyz)), warp);
+	const vec3 current_location = localToGlobal(gl_LocalInvocationID.xyz) * InvVolumeDimensions * WorldDimensions;
+
+#ifdef SEED
+   ivec3 location = ivec3(localToGlobal(gl_LocalInvocationID.xyz));
+   imageStore(pingpongImage[pc.index_output], location, sampleInputVolume(current_location, location));
+#else
+
+	warp_local warp = populateLDS(current_location, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
+	propogateBlocks(warp, current_location);
+
+	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
+#endif
 }
 
 #endif // not MIP
@@ -328,12 +374,10 @@ vec3 temporalBlendC( in const restrict sampler3D inputTemporalC, in const restri
 //const vec3 fix_direction = normalize(vec3(1,0,-1));
 void main() 
 {
-/* // this is allowable 64x64x128 divided by local size 8,8,8 is ok, no remainder so bounds are respected inherently
 	{ // #### Required Bounds Check //
 		if ( any(greaterThanEqual(gl_GlobalInvocationID.xyz - VolumeDimensions, vec3(0))) )
 			return;
 	}
-*/
 
 	const ivec3 iLocation = ivec3(gl_GlobalInvocationID.xyz);
 	const vec3 uvw = gl_GlobalInvocationID.xyz * InvVolumeDimensions;

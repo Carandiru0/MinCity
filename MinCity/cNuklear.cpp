@@ -62,11 +62,10 @@ typedef struct alignas(16) sMouseState
 } MouseState;
 
 NK_API const nk_rune*
-nk_font_mincity_glyph_ranges(void)
+nk_font_vxlmono_glyph_ranges(void)
 {
 	NK_STORAGE const nk_rune ranges[] = {
 		0x0020, 0x007F,
-		0x00A0, 0x00A9,
 		0
 	};
 	return ranges;
@@ -421,19 +420,15 @@ void cNuklear::Initialize(GLFWwindow* const& __restrict win)
 	nk_font_stash_begin(&_atlas);
 	// add fonts here
 	struct nk_font_config config = { nk_font_config(NK_FONT_HEIGHT) };
-	config.range = nk_font_mincity_glyph_ranges();
+	config.range = nk_font_vxlmono_glyph_ranges();
 	config.oversample_h = 4;
 	config.oversample_v = 4;
 	//config.pixel_snap = true;
 
 	// SDF Texture for fonts is 256x256, which has enough resolution for 4 fonts
-	_fonts[eNK_FONTS::DEFAULT]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"mincity_mono.ttf", NK_FONT_HEIGHT, &config);
+	_fonts[eNK_FONTS::DEFAULT]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"vxlmono.ttf", NK_FONT_HEIGHT, &config);
 	
-	_fonts[eNK_FONTS::SMALL]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"mincity_mono.ttf", NK_FONT_HEIGHT * 0.8f, &config);
-	
-	_fonts[eNK_FONTS::ENCRYPT]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"axiss_mono.ttf", NK_FONT_HEIGHT * 0.85f, &config); //!do not change ! - size set so aligned with DEFAULT
-
-	_fonts[eNK_FONTS::ENCRYPT_SMALL] = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"axiss_mono.ttf", NK_FONT_HEIGHT * 0.675f, &config); //!do not change ! - size set so aligned with SMALL
+	_fonts[eNK_FONTS::SMALL]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"vxlmono.ttf", NK_FONT_HEIGHT * 0.8f, &config);
 	
 	_atlas->default_font = _fonts[eNK_FONTS::DEFAULT];
 
@@ -1354,6 +1349,7 @@ void  cNuklear::UpdateGUI()
 		// this locally resets the "feedback/hint" text when there is not context set below only // done after below //
 		bool bResetHint(eWindowType::QUIT == _uiWindowEnabled); // only set to true so that changes to the hint persist into the save & load window when selected
 
+		/* no longere used 
 		if ( nk_canvas_begin(_ctx, "offscreen_overlay", _offscreen_canvas, nk_recti(0, 0, _frameBufferSize.x, _frameBufferSize.y),
 			NK_WINDOW_BACKGROUND | NK_WINDOW_NO_INPUT, nk_rgba(0, 0, 0, 255)) ) {
 
@@ -1361,6 +1357,7 @@ void  cNuklear::UpdateGUI()
 
 		}
 		nk_canvas_end(_ctx, _offscreen_canvas);
+		*/
 
 		// main bg window "paused" window
 		constexpr eWindowName const bgwindowName(eWindowName::WINDOW_PAUSED);
@@ -1528,6 +1525,8 @@ void  cNuklear::UpdateGUI()
 		}
 		else if (eWindowType::SAVE == _uiWindowEnabled) {
 
+			MinCity::Vulkan->enableOffscreenRendering(true);  // enable rendering of offscreen rt for gui effect usage
+
 			// virtually-nested window //
 			constexpr eWindowName const subwindowName(eWindowName::WINDOW_SAVE);
 
@@ -1658,7 +1657,7 @@ void  cNuklear::UpdateGUI()
 				std::string const szCityName( szEdit );
 				size_t const checkedLength( SFM::min((int32_t)szCityName.length(), szLength) );
 
-				nk_text_animated(_ctx, s, 0.3f, _fonts[eNK_FONTS::SMALL], _fonts[eNK_FONTS::ENCRYPT_SMALL], _saveWindow.thumbnail_text_state,
+				nk_text_animated(_ctx, s, 0.3f, _fonts[eNK_FONTS::SMALL], _saveWindow.thumbnail_text_state,
 					szCityName.substr(0, checkedLength), 
 					fmt::format(FMT_STRING("population:  {:n}"), MinCity::City->getPopulation()), 
 					fmt::format(FMT_STRING("cash:  {:n}"), MinCity::City->getCash()));
@@ -1846,7 +1845,7 @@ void  cNuklear::UpdateGUI()
 			// special animated text over thumbnail //
 			if (!szSelectedCityName.empty()) {
 
-				nk_text_animated(_ctx, s, 0.3f, _fonts[eNK_FONTS::SMALL], _fonts[eNK_FONTS::ENCRYPT_SMALL], _loadWindow.thumbnail_text_state,
+				nk_text_animated(_ctx, s, 0.3f, _fonts[eNK_FONTS::SMALL], _loadWindow.thumbnail_text_state,
 					szSelectedCityName, 
 					fmt::format(FMT_STRING("population:  {:n}"), infoSelectedCity.population), 
 					fmt::format(FMT_STRING("cash:  {:n}"), infoSelectedCity.cash));

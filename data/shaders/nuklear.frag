@@ -18,7 +18,7 @@ layout (push_constant) restrict readonly uniform PushConstant {
 layout(binding = 1) uniform sampler2DArray sdfTexture[array_size];	// RG8 texture containing shade, distance
 
 layout(location = 0) in vec2 fragUv;
-layout(location = 1) in vec2 fragGrey;
+layout(location = 1) in vec4 fragColor;
 
 layout(location = 0) out vec4 outColor;
 
@@ -32,14 +32,12 @@ layout(location = 0) out vec4 outColor;
 #define RGBA_IMAGE 1
 #define ARRAY_IMAGE 2
 
-vec2 textureRGBA(in const vec3 uvw) // returns greyscale + alpha
+vec4 textureRGBA(in const vec3 uvw)
 {
-	const vec4 color = textureLod(sdfTexture[pc.array_index], uvw, 0);
-
-	return( vec2(dot(color.rgb, LUMA), color.a) );
+	return( textureLod(sdfTexture[pc.array_index], uvw, 0) );
 }
 
-vec2 textureRGBA(in const vec2 uv)
+vec4 textureRGBA(in const vec2 uv)
 {
 	vec3 uvw;
 	uvw.xy = uv;
@@ -48,8 +46,8 @@ vec2 textureRGBA(in const vec2 uv)
 	uvw.z = max(0.0f, float(int(pc.type) - ARRAY_IMAGE));
 
 	// *first
-	vec2 last = textureRGBA(uvw);
-	last.shade = last.shade * last.alpha;
+	vec4 last = textureRGBA(uvw);
+	last.rgb = last.rgb * last.a;
 
 	return(last);
 }
@@ -60,7 +58,7 @@ vec2 textureSDF(in const vec3 uvw) // returns greyscale + distance
 	return( textureLod(sdfTexture[pc.array_index], uvw, 0).shadedist );
 }
 
-vec2 textureSDF(in const vec2 uv)
+vec4 textureSDF(in const vec2 uv)
 {
 	vec3 uvw;
 	uvw.xy = uv;
@@ -86,28 +84,27 @@ vec2 textureSDF(in const vec2 uv)
 	
 	last.alpha = smoothstep(-half_distance_dt, half_distance_dt, last.dist - 0.5f ); // conversion of signed distance to alpha
 
-	return(last);
+	return(last.xxxy);
 }
 
 void main() {    
 	
-	vec2 grey; // all gui pixels reduce to greyscale and alpha regardless of input texture by design
-				 // post processing is used to colorize the gui pixels.
+	vec4 color; 
 	
 	[[flatten]] if(subgroupAll(SDF_IMAGE == pc.type)) {	// this is evaluated as a scalar subgroup operation, conditional on const readonly push constant
 											// so it has minimal implications on performance
-		grey = textureSDF(fragUv);
+		color = textureSDF(fragUv);
 	}
 	else /*RGBA_IMAGE or ARRAY_IMAGE*/ {
 		
-		grey = textureRGBA(fragUv);
+		color = textureRGBA(fragUv);
 	}
 
-	// greyscale
-	grey.shade = 2.0f * grey.alpha * fragGrey.shade * grey.shade;
+	// color
+	color.rgb = 2.0f * color.a * fragColor.rgb * color.rgb;
 
 	// alpha
-	grey.alpha = grey.alpha * fragGrey.alpha * (1.0f - grey.alpha);
+	color.a = color.a * fragColor.a * (1.0f - color.a);
 	
-	outColor = grey.xyxy;  // grey-alpha-grey-alpha = r-g-b-s
+	outColor = color;
 }

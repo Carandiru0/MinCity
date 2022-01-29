@@ -14,26 +14,19 @@ layout(location = 0) in vec4 position_uv;
 layout(location = 1) in uvec4 color;
 
 layout(location = 0) out vec2 fragUv;
-layout(location = 1) out vec2 fragGrey;
+layout(location = 1) out vec4 fragColor;
 
 const float inv255 = 1.0f/255.0f;
-
-#define shade r
-#define alpha g
-#define shadealpha rg
 
 void main() {
     gl_Position = ubo.projection * vec4(position_uv.xy, 0.0f, 1.0f);
 
 	fragUv = position_uv.zw;
 
-	// normalize color input and convert to greyscale + alpha
-	vec4 color_normalized = vec4(color) * inv255;
-	vec2 grey = vec2(dot(color_normalized.rgb, LUMA), color_normalized.a);
+	// pre-multiply alpha, (alpha) passes thru
+	vec4 color_norm = vec4(color) * inv255;
+	color_norm.rgb = color_norm.rgb * color_norm.a;
 
-	// pre-multiply alpha, shade.g (alpha) passes thru
-	grey.shade = grey.shade * grey.alpha;
-
-	fragGrey = grey;
+	fragColor = color_norm;
 }
 

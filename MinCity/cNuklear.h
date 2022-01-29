@@ -13,10 +13,7 @@
 BETTER_ENUM(eNK_FONTS, uint32_t const,
 
 	DEFAULT = 0,		// minimum larger size
-	SMALL,				// minimum smaller size
-	//BOLD				// visitor larger size
-	ENCRYPT,			// axiss smaller size
-	ENCRYPT_SMALL		// axiss smaller size
+	SMALL				// minimum smaller size
 );
 
 BETTER_ENUM(eWindowName, uint32_t const,
@@ -68,7 +65,7 @@ struct GLFWwindow; // forward decl //
 
 class no_vtable cNuklear : no_copy
 {
-	static constexpr float const NK_FONT_HEIGHT = 14.0f;
+	static constexpr float const NK_FONT_HEIGHT = 32.0f;
 	static constexpr size_t const
 		NK_MAX_VERTEX_COUNT = (Globals::NK_MAX_VERTEX_BUFFER_SZ / sizeof(VertexDecl::nk_vertex)),
 		NK_MAX_INDEX_COUNT = (Globals::NK_MAX_INDEX_BUFFER_SZ / sizeof(uint16_t));

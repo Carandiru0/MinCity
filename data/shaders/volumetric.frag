@@ -361,7 +361,7 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 	// allow reflections visible at same distance that was travelled from eye to bounce
 	interval_length = interval_remaining = min(dt * MAX_STEPS, interval_length - interval_remaining) * BOUNCE_INTERVAL;
 
-	dt = 2.0f * dt;	// reflection step is double, faster
+	//dt = 2.0f * dt;	// reflection step is double, faster
 	p += dt * rd;	// first reflected move to next point
 	
 	float opacity = 0.0f;
@@ -381,7 +381,7 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 										reflection_avg);
 				reflection_avg *= 0.5f; // averaging reflections if passing thru transparent voxels. (decreasing magnitude averaging)
 
-				if (opacity_sample >= 0.0f || reflection_avg < 0.25f) { // looks better (transparency) with >= vs >
+				if (opacity_sample >= 0.0f /*|| reflection_avg < 0.25f*/) { // looks better (transparency) with >= vs >
 					break;	// hit reflected *opaque surface*
 				}
 			}
@@ -471,7 +471,7 @@ void main() {
 	rd.z = -rd.z;		// ""		""			""		  ""
 
 	// random distribution on a hemisphere pointing upwards
-	vec4 random_hemi_up = vec4(normalize(vec3(blue_noise.xy * 2.0f - 1.0f,-1)), interval_remaining/interval_length); // .w is the camera/eye height
+	vec4 random_hemi_up = vec4(normalize(vec3(blue_noise.xy * 2.0f - 1.0f,-1.0f)), interval_remaining/interval_length); // .w is the camera/eye height
 																// optimization - not using rd VGPR, using In.eyeDir SGPR - less register pressure - no discernable difference *do not change*
 
 	vec4 voxel = vec4(vec3(0.0f),1.0f);		// accumulated light color w/scattering, // transmittance

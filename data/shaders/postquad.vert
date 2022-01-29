@@ -8,14 +8,13 @@
 writeonly layout(location = 0) out streamOut
 {
 	vec2		uv;
-#if defined (SMAA_PASS_2) || defined(RESOLVE)
+#if defined (SMAA_PASS_2) || defined(RESOLVE) || defined(OVERLAY)
 	flat float	slice;
 #endif
 
 #ifdef OVERLAY
 	flat float time_delta;
 	flat float time;
-	flat uint odd_frame;
 #endif
 } Out;
 #define texcoord uv // alias
@@ -26,13 +25,12 @@ void main()
 	gl_Position = vec4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
 	Out.uv = uv;
 
-#if defined (SMAA_PASS_2) || defined(RESOLVE)	// final neighbourhood blending subpass or volumetric resolve
+#if defined (SMAA_PASS_2) || defined(RESOLVE) || defined(OVERLAY)	// final neighbourhood blending subpass or volumetric resolve
 	Out.slice = float(u._uframe & 63U); // +blue noise over time
 #endif
 
 #ifdef OVERLAY
 	Out.time_delta = time_delta();
 	Out.time = time();
-	Out.odd_frame = u._uframe & 1U;
 #endif
 }

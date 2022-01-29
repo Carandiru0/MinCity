@@ -154,7 +154,7 @@ float getOcclusion(in vec3 uvw)
 	
 	const float occlusion = 1.0f - (wa.x + wa.y + wa.z + wa.w + wb.x + wb.y + wb.z + wb.w) / 8.0f;
 
-	return(occlusion*occlusion);
+	return(occlusion*occlusion*occlusion);
 }
 
 float fetch_bluenoise(in const vec2 pixel)
@@ -356,7 +356,7 @@ void main() {
 
 }
 #else // voxels, w/lighting 
-              
+        
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space  
@@ -399,7 +399,7 @@ void main() {
 	vec3 refract_color;  
 	const float weight = refraction_color(refract_color, colorMap, density);                                                    
          
-	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency*density*density);
+	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency);
 
 	outColor = applyTransparency( color, In._transparency + In._transparency*density*density, weight );
 

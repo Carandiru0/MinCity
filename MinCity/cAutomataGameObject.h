@@ -49,17 +49,16 @@ namespace world
 		void setRule(uint32_t const born, uint32_t const die) { _born = born; _die = die; }
 
 	private:
-		STATIC_INLINE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex);
-		void autoState(Automata const&& in, VecAutomata::reference& __restrict out, VecAutomata::reference& __restrict empty);
-		void autoState(Automata const& in, VecAutomata::reference& __restrict out);
+		__inline uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex) const;
 
 	private:
 		static inline constinit alignas(CACHE_LINE_BYTES) volume* __restrict _bits{ nullptr };	// global scope to all cAutomataGameObject instances.
 	
-		uvec4_t* _worldIndex{ nullptr };
+		Volumetric::voxB::voxelState* __restrict _state{ nullptr };
+
 		fp_seconds _accumulator;
 		uint32_t _born, _die;
-		bool	 _firstUpdate, _changed;
+		bool	 _firstUpdate;
 
 	public:
 		cAutomataGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_, Volumetric::voxelModel_Dynamic* const& model_);
@@ -69,7 +68,7 @@ namespace world
 	};
 
 
-	__inline uint32_t const __vectorcall cAutomataGameObject::encode_adjacency(uvec4_v const xmIndex)
+	__inline uint32_t const __vectorcall cAutomataGameObject::encode_adjacency(uvec4_v const xmIndex) const
 	{
 		ivec4_t iIndex;
 		ivec4_v(xmIndex).xyzw(iIndex);
@@ -100,6 +99,7 @@ namespace world
 		}
 		return(adjacent);
 	}
+
 
 	STATIC_INLINE_PURE void swap(cAutomataGameObject& __restrict left, cAutomataGameObject& __restrict right) noexcept
 	{

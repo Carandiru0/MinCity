@@ -363,14 +363,14 @@ void cMinCity::Pause(bool const bStateIsPaused)
 			m_bPaused = true;
 			FMT_LOG(GAME_LOG, "Paused");
 		}
-		Vulkan->enableOffscreenRendering(true);  // enable rendering of offscreen rt for gui effect usage
+
 	}
 	else {
 		if (m_bPaused) { // block if not paused, don't want to change start or last timestamps
 			m_bPaused = false;
 			FMT_LOG(GAME_LOG, "Un-Paused");
 		}
-		Vulkan->enableOffscreenRendering(false);  // disable / reset rendering of offscreen rt
+		Vulkan->enableOffscreenRendering(false);  // disable / reset rendering of offscreen rt - always shutoff
 	}
 }
 

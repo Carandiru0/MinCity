@@ -527,7 +527,7 @@ nk_row_text_animated(struct nk_context* const __restrict ctx, nk_text_animated_s
 template<typename ...T>  // parameter pack by T
 NK_API void
 nk_text_animated(struct nk_context* const __restrict ctx, struct nk_rect const& __restrict area,  
-	float const fWidth, struct nk_font const* const font_first, struct nk_font const* const font_second, 
+	float const fWidth, struct nk_font const* const font_first, 
 	nk_text_animated_state& __restrict state,
 	T&&... rows)
 {
@@ -568,35 +568,6 @@ nk_text_animated(struct nk_context* const __restrict ctx, struct nk_rect const& 
 
 			}, std::forward<T&&>(rows)...);
 			
-
-			nk_group_end(ctx);
-
-			if (fWidth < 1.0f) {
-				nk_seperator(ctx, 1.0f - fWidth); // remainder column
-			}
-
-			nk_layout_row_end(ctx);
-			nk_style_pop_font(ctx);
-		}
-		nk_end(ctx);
-	}
-
-	{ // overlay psuedo window
-
-		if (nk_begin(ctx, "overlay_text", area, NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND | NK_WINDOW_NO_INPUT))
-		{
-			nk_style_push_font(ctx, &font_second->handle);
-			nk_layout_row_begin(ctx, NK_DYNAMIC, area.h, 2);
-
-			nk_layout_row_push(ctx, fWidth);
-			nk_group_begin(ctx, "overlay_text_grp", 0);
-
-			// iterate variadic arguments (parameter pack) for n rows of text
-			over_all<T...>::for_each([&](auto && row) {
-
-				nk_row_text_animated<false>(ctx, state, row);
-
-			}, std::forward<T&&>(rows)...);
 
 			nk_group_end(ctx);
 

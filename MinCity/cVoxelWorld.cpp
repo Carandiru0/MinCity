@@ -3249,7 +3249,7 @@ namespace world
 			//cAutomataGameObject* pAutoGameObj(nullptr);
 
 			//pAutoGameObj = placeProceduralInstanceAt<cAutomataGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
-			//	Volumetric::eVoxelModels_Indices::HOLOGRAM_GIRL);
+			//	Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
 			//pAutoGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
 			//pAutoGameObj->setRule(3, 4);
 
@@ -3269,7 +3269,7 @@ namespace world
 			*/
 				pTstGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(25, 25)),
 							Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
-				pTstGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_75);
+				pTstGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
 			/*	}
 			}*/
 		}
@@ -3441,10 +3441,12 @@ namespace world
 
 		// shared buffer and other buffers
 		{
+			using buf = vk::BufferUsageFlagBits;
+
 			point2D_t const frameBufferSize(MinCity::getFramebufferSize());
 			size_t const buffer_size(frameBufferSize.x * frameBufferSize.y * sizeof(uint8_t));
 
-			_buffers.reset_subgroup_layer_count_max.createAsGPUBuffer(device, commandPool, queue, buffer_size); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
+			_buffers.reset_subgroup_layer_count_max.createAsGPUBuffer(device, commandPool, queue, buffer_size, buf::eTransferSrc); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 				_buffers.subgroup_layer_count_max[resource_index] = vku::StorageBuffer(buffer_size, false, vk::BufferUsageFlagBits::eTransferDst);
@@ -3452,7 +3454,7 @@ namespace world
 			}
 
 
-			_buffers.reset_shared_buffer.createAsGPUBuffer(device, commandPool, queue, sizeof(BufferDecl::VoxelSharedBuffer)); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
+			_buffers.reset_shared_buffer.createAsGPUBuffer(device, commandPool, queue, sizeof(BufferDecl::VoxelSharedBuffer), buf::eTransferSrc); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 				_buffers.shared_buffer[resource_index] = vku::StorageBuffer(sizeof(BufferDecl::VoxelSharedBuffer), false, vk::BufferUsageFlagBits::eTransferDst);

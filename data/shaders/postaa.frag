@@ -16,14 +16,13 @@ layout(location = 0) out vec4 outColor;
 layout(location = 0) in streamIn
 {
 	readonly vec2		uv;
-#if defined (SMAA_PASS_2)
+#if defined (SMAA_PASS_2) || defined(OVERLAY)
 	readonly flat float	slice;
 #endif
 
 #ifdef OVERLAY
 	readonly flat float time_delta;
 	readonly flat float time;
-	readonly flat uint odd_frame;
 #endif
 } In;
 #define texcoord uv // alias
@@ -45,8 +44,8 @@ layout (binding = 10, r8) writeonly restrict uniform image2D outAnamorphic[2];
 
 layout (binding = 11) uniform sampler3D lutMap;
 
-layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI0;
-layout (input_attachment_index = 1, set = 0, binding = 13) uniform subpassInput inputGUI1;
+layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI;
+
 
 #if defined(TMP_PASS)
 // Shadertoy - https://www.shadertoy.com/view/lt3SWj
@@ -346,33 +345,41 @@ void main() {
 #define shadealpha rg
 
 	// finally blend in GUI
-	// current frame = In.odd_frame
-	// prev frame = 1u - In.odd_frame
-	vec2 gui, gui_prev;
-
-	{ // cannot dynamically index input attachment array, so workaround the limitation
-		const vec2 gui_array[2] = vec2[2](subpassLoad(inputGUI0).rg, subpassLoad(inputGUI1).rg);	// only need input of shade and alpha from input (.rg)
-
-		gui      = gui_array[In.odd_frame];
-		gui_prev = gui_array[1U - In.odd_frame];
-	}
-
+	vec4 gui = subpassLoad(inputGUI);
 	
+	// this starts with a fine interlace on purposes to leverage the blending with diagonal neighbour pixels (subgroupQuadSwapDiagonal)
+	// then the interlace is doubled below for special effect
+	//float interlace = aaStep( SCANLINE_INTERLEAVE * 0.5f, mod(In.uv.y * ScreenResDimensions.y, SCANLINE_INTERLEAVE - (InvScreenResDimensions.y) * 0.5f) );
+	const vec2 noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).rg;// * BLUE_NOISE_DITHER_SCALAR;
+	const vec2 scanline_xy = aaStep( vec2(SCANLINE_INTERLEAVE * 0.05f), mod(In.uv.xy * ScreenResDimensions.xy + mod(noise_dither.xy + In.time * vec2(4.0f, 0.5f), ScreenResDimensions.xy), vec2(SCANLINE_INTERLEAVE * GOLDEN_RATIO * GOLDEN_RATIO * GOLDEN_RATIO)));
+
+	// subpixel grille
+	vec2 subpixel;
+	subpixel.x = gui.r + subgroupQuadSwapHorizontal(gui.r);
+	subpixel.y = gui.b + subgroupQuadSwapVertical(gui.b);
+	subpixel *= scanline_xy.x+scanline_xy.y; // this is the effect, gui looks bright and steps out from scene.
+
+	const vec2 grille = aaStep( vec2(SCANLINE_INTERLEAVE * 0.75f), mod(In.uv.xy * ScreenResDimensions.xy, SCANLINE_INTERLEAVE * 1.5f - (InvScreenResDimensions.xy) * 0.5f) );
+	
+	gui.rgb = mix(gui.rgb * grille.x, gui.rgb, abs(gui.r - subpixel.x));
+	gui.rgb = mix(gui.rgb * grille.y, gui.rgb, abs(gui.b - subpixel.y));
+
+	outColor = gui;
+
+	/*
 	// this starts with a fine interlace on purposes to leverage the blending with diagonal neighbour pixels (subgroupQuadSwapDiagonal)
 	// then the interlace is doubled below for special effect
 	float interlace = aaStep( SCANLINE_INTERLEAVE * 0.5f, mod(In.uv.y * ScreenResDimensions.y, SCANLINE_INTERLEAVE - (InvScreenResDimensions.y) * 0.5f) );
 
-	vec2 grey = gui;
-
 	// save shade (luminance)
-	float luminance = grey.shade;	
-    grey.shade = grey.shade * interlace;
-	grey.alpha *= 0.5f; // alpha is halved for better gradient
+	float luminance = gui.shade;	
+    gui.shade = gui.shade * interlace;
+	gui.alpha *= 0.5f; // alpha is halved for better gradient
    
-    grey.shade += subgroupQuadSwapDiagonal(grey.shade);  // this trick here blends the interlaced color
-	grey.shade = grey.shade * (1.0f - (luminance / grey.shade));
+    gui.shade += subgroupQuadSwapDiagonal(gui.shade);  // this trick here blends the interlaced color
+	gui.shade = gui.shade * (1.0f - (luminance / gui.shade));
     
-    const float diff = abs(grey.shade - luminance) * FILL;
+    const float diff = abs(gui.shade - luminance) * FILL;
     
     const float highlight = aaStep(0.01f + luminance, diff);
 
@@ -382,8 +389,8 @@ void main() {
 	
 	// *** color is added to shade beginning here :
 	// magic cyberpunk gui animation																																	 // grey.shade aka luminance
-	vec3 gui_color = mix(gui_green * gui.shade, 1.5f * gui_bleed * gui.shade, highlight) + gui_green * gui.shade * /*random.r **/ pow(fract(In.uv.x - /*random.g -*/ In.time * grey.shade), 3.0f) * 3.0f;
-	
+	vec3 gui_color = mix(gui_green * gui.shade, 1.5f * gui_bleed * gui.shade, highlight) + gui_green * gui.shade * /*random.r **/ //pow(fract(In.uv.x - /*random.g -*/ In.time * gui.shade), 3.0f) * 3.0f;
+	/*
 	// subpixel grille
 	vec2 subpixel;
 	subpixel.x = gui_color.r + subgroupQuadSwapHorizontal(gui_color).r;
@@ -395,12 +402,9 @@ void main() {
 	gui_color = mix(gui_color * grille.x, gui_color, abs(gui_color.r - subpixel.x));
 	gui_color = mix(gui_color * grille.y, gui_color, abs(gui_color.b - subpixel.y));
 
-	// phosphor delay blur effect
-	float blurDecay = clamp(In.time_delta * BURNINTIME, 0.0f, 1.0f);
-	blurDecay = max(0.0f, blurDecay - gui_prev.shade);
-    
-	outColor.rgb = clamp(mix(gui_bleed - blurDecay, gui_color, blurDecay), 0.0f, 1.0f);
-	outColor.a = clamp(max(gui_prev.alpha, grey.alpha), 0.0f, 1.0f);
+	outColor.rgb = clamp(mix(gui_bleed, gui_color, gui.shade), 0.0f, 1.0f);
+	outColor.a = clamp(gui.alpha, 0.0f, 1.0f);
+	*/
 #endif
 }
 
