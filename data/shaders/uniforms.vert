@@ -31,10 +31,8 @@ layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 
 #if defined(BASIC)
 
-#if defined(TRANS) && !defined(ROAD) // opacity map not used for roads
-layout (binding = 1, r8_snorm) restrict uniform image3D opacityMap;
-#elif !defined(ROAD)
-layout (binding = 1, r8_snorm) writeonly restrict uniform image3D opacityMap;
+#if !defined(ROAD) // opacity map not used for roads
+layout (binding = 1, r8) writeonly restrict uniform image3D opacityMap;
 #endif
 
 layout (constant_id = 1) const float VolumeDimensions = 0.0f;
@@ -330,32 +328,18 @@ void main() {
 #endif
 #endif // clear
 
-#if defined(BASIC) && !defined(ROAD) // only basic past this point
+#if defined(BASIC) && !defined(ROAD) && !defined(TRANS) // only basic past this point
 
 	// derive the normalized index
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
 // Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
 #if !defined(CLEAR) 
-	
-#if defined(TRANS) // transparent
-	float opacity		= fma(emissive, -0.5f, -0.5f);		//  < 0 transparent to -0.5, emissive to -1.0
-#else // opaque 
 	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
-#endif
 #endif // if !clear
 
 #if !defined(HEIGHT)
 const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions).xzy);
-
-#if defined(TRANS)
-const float existing = imageLoad(opacityMap, ivoxel).r;  // already occupied with an opaque or transparent block
-
-if (existing <= 0.0f) 	
-	opacity = min(opacity, existing);  // min takes the most emissive transparent voxel
-else // already filled with opaque block
-	return;
-#endif
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
 #if defined(CLEAR) // erase

@@ -203,15 +203,17 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 
 void main() 
 {
+	const vec3 global_invocation_id = localToGlobal(gl_LocalInvocationID.xyz);
+
 	{ // #### Required Bounds Check //
-		if ( any(greaterThanEqual(localToGlobal(gl_LocalInvocationID.xyz) - VolumeDimensions, vec3(0))) )
+		if ( any(greaterThanEqual(global_invocation_id - VolumeDimensions, vec3(0))) )
 			return;
 	}
 
-	const vec3 current_location = localToGlobal(gl_LocalInvocationID.xyz) * InvVolumeDimensions * WorldDimensions;
+	const vec3 current_location = global_invocation_id * InvVolumeDimensions * WorldDimensions;
 
 #ifdef SEED
-   ivec3 location = ivec3(localToGlobal(gl_LocalInvocationID.xyz));
+   ivec3 location = ivec3(global_invocation_id);
    imageStore(pingpongImage[pc.index_output], location, sampleInputVolume(current_location, location));
 #else
 

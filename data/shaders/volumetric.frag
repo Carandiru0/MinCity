@@ -127,14 +127,14 @@ float fetch_opacity_emission( in const vec3 uvw) { // interpolates opacity & emi
 }
 float extract_opacity( in const float sampling ) // this includes transparent voxels, however result is negative if transparent
 {
-	return( clamp(sampling * 2.0f, -1.0f, 1.0f) ); // if opaque greatest value is 0.5f, want a value no greater than 1.0f - this is affected by emission
+	return( clamp(sampling * 2.0f, 0.0f, 1.0f) ); // if opaque greatest value is 0.5f, want a value no greater than 1.0f - this is affected by emission
 }
 float fetch_opacity( in const vec3 uvw ) { // interpolates opacity - note if emissive, is also opaque
 	return( extract_opacity(fetch_opacity_emission(uvw) ) );  
 }
 float extract_emission( in const float sampling ) // this includes transparent voxels that are emissive, result is positive either opaque or transparent
 {
-	return( max( 0.0f, abs(sampling) - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
+	return( max( 0.0f, sampling - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
 }
 float fetch_emission( in const vec3 uvw ) { // interpolates emission
 	return( extract_emission(fetch_opacity_emission(uvw)) ); 
@@ -196,7 +196,7 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 
 // (intended for volumetric light) - returns attenuation and light color, uses directional derivatiuves to further shade lighting 
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
-float fetch_light_volumetric( out vec3 light_color, out float scattering, in const float emission, in const float transparency, in const vec3 random_hemi_up, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
+float fetch_light_volumetric( out vec3 light_color, out float scattering, in const float emission, in const vec3 random_hemi_up, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 		
 	float attenuation;
 	const vec3 light_direction = getLightFast(light_color, attenuation, offset(uvw), VolumeLength);
@@ -206,7 +206,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 
 	// fog                         
 	// random distribution on a hemisphere normalized vector pointing upwards (.xyz)
-	const float fog_height = max(0.0f, uvw.z) + max(transparency, emission); // fog is for entire volume so no limit on maximum height
+	const float fog_height = max(0.0f, uvw.z) + emission; // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
 	scattering = 1.0f - max(0.0f, dot(-light_direction, random_hemi_up));
@@ -277,19 +277,13 @@ void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, i
 	//        1 = emissive
 	const float emission = extract_emission(opacity_emission);
 
-	const float opacity_transparency = extract_opacity(opacity_emission);
-	
 	// setup: 0 = not opaque
 	//        1 = opaque
-	integrate_opacity(opacity, max(0.0f, opacity_transparency), dt);
+	integrate_opacity(opacity, extract_opacity(opacity_emission), dt);
 
-	// setup: 0 = not transparent
-	//        1 = transparent
-	float transparency = smoothstep(0.0f, abs(min(0.0f, opacity_transparency)), emission); // seems to highlight edges better when emission and transparency mix in smoothstep here()
-																					 // also removes some aliasing do not touch
 	// lightAmount = attenuation
 	float scattering;
-	lightAmount = fetch_light_volumetric(light_color, scattering, emission, transparency, random_hemi_up, p, opacity, dt);
+	lightAmount = fetch_light_volumetric(light_color, scattering, emission, random_hemi_up, p, opacity, dt);
 	
 	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
 }
@@ -365,25 +359,19 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 	p += dt * rd;	// first reflected move to next point
 	
 	float opacity = 0.0f;
-	vec4 stored_reflection = voxel;
+	vec4 stored_reflection = voxel; // "ambient light"
 	{ //  begin new reflection raymarch to find reflected surface
-		float reflection_avg = 1.0f;
 
 		// find reflection
 		for( ; interval_remaining >= 0.0f ; interval_remaining -= dt) {  // fast sign test
 
-			// hit opaque/transparent voxel ?
-			const float opacity_sample = fetch_opacity_reflection(p);  // extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
-			integrate_opacity(opacity, abs(opacity_sample), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
+			// hit opaque voxel ?
+			// extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
+			integrate_opacity(opacity, fetch_opacity_reflection(p), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 			[[branch]] if(bounced(opacity)) { 
 				
-				stored_reflection = mix(stored_reflection, reflection(voxel, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p, dt),
-										reflection_avg);
-				reflection_avg *= 0.5f; // averaging reflections if passing thru transparent voxels. (decreasing magnitude averaging)
-
-				if (opacity_sample >= 0.0f /*|| reflection_avg < 0.25f*/) { // looks better (transparency) with >= vs >
-					break;	// hit reflected *opaque surface*
-				}
+				stored_reflection = reflection(voxel, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p, dt);
+				break;	// hit reflected *opaque surface*
 			}
 
 			p += dt * rd;

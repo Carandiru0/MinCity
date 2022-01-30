@@ -11,6 +11,7 @@
 #include "CityInfo.h"
 #include "cCity.h"
 #include "data.h"
+#include "gui.h"
 
 #include <filesystem>
 
@@ -1266,6 +1267,12 @@ void cNuklear::SetGUIDirty()
 {
 	_bGUIDirty[0] = _bGUIDirty[1] = true; // both buffers must be reset so that they are in sync from frame to frame
 }
+
+STATIC_INLINE_PURE struct nk_rect const __vectorcall make_centered_window_rect(int32_t const window_width, int32_t const window_height, point2D_t const frameBufferSize)
+{
+	return(nk_recti((frameBufferSize.x >> 1) - (window_width >> 1), (frameBufferSize.y >> 1) - (window_height >> 1), window_width, window_height));
+}
+
 void  cNuklear::UpdateGUI()
 {
 	tTime const tLocal(high_resolution_clock::now());
@@ -1360,166 +1367,219 @@ void  cNuklear::UpdateGUI()
 		*/
 
 		// main bg window "paused" window
-		constexpr eWindowName const bgwindowName(eWindowName::WINDOW_PAUSED);
-		constexpr uint32_t const window_offset(1);
-		uint32_t const window_width(_frameBufferSize.x - (window_offset << 1));
-		constexpr uint32_t const window_height(180);
-
-		if (nk_begin(_ctx, bgwindowName._to_string(),
-			nk_recti(window_offset, _frameBufferSize.y - window_height, window_width, window_height),
-			NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND | NK_WINDOW_NO_INPUT))
 		{
-			struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+			constexpr eWindowName const bgwindowName(eWindowName::WINDOW_PAUSED);
 
-			AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+			struct nk_rect bounds(make_centered_window_rect(360, 80, _frameBufferSize));
+			bounds.y = _frameBufferSize.y - 80;
 
-			nk_layout_row_dynamic(_ctx, 120, 1);
-
+			if (nk_begin(_ctx, bgwindowName._to_string(),
+				bounds,
+				NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND | NK_WINDOW_NO_INPUT))
 			{
-				if (szHint.empty()) {
+				struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
 
-					static bool bBlink(false);
-					static tTime tLast(zero_time_point);
+				AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
 
-					if (critical_now() - tLast > milliseconds(1000)) {
-						bBlink = !bBlink;
-						tLast = critical_now();
-					}
-					if (bBlink) {
-						nk_label(_ctx, " PAUSED ", NK_TEXT_CENTERED);
+				nk_layout_row_dynamic(_ctx, 40, 1);
+
+				{
+					if (szHint.empty()) {
+
+						static constexpr fp_seconds const interval(1.0f);
+
+						constinit static bool bBlink(false);
+						constinit static tTime tLast(zero_time_point);
+
+						fp_seconds const accumulated(critical_now() - tLast);
+						float const t = SFM::saturate(accumulated / interval);
+
+						if (accumulated > interval) {
+							bBlink = !bBlink;
+							tLast = critical_now();
+						}
+
+						std::string szText("");
+
+						if (bBlink) {
+							szText += " paused ";
+						}
+						else {
+							szText += " PAUSED ";
+						}
+
+						gui::add_horizontal_bar(szText, t);
+
+						nk_label(_ctx, szText.c_str(), NK_TEXT_CENTERED);
 					}
 					else {
-						nk_label(_ctx, "-      -", NK_TEXT_CENTERED);
+						nk_label(_ctx, szHint.c_str(), NK_TEXT_CENTERED);
+					}
+
+					if (_uiPauseProgress) {
+						nk_layout_row_dynamic(_ctx, 40, 1);
+
+						nk_size progress(_uiPauseProgress);
+						nk_progress(_ctx, &progress, 100, nk_false);
 					}
 				}
-				else {
-					nk_label(_ctx, szHint.c_str(), NK_TEXT_CENTERED);
-				}
-
-				if (_uiPauseProgress) {
-					nk_layout_row_dynamic(_ctx, 40, 1);
-					
-					nk_size progress(_uiPauseProgress);
-					nk_progress(_ctx, &progress, 100, nk_false);
-				}
 			}
+			nk_end(_ctx); // end paused window
 		}
-		nk_end(_ctx); // end paused window
-
 		// window query user to quit
 		if (eWindowType::QUIT == _uiWindowEnabled)
 		{
 			// nested window //
 			constexpr eWindowName const subwindowName(eWindowName::WINDOW_QUIT);
 
-			constexpr uint32_t const subwindow_offset(20);
-			uint32_t const subwindow_width(window_width - (subwindow_offset << 1));
-			constexpr uint32_t const subwindow_height(window_height);
-
-			static struct nk_rect const s = { subwindow_offset, _frameBufferSize.y - subwindow_height, subwindow_width, subwindow_height };
-
-			if (nk_begin(_ctx, subwindowName._to_string(), s,
-				NK_WINDOW_NO_SCROLLBAR))
+			if (nk_begin(_ctx, subwindowName._to_string(),
+				make_centered_window_rect(200, 800, _frameBufferSize),
+				NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND))
 			{
 				struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
 
 				AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
 
-				nk_layout_row_begin(_ctx, NK_DYNAMIC, subwindow_height, 3);
+				nk_layout_row_dynamic(_ctx, 120, 1); // skip over area that has hint status text
+				nk_spacing(_ctx, 1);
 
+				nk_layout_row_begin(_ctx, NK_DYNAMIC, 40.0f, 1);
 				{
-					nk_layout_row_push(_ctx, 0.425f); // group "prompt" width
+					constexpr float const spacing = 0.5f; // 5 menu options, 5 seperators
+					
+					static constexpr fp_seconds const interval(1.0f);
 
-					nk_group_begin(_ctx, "quit prompt", 0);
+					constinit static tTime tLast(zero_time_point);
 
-					nk_layout_row_dynamic(_ctx, 30, 1);
-					nk_label(_ctx, "exit game ?", NK_TEXT_LEFT);
-					nk_layout_row_dynamic(_ctx, 32, 3);
+					fp_seconds const accumulated(critical_now() - tLast);
+					float const t = SFM::saturate(accumulated / interval);
 
-					if (nk_button_label(_ctx, "quit")) {
-						_iWindowQuitSelection = eWindowQuit::JUST_QUIT;
-
-						MinCity::DispatchEvent(eEvent::QUIT);
-
-						enableWindow<eWindowType::QUIT>(false);
-						nk_window_close(_ctx, subwindowName._to_string());
-					}
-					if (nk_button_label(_ctx, "save & quit")) {
-						_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
-
-						enableWindow<eWindowType::QUIT>(false);
-						enableWindow<eWindowType::SAVE>(true);
-						nk_window_close(_ctx, subwindowName._to_string());
-					}
-					if (nk_button_label(_ctx, "cancel")) {
-
-						MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
-
-						enableWindow<eWindowType::QUIT>(false);
-						nk_window_close(_ctx, subwindowName._to_string());
+					if (accumulated > interval) {
+						tLast = critical_now();
 					}
 
-					nk_group_end(_ctx);
-				}
+					constinit static int selection(-1);
 
-				{
-					nk_seperator(_ctx, 0.5355f);
-				}
+					std::string szOptions[]{ "new", "save", "load", "exit" };
+						
+					if (selection >= 0) {
+						gui::add_horizontal_bar<true>(szOptions[selection], t);
+					}
+					selection = -1; // always reset
 
-				{
-					nk_layout_row_push(_ctx, 0.0375f); // group "menu" width
-					nk_group_begin(_ctx, "menu", NK_WINDOW_BORDER|NK_WINDOW_NO_SCROLLBAR);
-
-					static constexpr int32_t const cols(1);
-					static constexpr int32_t const icon(36);
-					nk_layout_row_static(_ctx, icon, icon, cols);
-
+					/*nk_layout_row_push(_ctx, 0.5f);
 					{
 						bool hovered(false);
-						if (nk_sdf_hover_button(_ctx, _guiImages.create, false, &hovered)) {
+						if (nk_button_label(_ctx, "back", &hovered)) {
 
-							// todo
-							//enableWindow<eWindowType::QUIT>(false);
-							//enableWindow<eWindowType::SAVE>(true);
-							//nk_window_close(_ctx, subwindowName._to_string());
-						}
- 						else if (hovered) {
-							szHint = "New City";
-							bResetHint = false;
-						}
-					}
-
-					{
-						bool hovered(false);
-						if (nk_sdf_hover_button(_ctx, _guiImages.open, false, &hovered)) {
+							MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
 
 							enableWindow<eWindowType::QUIT>(false);
-							enableWindow<eWindowType::LOAD>(true);
 							nk_window_close(_ctx, subwindowName._to_string());
 						}
 						else if (hovered) {
-							szHint = "Load City";
+							szHint = "BACK TO CITY";
 							bResetHint = false;
 						}
-					}
 
+						nk_layout_row_push(_ctx, spacing);
+						nk_spacing(_ctx, 1);
+					}*/
+
+					nk_layout_row_push(_ctx, spacing);
 					{
 						bool hovered(false);
-						if (nk_sdf_hover_button(_ctx, _guiImages.save, false, &hovered)) {
+						if (nk_button_label(_ctx, szOptions[0].c_str(), &hovered)) {
+
+							// @todo
+							nk_window_close(_ctx, subwindowName._to_string());
+						}
+						else if (hovered) {
+							selection = 0;
+							szHint = "NEW CITY";
+							bResetHint = false;
+						}
+
+						nk_layout_row_push(_ctx, spacing);
+						nk_spacing(_ctx, 1);
+					}
+
+					nk_layout_row_push(_ctx, spacing);
+					{
+						bool hovered(false);
+						if (nk_button_label(_ctx, szOptions[1].c_str(), &hovered)) {
 
 							enableWindow<eWindowType::QUIT>(false);
 							enableWindow<eWindowType::SAVE>(true);
 							nk_window_close(_ctx, subwindowName._to_string());
 						}
 						else if (hovered) {
-							szHint = "Save City";
+							selection = 1;
+							szHint = "SAVE CITY";
 							bResetHint = false;
 						}
+
+						nk_layout_row_push(_ctx, spacing);
+						nk_spacing(_ctx, 1);
 					}
-					nk_group_end(_ctx);
+
+					nk_layout_row_push(_ctx, spacing);
+					{
+						bool hovered(false);
+						if (nk_button_label(_ctx, szOptions[2].c_str(), &hovered)) {
+
+							enableWindow<eWindowType::QUIT>(false);
+							enableWindow<eWindowType::LOAD>(true);
+							nk_window_close(_ctx, subwindowName._to_string());
+						}
+						else if (hovered) {
+							selection = 2;
+							szHint = "LOAD CITY";
+							bResetHint = false;
+						}
+
+						nk_layout_row_push(_ctx, spacing);
+						nk_spacing(_ctx, 1);
+					}
+
+					nk_layout_row_push(_ctx, spacing);
+					{
+						bool hovered(false);
+						if (nk_button_label(_ctx, szOptions[3].c_str(), &hovered)) {
+
+							if (eWindowQuit::SAVE_AND_QUIT == _iWindowQuitSelection) {
+								_iWindowQuitSelection = eWindowQuit::JUST_QUIT;
+							}
+
+							if (eWindowQuit::JUST_QUIT == _iWindowQuitSelection) {
+
+								MinCity::DispatchEvent(eEvent::QUIT);
+
+								enableWindow<eWindowType::QUIT>(false);
+								nk_window_close(_ctx, subwindowName._to_string());
+							}
+							else {
+
+								_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
+
+								enableWindow<eWindowType::QUIT>(false);
+								enableWindow<eWindowType::SAVE>(true);
+								nk_window_close(_ctx, subwindowName._to_string());
+							}
+						}
+						else if (hovered) {
+							selection = 3;
+							szHint = "EXIT MINCITY";
+							bResetHint = false;
+						}
+
+						nk_layout_row_push(_ctx, spacing);
+						nk_spacing(_ctx, 1);
+					}
 				}
 
 				nk_layout_row_end(_ctx);
+
 			} // end quit/menu window
 			nk_end(_ctx); 
 		}
@@ -1530,16 +1590,16 @@ void  cNuklear::UpdateGUI()
 			// virtually-nested window //
 			constexpr eWindowName const subwindowName(eWindowName::WINDOW_SAVE);
 
-			constexpr uint32_t const subwindow_offset(20);
-			uint32_t const subwindow_width((window_width - (subwindow_offset << 1)));
-			constexpr uint32_t const subwindow_height(window_height);
+			constexpr uint32_t const window_offset(1);
+			uint32_t const window_width(_frameBufferSize.x - (window_offset << 1));
+			constexpr uint32_t const window_height(720);
 
 			static constexpr int32_t const MAX_EDIT = 31;
 			static char szEdit[MAX_EDIT + 1]{};
 			static int32_t szLength(0);
 			static bool bNewCity(false);
 
-			static struct nk_rect const s = { subwindow_offset, _frameBufferSize.y - subwindow_height, subwindow_width, subwindow_height };
+			static struct nk_rect const s = { window_offset, _frameBufferSize.y - window_height, window_width, window_height };
 
 			if (nk_begin(_ctx, subwindowName._to_string(), s,
 				NK_WINDOW_NO_SCROLLBAR))
@@ -1566,14 +1626,14 @@ void  cNuklear::UpdateGUI()
 
 				if (bNewCity) {
 
-					nk_layout_row_begin(_ctx, NK_DYNAMIC, subwindow_height, 3);
+					nk_layout_row_begin(_ctx, NK_DYNAMIC, window_height, 3);
 						
 					{
 						nk_layout_row_push(_ctx, 0.3f);
 						nk_group_begin(_ctx, "save thumbnail", 0);
 						
 						static constexpr int32_t const cols(1);
-						static constexpr int32_t const thumbnail(subwindow_height); 
+						static constexpr int32_t const thumbnail(window_height); 
 						//nk_layout_row_static(_ctx, thumbnail, thumbnail, cols);
 						nk_layout_row_dynamic(_ctx, thumbnail, cols);
 
@@ -1668,14 +1728,14 @@ void  cNuklear::UpdateGUI()
 			// virtually-nested window //
 			constexpr eWindowName const subwindowName(eWindowName::WINDOW_SAVE);
 
-			constexpr uint32_t const subwindow_offset(20);
-			uint32_t const subwindow_width((window_width - (subwindow_offset << 1)));
-			constexpr uint32_t const subwindow_height(window_height);
+			constexpr uint32_t const window_offset(1);
+			uint32_t const window_width(_frameBufferSize.x - (window_offset << 1));
+			constexpr uint32_t const window_height(720);
 
 			static std::string szSelectedCityName;
 			static CityInfo infoSelectedCity{};
 
-			static struct nk_rect const s = { subwindow_offset, _frameBufferSize.y - subwindow_height, subwindow_width, subwindow_height };
+			static struct nk_rect const s = { window_offset, _frameBufferSize.y - window_height, window_width, window_height };
 
 			if (nk_begin(_ctx, subwindowName._to_string(), s,
 				NK_WINDOW_NO_SCROLLBAR))
@@ -1694,14 +1754,14 @@ void  cNuklear::UpdateGUI()
 					_loadWindow.reset();
 				}
 
-				nk_layout_row_begin(_ctx, NK_DYNAMIC, subwindow_height, 2);
+				nk_layout_row_begin(_ctx, NK_DYNAMIC, window_height, 2);
 
 				{
 					nk_layout_row_push(_ctx, 0.3f);
 					nk_group_begin(_ctx, "load thumbnail", 0);
 
 					static constexpr int32_t const cols(1);
-					static constexpr int32_t const thumbnail(subwindow_height); 
+					static constexpr int32_t const thumbnail(window_height); 
 					//nk_layout_row_static(_ctx, thumbnail, thumbnail, cols);
 					nk_layout_row_dynamic(_ctx, thumbnail, cols);
 

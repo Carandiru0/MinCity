@@ -23,6 +23,7 @@ namespace gui
 	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const;
 
 	STATIC_INLINE_PURE void __vectorcall add_vertical_bar(std::string& str, float const t);
+	template<bool const reversed = false>
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed);
@@ -300,19 +301,33 @@ namespace gui
 		str += positions[position];
 	}
 
+	template<bool const reversed>
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t) // number, fractional
 	{
-		static constexpr char const positions[] = {
-			// characters in sequential order of animation
-			0x20, 0x5e, 0x5c, 0x3e, 0x3c, 0x3b, 0x22
-		};
-		static constexpr uint32_t const count(_countof(positions) - 1);
+		static constexpr uint32_t const position_count = 7;
+
+		static constexpr uint32_t const count(position_count - 1);
 		static constexpr float const index((float)count);
 
 		float const amount = SFM::lerp(0.0f, index, SFM::clamp(t, 0.0f, 1.0f));	// spreads out better
 		uint32_t const position = SFM::floor_to_u32(amount);
 
-		str += positions[position];
+		if constexpr (reversed) {
+
+			static constexpr char const positions_backward[position_count] = {
+				// characters in reversed sequential order of animation
+				0x22, 0x3b, 0x3c, 0x3e, 0x5c, 0x5e, 0x20
+			};
+			str += positions_backward[position];
+		}
+		else {
+
+			static constexpr char const positions_forward[position_count] = {
+				// characters in sequential order of animation
+				0x20, 0x5e, 0x5c, 0x3e, 0x3c, 0x3b, 0x22
+			};
+			str += positions_forward[position];
+		}
 	}
 
 	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)

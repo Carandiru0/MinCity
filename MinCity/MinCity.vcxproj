@@ -215,7 +215,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw   %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw    %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>
       </DisableSpecificWarnings>
       <CallingConvention>Cdecl</CallingConvention>

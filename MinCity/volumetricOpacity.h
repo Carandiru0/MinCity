@@ -277,7 +277,7 @@ namespace Volumetric
 			}
 
 			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-				Size, Size, Size, 1U, vk::Format::eR8Snorm, false, true);
+				Size, Size, Size, 1U, vk::Format::eR8Unorm, false, true);
 			VolumeSet.OpacityMap = OpacityMap;
 
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)OpacityMap->image(), vkNames::Image::OpacityMap);

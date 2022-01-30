@@ -106,17 +106,17 @@ const float ROUGHNESS = 0.5f;
     
 float extract_opacity( in const float sampling ) // this includes transparent voxels, however result is negative if transparent
 {
-	return( clamp(sampling * 2.0f, -1.0f, 1.0f) ); // if opaque greatest value is 0.5f, want a value no greater than 1.0f - this is affected by emission
+	return( clamp(sampling * 2.0f, 0.0f, 1.0f) ); // if opaque greatest value is 0.5f, want a value no greater than 1.0f - this is affected by emission
 }
 float extract_emission( in const float sampling ) // this includes transparent voxels that are emissive, result is positive either opaque or transparent
 {
-	return( max( 0.0f, abs(sampling) - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
+	return( max( 0.0f, sampling - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
 }
-
 float opacity( in const float sampling ) {
 
-	return( max(0.0f, extract_opacity(sampling)) ); // only opaques
+	return( extract_opacity(sampling) ); // only opaques
 }
+
 // iq - voxel occlusion //
 // https://www.iquilezles.org/www/articles/voxellines/voxellines.htm
 float getOcclusion(in vec3 uvw) 

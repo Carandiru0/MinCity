@@ -60,14 +60,14 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // -----------------------------------------------------------------------------------------------------------------------------------------------------------
 vec4 applyTransparency(in vec4 color_alpha, in const float weight)
 { 
-	color_alpha.rgb = color_alpha.rgb * color_alpha.a * (1.0f - weight);
+	color_alpha.rgb = color_alpha.rgb * color_alpha.a;// * (1.0f - weight);
 	color_alpha.a = color_alpha.a * weight;
 
 	return( color_alpha );
 }
 vec4 applyTransparency(in vec3 color, in float alpha, in const float weight)
 { 
-	color = color * alpha * (1.0f - weight);
+	color = color * alpha;// * (1.0f - weight);
 	alpha = alpha * weight;
 
 	return( vec4(color, alpha) );
