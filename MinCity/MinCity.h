@@ -171,7 +171,7 @@ inline tTime								cMinCity::m_tCriticalNow{ cMinCity::m_tStart }; // always va
 inline tTime								cMinCity::m_tLastPause{ zero_time_point };
 constinit inline std::atomic_bool			cMinCity::m_bNewEventsAllowed = false;
 constinit inline bool						cMinCity::m_bRunning = false;		// state is set in cMinCity::Initialize on Success
-constinit inline bool						cMinCity::m_bPaused = false;		// state refers to a "live pause" of the rendering and updates affected by the pause
+constinit inline bool						cMinCity::m_bPaused = true;		// state refers to a "live pause" of the rendering and updates affected by the pause - initial state of program is paused
 constinit inline bool						cMinCity::m_bFocused = false;		// start time of app is safetly swapped, so at no given point of time is it errornous
 constinit inline bool						cMinCity::m_bGradualStartingUp = true;	// start time of app will reset during very first call of Update()
 constinit inline size_t						cMinCity::m_hwCoreCount = 1;

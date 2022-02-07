@@ -97,7 +97,6 @@ namespace world
 
 
 		// Accessors
-		vku::TextureImage2D* const&								getTerrainTexture() const { return(_terrainTexture); }
 		Volumetric::voxelOpacity const& __restrict				getVolumetricOpacity() const { return(_OpacityMap); }
 
 		// Mutators //
@@ -157,7 +156,9 @@ namespace world
 		void SetSpecializationConstants_VolumetricLight_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VolumetricLight_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
-		void SetSpecializationConstants_Nuklear(std::vector<vku::SpecializationConstant>& __restrict constants);
+		void SetSpecializationConstants_Nuklear_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
+		void SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
+
 		void SetSpecializationConstants_Resolve(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_Upsample(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_PostAA(std::vector<vku::SpecializationConstant>& __restrict constants);
@@ -269,7 +270,7 @@ namespace world
 		size_t const numStaticModelInstances() const { return(_hshVoxelModelInstances_Static.size()); }
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 		size_t const numDynamicVoxelsRendered() const;
 		size_t const numStaticVoxelsRendered() const;
 		size_t const numTerrainVoxelsRendered() const;
@@ -314,7 +315,8 @@ namespace world
 	private:
 		UniformState						  _lastState, _currentState, _targetState;
 
-		vku::TextureImage2D*		_terrainTexture;
+		vku::TextureImage2D			*_terrainTexture,
+									* _gridTexture;
 		vku::TextureImage2DArray*	_roadTexture;
 		vku::TextureImage2D*		_blackbodyTexture;
 

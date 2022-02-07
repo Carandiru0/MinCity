@@ -9,6 +9,7 @@
 #include <Imaging/Imaging/Imaging.h>
 #include <vector>
 #include "nk_custom.h" // safe to include here in header, only exposes public structs and methods
+#include "CityInfo.h"
 
 BETTER_ENUM(eNK_FONTS, uint32_t const,
 
@@ -26,7 +27,6 @@ BETTER_ENUM(eWindowName, uint32_t const,
 	WINDOW_MINCITY,
 	WINDOW_BOTTOM_MENU,
 	WINDOW_LUT
-
 );
 
 BETTER_ENUM(eWindowType, uint32_t const,
@@ -65,7 +65,9 @@ struct GLFWwindow; // forward decl //
 
 class no_vtable cNuklear : no_copy
 {
-	static constexpr float const NK_FONT_HEIGHT = 32.0f;
+	static constexpr float const 
+		NK_FONT_WIDTH = 20.0f,
+		NK_FONT_HEIGHT = 36.0f;
 	static constexpr size_t const
 		NK_MAX_VERTEX_COUNT = (Globals::NK_MAX_VERTEX_BUFFER_SZ / sizeof(VertexDecl::nk_vertex)),
 		NK_MAX_INDEX_COUNT = (Globals::NK_MAX_INDEX_BUFFER_SZ / sizeof(uint16_t));
@@ -90,7 +92,8 @@ public:
 	
 	// Main Methods //
 	void Initialize(struct GLFWwindow* const& __restrict win);
-	void SetSpecializationConstants(std::vector<vku::SpecializationConstant>& __restrict constants);
+	void SetSpecializationConstants_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
+	void SetSpecializationConstants_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 	void UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& sampler);
 	
 	template<uint32_t const windowType>
@@ -128,11 +131,11 @@ public:
 				}
 				else if constexpr (eWindowType::SAVE == windowType) {
 					_iWindowSaveSelection = eWindowSave::IDLE;
-					_saveWindow.bReset = true;
+					_loadsaveWindow.bReset = true;
 				}
 				else if constexpr (eWindowType::LOAD == windowType) {
 					_iWindowLoadSelection = eWindowLoad::IDLE;
-					_loadWindow.bReset = true;
+					_loadsaveWindow.bReset = true;
 				}
 			}
 			else { // disabling
@@ -169,6 +172,10 @@ private:
 	void LoadGUITextures();
 	void SetGUIDirty();
 
+	// windows:
+	void do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
+	void do_cyberpunk_loadsave_window(bool const mode, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
+
 #ifdef DEBUG_LUT_WINDOW
 	void draw_lut_window(tTime const& __restrict tNow, uint32_t const height_offset);
 #endif
@@ -202,30 +209,6 @@ private:
 								_bEditControlFocused;
 	bool                        _bMinimapRenderingEnabled;
 
-	struct {
-
-		nk_text_animated_state			thumbnail_text_state;
-		bool							bReset;
-
-		void reset() {
-			thumbnail_text_state.reset();
-			bReset = false;
-		}
-
-	} _saveWindow;
-
-	struct {
-
-		nk_text_animated_state			thumbnail_text_state;
-		bool							bReset;
-
-		void reset() {
-			thumbnail_text_state.reset();
-			bReset = false;
-		}
-
-	} _loadWindow;
-
 	alignas(16) VertexDecl::nk_vertex*		_vertices;
 	alignas(16) uint16_t*					_indices;
 private:
@@ -256,21 +239,26 @@ private:
 			*road = nullptr,
 			*zoning = nullptr;
 
-		struct thumbnail {
-			vku::TextureImage2DArray
-				*texture = nullptr;
-			Imaging 
-				image = nullptr;
-			guiSequence*
-				sequence = nullptr;
-			uint32_t
-				select = 0;
+		struct load_thumbnail {
 
-			~thumbnail() {
-				if (image) {
-					ImagingDelete(image); image = nullptr;
+			static constexpr uint32_t const count = 10;
+
+			vku::TextureImage2DArray
+				* texture[count] = {};
+			Imaging 
+				image[count] = {};
+			//guiSequence*				// left as reference for sequences (not used anymore)
+				//sequence = nullptr;
+
+			~load_thumbnail() {
+
+				for (uint32_t i = 0; i < count; ++i) {
+					if (image[i]) {
+						ImagingDelete(image[i]); image[i] = nullptr;
+					}
+					 // textures are released in nuklear CleanUp() as they need to be released b4 this dtor would be called
 				}
-				SAFE_DELETE_ARRAY(sequence);
+				//SAFE_DELETE_ARRAY(sequence);
 			}
 		} load_thumbnail;
 
@@ -285,7 +273,7 @@ private:
 			*save = nullptr,
 			*road = nullptr,
 			*zoning = nullptr,
-			*load_thumbnail = nullptr,
+			*load_thumbnail[guiTextures::load_thumbnail::count] = {},
 			*offscreen = nullptr;
 
 		// don't forget to init to nullptr here //
@@ -302,6 +290,20 @@ private:
 
 	} _sequenceImages;
 
+	// other
+	struct {
+
+		vector<CityInfo>				info_cities;
+		int32_t                         selected;
+		bool							bReset;
+
+		void reset() {
+			info_cities.clear();
+			selected = -1;
+			bReset = false;
+		}
+
+	} _loadsaveWindow;
 public:
 	cNuklear();
 

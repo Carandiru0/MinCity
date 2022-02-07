@@ -11,7 +11,6 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	flat vec4 extra;	
 	flat float ambient;
 #ifndef BASIC
-	flat float slice; // *blue-noise over time
 #if defined(HEIGHT) || defined(ROAD)
 	vec2 world_uv;
 #ifdef ROAD
@@ -29,7 +28,6 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 	readonly flat vec4 extra;	
 	readonly flat float ambient;
 #ifndef BASIC
-	readonly flat float slice; // *blue-noise over time
 #if defined(T2D) || defined(ROAD)
 	readonly vec2 world_uv;
 #ifdef ROAD

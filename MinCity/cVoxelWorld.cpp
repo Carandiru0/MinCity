@@ -268,6 +268,10 @@ void cVoxelWorld::GenerateGround()
 		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
 
 		// imageNoise is released at end of function
+
+		// terrain grid mipmapped texture
+		MinCity::TextureBoy->LoadKTXTexture(_gridTexture, TEXTURE_DIR L"grid.ktx");
+		MinCity::TextureBoy->AddTextureToTextureArray(_gridTexture, TEX_GRID);
 	}
 
 	// Traverse Grid
@@ -2055,7 +2059,7 @@ namespace // private to this file (anonymous)
 			uint32_t road_tiles_visible = 0;
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 			size_t	numDynamicVoxelsRendered = 0,
 					numStaticVoxelsRendered = 0,
 					numTerrainVoxelsRendered = 0;
@@ -2159,7 +2163,7 @@ namespace // private to this file (anonymous)
 				}
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 				++render_state.numDynamicVoxelsRendered;
 #endif
 #endif
@@ -2171,7 +2175,7 @@ namespace // private to this file (anonymous)
 				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 				++render_state.numLightVoxelsRendered;
 #endif
 #endif
@@ -2238,7 +2242,7 @@ namespace // private to this file (anonymous)
 					groundHash
 				);
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 				++render_state.numTerrainVoxelsRendered;
 #endif
 #endif
@@ -2306,7 +2310,7 @@ namespace // private to this file (anonymous)
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 
 				if (bVisible) {
 					size_t const voxel_count = (size_t const)FoundModelInstance->getModel()._numVoxels;
@@ -2340,7 +2344,7 @@ namespace // private to this file (anonymous)
 			render_state.road_tiles_visible = 0; // reset - visible road tile count very useful eg.) adding cars //
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 			render_state.numDynamicVoxelsRendered = 0,
 			render_state.numStaticVoxelsRendered = 0,
 			render_state.numTerrainVoxelsRendered = 0;
@@ -2610,7 +2614,7 @@ namespace world
 		:
 		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, _sim(nullptr),
 		_vMouse{}, _lastOcclusionQueryValid(false), _onLoadedRequired(false),
-		_terrainTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
+		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
 		_activeExplosion(nullptr), _activeTornado(nullptr), _activeShockwave(nullptr), _activeRain(nullptr)
@@ -3349,7 +3353,7 @@ namespace world
 	}
 
 #ifndef NDEBUG
-#ifdef DEBUG_VOXELS_RENDERED
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 	size_t const cVoxelWorld::numDynamicVoxelsRendered() const
 	{
 		return(voxelRender::render_state.numDynamicVoxelsRendered);
@@ -4325,8 +4329,11 @@ namespace world
 		// clamp at the 2x step size, don't care or want spurious spikes of time
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
+		XMFLOAT2A vPush;
+		XMStoreFloat2A(&vPush, getDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR));
+
 		//pack into vector for uniform buffer layout																			   // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
-		_currentState.Uniform.aligned_data0 = XMVectorSet(0.0f, 0.0f, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
+		_currentState.Uniform.aligned_data0 = XMVectorSet(vPush.x, vPush.y, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
 
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4723,10 +4730,15 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(14, (float)ZNear)); 
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_Nuklear(std::vector<vku::SpecializationConstant>& __restrict constants)
+	void cVoxelWorld::SetSpecializationConstants_Nuklear_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		MinCity::Nuklear->SetSpecializationConstants(constants);
+		MinCity::Nuklear->SetSpecializationConstants_VS(constants);
 	}
+	void cVoxelWorld::SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
+	{
+		MinCity::Nuklear->SetSpecializationConstants_FS(constants);
+	}
+
 	void cVoxelWorld::SetSpecializationConstants_Resolve(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		point2D_t const frameBufferSz(MinCity::getFramebufferSize());
@@ -5093,6 +5105,9 @@ namespace world
 
 		dsu.beginImages(5U, TEX_TERRAIN, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_TERRAIN_SAMPLER, rTextures[TEX_TERRAIN]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		dsu.beginImages(5U, TEX_GRID, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(TEX_GRID_SAMPLER, rTextures[TEX_GRID]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		dsu.beginImages(5U, TEX_ROAD, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_ROAD_SAMPLER, rTextures[TEX_ROAD]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -5513,6 +5528,7 @@ namespace world
 		}
 
 		SAFE_DELETE(_terrainTexture);
+		SAFE_DELETE(_gridTexture);
 		SAFE_DELETE(_roadTexture);
 		SAFE_DELETE(_blackbodyTexture);
 

@@ -185,9 +185,7 @@ nk_draw_image(struct nk_command_buffer* const __restrict cb,		// for canvas
 	if (nullptr == imgMap->handle.ptr)
 		return;
 
-	struct nk_rect r{0, 0, imgMap->w, imgMap->h};
-
-	nk_draw_image(cb, r, imgMap, nk_white);
+	nk_draw_image(cb, nk_recti(0, 0, imgMap->w, imgMap->h), imgMap, nk_white);
 }
 
 NK_API int
@@ -455,6 +453,82 @@ nk_sdf_hover_button(struct nk_context* const __restrict ctx,
 	return(ret); // mouse pressed = true
 }
 
+NK_API nk_bool
+nk_button_border_color(struct nk_context* ctx, struct nk_color const color, bool const isActive = false, bool* const __restrict pbHovered = nullptr)
+{
+	struct nk_window* win;
+	struct nk_panel* layout;
+	const struct nk_input* in;
+	struct nk_style_button button;
+
+	int ret = 0;
+	struct nk_rect bounds;
+	struct nk_rect content;
+	enum nk_widget_layout_states state;
+
+	NK_ASSERT(ctx);
+	NK_ASSERT(ctx->current);
+	NK_ASSERT(ctx->current->layout);
+	if (!ctx || !ctx->current || !ctx->current->layout)
+		return 0;
+
+	win = ctx->current;
+	layout = win->layout;
+
+	state = nk_widget(&bounds, ctx);
+	if (!state) return 0;
+	in = (state == NK_WIDGET_ROM || layout->flags & NK_WINDOW_ROM) ? 0 : &ctx->input;
+
+	button = ctx->style.button;
+	button.active = nk_style_item_color(color);
+
+	ret = nk_do_button(&ctx->last_widget_state, &win->buffer, bounds,
+		&button, in, ctx->button_behavior, &content);
+
+	bool hovered(false);
+
+	if (isActive || (NK_WIDGET_STATE_ACTIVE == (NK_WIDGET_STATE_ACTIVE & ctx->last_widget_state))) {
+		button.border_color = color;
+		button.border = 2.0f;
+	}
+	else if (NK_WIDGET_STATE_HOVERED == (NK_WIDGET_STATE_HOVERED & ctx->last_widget_state)) {
+		button.border_color = nk_rgb(100, 100, 100);
+		button.border = 2.0f;
+		hovered = true;
+	}
+
+	if (pbHovered) {
+		*pbHovered = hovered;
+	}
+
+	nk_draw_button(&win->buffer, &bounds, ctx->last_widget_state, &button);
+	return ret;
+}
+
+NK_API nk_bool
+nk_is_mouse_down(struct nk_context* ctx, struct nk_rect bounds, enum nk_buttons btn)
+{
+	struct nk_rect c, v;
+
+	NK_ASSERT(ctx);
+	NK_ASSERT(ctx->current);
+	if (!ctx || !ctx->current || ctx->active != ctx->current)
+		return 0;
+
+	c = ctx->current->layout->clip;
+	c.x = (float)((int)c.x);
+	c.y = (float)((int)c.y);
+	c.w = (float)((int)c.w);
+	c.h = (float)((int)c.h);
+
+	nk_unify(&v, &c, bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h);
+	if (!NK_INTERSECT(c.x, c.y, c.w, c.h, bounds.x, bounds.y, bounds.w, bounds.h))
+		return 0;
+	if (!nk_input_is_mouse_hovering_rect(&ctx->input, bounds))
+		return nk_false;
+	return nk_input_is_mouse_down(&ctx->input, btn);
+}
+
 NK_API void									  
 nk_push_transparent_bg(struct nk_context* const __restrict ctx)
 {
@@ -484,7 +558,7 @@ nk_text_rotate_string(std::string_view const str, uint32_t offset)
 	uint32_t const str_length( (uint32_t const)str.length());
 	for (uint32_t i = 0 ; i < str_length ; ++i) {
 
-		char c = stringconv::ascii_toupper(str[i]);
+		char c = stringconv::toUpper(str[i]);
 
 		if (' ' != c) { // keep spaces
 

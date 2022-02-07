@@ -27,6 +27,7 @@ namespace gui
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed);
+	STATIC_INLINE_PURE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int32_t const seed);
 
 	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
 	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
@@ -39,7 +40,7 @@ namespace gui
 namespace gui
 {
 	// constants //
-	static constexpr uint32_t const color(0x0089E944);  // abgr - rgba backwards
+	static constexpr uint32_t const color(0x000000FF);  // abgr - rgba backwards
 
 	namespace flags {
 
@@ -360,7 +361,7 @@ namespace gui
 		return( width );
 	}
 
-	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t)
+	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t) // w/ vxlmono font
 	{
 		static constexpr char const positions[] = {
 			// characters in sequential order of animation
@@ -375,7 +376,7 @@ namespace gui
 		str += positions[position];
 	}
 
-	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed)
+	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed) // w/ vxlmono font
 	{
 		static constexpr char const positions[] = {
 			// characters in sequential order of animation
@@ -395,5 +396,23 @@ namespace gui
 				str += positions[position];
 			}
 		}
+	}
+
+	read_only inline char const sSs[]{0x17,0x17,0x17,0x00}; // null terminated sSs logo string
+	constinit static inline char const cyberpunk_glyphs[] = {
+		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a
+	};
+
+	STATIC_INLINE_PURE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int32_t const seed) // w/ vxlmono font
+	{
+		static constexpr uint32_t const count(_countof(cyberpunk_glyphs));
+
+		SetSeed(seed);
+		for (uint32_t i = 0; i < length; ++i) {
+
+			uint32_t const position = PsuedoRandomNumber(0, count - 1);
+			str += cyberpunk_glyphs[position];
+		}
+
 	}
 } // end ns

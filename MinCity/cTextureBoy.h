@@ -392,6 +392,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 				vk::CommandPool const* __restrict commandPool(&transientPool());
 				vk::Queue const* __restrict queue(&graphicsQueue());
 
+				// 3D
 				if constexpr (std::is_same<T, vku::TextureImage3D>::value) {
 					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0)), depth(ktxFile.depth(0));
 
@@ -401,7 +402,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 					}
 					texture = new T(_device, width, height, depth, ktxFile.format());
 				}
-				else {
+				else { // 2D
 					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0));
 					
 					if ((0 == width % 8) && (0 == height % 8)) {
@@ -412,8 +413,8 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 					if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
 						texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.format());
 					}
-					else {
-						texture = new T(_device, width, height, 1, ktxFile.format());
+					else { // vku::TextureImage2D
+						texture = new T(_device, width, height, ktxFile.mipLevels(), ktxFile.format());
 					}
 				}
 				// must use the upload in KTXFile

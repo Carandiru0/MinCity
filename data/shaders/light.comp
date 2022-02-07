@@ -2,7 +2,7 @@
 #extension GL_GOOGLE_include_directive : enable
 //#extension GL_KHR_shader_subgroup_ballot : enable
 #extension GL_KHR_shader_subgroup_vote : enable
-#extension GL_KHR_shader_subgroup_quad : enable
+//#extension GL_KHR_shader_subgroup_quad : enable
 #extension GL_EXT_control_flow_attributes : enable
 
 /* Copyright (C) 20xx Jason Tully - All Rights Reserved
@@ -77,7 +77,7 @@ bool isLit( in const float sampled_packed_color )
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
 {
-	vec4 samp = textureLod(seedMap[pc.index_input], (read_location) * InvVolumeDimensions, 0);
+	vec4 samp = textureLod(seedMap[pc.index_input], (read_location + 0.5f) * InvVolumeDimensions, 0);
 	samp.xyz += normalize(current_location - samp.xyz) * fract((current_location - read_location)); // smooths changes when scrolling BIG TIME.
 
 	return( samp );
@@ -87,14 +87,9 @@ vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_locat
 {
 	// input image is dynamically set with push constant
 
-	// this collects the corners omitted from the moore neighbour, still allowing far less samples (13) vs the classical (27) neighbour-hood lookup.
-	// also very well smooths the result. samples++
-	vec4 s0 = textureLod(pingpongTexture[pc.index_input], (read_location) * InvVolumeDimensions, 0);
+	vec4 s0 = textureLod(pingpongTexture[pc.index_input], (read_location + 0.5f) * InvVolumeDimensions, 0);
+	s0.xyz += normalize(current_location - s0.xyz) * fract((current_location - read_location)); // smooths changes when scrolling BIG TIME.
 
-	const vec3 f = fract(current_location - read_location);
-	s0.xyz += normalize(current_location - subgroupQuadSwapVertical(s0.xyz)) * f;
-	s0.xyz += normalize(current_location - subgroupQuadSwapHorizontal(s0.xyz)) * f;
-	
 	return( s0 );
 }
 #endif
@@ -153,6 +148,7 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 }
 
 // moore neighbour hood (3D) (less samples and produces acceptable results)
+/*
 const ivec3 offsets[] = ivec3[]( ivec3(-1,  0,  -1 ),
 								 ivec3( 1,  0,  -1 ),
 								 ivec3( 0, -1,  -1 ),
@@ -168,6 +164,7 @@ const ivec3 offsets[] = ivec3[]( ivec3(-1,  0,  -1 ),
 								 ivec3( 1,  0,   1 ),
 								 ivec3( 0, -1,   1 ),
 								 ivec3( 0,  1,   1 ) );
+*/
 
 void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 {
@@ -177,7 +174,7 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 	float current_distance = 99999999999.9f;
 	
 	barrier(); // required so that lds is coherent between the last writes and now reads
-	/*
+	
 	ivec3 offset;
 	[[unroll]] for (offset.z = -1 ; offset.z <= 1 ; ++offset.z) {
 		[[unroll]] for (offset.y = -1 ; offset.y <= 1 ; ++offset.y) {
@@ -189,8 +186,8 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 				propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offset * current_step);
 #endif
 	}}} // for;for;for
-	*/
-
+	
+	/*
 	for (uint i = 0 ; i < offsets.length() ; ++i) {
 
 #ifdef SEED
@@ -199,6 +196,7 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offsets[i] * current_step);
 #endif
 	}
+	*/
 }
 
 void main() 

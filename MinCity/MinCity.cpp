@@ -695,47 +695,6 @@ void cMinCity::UpdateWorld()
 	tLast = tCriticalNow;
 }
 
-STATIC_INLINE_PURE bool const durations_to_seeds(int64_t& __restrict s0, int64_t& __restrict s1, fp_seconds const t0, fp_seconds const t1)
-{
-	static constexpr double const MAX_EXACT_INT = 9.007199254740992e15; // (2^53 to signed 64bit integer) maximum value that can be exactly converted from double to int64_t
-
-	if (t0 != t1) {
-		int64_t const i0(SFM::floor_to_i64(t0.count()));
-		int64_t const i1(SFM::floor_to_i64(t1.count()));
-
-		if (i0 != i1) { // comparing the non fractional part (integer) of the double precision time durations. 
-
-			s0 = i0; // use change as seed
-			s1 = i1; // use change as seed
-
-			return(true);
-		}
-		/*else {*/ // comparing the fractional part (fraction) of the double precision time durations
-
-			double d0(SFM::floor(t0.count()));
-			double d1(SFM::floor(t1.count()));
-
-			d0 = t0.count() - d0; // fract
-			d1 = t1.count() - d1; // fract
-
-			// range [0.0 ... 1.0] to [0.0 ... MAX_EXACT_INT]
-			d0 = d0 * MAX_EXACT_INT;
-			d1 = d1 * MAX_EXACT_INT;
-
-			// now comparing the smallest possible change
-			// (comparison hidden] already completed in 1st comparison between double precision time durations (above)
-			// guarantees d0 != d1
-
-			s0 = SFM::floor_to_i64(d0); // use scaled change as seed
-			s1 = SFM::floor_to_i64(d1); // use scaled change as seed
-
-			return(true);
-		//}
-	}
-
-	return(false); // no change // seeds remain the same, no output from function.
-}
-
 void cMinCity::StageResources(uint32_t const resource_index)
 {
 	// resources uploaded to the gpu only change if exclusiity is not taken away from default
@@ -752,42 +711,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 		}
 		return;
 	}
-
-	// Important & Powerful construct
-	// - Allows for repeatable determinism between frames
-	// - Can skip or produce the eaxct same state everyframe for any algorithm used during that frame that leverages random numbers to define its state (ie.) Rain)
-	// - properly pauses and repeats last seed, so things like rain that don't depend on time progression, but rather frame progression are actually paused.
-	// - **** allows for a new unique sequence of random numbers to be used every frame, so no two frames are ever dependent on the progression of a single random number sequence and it's usage in previous frames ****
-	// *do not remove*, critical code with far reaching effects on entire program life*
-	// - note: dependent on the update() rate, so the normal delta or time step between frames should be set to 60 FPS or better. Refering to the fixed time-step used for updating the world ( tTime.h )
-	//         not dependent on actual frame rate (decoupled)
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	{ // 
-		constinit static fp_seconds tAppLast{}; // double precision required
-		constinit static int64_t last_seed{1};  // a seed should never ever be zero
-		constinit static int64_t no_delta_count(0);
-
-		fp_seconds const tApp(now() - start()); // app run time - not using critical_now() specifically to capture when the world has actually updated.
-		int64_t now_seed( last_seed );
-
-		[[likely]] if (durations_to_seeds(last_seed, now_seed, tAppLast, tApp)) {
-			SetSeed(now_seed); // reset to new seed
-			last_seed = now_seed; // save as last seed to be used
-			tAppLast = tApp; // update the last app time this whole comparison is about.
-			no_delta_count = 0; // reset
-		}
-		else {
-			SetSeed(last_seed); // reset to last seed used last frame
-
-			if (no_delta_count) { // successive entry with no change //
-				return; // resources uploaded to the gpu only change if there has been an update - can skip staging and re-use - no clears are done either!
-			}
-
-			++no_delta_count; // record lack of change
-		}
-	}
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld->Render(resource_index);

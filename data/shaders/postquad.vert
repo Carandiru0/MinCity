@@ -13,8 +13,6 @@ writeonly layout(location = 0) out streamOut
 #endif
 
 #ifdef OVERLAY
-	flat float time_delta;
-	flat float time;
 #endif
 } Out;
 #define texcoord uv // alias
@@ -30,7 +28,5 @@ void main()
 #endif
 
 #ifdef OVERLAY
-	Out.time_delta = time_delta();
-	Out.time = time();
 #endif
 }

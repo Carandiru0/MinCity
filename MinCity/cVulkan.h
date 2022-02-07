@@ -382,7 +382,7 @@ private:
 
 	bool							_bFullScreenExclusiveAcquired = false,
 									_bRenderingEnabled = false,
-									_bRestoreAsPaused = false,
+									_bRestoreAsPaused = true, // initial value is true
 									_bVsyncDisabled = false,
 									_bOffscreenRender = false,
 									_bOffscreenCopy = false;
@@ -701,7 +701,7 @@ void cVulkan::CreateVoxelResource(
 		pm.blendDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendColorBlendOp(vk::BlendOp::eAdd);
 		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eZero);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 
 		typedef vk::ColorComponentFlagBits ccbf;
@@ -832,7 +832,7 @@ void cVulkan::CreateVoxelChildResource(
 		pm.blendDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendColorBlendOp(vk::BlendOp::eAdd);
 		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eZero);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 
 		typedef vk::ColorComponentFlagBits ccbf;

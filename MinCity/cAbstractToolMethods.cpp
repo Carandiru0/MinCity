@@ -163,9 +163,28 @@ void __vectorcall cAbstractToolMethods::highlightArea(rect2D_t const area, uint3
 	for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
 
 		for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
-
-			highlightVoxel(voxelIndex, color);
+			
+			if (world::isVoxelVisible(voxelIndex)) {
+				highlightVoxel(voxelIndex, color);
+			}
 		}
 	}
 }
 
+void __vectorcall cAbstractToolMethods::highlightPerimeter(rect2D_t const area, uint32_t const color)
+{
+	point2D_t voxelIndex{};
+
+	for (voxelIndex.y = area.top; voxelIndex.y < area.bottom; ++voxelIndex.y) {
+
+		for (voxelIndex.x = area.left; voxelIndex.x < area.right; ++voxelIndex.x) {
+
+			if (area.left == voxelIndex.x || area.top == voxelIndex.y || (area.right - 1) == voxelIndex.x || (area.bottom - 1) == voxelIndex.y) {
+				
+				if (world::isVoxelVisible(voxelIndex)) {
+					highlightVoxel(voxelIndex, color);
+				}
+			}
+		}
+	}
+}

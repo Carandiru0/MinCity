@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "cNuklear.h"
+#include "globals.h"
+#include <Math/point2D_t.h>
 #include "Declarations.h"
 #include "MinCity.h"
 #include "cTextureBoy.h"
@@ -8,7 +10,6 @@
 #include "cVoxelWorld.h"
 #include "cUserInterface.h"
 #include "cPostProcess.h"
-#include "CityInfo.h"
 #include "cCity.h"
 #include "data.h"
 #include "gui.h"
@@ -24,12 +25,21 @@
 #include <queue>
 #endif
 
+#ifndef NDEBUG
+#ifdef DEBUG_SHOW_GUI_WINDOW_BORDERS
+#define NK_TEMP_WINDOW_BORDER NK_WINDOW_BORDER
+#else
+#define NK_TEMP_WINDOW_BORDER (0)
+#endif
+#else
+#define NK_TEMP_WINDOW_BORDER (0)
+#endif
+
 namespace fs = std::filesystem;
 
 static constexpr uint32_t const 
-	SDF_IMAGE = 0,
-	RGBA_IMAGE = 1,
-	ARRAY_IMAGE = 2;
+	RGBA_IMAGE = 0,
+	ARRAY_IMAGE = 1;
 
 typedef struct nk_image_extended : nk_image
 {
@@ -65,9 +75,9 @@ typedef struct alignas(16) sMouseState
 NK_API const nk_rune*
 nk_font_vxlmono_glyph_ranges(void)
 {
-	NK_STORAGE const nk_rune ranges[] = {
-		0x0020, 0x007F,
-		0
+	constinit NK_STORAGE const nk_rune ranges[] = {
+		0x0017, 0x001F,
+		0x0020, 0x007E
 	};
 	return ranges;
 }
@@ -94,16 +104,16 @@ nk_font_stash_end(struct nk_context* const __restrict ctx, struct nk_font_atlas 
 	if (MinCity::TextureBoy->KTXFileExists(FONT_DIR L"FontAtlas.ktx"))
 	{
 		// replace with cached BC7 version instead
-		bLoaded = MinCity::TextureBoy->LoadKTXTexture(texture, FONT_DIR L"FontAtlas.ktx");
+		bLoaded = MinCity::TextureBoy->LoadKTXTexture(texture, FONT_DIR L"FontAtlas.ktx");		// This file is manually edited to provide correct transparency
 	}
 
-	if (!bLoaded) { // build new compressed texture //
-		FMT_LOG(TEX_LOG, "Compressing Texture, please wait....");
+	if (!bLoaded) { // build new compressed texture //  **** note **** building a new texture does most of the work, however there are manual edits to make it work properly ****
+		FMT_LOG(TEX_LOG, "Compressing Texture, please wait....");																//     -transparency mask around mouse cursor, everything else opaque in alpha channel.
 
 		Imaging imgRef = ImagingLoadFromMemoryBGRA(memToLoad, width, height);
 		Imaging imgFontBC7 = ImagingCompressBGRAToBC7(imgRef);
 
-		ImagingSaveCompressedBC7ToKTX(imgFontBC7, FONT_DIR L"FontAtlas.ktx");
+		ImagingSaveCompressedBC7ToKTX(imgFontBC7, FONT_DIR L"FontAtlas.ktx");  // note - bc7 rgba texture is half the size of a rg only texture of the same dimensions.
 
 		ImagingDelete(imgFontBC7);
 		ImagingDelete(imgRef);
@@ -362,7 +372,7 @@ cNuklear::cNuklear()
 	_bGUIDirty{ false, false }, _bEditControlFocused(false),
 	_uiWindowEnabled(0), _iWindowQuitSelection(0), _iWindowSaveSelection(0), _iWindowLoadSelection(0),
 	_uiPauseProgress(0),
-	_bHintReset(false), _saveWindow{}, _loadWindow{},
+	_bHintReset(false), _loadsaveWindow{},
 	_bMinimapRenderingEnabled(false),
 	_frameBufferSize(0, 0),		//set dynamically on init
 	_frameBufferAspect(0.0f),	//set dynamically on init
@@ -425,8 +435,7 @@ void cNuklear::Initialize(GLFWwindow* const& __restrict win)
 	config.oversample_h = 4;
 	config.oversample_v = 4;
 	//config.pixel_snap = true;
-
-	// SDF Texture for fonts is 256x256, which has enough resolution for 4 fonts
+	
 	_fonts[eNK_FONTS::DEFAULT]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"vxlmono.ttf", NK_FONT_HEIGHT, &config);
 	
 	_fonts[eNK_FONTS::SMALL]		 = nk_font_atlas_add_from_file(_atlas, FONT_DIR L"vxlmono.ttf", NK_FONT_HEIGHT * 0.8f, &config);
@@ -442,7 +451,14 @@ void cNuklear::Initialize(GLFWwindow* const& __restrict win)
 	LoadGUITextures();
 }
 
-void cNuklear::SetSpecializationConstants(std::vector<vku::SpecializationConstant>& __restrict constants)
+void cNuklear::SetSpecializationConstants_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
+{
+	point2D_t const frameBufferSize(_frameBufferSize);
+
+	constants.emplace_back(vku::SpecializationConstant(0, 0.5f / (float)frameBufferSize.x));// // 0.5f / frame buffer width
+	constants.emplace_back(vku::SpecializationConstant(1, 0.5f / (float)frameBufferSize.y));// // 0.5f / frame buffer height
+}
+void cNuklear::SetSpecializationConstants_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 {
 	point2D_t const frameBufferSize(_frameBufferSize);
 
@@ -465,6 +481,33 @@ void cNuklear::UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk
 	nk_style_load_all_cursors(_ctx, _atlas->cursors);
 
 	nk_set_style(_ctx, THEME_GREYSCALE);
+
+	// -additional common style attributes- //
+
+	// text
+	//_ctx->style.text.padding = nk_vec2(0.0f, 0.0f);
+
+	// window
+	_ctx->style.window.group_border = 3.0f;
+	_ctx->style.window.group_border_color = nk_rgb(255, 0, 0);
+	_ctx->style.window.group_padding = nk_vec2(1.0f, 1.0f);
+
+	//_ctx->style.window.spacing = nk_vec2(0.0f, 0.0f);
+	//_ctx->style.window.padding = nk_vec2(0.0f, 0.0f);
+
+	// group
+	
+	// button
+	_ctx->style.button.text_normal = nk_rgb(255, 0, 0);
+	_ctx->style.button.text_hover = nk_rgb(239, 6, 105);
+	_ctx->style.button.text_active = nk_rgb(255, 0, 0);
+	_ctx->style.button.text_alignment = NK_TEXT_CENTERED;
+	_ctx->style.button.border = 0.0f;
+	_ctx->style.button.border_color = nk_rgb(0, 0, 0);
+	_ctx->style.button.touch_padding = nk_vec2(0.0f, 0.0f); // required
+	_ctx->style.button.padding = nk_vec2(0.0f, 0.0f);
+	_ctx->style.button.border = 0.0f;
+	_ctx->style.button.rounding = 0.0f;
 
 	// Set initial uniform buffer value ( already done prior to this function and bound to 0 )
 
@@ -507,8 +550,13 @@ void cNuklear::LoadGUITextures()
 	{ // load thumbnail
 		
 		// pre-allocations of .image & .sequence required
-		_guiTextures.load_thumbnail.image = ImagingNew(MODE_BGRA, offscreen_thumbnail_width, offscreen_thumbnail_height);
-		ImagingClear(_guiTextures.load_thumbnail.image);
+		for (uint32_t i = 0; i < guiTextures::load_thumbnail::count; ++i) {
+			_guiTextures.load_thumbnail.image[i] = ImagingNew(MODE_BGRA, offscreen_thumbnail_width, offscreen_thumbnail_height);
+			ImagingClear(_guiTextures.load_thumbnail.image[i]);
+		}
+
+		// left as reference for sequewnce (not used anymore //
+		/*
 		_guiTextures.load_thumbnail.sequence = new guiSequence[sequenceImages::STATIC_IMAGE_COUNT];
 
 		uint32_t max_count(0);
@@ -523,7 +571,13 @@ void cNuklear::LoadGUITextures()
 			}
 		}
 		
-		MinCity::TextureBoy->ImagingSequenceToTexture(_guiTextures.load_thumbnail.sequence[_guiTextures.load_thumbnail.select].sequence, _guiTextures.load_thumbnail.texture);
+		MinCity::TextureBoy->ImagingSequenceToTexture(_guiTextures.load_thumbnail.sequence[_guiTextures.load_thumbnail.select].sequence, _guiTextures.load_thumbnail.texture[i]);
+		*/
+
+		// must allocate texture memory for each thumbnail so an id can be associated with the textures imageView()
+		for (uint32_t i = 0; i < guiTextures::load_thumbnail::count; ++i) {
+			MinCity::TextureBoy->ImagingToTexture<false>(_guiTextures.load_thumbnail.image[i], _guiTextures.load_thumbnail.texture[i]);
+		}
 	}
 
 	static constexpr uint32_t ICON_DIMENSIONS = 128U;
@@ -536,45 +590,48 @@ void cNuklear::LoadGUITextures()
 	{	nullptr,	// this data is replaced when font texture is loaded, however this reserves the first slot for the default texture
 		0, 0,
 		{ 0, 0, 0, 0 },
-		SDF_IMAGE
+		RGBA_IMAGE
 	});
 
 	_guiImages.create	= _imageVector.emplace_back( new nk_image_extended
 	{	_guiTextures.create->imageView(),
 		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
 		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		SDF_IMAGE
+		RGBA_IMAGE
 	});
 	_guiImages.open		= _imageVector.emplace_back( new nk_image_extended
 	{	_guiTextures.open->imageView(),
 		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
 		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		SDF_IMAGE
+		RGBA_IMAGE
 	});
 	_guiImages.save		= _imageVector.emplace_back( new nk_image_extended
 	{	_guiTextures.save->imageView(),
 		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
 		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		SDF_IMAGE
+		RGBA_IMAGE
 	});
 	_guiImages.road		= _imageVector.emplace_back( new nk_image_extended
 	{	_guiTextures.road->imageView(),
 		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
 		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		SDF_IMAGE
+		RGBA_IMAGE
 	});
 	_guiImages.zoning	= _imageVector.emplace_back( new nk_image_extended
 	{	_guiTextures.zoning->imageView(), 
 		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
 		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		SDF_IMAGE
+		RGBA_IMAGE
 	});
-	_guiImages.load_thumbnail	= _imageVector.emplace_back( new nk_image_extended
-	{	_guiTextures.load_thumbnail.texture->imageView(), 
-		offscreen_thumbnail_width, offscreen_thumbnail_width, // the size here can be customized
-		{ 0, 0, offscreen_thumbnail_width, offscreen_thumbnail_width },
-		ARRAY_IMAGE // initial layout
-	});
+
+	for (uint32_t i = 0; i < guiTextures::load_thumbnail::count; ++i) {
+		_guiImages.load_thumbnail[i] = _imageVector.emplace_back(new nk_image_extended
+		{   _guiTextures.load_thumbnail.texture[i]->imageView(),
+			offscreen_thumbnail_width, offscreen_thumbnail_width, // the size here can be customized
+			{ 0, 0, offscreen_thumbnail_width, offscreen_thumbnail_width },
+			RGBA_IMAGE // initial layout
+		});
+	}
 
 	_guiImages.offscreen = _imageVector.emplace_back( new nk_image_extended
 	{	MinCity::Vulkan->offscreenImageView2DArray(), 
@@ -731,11 +788,11 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 		}
 
 		vk::Rect2D const scissor(
-				vk::Offset2D(SFM::round_to_i32(SFM::max(cmd->clip_rect.x, 0.0f)),
-							 SFM::round_to_i32(SFM::max(cmd->clip_rect.y, 0.0f))),
+				vk::Offset2D(SFM::floor_to_i32(SFM::max(cmd->clip_rect.x, 0.0f)),
+							 SFM::floor_to_i32(SFM::max(cmd->clip_rect.y, 0.0f))),
 
-				vk::Extent2D(SFM::round_to_u32(cmd->clip_rect.w),
-					         SFM::round_to_u32(cmd->clip_rect.h))
+				vk::Extent2D(SFM::ceil_to_u32(cmd->clip_rect.w),
+					         SFM::ceil_to_u32(cmd->clip_rect.h))
 		);
 		cb_render.setScissor(0, scissor);
 		cb_render.drawIndexed(cmd->elem_count, 1, index_offset, 0, 0);
@@ -974,7 +1031,6 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	nk_input.mouse_state.handled = true;
 	//
 	
-	/*
 	{ // rate limited keys
 		static tTime tLast;
 		static uint32_t LastPressed(0), WasPressed(0);
@@ -1040,6 +1096,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				tLastPress = tLocal;
 			}
 
+			/*
 			static uint8_t uAdjust{0};
 			if (glfwGetKey(win, GLFW_KEY_PAGE_UP) == GLFW_PRESS) {
 
@@ -1098,27 +1155,21 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				WasPressed = GLFW_KEY_3;
 				tLastPress = tLocal;
 			}
-
+			*/
 			if (glfwGetKey(win, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {
 
 				xmPushConstant = XMVectorZero();
-				uAdjust = 0;
-				bToggle1 = bToggle2 = bToggle3 = false;
 
 				setDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR, xmPushConstant);
-				setDebugVariable(uint8_t, DebugLabel::RAMP_CONTROL_BYTE, uAdjust);
-				setDebugVariable(bool, DebugLabel::TOGGLE_1_BOOL, bToggle1);
-				setDebugVariable(bool, DebugLabel::TOGGLE_2_BOOL, bToggle2);
-				setDebugVariable(bool, DebugLabel::TOGGLE_3_BOOL, bToggle3);
 
-				FMT_NUKLEAR_DEBUG(false, "<< all debug variables zeroed >>", uAdjust);
+				FMT_NUKLEAR_DEBUG(false, "<< all debug variables zeroed >>");
 
 				WasPressed = GLFW_KEY_BACKSPACE;
 				tLastPress = tLocal;
 			}
 		} // repeatrate
 	}
-	*/
+	
 	tLocalLast = tLocal;
 
 	return(bInputGUIDelta);
@@ -1273,6 +1324,451 @@ STATIC_INLINE_PURE struct nk_rect const __vectorcall make_centered_window_rect(i
 	return(nk_recti((frameBufferSize.x >> 1) - (window_width >> 1), (frameBufferSize.y >> 1) - (window_height >> 1), window_width, window_height));
 }
 
+
+void cNuklear::do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint)
+{
+	static constexpr uint32_t const rows(20), cols(9);
+	static constexpr float const inv_cols(1.0f / (float)cols);
+
+	constinit static char const legend[rows * (cols)] = {
+
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x10, 0x11, 0x12, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x20, 0x21, 0x22, 0x23, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x30, 0x31, 0x32, 0x33, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x40, 0x41, 0x42, 0x43, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+
+	};
+	static constexpr uint32_t const menu_item_count(4);
+	constinit static char const* const menu_item[4] = {
+		"NEW",
+		"LOAD",
+		"SAVE",
+		"EXIT"
+	};
+	constinit static bool menu_descrambled[4] = {
+		false,
+		false,
+		false,
+		false
+	};
+
+	constinit static char const szMessage[] = { 'C', 'O', 'P', 'Y', 'R', 'I', 'G', 'H', 'T', ' ', 0x17, 0x17, 0x17, ' ', 'S', 'O', 'F', 'T', 'W', 'A', 'R', 'E', 0x00 };
+
+	static constexpr uint32_t const count(_countof(gui::cyberpunk_glyphs));
+
+	static constexpr fp_seconds const interval(0.25f);
+	
+	constinit static tTime tLast(zero_time_point);
+	constinit static int32_t seed(1);
+
+	fp_seconds const accumulated(critical_now() - tLast);
+	float const t = SFM::saturate(accumulated / interval);
+
+	if (accumulated > interval) {
+		tLast = critical_now();
+		
+		seed = PsuedoRandomNumber32();
+	}
+
+	SetSeed(seed);
+
+	constexpr eWindowName const subwindowName(eWindowName::WINDOW_QUIT);
+
+	if (nk_begin(_ctx, subwindowName._to_string(),
+		make_centered_window_rect(190, 445, _frameBufferSize),
+		NK_TEMP_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
+	{
+		static constexpr uint32_t const glyph_width(NK_FONT_WIDTH),
+										glyph_height(NK_FONT_HEIGHT * 0.5f);
+
+		struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+		AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+		
+		szHint = szMessage;
+		bResetHint = false;
+		bSmallHint = true;
+
+		bool any_hovered(false);
+
+		char glyph[2]{};
+ 		
+		for (uint32_t row = 0; row < rows; ++row) {
+
+			nk_layout_space_begin(_ctx, NK_STATIC, 0.01f, cols);
+
+			for (uint32_t col = 0; col < cols; ++col) {
+
+				nk_layout_space_push(_ctx, nk_recti(col * glyph_width, row * glyph_height, glyph_width, glyph_height));
+
+				char const key(legend[row * cols + col]);
+				if (0 == key) {
+					uint32_t const position = PsuedoRandomNumber(0, count - 1);
+					glyph[0] = gui::cyberpunk_glyphs[position];
+
+					nk_label(_ctx, glyph, NK_TEXT_CENTERED);
+
+					glyph[0] = 0;
+				}
+				else {
+					uint32_t const menu_item_index(((0xf0 & key) >> 4) - 1);
+					uint32_t const menu_item_character_index(0x0f & key);
+
+					if (menu_descrambled[menu_item_index]) {
+						PsuedoRandomNumber(); // *bugfix - discard next random number, which maintains sequence of random numbers so there isn't a sudden change in all glyphs after this one.
+						glyph[0] = menu_item[menu_item_index][menu_item_character_index];
+					}
+					else {
+						uint32_t const position = PsuedoRandomNumber(0, count - 1);
+						glyph[0] = gui::cyberpunk_glyphs[position];
+					}
+
+					bool bHovered(false);
+
+					if (nk_button_label(_ctx, glyph, &bHovered)) {
+
+						switch (menu_item_index) {
+						case 0:
+							// @todo
+							MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
+							enableWindow<eWindowType::QUIT>(false);
+							nk_window_close(_ctx, subwindowName._to_string());
+							break;
+						case 1:
+							enableWindow<eWindowType::QUIT>(false);
+							enableWindow<eWindowType::LOAD>(true);
+							nk_window_close(_ctx, subwindowName._to_string());
+							break;
+						case 2:
+							enableWindow<eWindowType::QUIT>(false);
+							enableWindow<eWindowType::SAVE>(true);
+							nk_window_close(_ctx, subwindowName._to_string());
+							break;
+						case 3:
+							_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
+							enableWindow<eWindowType::QUIT>(false);
+							enableWindow<eWindowType::SAVE>(true);
+							nk_window_close(_ctx, subwindowName._to_string());
+							break;
+						}
+					}
+					else if (bHovered) {
+						menu_descrambled[0] = menu_descrambled[1] = menu_descrambled[2] = menu_descrambled[3] = false;
+						menu_descrambled[menu_item_index] = true;
+						any_hovered = true;
+					}
+					
+					glyph[0] = 0;
+				}
+			}
+
+			nk_layout_space_end(_ctx);
+		}
+		if (!any_hovered) {
+			menu_descrambled[0] = menu_descrambled[1] = menu_descrambled[2] = menu_descrambled[3] = false;
+		}
+	} // end quit/menu window
+	nk_end(_ctx);
+}
+
+void cNuklear::do_cyberpunk_loadsave_window(bool const mode, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint)  // false = load  true = save
+{
+	static constexpr uint32_t const slot_height(offscreen_thumbnail_height);
+
+	eWindowName const subwindowName((mode ? eWindowName::WINDOW_SAVE : eWindowName::WINDOW_LOAD));
+
+	nk_scroll scroll_dummy{};
+
+	if (nk_begin(_ctx, subwindowName._to_string(),
+		make_centered_window_rect(1200, 900, _frameBufferSize),
+		NK_TEMP_WINDOW_BORDER | NK_WINDOW_SCROLL_AUTO_HIDE))
+	{
+		static constexpr int32_t const MAX_EDIT = 31;
+		constinit static char szEdit[MAX_EDIT + 1]{};
+		constinit static int32_t szLength(0);
+		constinit static bool bNewCity(false);
+
+		struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+		AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+
+		bool bReset(false);
+
+		if (mode) { // saving
+			// resets for saving go here //
+			if (_loadsaveWindow.bReset) {
+
+				szHint = " "; // make hint blank
+				bResetHint = false;
+				bNewCity = false;
+				szLength = 0;
+				memset(szEdit, 0, MAX_EDIT + 1);
+
+				std::string_view const szCityName(MinCity::getCityName());
+
+				bNewCity = (0 == szCityName.length()); // current save a new city
+
+				_loadsaveWindow.reset();
+				bReset = true;
+			}
+		}
+		else { // loading
+
+			// resets for loading go here //
+			if (_loadsaveWindow.bReset) {
+
+				szHint = " "; // make hint blank
+				bResetHint = false;
+
+				_loadsaveWindow.reset();
+				bReset = true;
+			}
+		}
+
+		int32_t selected(_loadsaveWindow.selected);
+		uint32_t count_city(_loadsaveWindow.info_cities.size());
+
+		// common
+		if (bReset) {
+			
+			auto const& name_cities = MinCity::VoxelWorld->getLoadList();
+
+			_loadsaveWindow.info_cities.reserve(name_cities.size());
+			_loadsaveWindow.info_cities.resize(name_cities.size());
+			_loadsaveWindow.info_cities.clear();
+			count_city = _loadsaveWindow.info_cities.size();
+			
+			if (mode) { // saving
+				selected = -1; // default to first slot when saving
+			}
+			else { // loading
+				selected = 0; // default to first slot when loading
+			}
+
+			uint32_t index_city(0);
+			for (auto const& city : name_cities) {
+
+				// get thumbnail and other city info
+				if (MinCity::VoxelWorld->PreviewWorld(city, std::forward<CityInfo&&>(_loadsaveWindow.info_cities[index_city]), _guiTextures.load_thumbnail.image[index_city])) {
+
+					// update texture for thumbnail from new imaging data returned from previewworld
+					MinCity::TextureBoy->ImagingToTexture<true>(_guiTextures.load_thumbnail.image[index_city], _guiTextures.load_thumbnail.texture[index_city]);
+
+					if (++index_city == guiTextures::load_thumbnail::count) {
+						break;
+					}
+				}
+				else {
+					FMT_LOG_FAIL(GAME_LOG, "could not preview thumbnail for city {:s} - corrupted save file!", city);
+				}
+			}
+
+			count_city = index_city; // actual
+			_loadsaveWindow.info_cities.resize(count_city); // trim to actual count used
+		}
+		else { // not reset
+
+			struct nk_rect bounds { nk_recti(0, 0, windowBounds.w, slot_height) };
+
+			if (mode) { // saving
+
+				nk_layout_row_dynamic(_ctx, slot_height, 1);
+
+				if (nk_group_scrolled_begin(_ctx, &scroll_dummy, "new save slot", NK_WINDOW_NO_SCROLLBAR | (selected < 0 ? NK_WINDOW_BORDER : 0))) {
+
+
+					//if (nk_button_border_color(_ctx, nk_rgba(255, 0, 0, 255), selected < 0)) {
+					//
+					//	selected = -1;
+					//}
+
+					nk_layout_row_dynamic(_ctx, slot_height, 2);
+
+					if (nk_is_mouse_down(_ctx, bounds, NK_BUTTON_LEFT)) {
+						selected = -1;
+					}
+					bounds.y += slot_height;
+
+					if (nk_group_scrolled_begin(_ctx, &scroll_dummy, "new save thumbnail", NK_WINDOW_NO_SCROLLBAR)) {
+
+						nk_layout_row_static(_ctx, offscreen_thumbnail_height, offscreen_thumbnail_width, 1);
+
+						nk_draw_image(_ctx, _guiImages.offscreen);
+
+						nk_group_scrolled_end(_ctx);
+					}
+
+					if (nk_group_scrolled_begin(_ctx, &scroll_dummy, "new info", NK_WINDOW_NO_SCROLLBAR)) {
+
+						std::string save_button("SAVE");
+
+						nk_layout_row_dynamic(_ctx, 40, 1);
+
+						if (selected < 0) {
+							nk_edit_focus(_ctx, 0); // default starting focus
+						}
+						else {
+							stringconv::toLower(save_button); // scramble
+						}
+
+						nk_flags const active = nk_edit_string(_ctx, NK_EDIT_SIMPLE | NK_EDIT_SELECTABLE | NK_EDIT_SIG_ENTER | NK_EDIT_GOTO_END_ON_ACTIVATE,
+							szEdit, &szLength, MAX_EDIT, nk_filter_text_numbers);
+
+						if ((NK_EDIT_ACTIVATED & active) || (NK_EDIT_ACTIVE & active)) {
+							_bEditControlFocused = true; // used in input update
+						}
+
+						nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
+						nk_label(_ctx, fmt::format(FMT_STRING("POPULATION  {:n}"), MinCity::City->getPopulation()).c_str(), NK_TEXT_LEFT);
+						nk_label(_ctx, fmt::format(FMT_STRING("CASH  {:n}"), MinCity::City->getCash()).c_str(), NK_TEXT_LEFT);
+						nk_style_pop_font(_ctx);
+
+						nk_layout_row_dynamic(_ctx, 40, 2);
+						nk_spacing(_ctx, 1);
+
+						if (nk_button_label(_ctx, save_button.c_str()) || (NK_EDIT_COMMITED & active)) {
+
+							if (szLength > 0) {
+								_iWindowSaveSelection = eWindowSave::SAVE;
+
+								szHint = "SAVING...";
+								bResetHint = false;
+
+								MinCity::setCityName(szEdit);
+								MinCity::DispatchEvent(eEvent::SAVE, new bool(eWindowQuit::SAVE_AND_QUIT == _iWindowQuitSelection));
+
+								enableWindow<eWindowType::SAVE>(false);
+								nk_window_close(_ctx, subwindowName._to_string());
+							}
+
+						}
+
+						nk_group_scrolled_end(_ctx);
+					}
+
+					nk_group_scrolled_end(_ctx);
+				}
+
+			} // end saving only
+
+			auto const& nameCities = MinCity::VoxelWorld->getLoadList();
+
+			for (uint32_t index_city = 0; index_city < count_city; ++index_city) {
+
+				nk_layout_row_dynamic(_ctx, slot_height, 1);
+
+				if (nk_group_scrolled_begin(_ctx, &scroll_dummy, fmt::format(FMT_STRING("slot {:d}"), index_city).c_str(), NK_WINDOW_NO_SCROLLBAR | (selected == index_city ? NK_WINDOW_BORDER : 0))) {
+
+					// if (nk_button_border_color(_ctx, nk_rgba(255, 0, 0, 255), selected == index_city)) {
+					// selected = index_city;
+					// }
+
+					nk_layout_row_dynamic(_ctx, slot_height, 2);
+
+					if (nk_is_mouse_down(_ctx, bounds, NK_BUTTON_LEFT)) {
+						selected = index_city;
+					}
+					bounds.y += slot_height;
+
+					if (nk_group_scrolled_begin(_ctx, &scroll_dummy, fmt::format(FMT_STRING("thumbnail {:d}"), index_city).c_str(), NK_WINDOW_NO_SCROLLBAR)) {
+
+						nk_layout_row_static(_ctx, offscreen_thumbnail_height, offscreen_thumbnail_width, 1);
+
+						nk_draw_image(_ctx, _guiImages.load_thumbnail[index_city]);
+
+						nk_group_scrolled_end(_ctx);
+					}
+
+					if (nk_group_scrolled_begin(_ctx, &scroll_dummy, fmt::format(FMT_STRING("info {:d}"), index_city).c_str(), NK_WINDOW_NO_SCROLLBAR))
+					{
+						nk_layout_row_dynamic(_ctx, 40, 1);
+
+						std::string szCityName(nameCities[index_city]);
+						nk_label(_ctx, stringconv::toUpper(szCityName).c_str(), NK_TEXT_LEFT);
+
+						nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
+						nk_label(_ctx, fmt::format(FMT_STRING("POPULATION:  {:n}"), MinCity::City->getPopulation()).c_str(), NK_TEXT_LEFT);
+						nk_label(_ctx, fmt::format(FMT_STRING("CASH:  {:n}"), MinCity::City->getCash()).c_str(), NK_TEXT_LEFT);
+						nk_style_pop_font(_ctx);
+
+						nk_layout_row_dynamic(_ctx, 40, 2);
+						nk_spacing(_ctx, 1);
+
+						std::string active_button("");
+
+						if (mode) { // saving
+							active_button = "SAVE";
+						}
+						else { // loading
+							active_button = "LOAD";
+						}
+
+						if (selected != index_city) { // scramble
+							stringconv::toLower(active_button);
+						}
+
+						if (nk_button_label(_ctx, active_button.c_str())) {
+
+							if (selected == index_city) {
+								if (mode) {
+
+									_iWindowSaveSelection = eWindowSave::SAVE;
+
+									szHint = "SAVING...";
+									bResetHint = false;
+
+									//MinCity::setCityName(szEdit); // @todo - overwrite existing save file support
+									MinCity::DispatchEvent(eEvent::SAVE, new bool(eWindowQuit::SAVE_AND_QUIT == _iWindowQuitSelection));
+
+									enableWindow<eWindowType::SAVE>(false);
+									nk_window_close(_ctx, subwindowName._to_string());
+								}
+								else {
+
+									_iWindowLoadSelection = eWindowLoad::LOAD;
+
+									szHint = "LOADING...";
+									bResetHint = false;
+
+									MinCity::setCityName(nameCities[selected]);
+									MinCity::DispatchEvent(eEvent::LOAD);
+
+									enableWindow<eWindowType::LOAD>(false);
+									nk_window_close(_ctx, subwindowName._to_string());
+								}
+							}
+						}
+
+						nk_group_scrolled_end(_ctx);
+					}
+
+					nk_group_scrolled_end(_ctx);
+				}
+			} // end for
+
+		}
+		// update stored selection index
+		_loadsaveWindow.selected = selected;
+
+	} // end loadsave window
+	nk_end(_ctx);
+}
 void  cNuklear::UpdateGUI()
 {
 	tTime const tLocal(high_resolution_clock::now());
@@ -1340,6 +1836,7 @@ void  cNuklear::UpdateGUI()
 	}
 	else { // ### PAUSED ### //
 		static std::string szHint("");
+		constinit static bool bSmallHint(false);
 
 		// resets and other states triggered by the unpaused -> paused transition
 		if (bLastPaused) {
@@ -1351,6 +1848,7 @@ void  cNuklear::UpdateGUI()
 		if (_bHintReset) {
 			szHint.clear();
 			_bHintReset = false;
+			bSmallHint = false;
 		}
 
 		// this locally resets the "feedback/hint" text when there is not context set below only // done after below //
@@ -1388,24 +1886,25 @@ void  cNuklear::UpdateGUI()
 
 						static constexpr fp_seconds const interval(1.0f);
 
+						constinit static uint32_t scramble_index(1);
 						constinit static bool bBlink(false);
 						constinit static tTime tLast(zero_time_point);
 
 						fp_seconds const accumulated(critical_now() - tLast);
 						float const t = SFM::saturate(accumulated / interval);
 
+						std::string szText("PAUSED");
+
 						if (accumulated > interval) {
 							bBlink = !bBlink;
 							tLast = critical_now();
+							if (bBlink) {
+								scramble_index = PsuedoRandomNumber(1, szText.size() - 1);
+							}
 						}
-
-						std::string szText("");
 
 						if (bBlink) {
-							szText += " paused ";
-						}
-						else {
-							szText += " PAUSED ";
+							szText[scramble_index] = stringconv::toLower(szText[scramble_index]);
 						}
 
 						gui::add_horizontal_bar(szText, t);
@@ -1413,7 +1912,13 @@ void  cNuklear::UpdateGUI()
 						nk_label(_ctx, szText.c_str(), NK_TEXT_CENTERED);
 					}
 					else {
+						if (bSmallHint) {
+							nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
+						}
 						nk_label(_ctx, szHint.c_str(), NK_TEXT_CENTERED);
+						if (bSmallHint) {
+							nk_style_pop_font(_ctx);
+						}
 					}
 
 					if (_uiPauseProgress) {
@@ -1429,164 +1934,14 @@ void  cNuklear::UpdateGUI()
 		// window query user to quit
 		if (eWindowType::QUIT == _uiWindowEnabled)
 		{
-			// nested window //
-			constexpr eWindowName const subwindowName(eWindowName::WINDOW_QUIT);
-
-			if (nk_begin(_ctx, subwindowName._to_string(),
-				make_centered_window_rect(200, 800, _frameBufferSize),
-				NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND))
-			{
-				struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
-
-				AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
-
-				nk_layout_row_dynamic(_ctx, 120, 1); // skip over area that has hint status text
-				nk_spacing(_ctx, 1);
-
-				nk_layout_row_begin(_ctx, NK_DYNAMIC, 40.0f, 1);
-				{
-					constexpr float const spacing = 0.5f; // 5 menu options, 5 seperators
-					
-					static constexpr fp_seconds const interval(1.0f);
-
-					constinit static tTime tLast(zero_time_point);
-
-					fp_seconds const accumulated(critical_now() - tLast);
-					float const t = SFM::saturate(accumulated / interval);
-
-					if (accumulated > interval) {
-						tLast = critical_now();
-					}
-
-					constinit static int selection(-1);
-
-					std::string szOptions[]{ "new", "save", "load", "exit" };
-						
-					if (selection >= 0) {
-						gui::add_horizontal_bar<true>(szOptions[selection], t);
-					}
-					selection = -1; // always reset
-
-					/*nk_layout_row_push(_ctx, 0.5f);
-					{
-						bool hovered(false);
-						if (nk_button_label(_ctx, "back", &hovered)) {
-
-							MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
-
-							enableWindow<eWindowType::QUIT>(false);
-							nk_window_close(_ctx, subwindowName._to_string());
-						}
-						else if (hovered) {
-							szHint = "BACK TO CITY";
-							bResetHint = false;
-						}
-
-						nk_layout_row_push(_ctx, spacing);
-						nk_spacing(_ctx, 1);
-					}*/
-
-					nk_layout_row_push(_ctx, spacing);
-					{
-						bool hovered(false);
-						if (nk_button_label(_ctx, szOptions[0].c_str(), &hovered)) {
-
-							// @todo
-							nk_window_close(_ctx, subwindowName._to_string());
-						}
-						else if (hovered) {
-							selection = 0;
-							szHint = "NEW CITY";
-							bResetHint = false;
-						}
-
-						nk_layout_row_push(_ctx, spacing);
-						nk_spacing(_ctx, 1);
-					}
-
-					nk_layout_row_push(_ctx, spacing);
-					{
-						bool hovered(false);
-						if (nk_button_label(_ctx, szOptions[1].c_str(), &hovered)) {
-
-							enableWindow<eWindowType::QUIT>(false);
-							enableWindow<eWindowType::SAVE>(true);
-							nk_window_close(_ctx, subwindowName._to_string());
-						}
-						else if (hovered) {
-							selection = 1;
-							szHint = "SAVE CITY";
-							bResetHint = false;
-						}
-
-						nk_layout_row_push(_ctx, spacing);
-						nk_spacing(_ctx, 1);
-					}
-
-					nk_layout_row_push(_ctx, spacing);
-					{
-						bool hovered(false);
-						if (nk_button_label(_ctx, szOptions[2].c_str(), &hovered)) {
-
-							enableWindow<eWindowType::QUIT>(false);
-							enableWindow<eWindowType::LOAD>(true);
-							nk_window_close(_ctx, subwindowName._to_string());
-						}
-						else if (hovered) {
-							selection = 2;
-							szHint = "LOAD CITY";
-							bResetHint = false;
-						}
-
-						nk_layout_row_push(_ctx, spacing);
-						nk_spacing(_ctx, 1);
-					}
-
-					nk_layout_row_push(_ctx, spacing);
-					{
-						bool hovered(false);
-						if (nk_button_label(_ctx, szOptions[3].c_str(), &hovered)) {
-
-							if (eWindowQuit::SAVE_AND_QUIT == _iWindowQuitSelection) {
-								_iWindowQuitSelection = eWindowQuit::JUST_QUIT;
-							}
-
-							if (eWindowQuit::JUST_QUIT == _iWindowQuitSelection) {
-
-								MinCity::DispatchEvent(eEvent::QUIT);
-
-								enableWindow<eWindowType::QUIT>(false);
-								nk_window_close(_ctx, subwindowName._to_string());
-							}
-							else {
-
-								_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
-
-								enableWindow<eWindowType::QUIT>(false);
-								enableWindow<eWindowType::SAVE>(true);
-								nk_window_close(_ctx, subwindowName._to_string());
-							}
-						}
-						else if (hovered) {
-							selection = 3;
-							szHint = "EXIT MINCITY";
-							bResetHint = false;
-						}
-
-						nk_layout_row_push(_ctx, spacing);
-						nk_spacing(_ctx, 1);
-					}
-				}
-
-				nk_layout_row_end(_ctx);
-
-			} // end quit/menu window
-			nk_end(_ctx); 
+			do_cyberpunk_mainmenu_window(szHint, bResetHint, bSmallHint);
 		}
 		else if (eWindowType::SAVE == _uiWindowEnabled) {
 
 			MinCity::Vulkan->enableOffscreenRendering(true);  // enable rendering of offscreen rt for gui effect usage
+			do_cyberpunk_loadsave_window(true, szHint, bResetHint, bSmallHint);
 
+			/*
 			// virtually-nested window //
 			constexpr eWindowName const subwindowName(eWindowName::WINDOW_SAVE);
 
@@ -1722,9 +2077,13 @@ void  cNuklear::UpdateGUI()
 					fmt::format(FMT_STRING("population:  {:n}"), MinCity::City->getPopulation()), 
 					fmt::format(FMT_STRING("cash:  {:n}"), MinCity::City->getCash()));
 			}
+			*/
 		}
 		else if (eWindowType::LOAD == _uiWindowEnabled) {
 
+			do_cyberpunk_loadsave_window(false, szHint, bResetHint, bSmallHint);
+
+			/*
 			// virtually-nested window //
 			constexpr eWindowName const subwindowName(eWindowName::WINDOW_SAVE);
 
@@ -1910,6 +2269,7 @@ void  cNuklear::UpdateGUI()
 					fmt::format(FMT_STRING("population:  {:n}"), infoSelectedCity.population), 
 					fmt::format(FMT_STRING("cash:  {:n}"), infoSelectedCity.cash));
 			}
+			*/
 		} // end load window active
 		
 		// ######################################################################################################################################## //
@@ -1917,6 +2277,7 @@ void  cNuklear::UpdateGUI()
 		// reset hint if not used
 		if (bResetHint) {
 			szHint.clear();
+			bSmallHint = false;
 		}
 	} // else paused
 
@@ -2569,7 +2930,10 @@ void  cNuklear::CleanUp()
 	SAFE_DELETE(_guiTextures.save);
 	SAFE_DELETE(_guiTextures.road);
 	SAFE_DELETE(_guiTextures.zoning);
-	SAFE_DELETE(_guiTextures.load_thumbnail.texture);
+
+	for (uint32_t i = 0; i < guiTextures::load_thumbnail::count; ++i) {
+		SAFE_DELETE(_guiTextures.load_thumbnail.texture[i]);
+	}
 
 	// sequence images
 	for (uint32_t i = 0; i < sequenceImages::STATIC_IMAGE_COUNT; ++i) {

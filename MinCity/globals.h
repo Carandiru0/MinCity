@@ -31,8 +31,9 @@
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-#define LIVESHADER_MODE
+//#define LIVESHADER_MODE
 
+#define DEBUG_SHOW_GUI_WINDOW_BORDERS
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC
 
@@ -51,7 +52,7 @@
 //#define DEBUG_NO_RAIN
 //#define DEBUG_VOLUMETRIC
 //#define DEBUG_ASSERT_JFA_SEED_INDICES_OK // good validation, state is setup at runtime so this is a good dynamic test.
-#define DEBUG_VOXELS_RENDERED
+#define DEBUG_VOXEL_RENDER_COUNTS
 //#define DEBUG_DEPTH_CUBE
 //#define DEBUG_MOUSE_HOVER_VOXEL
 #define DEBUG_FPS_WINDOW

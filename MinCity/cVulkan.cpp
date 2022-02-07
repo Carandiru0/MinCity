@@ -184,13 +184,14 @@ bool const cVulkan::LoadVulkanWindow(GLFWwindow* const glfwwindow)
 // and should match the nuklear pipeline blending state (see below)
 void cVulkan::CreateNuklearResources()
 {
-	std::vector< vku::SpecializationConstant > constants;
+	std::vector< vku::SpecializationConstant > constants_vs, constants_fs;
 
-	MinCity::VoxelWorld->SetSpecializationConstants_Nuklear(constants);
+	MinCity::VoxelWorld->SetSpecializationConstants_Nuklear_VS(constants_vs);
+	MinCity::VoxelWorld->SetSpecializationConstants_Nuklear_FS(constants_fs);
 
 	// Create two shaders, vertex and fragment. 
-	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "Nuklear.vert.bin" };
-	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "Nuklear.frag.bin", constants };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "Nuklear.vert.bin", constants_vs };
+	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "Nuklear.frag.bin", constants_fs };
 
 	// Build a template for descriptor sets that use these shaders.
 	size_t const imageCount(MinCity::Nuklear->getImageCount());
@@ -251,7 +252,7 @@ void cVulkan::CreateNuklearResources()
 	pm.blendDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 	pm.blendColorBlendOp(vk::BlendOp::eAdd);
 	pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-	pm.blendDstAlphaBlendFactor(vk::BlendFactor::eZero);
+	pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 	pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 	typedef vk::ColorComponentFlagBits ccbf;
 	pm.blendColorWriteMask( ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA );
@@ -710,7 +711,7 @@ void cVulkan::CreateUpsampleResources()
 		pm.blendDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendColorBlendOp(vk::BlendOp::eAdd);
 		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eZero);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 		typedef vk::ColorComponentFlagBits ccbf;
 		pm.blendColorWriteMask(ccbf::eR | ccbf::eG | ccbf::eB); // must preserve alpha transparency mask) which is used by overlay pass
@@ -944,7 +945,7 @@ void cVulkan::CreatePostAAResources()
 		pm.blendDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendColorBlendOp(vk::BlendOp::eAdd);
 		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eZero);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
 		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 
 		typedef vk::ColorComponentFlagBits ccbf;
@@ -1288,6 +1289,7 @@ void cVulkan::CreateSharedVoxelResources()
 		TEX_NOISE_SAMPLER, 
 		TEX_BLUE_NOISE_SAMPLER,
 		TEX_TERRAIN_SAMPLER, 
+		TEX_GRID_SAMPLER,
 		TEX_ROAD_SAMPLER,
 		TEX_BLACKBODY_SAMPLER
 	};// first texture always has repeat addressing, and is a mix of noises on each channel (see textureboy)

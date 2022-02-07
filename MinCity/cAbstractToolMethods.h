@@ -58,6 +58,7 @@ protected:
 	bool const __vectorcall highlightVoxel(point2D_t const voxelIndex, uint32_t const color);
 	void __vectorcall highlightCross(point2D_t const voxelIndex, uint32_t const color);
 	void __vectorcall highlightArea(rect2D_t const area, uint32_t const color);
+	void __vectorcall highlightPerimeter(rect2D_t const area, uint32_t const color);
 
 private:
 	void clearHighlights(); // privste, use public method clearHistory / undoHistory - simplifies derived classea implementation.

@@ -277,7 +277,6 @@ void main() {
 	// ** Per voxel ops *** //
 #ifndef BASIC
 	Out.ambient = In[0].ambient;
-	Out.slice = float(u._uframe & 63U); // +blue noise over time
 
 #ifdef _color
 	Out._color = In[0].color;

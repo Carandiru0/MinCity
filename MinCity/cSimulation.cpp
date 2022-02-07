@@ -913,7 +913,7 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 		XMStoreFloat3A(&demand_, XMLoadFloat3A(&_properties.demand));
 
 		alignas(16) float* const demand_print(reinterpret_cast<float* const>(&demand_)); // indexable local reference
-		FMT_NUKLEAR_DEBUG(false, "residential [ {:.1f} ]  commercial [ {:.1f} ]  industrial [ {:.1f} ]", (demand_print[world::RESIDENTIAL] * 100.0f), (demand_print[world::COMMERCIAL] * 100.0f), (demand_print[world::INDUSTRIAL] * 100.0f));
+		//FMT_NUKLEAR_DEBUG(false, "residential [ {:.1f} ]  commercial [ {:.1f} ]  industrial [ {:.1f} ]", (demand_print[world::RESIDENTIAL] * 100.0f), (demand_print[world::COMMERCIAL] * 100.0f), (demand_print[world::INDUSTRIAL] * 100.0f));
 	}
 
 	++_run_count;

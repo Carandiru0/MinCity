@@ -833,7 +833,7 @@ void __vectorcall cRoadTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 												// and the axis max will still be the same
 		}
 
-		highlightArea(rect2D_t(p2D_subs(origin, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(origin, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
+		highlightPerimeter(rect2D_t(p2D_subs(origin, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(origin, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
 
 	}
 }
@@ -2026,7 +2026,7 @@ void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR co
 													// and the axis max will still be the same
 			}
 
-			highlightArea(rect2D_t(p2D_subs(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
+			highlightPerimeter(rect2D_t(p2D_subs(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
 
 			{
 				point2D_t const abs_difference = p2D_abs(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));

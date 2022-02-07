@@ -365,7 +365,7 @@ void __vectorcall cZoningTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR 
 				undoZoneHistory();
 
 				// set highlight
-				highlightArea(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint), world::ZONING_COLOR[_ActivatedSubTool]);
+				highlightPerimeter(orientAreaToRect(_segmentVoxelIndex[0], clampedEndPoint), world::ZONING_COLOR[_ActivatedSubTool]);
 
 				_segmentVoxelIndex[1] = clampedEndPoint;
 				++_activePoint;

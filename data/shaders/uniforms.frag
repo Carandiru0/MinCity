@@ -157,12 +157,6 @@ float getOcclusion(in vec3 uvw)
 	return(occlusion*occlusion*occlusion);
 }
 
-float fetch_bluenoise(in const vec2 pixel)
-{
-	return( textureLod(_texArray[TEX_BLUE_NOISE], vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).x ); // *bluenoise RED channel used*
-}
-
-
 
 // terrain, w/lighting 
 #if defined(T2D) 
@@ -204,6 +198,35 @@ float filteredGrid( in vec2 uv, in const float scale, in const float thin )    /
 	return(min(1.0f, grid));
 }
 
+float antialiasedGrid( in const vec2 uv, in float scale, in float thin )
+{
+	vec2 tile_uv, p;
+
+	p = uv - 0.3f; // bl
+
+	tile_uv = fract(p * scale);
+	tile_uv = -abs(tile_uv*2.-1.);
+
+	float tile0 = min(tile_uv.x, tile_uv.y);
+
+	p = (1.0f - uv) - 0.8f; // tr
+
+	tile_uv = fract(p * scale);
+	tile_uv = -abs(tile_uv*2.-1.);
+
+	float tile1 = min(tile_uv.x, tile_uv.y);
+    
+    float d = abs(min(tile0,tile1));
+
+    //d = smoothstep(1.0f - thin, 1.0f, d);
+	d = 1.0f - exp2(-2.7f * (d - thin) * (d - thin));
+
+    //
+    //
+	//d = smoothstep(1.0f - thin, 1.0f, d);
+	return d;
+}
+
 /*
 float antialiasedGrid(in vec2 uv, in const float scale)
 {
@@ -232,14 +255,12 @@ void main() {
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 	
 																							// bugfix: y is flipped. simplest to correct here.
-	const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
+	const float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 
-	float grid = filteredGrid(In.world_uv.xy, 1024.0f, 16.0f);
-
-	grid *= max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
+	float grid = max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
 
 	const vec3 grid_color = unpackColor(In._color) * grid;
 
