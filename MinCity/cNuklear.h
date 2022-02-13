@@ -68,6 +68,10 @@ class no_vtable cNuklear : no_copy
 	static constexpr float const 
 		NK_FONT_WIDTH = 20.0f,
 		NK_FONT_HEIGHT = 36.0f;
+	static constexpr uint32_t const
+		ICON_DIMENSIONS = 128;
+	static constexpr int32_t const 
+		MAX_EDIT_LENGTH = 31;
 	static constexpr size_t const
 		NK_MAX_VERTEX_COUNT = (Globals::NK_MAX_VERTEX_BUFFER_SZ / sizeof(VertexDecl::nk_vertex)),
 		NK_MAX_INDEX_COUNT = (Globals::NK_MAX_INDEX_BUFFER_SZ / sizeof(uint16_t));
@@ -92,7 +96,6 @@ public:
 	
 	// Main Methods //
 	void Initialize(struct GLFWwindow* const& __restrict win);
-	void SetSpecializationConstants_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 	void SetSpecializationConstants_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 	void UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& sampler);
 	
@@ -171,10 +174,20 @@ public:
 private:
 	void LoadGUITextures();
 	void SetGUIDirty();
-
-	// windows:
+	void UpdateSequences();
+private:
+	// main menu window
 	void do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
+
+	// loading & saving window
+	void do_cyberpunk_newsave_slot(int32_t& __restrict selected, float const width, float const height,
+								   char (&szEdit)[MAX_EDIT_LENGTH + 1], int32_t& __restrict szLength,
+								   eWindowName const windowName, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
+	void do_cyberpunk_loadsave_slot(bool const mode, int32_t& __restrict selected, uint32_t const index, int32_t const slot, float const width, float const height,
+									eWindowName const windowName, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
 	void do_cyberpunk_loadsave_window(bool const mode, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
+
+	bool const toggle_button(std::string_view const label, struct nk_image const* const __restrict img_idle, struct nk_image const* const __restrict img_active, bool const isActive = false, bool* const __restrict pbHovered = nullptr) const;
 
 #ifdef DEBUG_LUT_WINDOW
 	void draw_lut_window(tTime const& __restrict tNow, uint32_t const height_offset);
@@ -212,44 +225,27 @@ private:
 	alignas(16) VertexDecl::nk_vertex*		_vertices;
 	alignas(16) uint16_t*					_indices;
 private:
-	typedef struct guiSequence
-	{
-		ImagingSequence
-			* sequence = nullptr;
-		fp_seconds
-			tAccumulateFrame = zero_time_duration;
-		uint32_t
-			frame = 0;
-
-		~guiSequence() {
-			if (sequence) {
-				ImagingDelete(sequence); sequence = nullptr;
-			}
-		}
-
-	} guiSequence;
 
 	struct guiTextures
 	{
-		vku::TextureImage2DArray   
-
-			*create = nullptr,
-			*open = nullptr,
-			*save = nullptr,
-			*road = nullptr,
-			*zoning = nullptr;
+		vku::TextureImage2DArray
+			* road_idle = nullptr,
+			* road_active = nullptr,
+			* zoning_idle = nullptr,
+			* zoning_active = nullptr,
+			* static_screen = nullptr;
 
 		struct load_thumbnail {
 
-			static constexpr uint32_t const count = 10;
+			static constexpr uint32_t const count = 5; // adjusted to max visible
 
+			vku::GenericBuffer
+				* stagingBuffer;
 			vku::TextureImage2DArray
 				* texture[count] = {};
 			Imaging 
 				image[count] = {};
-			//guiSequence*				// left as reference for sequences (not used anymore)
-				//sequence = nullptr;
-
+			
 			~load_thumbnail() {
 
 				for (uint32_t i = 0; i < count; ++i) {
@@ -258,7 +254,6 @@ private:
 					}
 					 // textures are released in nuklear CleanUp() as they need to be released b4 this dtor would be called
 				}
-				//SAFE_DELETE_ARRAY(sequence);
 			}
 		} load_thumbnail;
 
@@ -268,11 +263,11 @@ private:
 	struct guiImages
 	{
 		struct nk_image const
-			*create = nullptr,
-			*open = nullptr,
-			*save = nullptr,
-			*road = nullptr,
-			*zoning = nullptr,
+			*road_idle = nullptr,
+			*road_active = nullptr,
+			*zoning_idle = nullptr,
+			*zoning_active = nullptr,
+			*static_screen = nullptr,
 			*load_thumbnail[guiTextures::load_thumbnail::count] = {},
 			*offscreen = nullptr;
 
@@ -281,25 +276,46 @@ private:
 
 	std::vector<struct nk_image_extended*> _imageVector;
 
+	typedef struct sequenceFraming
+	{
+		fp_seconds
+			tAccumulateFrame = zero_time_duration;
+		uint32_t
+			frame = 0;
+
+	} sequenceFraming;
+
 	struct sequenceImages
 	{
-		static constexpr uint32_t const	STATIC_IMAGE_COUNT = 1;
-
+		sequenceFraming
+			road_framing = {},
+			zoning_framing = {},
+			static_screen_framing = {};
 		ImagingSequence
-			* static_screen[STATIC_IMAGE_COUNT] = { nullptr };
+			* road_active = nullptr,
+			* zoning_active = nullptr,
+			* static_screen = nullptr;
 
 	} _sequenceImages;
 
 	// other
 	struct {
 
+		std::string						visible_cities[guiTextures::load_thumbnail::count];
 		vector<CityInfo>				info_cities;
-		int32_t                         selected;
-		bool							bReset;
+		int32_t							scroll_offset = 0;
+		int32_t                         selected = -1, existing = -1;
+		bool							bReset = true;
 
 		void reset() {
+
+			for (uint32_t i = 0; i < guiTextures::load_thumbnail::count; ++i) {
+				visible_cities[i].clear();
+			}
 			info_cities.clear();
+			scroll_offset = 0;
 			selected = -1;
+			existing = -1;
 			bReset = false;
 		}
 

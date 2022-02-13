@@ -191,7 +191,7 @@ vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float o
 	//return(vec3(NdotL * attenuation));
 
 			// ambient reflection (ambient light not affected by fresnel) - (attenuation in this case is global, from any light source)
-	return ( unpackColor(In.ambient) + ambient_reflection * attenuation * (1.0f - specular_reflection_term) * occlusion * 2.0f +
+	return ( unpackColor(In.ambient) + ambient_reflection * (1.0f - specular_reflection_term) * occlusion +
 			  // diffuse color .   // diffuse shading/lighting								  // specular shading/lighting					
 		     fma( voxelAlbedo * occlusion + occlusion, ( diffuse_reflection_term + specular_reflection_term * ambient_reflection ) * light_color, 
 			       // emission				// ^^^^^^ this is like a + 1.0f but instead shaded

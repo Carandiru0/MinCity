@@ -53,18 +53,19 @@ public:
 	// determined by texture argument being nullptr
 	// **note bDedicatedMemory template parameter is ignored / not used in the updating context**
 
+	// an optional buffer can be supplied resulting in non-blocking operation. Otherwise these functions block until the gpu texture is updated with the image. Must be allocated and of same size as the image.
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture);  // default rgba 8bpc 1D array
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture, vku::GenericBuffer* const __restrict buffer = nullptr);  // default rgba 8bpc 1D array
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture);  // default rgba 8bpc
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture, vku::GenericBuffer* const __restrict buffer = nullptr);  // default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture);	// default rgba 8bpc 2D array
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture, vku::GenericBuffer* const __restrict buffer = nullptr);	// default rgba 8bpc 2D array
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture);	// default rgba 8bpc
+	void ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture, vku::GenericBuffer* const __restrict buffer = nullptr);	// default rgba 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture_RG(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture); // rg 8bpc
+	void ImagingToTexture_RG(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture, vku::GenericBuffer* const __restrict buffer = nullptr); // rg 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
-	void ImagingToTexture_R(ImagingMemoryInstance const* const image, vku::TextureImage2D*&__restrict texture); // r 8bpc
+	void ImagingToTexture_R(ImagingMemoryInstance const* const image, vku::TextureImage2D*&__restrict texture, vku::GenericBuffer* const __restrict buffer = nullptr); // r 8bpc
 	template<bool const bSrgb, bool const bDedicatedMemory = false>
 	void ImagingToTexture_BC7(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture); // compressed rgba
 	// 3D lut always in dedicated memory and is not srgb
@@ -97,7 +98,7 @@ public:
 };
 
 template<bool const bSrgb, bool const bDedicatedMemory>
-void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture)
+void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1DArray*& __restrict texture, vku::GenericBuffer* const __restrict buffer)
 {
 	vk::CommandPool const* __restrict commandPool(&transientPool());
 	vk::Queue const* __restrict queue(&graphicsQueue());
@@ -128,11 +129,18 @@ void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vk
 		texture = new vku::TextureImage1DArray(_device, image->xsize, image->ysize,
 											   format, false, bDedicatedMemory);
 	}
-	texture->upload<false>(_device, image->block, *commandPool, *queue);
+
+	if (buffer) {
+		buffer->updateLocal(image->block, image->xsize * image->linesize);
+		texture->upload<false>(_device, *buffer, 0, *commandPool, *queue);
+	}
+	else {
+		texture->upload<false>(_device, image->block, 0, *commandPool, *queue);
+	}
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 template<bool const bSrgb, bool const bDedicatedMemory>
-void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture)
+void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage1D*& __restrict texture, vku::GenericBuffer* const __restrict buffer)
 {
 	vk::CommandPool const* __restrict commandPool(&transientPool());
 	vk::Queue const* __restrict queue(&graphicsQueue());
@@ -163,11 +171,18 @@ void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vk
 		texture = new vku::TextureImage1D(_device, image->xsize,
 										  format, false, bDedicatedMemory);
 	}
-	texture->upload<false>(_device, image->block, *commandPool, *queue);
+
+	if (buffer) {
+		buffer->updateLocal(image->block, image->xsize * image->linesize);
+		texture->upload<false>(_device, *buffer, *commandPool, *queue);
+	}
+	else {
+		texture->upload<false>(_device, image->block, *commandPool, *queue);
+	}
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 template<bool const bSrgb, bool const bDedicatedMemory>
-void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture)	// always updates array layer 0, or creates a texture array with 1 layer
+void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2DArray*& __restrict texture, vku::GenericBuffer* const __restrict buffer)	// always updates array layer 0, or creates a texture array with 1 layer
 {
 	vk::CommandPool const* __restrict commandPool(&transientPool());
 	vk::Queue const* __restrict queue(&graphicsQueue());
@@ -200,11 +215,17 @@ void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vk
 											   format, false, bDedicatedMemory);								  // for array with n layers content, use ImagingSequenceToTexture
 	}
 
-	texture->upload<false>(_device, image->block, image->ysize * image->linesize, 0, *commandPool, *queue);
+	if (buffer) {
+		buffer->updateLocal(image->block, image->ysize * image->linesize);
+		texture->upload<false>(_device, *buffer, 0, *commandPool, *queue);
+	}
+	else {
+		texture->upload<false>(_device, image->block, image->ysize * image->linesize, 0, *commandPool, *queue);
+	}
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 template<bool const bSrgb, bool const bDedicatedMemory>
-void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture)
+void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture, vku::GenericBuffer* const __restrict buffer)
 {
 	vk::CommandPool const* __restrict commandPool(&transientPool());
 	vk::Queue const* __restrict queue(&graphicsQueue());
@@ -237,11 +258,17 @@ void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vk
 										  format, false, bDedicatedMemory);
 	}
 
-	texture->upload<false>(_device, image->block, *commandPool, *queue);
+	if (buffer) {
+		buffer->updateLocal(image->block, image->ysize * image->linesize);
+		texture->upload<false>(_device, *buffer, *commandPool, *queue);
+	}
+	else {
+		texture->upload<false>(_device, image->block, *commandPool, *queue);
+	}
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 template<bool const bSrgb, bool const bDedicatedMemory>
-void  cTextureBoy::ImagingToTexture_RG(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture)
+void  cTextureBoy::ImagingToTexture_RG(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture, vku::GenericBuffer* const __restrict buffer)
 {
 	vk::CommandPool const* __restrict commandPool(&transientPool());
 	vk::Queue const* __restrict queue(&graphicsQueue());
@@ -272,11 +299,18 @@ void  cTextureBoy::ImagingToTexture_RG(ImagingMemoryInstance const* const image,
 		texture = new vku::TextureImage2D(_device, image->xsize, image->ysize,
 										  format, false, bDedicatedMemory);
 	}
-	texture->upload<false>(_device, image->block, *commandPool, *queue);
+
+	if (buffer) {
+		buffer->updateLocal(image->block, image->ysize * image->linesize);
+		texture->upload<false>(_device, *buffer, *commandPool, *queue);
+	}
+	else {
+		texture->upload<false>(_device, image->block, *commandPool, *queue);
+	}
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 template<bool const bSrgb, bool const bDedicatedMemory>
-void  cTextureBoy::ImagingToTexture_R(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture)
+void  cTextureBoy::ImagingToTexture_R(ImagingMemoryInstance const* const image, vku::TextureImage2D*& __restrict texture, vku::GenericBuffer* const __restrict buffer)
 {
 	vk::CommandPool const* __restrict commandPool(&transientPool());
 	vk::Queue const* __restrict queue(&graphicsQueue());
@@ -307,7 +341,14 @@ void  cTextureBoy::ImagingToTexture_R(ImagingMemoryInstance const* const image, 
 		texture = new vku::TextureImage2D(_device, image->xsize, image->ysize,
 										  format, false, bDedicatedMemory);
 	}
-	texture->upload<false>(_device, image->block, *commandPool, *queue);
+
+	if (buffer) {
+		buffer->updateLocal(image->block, image->ysize * image->linesize);
+		texture->upload<false>(_device, *buffer, *commandPool, *queue);
+	}
+	else {
+		texture->upload<false>(_device, image->block, *commandPool, *queue);
+	}
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 template<bool const bSrgb, bool const bDedicatedMemory>

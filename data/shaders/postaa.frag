@@ -336,11 +336,7 @@ void main() {
 	//*** GUI Overlay ***//
 #elif defined (OVERLAY)	// overlay final (actual) subpass (gui overlay)
 
-	vec4 color0 = subpassLoad(inputGUI0);
-
-	color0 = color0 + subgroupQuadSwapHorizontal(color0);
-	color0 = color0 + subgroupQuadSwapVertical(color0);
-	color0 = color0 * 0.25f;
+	const vec4 color0 = subpassLoad(inputGUI0);
 
 	const vec4 color1 = subpassLoad(inputGUI1);
 

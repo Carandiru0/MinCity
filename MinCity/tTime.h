@@ -12,6 +12,12 @@ using namespace std::chrono;
 // A floating point seconds type
 using fp_seconds = std::chrono::duration<double, std::chrono::seconds::period>;	      // internally double precision for long last application time accuracy. to get maximum benefit overloaded operators exposed by fp_seconds for calculations rather than using
 constexpr duration const _zero_duration = duration{ std::chrono::nanoseconds(0) };	  // .count() and performing the calculations after. Only output to float with count after time calculations (differences, etc.) use conversion macro (time_to_float) below at this point:
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//	time is the 4th dimension. In a 3d world, its everywhere all at once and the same everywhere at any point in Time.
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #define zero_time_duration (_zero_duration)
 
 static constexpr float const _to_float(fp_seconds const d) { return((float)(d.count())); }

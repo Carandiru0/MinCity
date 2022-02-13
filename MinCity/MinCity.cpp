@@ -1184,7 +1184,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 		m_hwCoreCount = std::max(m_hwCoreCount, (size_t)std::thread::hardware_concurrency()); // can return 0 on failure, so keep the highest core count. default of 1 is set for m_hwCoreCount.
 	}
 
-	global_init_tbb_floating_point_env(TASK_INIT, ((num_hw_threads - 1) > 0 ? num_hw_threads - 1 : num_hw_threads), Globals::DEFAULT_STACK_SIZE);
+	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads, Globals::DEFAULT_STACK_SIZE);
 
 #ifndef NDEBUG
 	RedirectIOToConsole(); // *** must be just before the splash screen

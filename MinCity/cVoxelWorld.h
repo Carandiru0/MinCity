@@ -156,7 +156,6 @@ namespace world
 		void SetSpecializationConstants_VolumetricLight_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VolumetricLight_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
-		void SetSpecializationConstants_Nuklear_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
 		void SetSpecializationConstants_Resolve(std::vector<vku::SpecializationConstant>& __restrict constants);

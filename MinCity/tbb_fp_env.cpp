@@ -16,7 +16,7 @@ __declspec(noinline) void local_init_tbb_floating_point_env()
 __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads, uint32_t const thread_stack_size = 0)
 {
 	local_init_tbb_floating_point_env();
-
+	
 	//!
 	//! Init the tbb task scheduler here allows correct floating point settings to be captured correctly
 	//!

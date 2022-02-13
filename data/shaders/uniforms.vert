@@ -15,8 +15,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // for shared uniform access, use geometry shader instead
 
 #ifndef CLEAR
-#ifndef BASIC
 #include "common.glsl"
+#ifndef BASIC
 #include "sharedbuffer.glsl"
 #endif
 #endif
@@ -312,14 +312,6 @@ void main() {
   // out position //
   gl_Position = vec4(worldPos, 1.0f);
 
-  {
-#ifndef BASIC
-#ifndef ROAD // applies to ground and regular voxels only
-	Out.color = packColor(toLinear(unpackColor(inUV.w))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
-#endif
-#endif
-  }
-
 #ifndef CLEAR
 #ifdef BASIC
   const float emissive = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
@@ -328,15 +320,21 @@ void main() {
 #endif
 #endif // clear
 
+#ifndef ROAD // applies to ground and regular voxels only
+#ifdef BASIC
+#if !defined(CLEAR) && !defined(TRANS)
+	// Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
+	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
+#endif
+#else
+	Out.color = packColor(toLinear(unpackColor(inUV.w))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
+#endif
+#endif
+
 #if defined(BASIC) && !defined(ROAD) && !defined(TRANS) // only basic past this point
 
 	// derive the normalized index
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
-
-// Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
-#if !defined(CLEAR) 
-	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
-#endif // if !clear
 
 #if !defined(HEIGHT)
 const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions).xzy);

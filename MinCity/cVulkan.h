@@ -46,11 +46,6 @@ namespace eSamplerAddressing {
 	}
 }
 
-BETTER_ENUM(eSourceData, uint32_t,
-
-	NUKLEAR_DATA = 0,
-	VOXEL_DATA
-);
 BETTER_ENUM(eVoxelDescSharedLayout, uint32_t const,
 
 	VOXEL_COMMON = 0,
@@ -279,9 +274,6 @@ public:
 	NO_INLINE point2D_t const __vectorcall queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index) const;
 	
 	void Render();
-
-	template<uint32_t const sourceData>
-	__inline std::optional<DescriptorSetInfo> GetDescriptorSetInfo(uint32_t const layoutIndex = 0);
 
 	template<typename T>
 	void uploadBuffer(vku::GenericBuffer& __restrict baseBufferObject, const std::vector<T> & __restrict value) const {
@@ -663,19 +655,6 @@ private:
 
 	static void renderOffscreenVoxels(vku::static_renderpass const& s);
 };
-
-template<uint32_t const sourceData>
-__inline std::optional<DescriptorSetInfo> cVulkan::GetDescriptorSetInfo(uint32_t const layoutIndex)
-{
-	if constexpr( eSourceData::NUKLEAR_DATA == sourceData ) {
-		return(std::optional<DescriptorSetInfo>(DescriptorSetInfo(_nkData.descLayout, _nkData.sets, &_nkData._ubo)));
-	}
-
-#ifndef NDEBUG
-	static_assert("Incorrect usuage of cVulkan::GetDescriptorSetInfo, source data does not exist");
-#endif
-	return(std::nullopt);
-}
 
 template<bool const isDynamic, bool const isBasic, bool const isClear, bool const isTransparent>
 void cVulkan::CreateVoxelResource(

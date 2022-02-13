@@ -1,6 +1,5 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_KHR_shader_subgroup_quad: enable
 #extension GL_EXT_control_flow_attributes : enable
 
 #define fragment_shader
@@ -22,29 +21,22 @@ layout(location = 1) in vec4 fragColor;
 
 layout(location = 0) out vec4 outColor;
 
-#define shade r
-#define dist g
-#define shadedist rg
-#define alpha g
-#define shadealpha rg
-
 #define RGBA_IMAGE 0
 #define ARRAY_IMAGE 1
-
-vec4 textureRGBA(in const vec3 uvw)
-{
-	return( textureLod(sdfTexture[pc.array_index], uvw, 0) );
-}
 
 vec4 textureRGBA(in const vec2 uv)
 {
 	vec3 uvw;
-	uvw.xy = uv;
+
+	const vec2 texture_resolution = vec2(textureSize(sdfTexture[pc.array_index], 0).xy);
+
+	uvw.xy = subpixel_filter(uv * texture_resolution) / texture_resolution; // anti-aliasing
+
 	// if pc.type is RGBA_IMAGE, this will always result in layer 0
 	// ""   ""   "" ARRAY_IMAGE, this will result in layer corresponding to current sequence frame
 	uvw.z = max(0.0f, float(int(pc.type) - ARRAY_IMAGE));
 
-	return(textureRGBA(uvw));
+	return( textureLod(sdfTexture[pc.array_index], uvw, 0) );
 }
 
 

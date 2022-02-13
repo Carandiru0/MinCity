@@ -1,6 +1,8 @@
 #pragma once
 #include "tTime.h"
 
+// **** only basic types and declarations instead of definitions of methods ***
+
 // *public usage:
 
 typedef struct nk_text_animated_state

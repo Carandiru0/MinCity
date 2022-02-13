@@ -160,7 +160,7 @@ float getOcclusion(in vec3 uvw)
 
 // terrain, w/lighting 
 #if defined(T2D) 
-
+/*
 // iq - https://www.iquilezles.org/www/articles/filterableprocedurals/filterableprocedurals.htm
 float filteredGrid( in vec2 uv, in const float scale, in const float thin )    // thin - greater, thick - less
 {
@@ -227,7 +227,6 @@ float antialiasedGrid( in const vec2 uv, in float scale, in float thin )
 	return d;
 }
 
-/*
 float antialiasedGrid(in vec2 uv, in const float scale)
 {
 	// grid lines	
@@ -260,18 +259,15 @@ void main() {
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 
-	float grid = max(0.0f, dot(N.xzy, vec3(0,-1,0))); // only top faces
+	const float grid = max(0.0f, dot(N.xzy, vec3(0,-1,0))) * In._emission; // only top faces can be emissive
 
-	const vec3 grid_color = unpackColor(In._color) * grid;
+	const vec3 grid_color = unpackColor(In._color) * grid; // only emissive can have color
 
 	vec3 color = lit( terrainHeight + grid_color, light_color,				// regular terrain lighting
 					  getOcclusion(In.uv.xyz), Ld.att,
-					  grid * In._emission, ROUGHNESS,
+					  grid, ROUGHNESS,
 					  Ld.dir, N, V);
 	
-	const float luma = dot(color, LUMA);
-	color += grid_color * (1.0f - Ld.att) * (1.0f - terrainHeight) * (1.0f - luma) * (1.0f - In._emission);
-
 	outColor.rgb = color;
 	
 	//outColor = vec3(attenuation);
@@ -371,7 +367,7 @@ void main() {
 	const float weight = refraction_color(refract_color, colorMap, decal_luminance);
 	color.rgb = road_segment.rgb + mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
 
-	outColor = applyTransparency(color, road_segment.a, weight);
+	outColor = applyTransparency(vec3(1,0,0) * color, road_segment.a, weight);
 	// outColor = vec4(weight.xxx, 1.0f); 
 #endif
 

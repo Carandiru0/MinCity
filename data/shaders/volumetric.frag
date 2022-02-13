@@ -288,13 +288,13 @@ void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, i
 	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
 }
 
-void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec4 random_hemi_up, in const vec3 p, in const float dt)
+void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 random_hemi_up, in const vec3 p, in const float dt)
 {
 	//#########################
 	vec3 light_color;
 	float lightAmount, fogAmount;
 	
-	vol_lit(light_color, lightAmount, fogAmount, opacity, random_hemi_up.xyz, p, dt);  // shadow march tried, kills framerate
+	vol_lit(light_color, lightAmount, fogAmount, opacity, random_hemi_up, p, dt);  // shadow march tried, kills framerate
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -302,7 +302,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec4 ran
 	// this is balanced so that sigmaS remains conservative. Only emission can bring the level of sigmaS above 1.0f
 	//lightAmount = lightAmount * random_hemi_up.w;
 
-	const float sigmaS = fogAmount * voxel.tran * random_hemi_up.w;
+	const float sigmaS = fogAmount * voxel.tran;
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
@@ -324,7 +324,7 @@ void reflect_lit(out vec3 light_color, out float lightAmount, in const float opa
 	lightAmount = fetch_light_reflected(light_color, p, opacity, dt);
 }
 
-vec4 reflection(in vec4 voxel, in const float bounce_scatter, in const float opacity, in const vec3 p, in const float dt)
+void reflection(inout vec4 voxel, in const float bounce_scatter, in const float opacity, in const vec3 p, in const float dt)
 {
  	// opacity at this point may be equal to zero
 	// which means a "surface" was not hit after the initial bounce
@@ -344,19 +344,16 @@ vec4 reflection(in vec4 voxel, in const float bounce_scatter, in const float opa
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
 	voxel.light = opacity * mix(voxel.light, light_color * lightAmount, voxel.tran);
 	voxel.a = bounce_scatter;
-
-	return(voxel);
 }
 
 // all in parameters is important
-void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float dt, in float interval_remaining, in float interval_length)
+void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const float dt, in float interval_remaining, in float interval_length)
 {
 	// interval_remaining currently equals the bounce interval location
 	// allow reflections visible at same distance that was travelled from eye to bounce
 	interval_length = interval_remaining = min(dt * MAX_STEPS, interval_length - interval_remaining) * BOUNCE_INTERVAL;
 
-	//dt = 2.0f * dt;	// reflection step is double, faster
-	p += dt * rd;	// first reflected move to next point
+	p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point
 	
 	float opacity = 0.0f;
 	vec4 stored_reflection = voxel; // "ambient light"
@@ -370,7 +367,7 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in float 
 			integrate_opacity(opacity, fetch_opacity_reflection(p), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 			[[branch]] if(bounced(opacity)) { 
 				
-				stored_reflection = reflection(voxel, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p, dt);
+				reflection(stored_reflection, 1.0f - smoothstep(0.0f, interval_length, interval_remaining), opacity, p, dt);
 				break;	// hit reflected *opaque surface*
 			}
 
@@ -451,7 +448,6 @@ void main() {
 	// -------------------------------------------------------------------- //
 	float interval_remaining = interval_length - jittered_interval; // interval remaining must be accurate/exact for best results
 	// -------------------------------------------------------------------- //
-
 	// inverted volume height fix (only place this needs to be done!)
 	// this is done so its not calculated everytime at texture sampling
 	// however it adds confusion, for instance reconstruction of depth 
@@ -459,7 +455,7 @@ void main() {
 	rd.z = -rd.z;		// ""		""			""		  ""
 
 	// random distribution on a hemisphere pointing upwards
-	vec4 random_hemi_up = vec4(normalize(vec3(blue_noise.xy * 2.0f - 1.0f,-1.0f)), interval_remaining/interval_length); // .w is the camera/eye height
+	vec3 random_hemi_up = normalize(vec3(blue_noise.xy * 2.0f - 1.0f,-1.0f)); // .w is the camera/eye height
 																// optimization - not using rd VGPR, using In.eyeDir SGPR - less register pressure - no discernable difference *do not change*
 
 	vec4 voxel = vec4(vec3(0.0f),1.0f);		// accumulated light color w/scattering, // transmittance
@@ -472,7 +468,6 @@ void main() {
 		
 			// -------------------------------- part lighting ----------------------------------------------------
 			// ## evaluate light
-			random_hemi_up.w = 1.0f - interval_remaining/interval_length;
 			evaluateVolumetric(voxel, opacity, random_hemi_up, p, dt * 2.0f); // evaluated at 2x dt because of skipped light evaluation (only every second step)
 
 			// ## test hit voxel
@@ -515,7 +510,6 @@ void main() {
 			vec4 refine_voxel = voxel;
 			float refine_opacity = opacity;
 
-			random_hemi_up.w = 1.0f - interval_remaining/interval_length;
 			evaluateVolumetric(refine_voxel, refine_opacity, random_hemi_up, p, dt);
 
 			[[branch]] if (refine_opacity > opacity) { // is next opacity closer?
@@ -535,7 +529,6 @@ void main() {
 			interval_remaining += dt;
 			p += interval_remaining * rd;  // this is the last "partial" step!
 
-			random_hemi_up.w = 1.0f - interval_remaining/interval_length;
 			evaluateVolumetric(voxel, opacity, random_hemi_up, p, interval_remaining);
 		}
 	} // end volumetric scope

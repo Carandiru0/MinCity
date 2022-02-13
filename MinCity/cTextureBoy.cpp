@@ -100,7 +100,7 @@ void cTextureBoy::ImagingSequenceToTexture(ImagingSequence const* const image, v
 
 	if (nullptr == texture) {
 		texture = new vku::TextureImage2DArray(_device, image->xsize, image->ysize, count,
-			vk::Format::eR8G8B8A8Unorm, false, false);
+			vk::Format::eR8G8B8A8Srgb, false, false); // gifs are always non-linear, load as srgb
 	}
 
 	// image_offset is now equal to the image size total bytes

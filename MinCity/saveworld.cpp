@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "globals.h"
 #include "cVoxelWorld.h"
 #include "MinCity.h"
 #include "data.h"
@@ -9,6 +10,8 @@
 #include <density.h>	// https://github.com/centaurean/density - Density, fastest compression/decompression library out there with simple interface. must reproduce license file. attribution.
 #include <Imaging/Imaging/Imaging.h>
 #include "cNonUpdateableGameObject.h"
+#include <Utility/stringconv.h>
+#include <Random/superrandom.hpp>
 
 namespace fs = std::filesystem;
 
@@ -285,6 +288,14 @@ namespace world
 				// resample to thumbnail size
 				Imaging scaled_offscreen_image = ImagingResample(offscreen_image, offscreen_thumbnail_width, offscreen_thumbnail_height, IMAGING_TRANSFORM_BICUBIC);
 
+				// *bugfix - from the gpu queryOffscreenBuffer the red and blue channels are swapped! So swapping back to normal (save file contains correct image as validated in the debug section below) //
+				ImagingSwapRB(scaled_offscreen_image);  // much faster todo on the resampled size
+#ifndef NDEBUG
+#ifdef DEBUG_EXPORT_SAVE_IMAGE_THUMBNAILS
+				std::wstring const path = fmt::format(FMT_STRING(DEBUG_DIR L"{:d}.ktx"), PsuedoRandomNumber());
+				ImagingSaveToKTX(scaled_offscreen_image, path);
+#endif
+#endif
 				// write offscreen image data in reserved area
 				_fwrite_nolock(&scaled_offscreen_image->block[0], sizeof(scaled_offscreen_image->block[0]), offscreen_image_size, stream);
 

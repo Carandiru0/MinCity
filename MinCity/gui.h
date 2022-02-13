@@ -26,8 +26,8 @@ namespace gui
 	template<bool const reversed = false>
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t);
 	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t);
-	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed);
-	STATIC_INLINE_PURE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int32_t const seed);
+	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int64_t const seed);
+	STATIC_INLINE_PURE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int64_t const seed);
 
 	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
 	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
@@ -287,6 +287,7 @@ namespace gui
 		return{ (visible / count), string_width };
 	}
 
+	// w/ vxlmono font
 	STATIC_INLINE_PURE void __vectorcall add_vertical_bar(std::string& str, float const t)  // number, fractional
 	{
 		static constexpr char const positions[] = {
@@ -302,6 +303,7 @@ namespace gui
 		str += positions[position];
 	}
 
+	// w/ vxlmono font
 	template<bool const reversed>
 	STATIC_INLINE_PURE void __vectorcall add_horizontal_bar(std::string& str, float const t) // number, fractional
 	{
@@ -361,6 +363,7 @@ namespace gui
 		return( width );
 	}
 
+	// w/ vxlmono font
 	STATIC_INLINE_PURE void __vectorcall add_bouncing_arrow(std::string& str, float const t) // w/ vxlmono font
 	{
 		static constexpr char const positions[] = {
@@ -376,7 +379,8 @@ namespace gui
 		str += positions[position];
 	}
 
-	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int32_t const seed) // w/ vxlmono font
+	// w/ vxlmono font
+	STATIC_INLINE void __vectorcall add_barcode(std::string& str, uint32_t const length, int64_t const seed = 0) // optional seed to set b4 string of length is generated - seed can be set exterior to this function instead
 	{
 		static constexpr char const positions[] = {
 			// characters in sequential order of animation
@@ -384,7 +388,9 @@ namespace gui
 		};
 		static constexpr uint32_t const count(_countof(positions));
 
-		SetSeed(seed);
+		if (0 != seed) {
+			SetSeed(seed);
+		}
 		for (uint32_t i = 0; i < length; ++i) {
 
 			uint32_t const position = PsuedoRandomNumber(0, count - 1);
@@ -402,12 +408,14 @@ namespace gui
 	constinit static inline char const cyberpunk_glyphs[] = {
 		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a
 	};
-
-	STATIC_INLINE_PURE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int32_t const seed) // w/ vxlmono font
+	// w/ vxlmono font
+	STATIC_INLINE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int64_t const seed = 0) // optional seed to set b4 string of length is generated - seed can be set exterior to this function instead
 	{
 		static constexpr uint32_t const count(_countof(cyberpunk_glyphs));
 
-		SetSeed(seed);
+		if (0 != seed) {
+			SetSeed(seed);
+		}
 		for (uint32_t i = 0; i < length; ++i) {
 
 			uint32_t const position = PsuedoRandomNumber(0, count - 1);

@@ -294,9 +294,10 @@ void cVoxelWorld::GenerateGround()
 			Iso::Voxel oVoxel;
 			oVoxel.Desc = Iso::TYPE_GROUND;
 			oVoxel.MaterialDesc = 0;		// Initially visibility is set off on all voxels until ComputeGroundOcclusion()
+			Iso::clearColor(oVoxel);		// *bugfix - must clear to default color used for ground on generation.
 
 			if (uNoiseHeight > GROUND_HEIGHT_NOISE[0]) {
-				Iso::setHeightStep(oVoxel, 15);
+				Iso::setHeightStep(oVoxel, 15); 
 			}
 			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[1]) {
 				Iso::setHeightStep(oVoxel, 14);
@@ -1058,7 +1059,8 @@ namespace world
 						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
 
 							Iso::setZoning(oVoxel, zoning);
-							Iso::setColor(oVoxel, world::ZONING_COLOR[zoning]);
+							Iso::setEmissive(oVoxel);	// the level of emission can be coontrolled thru the voxel color. A light is not added however so its just the half extra shade of the zoning for now @todo
+							Iso::setColor(oVoxel, (world::ZONING_COLOR[zoning] >> 1));
 
 							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 						}
@@ -4329,9 +4331,10 @@ namespace world
 		// clamp at the 2x step size, don't care or want spurious spikes of time
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
-		XMFLOAT2A vPush;
+		XMFLOAT2A vPush{};
+#ifndef NDEBUG
 		XMStoreFloat2A(&vPush, getDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR));
-
+#endif
 		//pack into vector for uniform buffer layout																			   // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
 		_currentState.Uniform.aligned_data0 = XMVectorSet(vPush.x, vPush.y, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
 
@@ -4730,10 +4733,6 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(14, (float)ZNear)); 
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_Nuklear_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		MinCity::Nuklear->SetSpecializationConstants_VS(constants);
-	}
 	void cVoxelWorld::SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		MinCity::Nuklear->SetSpecializationConstants_FS(constants);

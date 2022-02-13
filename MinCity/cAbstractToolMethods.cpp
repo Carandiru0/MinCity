@@ -53,7 +53,7 @@ void cAbstractToolMethods::paint()
 		point2D_t const voxelIndex(highlightedVoxel->voxelIndex);
 		Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
 
-		if (pVoxel && Iso::isEmissive(*pVoxel)) {
+		if (pVoxel && Iso::isEmissive(*pVoxel) && Iso::isPending(*pVoxel)) { // IsPending prevents highlighting occupied voxels
 			world::addLight(voxelIndex, Iso::getColor(*pVoxel));
 		}
 	}
@@ -71,7 +71,7 @@ bool const __vectorcall cAbstractToolMethods::highlightVoxel(point2D_t const vox
 
 			_undoHighlight.emplace_back(voxelIndex, oVoxel);
 
-			Iso::setPending(oVoxel);
+			Iso::setPending(oVoxel);	// setPending prevents highlighting occupied voxels
 			Iso::setColor(oVoxel, color);
 			Iso::setEmissive(oVoxel);
 

@@ -39,7 +39,7 @@ float whiteness(in const vec3 rgb) {
 }
 
 // https://www.shadertoy.com/view/MtjBWz - thanks iq
-vec3 rndC(in vec3 voxel) // good function, works with any texture sampling that uses interpolation
+vec3 rndC(in vec3 voxel) // good function, works with any texture sampling that uses linear interpolation
 {
     voxel = voxel + 0.5f;
     const vec3 ivoxel = floor( voxel );
@@ -49,7 +49,7 @@ vec3 rndC(in vec3 voxel) // good function, works with any texture sampling that 
  
 	return(voxel - 0.5f);  // returns in same unit as input, voxels
 }
-vec2 rndC(in vec2 pixel) // good function, works with any texture sampling that uses interpolation
+vec2 rndC(in vec2 pixel) // good function, works with any texture sampling that uses linear interpolation
 {
     pixel = pixel + 0.5f;
     const vec2 ipixel = floor( pixel );
@@ -59,7 +59,7 @@ vec2 rndC(in vec2 pixel) // good function, works with any texture sampling that 
  
 	return(pixel - 0.5f);  // returns in same unit as input, pixels
 }
-float rndC(in float pixel) // good function, works with any texture sampling that uses interpolation
+float rndC(in float pixel) // good function, works with any texture sampling that uses linear interpolation
 {
     pixel = pixel + 0.5f;
     const float ipixel = floor( pixel );
@@ -69,6 +69,23 @@ float rndC(in float pixel) // good function, works with any texture sampling tha
  
 	return(pixel - 0.5f);  // returns in same unit as input, pixels
 }
+
+#ifdef fragment_shader
+// for better rendering of "pixel art" stuff
+// https://www.shadertoy.com/view/MllBWf
+vec2 subpixel_filter(in vec2 pixel) // good function, works with any texture sampling that uses linear interpolation
+{
+    pixel = pixel + 0.5f;
+    const vec2 ipixel = floor( pixel );
+    const vec2 fpixel = fract( pixel );
+    const vec2 aapixel = fwidth( pixel ) * 0.75f; // filter width = 1.5 pixels
+
+	// tweaking fractional value before texture sampling
+	pixel = ipixel + smoothstep( vec2(0.5)-aapixel, vec2(0.5)+aapixel, fpixel);
+ 
+	return(pixel - 0.5f);  // returns in same unit as input, pixels
+}
+#endif
 
 // Ken Perlin suggests an improved version of the smoothstep() function, 
 // which has zero 1st- and 2nd-order derivatives at x = 0 and x = 1.

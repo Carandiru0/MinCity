@@ -21,6 +21,8 @@
 #endif
 
 inline VmaAllocator vku::vma_;
+inline tbb::concurrent_unordered_map<VkCommandPool, vku::CommandBufferContainer<1>> vku::pool_;
+
 inline cVulkan::sPOSTAADATA cVulkan::_aaData;
 inline cVulkan::sDEPTHRESOLVEDATA cVulkan::_depthData;
 inline cVulkan::sCOMPUTEDATA cVulkan::_comData;
@@ -184,13 +186,12 @@ bool const cVulkan::LoadVulkanWindow(GLFWwindow* const glfwwindow)
 // and should match the nuklear pipeline blending state (see below)
 void cVulkan::CreateNuklearResources()
 {
-	std::vector< vku::SpecializationConstant > constants_vs, constants_fs;
+	std::vector< vku::SpecializationConstant > constants_fs;
 
-	MinCity::VoxelWorld->SetSpecializationConstants_Nuklear_VS(constants_vs);
 	MinCity::VoxelWorld->SetSpecializationConstants_Nuklear_FS(constants_fs);
 
 	// Create two shaders, vertex and fragment. 
-	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "Nuklear.vert.bin", constants_vs };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "Nuklear.vert.bin" };
 	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "Nuklear.frag.bin", constants_fs };
 
 	// Build a template for descriptor sets that use these shaders.
@@ -277,6 +278,7 @@ void cVulkan::CreateNuklearResources()
 	vku::DescriptorSetMaker			dsm;
 	dsm.layout(*_nkData.descLayout);
 	_nkData.sets = dsm.create(_device, _fw.descriptorPool());
+	_nkData.sets.shrink_to_fit();
 }
 
 void cVulkan::CreateComputeResources()
@@ -313,6 +315,7 @@ void cVulkan::CreateComputeResources()
 		dsm.layout(*_comData.light.descLayout);
 
 		_comData.light.sets = dsm.create(_device, _fw.descriptorPool());
+		_comData.light.sets.shrink_to_fit();
 
 		std::vector< vku::SpecializationConstant > constants;
 		MinCity::VoxelWorld->SetSpecializationConstants_ComputeLight(constants);
@@ -449,6 +452,7 @@ void cVulkan::CreateVolumetricResources()
 	// double buffered
 	_volData.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 	_volData.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+	_volData.sets.shrink_to_fit();
 
 	// Make a default pipeline layout. This shows how pointers
 	// to resources are layed out.
@@ -571,6 +575,7 @@ void cVulkan::CreateUpsampleResources()
 			// double buffered
 			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+			_upData[index].sets.shrink_to_fit();
 
 			// Make a default pipeline layout. This shows how pointers
 			// to resources are layed out.
@@ -633,6 +638,7 @@ void cVulkan::CreateUpsampleResources()
 			// double buffered
 			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 			_upData[index].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+			_upData[index].sets.shrink_to_fit();
 
 			// Make a default pipeline layout. This shows how pointers
 			// to resources are layed out.
@@ -685,6 +691,7 @@ void cVulkan::CreateUpsampleResources()
 		vku::DescriptorSetMaker			dsm;
 		dsm.layout(*_upData[index].descLayout);
 		_upData[index].sets = dsm.create(_device, _fw.descriptorPool());
+		_upData[index].sets.shrink_to_fit();
 
 		// Make a default pipeline layout. This shows how pointers
 		// to resources are layed out.
@@ -743,6 +750,7 @@ void cVulkan::CreateDepthResolveResources()
 	vku::DescriptorSetMaker			dsm;
 	dsm.layout(*_depthData.descLayout);
 	_depthData.sets = dsm.create(_device, _fw.descriptorPool());
+	_depthData.sets.shrink_to_fit();
 
 	// Make a default pipeline layout. This shows how pointers
 	// to resources are layed out.
@@ -811,6 +819,7 @@ void cVulkan::CreatePostAAResources()
 	// double buffered
 	_aaData.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 	_aaData.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+	_aaData.sets.shrink_to_fit();
 
 	// Make a default pipeline layout. This shows how pointers
 	// to resources are layed out.
@@ -1331,6 +1340,7 @@ void cVulkan::CreateSharedVoxelResources()
 		// double buffered
 		_rtSharedDescSet[i].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 		_rtSharedDescSet[i].sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+		_rtSharedDescSet[i].sets.shrink_to_fit();
 
 		// Make a default pipeline layout. This shows how pointers
 		// to resources are layed out.
@@ -2672,6 +2682,12 @@ void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 	// Wait until all drawing is done and then kill the window.
 	WaitDeviceIdle();
 
+	using pool_map = tbb::concurrent_unordered_map<VkCommandPool, vku::CommandBufferContainer<1>>;
+	for (pool_map::iterator iter = vku::pool_.begin(); iter != vku::pool_.end(); ++iter) {
+
+		iter->second.release(_device);
+	}
+	
 	_activeCountBuffer[0].release(); _activeCountBuffer[1].release();
 	SAFE_RELEASE_DELETE(_indirectActiveCount[0]); SAFE_RELEASE_DELETE(_indirectActiveCount[1]);
 

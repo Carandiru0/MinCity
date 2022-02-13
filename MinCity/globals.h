@@ -31,7 +31,7 @@
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-//#define LIVESHADER_MODE
+#define LIVESHADER_MODE
 
 #define DEBUG_SHOW_GUI_WINDOW_BORDERS
 #define DEBUG_DISABLE_MUSIC
@@ -41,6 +41,7 @@
 //#define DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
 //#define DEBUG_EXPORT_BLACKBODY_KTX
 //#define DEBUG_EXPORT_NOISEMIX_KTX
+//#define DEBUG_EXPORT_SAVE_IMAGE_THUMBNAILS
 // 
 //#define DEBUG_HIGHLIGHT_BOUNDING_RECTS
 //#define DEBUG_TEST_FRONT_TO_BACK
@@ -173,7 +174,7 @@ namespace Globals
 	static constexpr double const MAXZ_DEPTH = (200.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
-	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 42;	 // 42ms = 24fps maximum gui update interval when no input is flagging the gui to be updated
+	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 33;	 // 33ms = 30fps maximum gui update interval when no input is flagging the gui to be updated
 	
 	static constexpr 
 		uint32_t const MIN_BLACK_LVL_EMISSIVE = 8;

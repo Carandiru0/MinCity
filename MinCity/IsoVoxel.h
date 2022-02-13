@@ -100,6 +100,9 @@ namespace Iso
 	read_only inline XMVECTORF32 const
 		GRID_OFFSET_X_Z{ -GRID_VOXELS_START_XZ_OFFSET, 0.0f, -GRID_VOXELS_START_XZ_OFFSET };
 
+	static constexpr uint32_t const
+		DEFAULT_GROUND_COLOR = 0x00FFFFFF;
+
 	// ####### Desc bits:
 
 	// 0000 0001 ### TYPE ###
@@ -459,7 +462,7 @@ namespace Iso
 	}
 	STATIC_INLINE void clearColor(Voxel& oVoxel) {
 
-		oVoxel.Hash[GROUND_HASH] &= ~MASK_COLOR; // clear ground color bits
+		setColor(oVoxel, DEFAULT_GROUND_COLOR);
 	}
 
 	STATIC_INLINE_PURE uint32_t const getZoning(Voxel const& oVoxel)
