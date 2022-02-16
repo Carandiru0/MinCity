@@ -47,10 +47,11 @@ static constexpr fp_seconds const
 	CYBERPUNK_BEAT = fp_seconds(milliseconds(200));
 
 static inline nk_color const
+	TRANSPARENT = {},
 	DEFAULT_TEXT_COLOR = { nk_la(255, 255) },
 	HOVER_TEXT_COLOR = { nk_rgb(239, 6, 105) },
 	ACTIVE_TEXT_COLOR = { nk_rgb(255, 0, 0) },
-	DISABLED_TEXT_COLOR = { nk_la(200, 255) };
+	DISABLED_TEXT_COLOR = { nk_la(127, 255) };
 
 } // end ns
 
@@ -513,12 +514,11 @@ void cNuklear::UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk
 	_ctx->style.button.text_active = ACTIVE_TEXT_COLOR;
 	_ctx->style.button.text_alignment = NK_TEXT_CENTERED;
 	_ctx->style.button.border = 0.0f;
-	_ctx->style.button.border_color = nk_rgb(0, 0, 0);
+	_ctx->style.button.border_color = nk_rgba(0, 0, 0, 0);
 	_ctx->style.button.touch_padding = nk_vec2(1.0f, 1.0f); // required
 	_ctx->style.button.padding = nk_vec2(0.0f, 0.0f);
-	_ctx->style.button.border = 0.0f;
 	_ctx->style.button.rounding = 0.0f;
-
+	
 	// Set initial uniform buffer value ( already done prior to this function and bound to 0 )
 
 	// update the reserved slot
@@ -541,21 +541,18 @@ void cNuklear::UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk
 
 void cNuklear::LoadGUITextures()
 {
-	// Load Textures (SDFs)
-	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.road_idle, GUI_DIR L"road_idle.ktx");
+	// Load Textures
 
-	MinCity::TextureBoy->LoadKTXTexture(_guiTextures.zoning_idle, GUI_DIR L"zoning_idle.ktx");
 
 	// Load Image Sequences
-	_sequenceImages.road_active = ImagingLoadGIFSequence(GUI_DIR L"road_active.gif");
-	_sequenceImages.zoning_active = ImagingLoadGIFSequence(GUI_DIR L"zoning_active.gif");
+	_sequenceImages.menu_item = ImagingLoadGIFSequence(GUI_DIR L"menu_item.gif");
 	_sequenceImages.static_screen = ImagingLoadGIFSequence(GUI_DIR L"static.gif");
 
 	// Assign Images or Image Sequences to Textures
 
 	{ // sequences 
-		MinCity::TextureBoy->ImagingSequenceToTexture(_sequenceImages.road_active, _guiTextures.road_active);
-		MinCity::TextureBoy->ImagingSequenceToTexture(_sequenceImages.zoning_active, _guiTextures.zoning_active);
+		MinCity::TextureBoy->ImagingSequenceToTexture(_sequenceImages.menu_item, _guiTextures.menu_item);
+
 		MinCity::TextureBoy->ImagingSequenceToTexture(_sequenceImages.static_screen, _guiTextures.static_screen);
 	}
 
@@ -589,34 +586,54 @@ void cNuklear::LoadGUITextures()
 		RGBA_IMAGE
 	});
 
-	_guiImages.road_idle   = _imageVector.emplace_back( new nk_image_extended
-	{	_guiTextures.road_idle->imageView(),
-		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
-		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		RGBA_IMAGE
-	});
-	_guiImages.road_active = _imageVector.emplace_back(new nk_image_extended
-		{ _guiTextures.road_active->imageView(),
-			ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
-			{ 0, 0, (uint16_t)_sequenceImages.road_active->xsize, (uint16_t)_sequenceImages.road_active->ysize },
+	_guiImages.demo = _imageVector.emplace_back(new nk_image_extended
+		{ _guiTextures.menu_item->imageView(),
+			(uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height },
 			ARRAY_IMAGE
 		});
-	_guiImages.zoning_idle	= _imageVector.emplace_back( new nk_image_extended
-	{	_guiTextures.zoning_idle->imageView(), 
-		ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
-		{ 0, 0, ICON_DIMENSIONS, ICON_DIMENSIONS },
-		RGBA_IMAGE
-	});
-	_guiImages.zoning_active = _imageVector.emplace_back(new nk_image_extended
-		{ _guiTextures.zoning_active->imageView(),
-			ICON_DIMENSIONS, ICON_DIMENSIONS, // the size here can be customized
-			{ 0, 0, (uint16_t)_sequenceImages.zoning_active->xsize, (uint16_t)_sequenceImages.zoning_active->ysize },
+
+	_guiImages.road = _imageVector.emplace_back(new nk_image_extended
+		{ _guiTextures.menu_item->imageView(),
+			(uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height },
 			ARRAY_IMAGE
 		});
+
+	for (uint32_t i = 0; i < 3; ++i) {
+		_guiImages.zoning[i] = _imageVector.emplace_back(new nk_image_extended
+		{ _guiTextures.menu_item->imageView(),
+			(uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height },
+			ARRAY_IMAGE
+		});
+	}
+
+	_guiImages.power = _imageVector.emplace_back(new nk_image_extended
+		{ _guiTextures.menu_item->imageView(),
+			(uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height },
+			ARRAY_IMAGE
+		});
+
+	_guiImages.security = _imageVector.emplace_back(new nk_image_extended
+		{ _guiTextures.menu_item->imageView(),
+			(uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height },
+			ARRAY_IMAGE
+		});
+
+	_guiImages.science = _imageVector.emplace_back(new nk_image_extended
+		{ _guiTextures.menu_item->imageView(),
+			(uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.menu_item->extent().width, (uint16_t)_guiTextures.menu_item->extent().height },
+			ARRAY_IMAGE
+		});
+
 	_guiImages.static_screen = _imageVector.emplace_back(new nk_image_extended
 		{ _guiTextures.static_screen->imageView(),
-			(uint16_t)_sequenceImages.static_screen->xsize, (uint16_t)_sequenceImages.static_screen->ysize, // the size here can be customized
-			{ 0, 0, (uint16_t)_sequenceImages.static_screen->xsize, (uint16_t)_sequenceImages.static_screen->ysize },
+			(uint16_t)_guiTextures.static_screen->extent().width, (uint16_t)_guiTextures.static_screen->extent().height, // the size here can be customized
+			{ 0, 0, (uint16_t)_guiTextures.static_screen->extent().width, (uint16_t)_guiTextures.static_screen->extent().height },
 			ARRAY_IMAGE
 		});
 
@@ -1963,95 +1980,205 @@ void cNuklear::do_cyberpunk_loadsave_window(bool const mode, std::string& __rest
 	nk_end(_ctx);
 }
 
-bool const cNuklear::toggle_button(std::string_view const label, struct nk_image const* const __restrict img_idle, struct nk_image const* const __restrict img_active, bool const isActive, bool* const __restrict pbHovered) const
+bool const cNuklear::toggle_button(std::string_view const label, struct nk_image const* const img, bool const isActive, bool* const __restrict pbHovered) const
 {
-	if (nullptr == img_idle->handle.ptr)
-		return(nk_false);
-	if (nullptr == img_active->handle.ptr)
+	if (nullptr == img->handle.ptr)
 		return(nk_false);
 
-	nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
-
+	nk_style_push_style_item(_ctx, &_ctx->style.button.normal, nk_style_item_color(TRANSPARENT));
+	nk_style_push_style_item(_ctx, &_ctx->style.button.hover, nk_style_item_color(TRANSPARENT));
+	nk_style_push_style_item(_ctx, &_ctx->style.button.active, nk_style_item_color(TRANSPARENT));
 	nk_style_push_color(_ctx, &_ctx->style.button.text_hover, HOVER_TEXT_COLOR);
 	nk_style_push_color(_ctx, &_ctx->style.button.text_active, ACTIVE_TEXT_COLOR);
 
 	if (!isActive) {
-		nk_style_push_color(_ctx, &_ctx->style.button.text_normal, DISABLED_TEXT_COLOR);
+		nk_style_push_color(_ctx, &_ctx->style.button.text_normal, DEFAULT_TEXT_COLOR);
 	}
 	else {
 		nk_style_push_color(_ctx, &_ctx->style.button.text_normal, ACTIVE_TEXT_COLOR);
 	}
 
-	struct nk_image const* const img_current(isActive ? img_active : img_idle);
-
-	nk_bool const ret = nk_button_image_label(_ctx, *img_current, label.data(), NK_TEXT_CENTERED);
-
-	if (pbHovered) {
-
-		*pbHovered = (bool const)nk_widget_is_hovered(_ctx);
-	}
+	nk_bool const ret = nk_button_image_label(_ctx, *img, label.data(), NK_TEXT_CENTERED, pbHovered);
 
 	// restore
 	nk_style_pop_color(_ctx);
 	nk_style_pop_color(_ctx);
 	nk_style_pop_color(_ctx);
-
-	nk_style_pop_font(_ctx);
+	nk_style_pop_style_item(_ctx);
+	nk_style_pop_style_item(_ctx);
+	nk_style_pop_style_item(_ctx);
 
 	return((bool const)ret);
 }
-
-void cNuklear::UpdateSequences()
+void cNuklear::UpdateSequence(struct nk_image* const __restrict gui_image, ImagingSequence const* const __restrict sequence, sequenceFraming& __restrict framing) const
 {
 	// accurate frame timing
 	fp_seconds const fTDelta(_ctx->delta_time_seconds);
 
+	fp_seconds const fTDelay(milliseconds(sequence->images[framing.frame].delay));
+
+	if ((framing.tAccumulateFrame += fTDelta) >= fTDelay) {
+
+		if (++framing.frame == sequence->count) {
+			framing.frame = 0;
+		}
+
+		framing.tAccumulateFrame -= fTDelay;
+
+		// *major trick* animation frame is hidden in type (push constant), shader will interpret as (frame = max(0, int32_t(type) - ARRAY_IMAGE))
+		((nk_image_extended* const)gui_image)->type = ARRAY_IMAGE + framing.frame; // **this is a safe cast** memory is actually allocated as nk_image_extended
+	}
+}
+void cNuklear::UpdateSequences()
+{
+	constinit static uint32_t lastActiveTool(0), lastActiveSubTool(0);
+
+	uint32_t const activeTool(MinCity::UserInterface->getActivatedToolType());
+	uint32_t const activeSubTool(MinCity::UserInterface->getActivatedSubToolType());
+
+	if (activeTool != lastActiveTool || activeSubTool != lastActiveSubTool) {
+
+		// resets
+		_sequenceImages.menu_item_framing.reset();
+
+		lastActiveTool = activeTool;
+		lastActiveSubTool = activeSubTool;
+	}
+
 	// sequences:
-	{ // road
-		fp_seconds const fTDelay(milliseconds(_sequenceImages.road_active->images[_sequenceImages.road_framing.frame].delay));
+	if ( eTools::DEMO == activeTool ) { // DEMO
+		UpdateSequence(_guiImages.demo, _sequenceImages.menu_item, _sequenceImages.menu_item_framing);
+	}
+	else {
+		((nk_image_extended* const)_guiImages.demo)->type = RGBA_IMAGE;
+	}
 
-		if ((_sequenceImages.road_framing.tAccumulateFrame += fTDelta) >= fTDelay) {
+	if (eTools::ROADS == activeTool) { // ROAD
+		UpdateSequence(_guiImages.road, _sequenceImages.menu_item, _sequenceImages.menu_item_framing);
+	}
+	else {
+		((nk_image_extended* const)_guiImages.road)->type = RGBA_IMAGE;
+	}
+	
+	if (eTools::ZONING == activeTool) { // ZONING
 
-			if (++_sequenceImages.road_framing.frame == _sequenceImages.road_active->count) {
-				_sequenceImages.road_framing.frame = 0;
-			}
+		// must reset *other* only - *bugfix maintains animation
+		switch (activeSubTool)
+		{
+		case eSubTool_Zoning::RESIDENTIAL:
+			((nk_image_extended* const)_guiImages.zoning[eSubTool_Zoning::COMMERCIAL-1])->type = RGBA_IMAGE;
+			((nk_image_extended* const)_guiImages.zoning[eSubTool_Zoning::INDUSTRIAL-1])->type = RGBA_IMAGE;
+			break;
+		case eSubTool_Zoning::COMMERCIAL:
+			((nk_image_extended* const)_guiImages.zoning[eSubTool_Zoning::RESIDENTIAL - 1])->type = RGBA_IMAGE;
+			((nk_image_extended* const)_guiImages.zoning[eSubTool_Zoning::INDUSTRIAL - 1])->type = RGBA_IMAGE;
+			break;
+		case eSubTool_Zoning::INDUSTRIAL:
+			((nk_image_extended* const)_guiImages.zoning[eSubTool_Zoning::RESIDENTIAL - 1])->type = RGBA_IMAGE;
+			((nk_image_extended* const)_guiImages.zoning[eSubTool_Zoning::COMMERCIAL - 1])->type = RGBA_IMAGE;
+			break;
+		}
 
-			_sequenceImages.road_framing.tAccumulateFrame -= fTDelay;
-
-			// *major trick* animation frame is hidden in type (push constant), shader will interpret as (frame = max(0, int32_t(type) - ARRAY_IMAGE))
-			((nk_image_extended* const)_guiImages.road_active)->type = ARRAY_IMAGE + _sequenceImages.road_framing.frame; // **this is a safe cast** memory is actually allocated as nk_image_extended
+		UpdateSequence(_guiImages.zoning[activeSubTool - 1], _sequenceImages.menu_item, _sequenceImages.menu_item_framing);
+	}
+	else {
+		for (uint32_t i = 0; i < 3; ++i) {
+			((nk_image_extended* const)_guiImages.zoning[i])->type = RGBA_IMAGE;
 		}
 	}
-	{ // zoning
-		fp_seconds const fTDelay(milliseconds(_sequenceImages.zoning_active->images[_sequenceImages.zoning_framing.frame].delay));
 
-		if ((_sequenceImages.zoning_framing.tAccumulateFrame += fTDelta) >= fTDelay) {
-
-			if (++_sequenceImages.zoning_framing.frame == _sequenceImages.zoning_active->count) {
-				_sequenceImages.zoning_framing.frame = 0;
-			}
-
-			_sequenceImages.zoning_framing.tAccumulateFrame -= fTDelay;
-
-			// *major trick* animation frame is hidden in type (push constant), shader will interpret as (frame = max(0, int32_t(type) - ARRAY_IMAGE))
-			((nk_image_extended* const)_guiImages.zoning_active)->type = ARRAY_IMAGE + _sequenceImages.zoning_framing.frame; // **this is a safe cast** memory is actually allocated as nk_image_extended
-		}
+	if (eTools::POWER == activeTool) { // POWER
+		UpdateSequence(_guiImages.power, _sequenceImages.menu_item, _sequenceImages.menu_item_framing);
 	}
+	else {
+		((nk_image_extended* const)_guiImages.power)->type = RGBA_IMAGE;
+	}
+
+	if (eTools::SECURITY == activeTool) { // SECURITY
+		UpdateSequence(_guiImages.security, _sequenceImages.menu_item, _sequenceImages.menu_item_framing);
+	}
+	else {
+		((nk_image_extended* const)_guiImages.security)->type = RGBA_IMAGE;
+	}
+
+
+	if (eTools::SCIENCE == activeTool) { // SCIENCE
+		UpdateSequence(_guiImages.science, _sequenceImages.menu_item, _sequenceImages.menu_item_framing);
+	}
+	else {
+		((nk_image_extended* const)_guiImages.science)->type = RGBA_IMAGE;
+	}
+
+	
 	{ // static screen
-		fp_seconds const fTDelay(milliseconds(_sequenceImages.static_screen->images[_sequenceImages.static_screen_framing.frame].delay));
+		UpdateSequence(_guiImages.static_screen, _sequenceImages.static_screen, _sequenceImages.static_screen_framing);
+	}
+}
 
-		if ((_sequenceImages.static_screen_framing.tAccumulateFrame += fTDelta) >= fTDelay) {
+void cNuklear::do_hint_window(std::string_view const windowName, std::string_view const szHint, bool const bSmallHint)
+{
+	int32_t const checked_length(((int32_t)szHint.length()) - 1); // *bugfix - a string is not empty when special whitespace characters are within, however the length of the string seems to not count some of them. So this additional check is required.
 
-			if (++_sequenceImages.static_screen_framing.frame == _sequenceImages.static_screen->count) {
-				_sequenceImages.static_screen_framing.frame = 0;
+	if (szHint.empty() || checked_length < 0)
+		return;
+
+	struct nk_rect bounds(make_centered_window_rect(360, 80, _frameBufferSize));
+	bounds.y = _frameBufferSize.y - 80;
+
+	if (nk_begin(_ctx, windowName.data(),
+		bounds,
+		NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND | NK_WINDOW_NO_INPUT))
+	{
+		struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+		AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+
+		nk_layout_row_dynamic(_ctx, 40, 1);
+
+		{
+			static constexpr fp_seconds const interval(1.0f);
+
+			constinit static uint32_t scramble_index(1);
+			constinit static bool bBlink(false);
+			constinit static tTime tLast(zero_time_point);
+
+			fp_seconds const accumulated(critical_now() - tLast);
+			float const t = SFM::saturate(accumulated / interval);
+
+			std::string szText(szHint);
+
+			if (accumulated > interval) {
+				bBlink = !bBlink;
+				tLast = critical_now();
+				if (bBlink) {
+					
+					scramble_index = PsuedoRandomNumber(0, szText.length() - 1);
+				}
 			}
 
-			_sequenceImages.static_screen_framing.tAccumulateFrame -= fTDelay;
+			if (bBlink) {
+				szText[scramble_index] = stringconv::toLower(szText[scramble_index]);
+			}
 
-			// *major trick* animation frame is hidden in type (push constant), shader will interpret as (frame = max(0, int32_t(type) - ARRAY_IMAGE))
-			((nk_image_extended* const)_guiImages.static_screen)->type = ARRAY_IMAGE + _sequenceImages.static_screen_framing.frame; // **this is a safe cast** memory is actually allocated as nk_image_extended
+			gui::add_horizontal_bar(szText, t);
+
+			if (bSmallHint) {
+				nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
+			}
+			nk_label(_ctx, szText.c_str(), NK_TEXT_CENTERED);
+			if (bSmallHint) {
+				nk_style_pop_font(_ctx);
+			}
+
+			if (_uiPauseProgress) {
+				nk_layout_row_dynamic(_ctx, 40, 1);
+
+				nk_size progress(_uiPauseProgress);
+				nk_progress(_ctx, &progress, 100, nk_false);
+			}
 		}
 	}
+	nk_end(_ctx); // end paused window
 }
 
 void  cNuklear::UpdateGUI()
@@ -2071,12 +2198,35 @@ void  cNuklear::UpdateGUI()
 	UpdateSequences();
 
 	/* GUI */
-	static bool bLastPaused(true);
+	constinit static bool bLastPaused(true);
+	
+	// resets and other states triggered by the unpaused <-> paused transitions
+	{
+		bool const bIsPaused(MinCity::isPaused());
+		if (bLastPaused != bIsPaused) {
+			_bHintReset = true;
+			bLastPaused = bIsPaused;
+		}
+	}
 
 	if (!MinCity::isPaused())
-	{ // Bottom Menu //
-		bLastPaused = true;
+	{
+		constexpr eWindowName const bgwindowName(eWindowName::WINDOW_HINT);
+		static std::string szHint(""); // isolated from non-paused hint
+		constinit static bool bSmallHint(false);
 
+		// required to prevent temporal display of incorrect "feedback/hint" text. This is triggered on a pause or opening of quit window
+		if (_bHintReset) {
+			szHint.clear();
+			_bHintReset = false;
+			bSmallHint = false;
+		}
+
+		// hint bg window "paused" window
+		do_hint_window(bgwindowName._to_string(), szHint, bSmallHint);
+
+		// Bottom Menu //
+		bool bResetHint(true);
 		uint32_t const window_offset(100);
 		uint32_t const window_width(_frameBufferSize.x - (window_offset << 1));
 		uint32_t const window_height(50);
@@ -2092,25 +2242,93 @@ void  cNuklear::UpdateGUI()
 
 			AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
 
-			static constexpr int32_t const cols(4);
-			static constexpr int32_t const icon(48);
-			nk_layout_row_static(_ctx, icon, icon, cols);
+			static constexpr int32_t const cols(8);
+			nk_layout_row_static(_ctx, 48, 48, cols);
 
 			//
+			bool bHovered(false);
+			uint32_t const activeTool(MinCity::UserInterface->getActivatedToolType());
 			uint32_t const activeSubTool(MinCity::UserInterface->getActivatedSubToolType());
-			if (toggle_button("r", _guiImages.road_idle, _guiImages.road_active, eSubTool_Zoning::RESERVED == activeSubTool)) {
+		
+			bHovered = false; // reset
+			if (toggle_button("p", _guiImages.demo, eTools::DEMO == activeTool, &bHovered)) {
+				MinCity::UserInterface->setActivatedTool(eTools::DEMO);
+			}
+			else if (bHovered) {
+				szHint = "DEMOLITION";
+				bResetHint = false;
+				bSmallHint = true;
+			}
+
+			bHovered = false; // reset
+			if (toggle_button("e", _guiImages.road, eTools::ROADS == activeTool, &bHovered)) {
 				MinCity::UserInterface->setActivatedTool(eTools::ROADS);
 			}
-			if (toggle_button("R", _guiImages.zoning_idle, _guiImages.zoning_active, eSubTool_Zoning::RESIDENTIAL == activeSubTool)) {
+			else if (bHovered) {
+				szHint = "ROAD";
+				bResetHint = false;
+				bSmallHint = true;
+			}
+
+			bHovered = false; // reset
+			if (toggle_button("r", _guiImages.zoning[eSubTool_Zoning::RESIDENTIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::RESIDENTIAL == activeSubTool, &bHovered)) {
 				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::RESIDENTIAL);
 			}
-			if (toggle_button("C", _guiImages.zoning_idle, _guiImages.zoning_active, eSubTool_Zoning::COMMERCIAL == activeSubTool)) {
+			else if (bHovered) {
+				szHint = "RESIDENTIAL";
+				bResetHint = false;
+				bSmallHint = true;
+			}
+
+			bHovered = false; // reset
+			if (toggle_button("c", _guiImages.zoning[eSubTool_Zoning::COMMERCIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::COMMERCIAL == activeSubTool, &bHovered)) {
 				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::COMMERCIAL);
 			}
-			if (toggle_button("I", _guiImages.zoning_idle, _guiImages.zoning_active, eSubTool_Zoning::INDUSTRIAL == activeSubTool)) {
+			else if (bHovered) {
+				szHint = "COMMERCIAL";
+				bResetHint = false;
+				bSmallHint = true;
+			}
+
+			bHovered = false; // reset
+			if (toggle_button("i", _guiImages.zoning[eSubTool_Zoning::INDUSTRIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::INDUSTRIAL == activeSubTool, &bHovered)) {
 				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::INDUSTRIAL);
 			}
+			else if (bHovered) {
+				szHint = "INDUSTRIAL";
+				bResetHint = false;
+				bSmallHint = true;
+			}
 			
+			bHovered = false; // reset
+			if (toggle_button("s", _guiImages.power, eTools::POWER == activeTool, &bHovered)) {
+				MinCity::UserInterface->setActivatedTool(eTools::POWER);
+			}
+			else if (bHovered) {
+				szHint = "POWER";
+				bResetHint = false;
+				bSmallHint = true;
+			}
+
+			bHovered = false; // reset
+			if (toggle_button("j", _guiImages.security, eTools::SECURITY == activeTool, &bHovered)) {
+				MinCity::UserInterface->setActivatedTool(eTools::SECURITY);
+			}
+			else if (bHovered) {
+				szHint = "SECURITY";
+				bResetHint = false;
+				bSmallHint = true;
+			}
+
+			bHovered = false; // reset
+			if (toggle_button("x", _guiImages.science, eTools::SCIENCE == activeTool, &bHovered)) {
+				MinCity::UserInterface->setActivatedTool(eTools::SCIENCE);
+			}
+			else if (bHovered) {
+				szHint = "SCIENCE";
+				bResetHint = false;
+				bSmallHint = true;
+			}
 			//nk_layout_row_dynamic(_ctx, 36, cols);
 
 			//int32_t pop = MinCity::City->getPopulation();
@@ -2120,19 +2338,22 @@ void  cNuklear::UpdateGUI()
 		
 		nk_pop_transparent_bg(_ctx);
 
+		// ######################################################################################################################################## //
+
+		// reset hint if not used
+		if (bResetHint) {
+			szHint.clear();
+			bSmallHint = false;
+		}
 #ifdef DEBUG_LUT_WINDOW
 		draw_lut_window(tLocal, window_height + 2);
 #endif
 	}
 	else { // ### PAUSED ### //
-		static std::string szHint("");
-		constinit static bool bSmallHint(false);
+		constexpr eWindowName const bgwindowName(eWindowName::WINDOW_PAUSED);
 
-		// resets and other states triggered by the unpaused -> paused transition
-		if (bLastPaused) {
-			_bHintReset = true;
-			bLastPaused = false;
-		}
+		static std::string szHint(""); // isolated from non-paused hint
+		constinit static bool bSmallHint(false);
 
 		// required to prevent temporal display of incorrect "feedback/hint" text. This is triggered on a pause or opening of quit window
 		if (_bHintReset) {
@@ -2141,8 +2362,11 @@ void  cNuklear::UpdateGUI()
 			bSmallHint = false;
 		}
 
-		// this locally resets the "feedback/hint" text when there is not context set below only // done after below //
-		bool bResetHint(eWindowType::QUIT == _uiWindowEnabled); // only set to true so that changes to the hint persist into the save & load window when selected
+		if (szHint.empty()) {
+			szHint = "PAUSED";
+		}
+		// hint bg window "paused" window
+		do_hint_window(bgwindowName._to_string(), szHint, bSmallHint);
 
 		/* no longere used 
 		if ( nk_canvas_begin(_ctx, "offscreen_overlay", _offscreen_canvas, nk_recti(0, 0, _frameBufferSize.x, _frameBufferSize.y),
@@ -2154,73 +2378,9 @@ void  cNuklear::UpdateGUI()
 		nk_canvas_end(_ctx, _offscreen_canvas);
 		*/
 
-		// main bg window "paused" window
-		{
-			constexpr eWindowName const bgwindowName(eWindowName::WINDOW_PAUSED);
+		// this locally resets the "feedback/hint" text when there is not context set below only // done after below //
+		bool bResetHint(eWindowType::QUIT == _uiWindowEnabled); // only set to true so that changes to the hint persist into the save & load window when selected
 
-			struct nk_rect bounds(make_centered_window_rect(360, 80, _frameBufferSize));
-			bounds.y = _frameBufferSize.y - 80;
-
-			if (nk_begin(_ctx, bgwindowName._to_string(),
-				bounds,
-				NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND | NK_WINDOW_NO_INPUT))
-			{
-				struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
-
-				AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
-
-				nk_layout_row_dynamic(_ctx, 40, 1);
-
-				{
-					if (szHint.empty()) {
-
-						static constexpr fp_seconds const interval(1.0f);
-
-						constinit static uint32_t scramble_index(1);
-						constinit static bool bBlink(false);
-						constinit static tTime tLast(zero_time_point);
-
-						fp_seconds const accumulated(critical_now() - tLast);
-						float const t = SFM::saturate(accumulated / interval);
-
-						std::string szText("PAUSED");
-
-						if (accumulated > interval) {
-							bBlink = !bBlink;
-							tLast = critical_now();
-							if (bBlink) {
-								scramble_index = PsuedoRandomNumber(1, szText.length() - 1);
-							}
-						}
-
-						if (bBlink) {
-							szText[scramble_index] = stringconv::toLower(szText[scramble_index]);
-						}
-
-						gui::add_horizontal_bar(szText, t);
-
-						nk_label(_ctx, szText.c_str(), NK_TEXT_CENTERED);
-					}
-					else {
-						if (bSmallHint) {
-							nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
-						}
-						nk_label(_ctx, szHint.c_str(), NK_TEXT_CENTERED);
-						if (bSmallHint) {
-							nk_style_pop_font(_ctx);
-						}
-					}
-
-					if (_uiPauseProgress) {
-						nk_layout_row_dynamic(_ctx, 40, 1);
-
-						nk_size progress(_uiPauseProgress);
-						nk_progress(_ctx, &progress, 100, nk_false);
-					}
-				}
-			}
-			nk_end(_ctx); // end paused window
-		}
 		// window query user to quit
 		if (eWindowType::QUIT == _uiWindowEnabled)
 		{
@@ -2889,10 +3049,7 @@ void  cNuklear::CleanUp()
 	SAFE_DELETE(_offscreen_canvas);
 
 	// cleanup all guitextures
-	SAFE_DELETE(_guiTextures.road_idle);
-	SAFE_DELETE(_guiTextures.road_active);
-	SAFE_DELETE(_guiTextures.zoning_idle);
-	SAFE_DELETE(_guiTextures.zoning_active);
+	SAFE_DELETE(_guiTextures.menu_item);
 	SAFE_DELETE(_guiTextures.static_screen);
 
 	SAFE_DELETE(_guiTextures.load_thumbnail.stagingBuffer);
@@ -2901,11 +3058,8 @@ void  cNuklear::CleanUp()
 	}
 
 	// sequence images
-	if (_sequenceImages.road_active) {
-		ImagingDelete(_sequenceImages.road_active);
-	}
-	if (_sequenceImages.zoning_active) {
-		ImagingDelete(_sequenceImages.zoning_active);
+	if (_sequenceImages.menu_item) {
+		ImagingDelete(_sequenceImages.menu_item);
 	}
 	if (_sequenceImages.static_screen) {
 		ImagingDelete(_sequenceImages.static_screen);

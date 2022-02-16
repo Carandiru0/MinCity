@@ -33,7 +33,7 @@ void cToolProvider::setActivatedTool(uint32_t const uiToolType, std::optional<ui
 		break;
 	case eTools::ROADS:
 	default:
-		_ActivatedTool = &_RoadTool;
+		_ActivatedTool = &_RoadTool; // always default to road tool.
 		break;
 	}
 

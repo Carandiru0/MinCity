@@ -24,6 +24,7 @@ BETTER_ENUM(eWindowName, uint32_t const,
 	WINDOW_SAVE,
 	WINDOW_LOAD,
 	WINDOW_PAUSED,
+	WINDOW_HINT,
 	WINDOW_MINCITY,
 	WINDOW_BOTTOM_MENU,
 	WINDOW_LUT
@@ -65,6 +66,8 @@ struct GLFWwindow; // forward decl //
 
 class no_vtable cNuklear : no_copy
 {
+	struct sequenceFraming;
+
 	static constexpr float const 
 		NK_FONT_WIDTH = 20.0f,
 		NK_FONT_HEIGHT = 36.0f;
@@ -174,6 +177,7 @@ public:
 private:
 	void LoadGUITextures();
 	void SetGUIDirty();
+	void UpdateSequence(struct nk_image* const __restrict gui_image, ImagingSequence const* const __restrict sequence, sequenceFraming& __restrict framing) const;
 	void UpdateSequences();
 private:
 	// main menu window
@@ -187,7 +191,11 @@ private:
 									eWindowName const windowName, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
 	void do_cyberpunk_loadsave_window(bool const mode, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
 
-	bool const toggle_button(std::string_view const label, struct nk_image const* const __restrict img_idle, struct nk_image const* const __restrict img_active, bool const isActive = false, bool* const __restrict pbHovered = nullptr) const;
+	// hint window
+	void do_hint_window(std::string_view const windowName, std::string_view const szHint, bool const bSmallHint);
+
+	// custom widgets
+	bool const toggle_button(std::string_view const label, struct nk_image const* const img, bool const isActive = false, bool* const __restrict pbHovered = nullptr) const;
 
 #ifdef DEBUG_LUT_WINDOW
 	void draw_lut_window(tTime const& __restrict tNow, uint32_t const height_offset);
@@ -229,10 +237,7 @@ private:
 	struct guiTextures
 	{
 		vku::TextureImage2DArray
-			* road_idle = nullptr,
-			* road_active = nullptr,
-			* zoning_idle = nullptr,
-			* zoning_active = nullptr,
+			* menu_item = nullptr,
 			* static_screen = nullptr;
 
 		struct load_thumbnail {
@@ -262,11 +267,13 @@ private:
 
 	struct guiImages
 	{
-		struct nk_image const
-			*road_idle = nullptr,
-			*road_active = nullptr,
-			*zoning_idle = nullptr,
-			*zoning_active = nullptr,
+		struct nk_image
+			*demo = nullptr,
+			*road = nullptr,
+			*zoning[3] = { nullptr, nullptr, nullptr },
+			*power = nullptr,
+			*security = nullptr,
+			*science = nullptr,
 			*static_screen = nullptr,
 			*load_thumbnail[guiTextures::load_thumbnail::count] = {},
 			*offscreen = nullptr;
@@ -283,17 +290,21 @@ private:
 		uint32_t
 			frame = 0;
 
+		void reset() {
+			tAccumulateFrame = zero_time_duration;
+			frame = 0;
+		}
+
 	} sequenceFraming;
 
 	struct sequenceImages
 	{
 		sequenceFraming
-			road_framing = {},
-			zoning_framing = {},
+			menu_item_framing = {},
 			static_screen_framing = {};
+
 		ImagingSequence
-			* road_active = nullptr,
-			* zoning_active = nullptr,
+			* menu_item = nullptr,
 			* static_screen = nullptr;
 
 	} _sequenceImages;

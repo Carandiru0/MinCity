@@ -9,8 +9,12 @@
 
 // Tools:
 BETTER_ENUM(eTools, uint32_t const,
-	ROADS = 0,
+	DEMO = 0,
+	ROADS,
 	ZONING,
+	POWER,
+	SECURITY,
+	SCIENCE,
 	SELECT
 );
 // SubTools:

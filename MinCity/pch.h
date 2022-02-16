@@ -9,6 +9,7 @@
 #endif
 
 #define NOMINMAX
+#define NOGDI
 #define NOGDICAPMASKS //- CC_*, LC_*, PC_*, CP_*, TC_*, RC_
 #define NOMENUS //- MF_ *
 #define NOSYSCOMMANDS //- SC_ *
