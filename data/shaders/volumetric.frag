@@ -1,6 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
-//#extension GL_KHR_shader_subgroup_vote: enable
+#extension GL_KHR_shader_subgroup_quad: enable
 #extension GL_EXT_control_flow_attributes :enable
 
 /* Copyright (C) 20xx Jason Tully - All Rights Reserved
@@ -196,7 +196,7 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 
 // (intended for volumetric light) - returns attenuation and light color, uses directional derivatiuves to further shade lighting 
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
-float fetch_light_volumetric( out vec3 light_color, out float scattering, in const float emission, in const vec3 random_hemi_up, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
+float fetch_light_volumetric( out vec3 light_color, out float scattering, in const float emission, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 		
 	float attenuation;
 	const vec3 light_direction = getLightFast(light_color, attenuation, offset(uvw), VolumeLength);
@@ -204,20 +204,21 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	// directional derivative - equivalent to dot(N,L) operation
 	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
 
+	// *bugfix - emission removed due to severe aliasing. resolution also improved after this change!
 	// fog                         
 	// random distribution on a hemisphere normalized vector pointing upwards (.xyz)
-	const float fog_height = max(0.0f, uvw.z) + emission; // fog is for entire volume so no limit on maximum height
+	const float fog_height = max(0.0f, uvw.z); // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
-	scattering = 1.0f - max(0.0f, dot(-light_direction, random_hemi_up));
-	scattering = fma(fog_height, scattering * attenuation, emission);
+	scattering = 1.0f - max(0.0f, dot(-light_direction, vec3(0,0,-1)));
+	scattering = fog_height * scattering * attenuation;
 
 	return(attenuation); // returns lightAmount  
 }
 
-vec2 fetch_bluenoise(in const vec2 pixel)
+float fetch_bluenoise(in const vec2 pixel)
 {
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).xy ); // *bluenoise RED+GREEN channel used* // *bugfix - temporal blue noise now working with no visible noisyness!
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).x ); // *bluenoise RED channel used* // *bugfix - temporal blue noise now working with no visible noisyness!
 }
 float fetch_depth()
 {
@@ -269,7 +270,7 @@ void integrate_opacity(inout float opacity, in const float new_opacity, in const
 
 // volumetric light
 void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, inout float opacity,
-		     in const vec3 random_hemi_up, in const vec3 p, in const float dt)
+		     in const vec3 p, in const float dt)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
 
@@ -283,18 +284,18 @@ void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, i
 
 	// lightAmount = attenuation
 	float scattering;
-	lightAmount = fetch_light_volumetric(light_color, scattering, emission, random_hemi_up, p, opacity, dt);
+	lightAmount = fetch_light_volumetric(light_color, scattering, emission, p, opacity, dt);
 	
 	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
 }
 
-void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 random_hemi_up, in const vec3 p, in const float dt)
+void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt)
 {
 	//#########################
 	vec3 light_color;
 	float lightAmount, fogAmount;
 	
-	vol_lit(light_color, lightAmount, fogAmount, opacity, random_hemi_up, p, dt);  // shadow march tried, kills framerate
+	vol_lit(light_color, lightAmount, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -342,7 +343,7 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const float 
 	
 	// NdotV clamped at 1.0f so that shading with NdotV doesn't disobey laws of conservation
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = opacity * mix(voxel.light, light_color * lightAmount, voxel.tran);
+	voxel.light = 0.5f * mix(voxel.light, light_color * lightAmount, opacity) * voxel.tran;
 	voxel.a = bounce_scatter;
 }
 
@@ -353,10 +354,10 @@ void traceReflection(in const vec4 voxel, in const vec3 rd, in vec3 p, in const 
 	// allow reflections visible at same distance that was travelled from eye to bounce
 	interval_length = interval_remaining = min(dt * MAX_STEPS, interval_length - interval_remaining) * BOUNCE_INTERVAL;
 
-	p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point
+	p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point - critical to avoid moirre artifacts that this is done with a large enough step (hence scaling by golden ratio)
 	
 	float opacity = 0.0f;
-	vec4 stored_reflection = voxel; // "ambient light"
+	vec4 stored_reflection = vec4(voxel.rgb * voxel.a, voxel.a); // "ambient light" *bugfix, must pre-multiply for correct ambient level. otherwise reflections are too bright.
 	{ //  begin new reflection raymarch to find reflected surface
 
 		// find reflection
@@ -423,7 +424,7 @@ void main() {
 	float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
 	pre_dt = max(pre_dt, interval_length*INV_MAX_STEPS);
 	// ----------------------------------- //
-	const float dt = max(pre_dt, MIN_STEP) * GOLDEN_RATIO_ZERO; // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
+	const float dt = max(pre_dt, MIN_STEP); // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth
@@ -438,9 +439,8 @@ void main() {
     
 	// without modifying interval variables start position
 	
-	// adjust start position by "bluenoise step"
-	const vec2 blue_noise = fetch_bluenoise(gl_FragCoord.xy);
-	const float jittered_interval = dt * blue_noise.y * 0.25f; // jittered offset should be equal to 1/4 a step (hides visual noise, still effective).
+	// adjust start position by "bluenoise step"	
+	const float jittered_interval = dt * fetch_bluenoise(gl_FragCoord.xy) * GOLDEN_RATIO_ZERO; // jittered offset should be scaled by golden ratio zero (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -454,9 +454,7 @@ void main() {
 	p.z = 1.0f - p.z;	// invert slice axis (height of volume)
 	rd.z = -rd.z;		// ""		""			""		  ""
 
-	// random distribution on a hemisphere pointing upwards
-	vec3 random_hemi_up = normalize(vec3(blue_noise.xy * 2.0f - 1.0f,-1.0f)); // .w is the camera/eye height
-																// optimization - not using rd VGPR, using In.eyeDir SGPR - less register pressure - no discernable difference *do not change*
+	// optimization - not using rd VGPR, using In.eyeDir SGPR - less register pressure - no discernable difference *do not change*
 
 	vec4 voxel = vec4(vec3(0.0f),1.0f);		// accumulated light color w/scattering, // transmittance
 
@@ -468,7 +466,7 @@ void main() {
 		
 			// -------------------------------- part lighting ----------------------------------------------------
 			// ## evaluate light
-			evaluateVolumetric(voxel, opacity, random_hemi_up, p, dt * 2.0f); // evaluated at 2x dt because of skipped light evaluation (only every second step)
+			evaluateVolumetric(voxel, opacity, p, dt * 2.0f); // evaluated at 2x dt because of skipped light evaluation (only every second step)
 
 			// ## test hit voxel
 			[[branch]] if( bounced(opacity) ) {	
@@ -510,7 +508,7 @@ void main() {
 			vec4 refine_voxel = voxel;
 			float refine_opacity = opacity;
 
-			evaluateVolumetric(refine_voxel, refine_opacity, random_hemi_up, p, dt);
+			evaluateVolumetric(refine_voxel, refine_opacity, p, dt);
 
 			[[branch]] if (refine_opacity > opacity) { // is next opacity closer?
 				// take refinement
@@ -529,7 +527,7 @@ void main() {
 			interval_remaining += dt;
 			p += interval_remaining * rd;  // this is the last "partial" step!
 
-			evaluateVolumetric(voxel, opacity, random_hemi_up, p, interval_remaining);
+			evaluateVolumetric(voxel, opacity, p, interval_remaining);
 		}
 	} // end volumetric scope
 

@@ -384,8 +384,8 @@ cNuklear::cNuklear()
 	: _fontTexture(nullptr), _ctx(nullptr), _atlas(nullptr), _cmds(nullptr), _win(nullptr),
 	_bUniformSet(false), _bUniformAcquireRequired(false),
 	_bAcquireRequired(false),
-	_bGUIDirty{ false, false }, _bEditControlFocused(false),
-	_uiWindowEnabled(0), _iWindowQuitSelection(0), _iWindowSaveSelection(0), _iWindowLoadSelection(0),
+	_bGUIDirty{ false, false }, _bEditControlFocused(false), _bModalPrompted(false),
+	_uiWindowEnabled(0), _iWindowQuitSelection(-1), _iWindowSaveSelection(-1), _iWindowLoadSelection(-1), 
 	_uiPauseProgress(0),
 	_bHintReset(false), _loadsaveWindow{},
 	_bMinimapRenderingEnabled(false),
@@ -827,7 +827,7 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 // the timestamp in mouse state is also derived from its own high_resolution_clock query
 // its safe to use tLocal here with tStamp
 // ********************************************************************************************
-static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindow* const __restrict win, vector<rect2D_t> const& __restrict activeWindowRects)
+static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindow* const __restrict win, vector<rect2D_t> const& __restrict activeWindowRects, bool& __restrict bModalPrompted)
 {
 	tTime const tLocal(high_resolution_clock::now());
 	static tTime tLocalLast(tLocal);
@@ -838,9 +838,19 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 
 	bool bInputGUIDelta(false); // *** signals GUI to update (returned from this function) *** remeber to set when GUI is affected by input !!
 
+	constinit static bool bEscapePressed(false);
 	if (glfwGetKey(win, GLFW_KEY_ESCAPE) == GLFW_PRESS) {		// always process escape key
+		bEscapePressed = true;
+	}
+	else if (bEscapePressed && glfwGetKey(win, GLFW_KEY_ESCAPE) == GLFW_RELEASE) { // only on a key "clicked" process escape
+		bEscapePressed = false; // exclusively reset state
 
-		MinCity::Quit(); bInputGUIDelta = true;
+		if (!bModalPrompted) {
+			MinCity::Quit(); // only if not modal continue with closing the actual current window. important for correct "back behaviour" of modal->main window transistion for example.
+		}
+		bModalPrompted = false; // cancel any modal window with "no effect" to state
+
+		bInputGUIDelta = true;  // this handles all of escape key possible states (back, open main menu, close dialog) it is not for quitting the game - Shutdown() handles that.
 	}
 
 	if (!nk_input.input_focused) { // only continue to process input if window is focused
@@ -922,10 +932,25 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	}
 
 	// handling mouse input
+
+	bool const isWindowEnabled(MinCity::Nuklear->getWindowEnabled());
+	bool isHoveringWindow(false); 
+	
+	for (auto const& rectWindow : activeWindowRects) {
+		alignas(16) struct nk_rect rectActiveWindow;
+		XMStoreFloat4A(reinterpret_cast<XMFLOAT4A*>(&rectActiveWindow), r2D_to_nk_rect(rectWindow));
+		if (nk_input_is_mouse_hovering_rect(&ctx->input, rectActiveWindow)) {
+			isHoveringWindow = true;
+			break;
+		}
+	}
+
+	bool const isActiveWindow(isWindowEnabled | isHoveringWindow);
+
 	{
 		XMVECTOR const xmPosition(XMLoadFloat2((XMFLOAT2* const __restrict)&nk_input.mouse_pos));
 		
-		if (MinCity::VoxelWorld->OnMouseMotion(xmPosition)) { // Hi resolution mouse motion tracking (internally chechked for high precision delta of mouse coords)
+		if (MinCity::VoxelWorld->OnMouseMotion(xmPosition, isActiveWindow)) { // Hi resolution mouse motion tracking (internally chechked for high precision delta of mouse coords)
 
 			nk_input_motion(ctx, nk_input.mouse_pos.x, nk_input.mouse_pos.y);
 				
@@ -936,17 +961,15 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				bInputGUIDelta = true; // mouse cursor
 			}
 		}
-	}
+		else if (isActiveWindow) {
+			nk_input_motion(ctx, nk_input.mouse_pos.x, nk_input.mouse_pos.y); // always update gui
 
-	// check active window(s) if mouse was pressed/clicked
-	bool isHoveringWindow(false);
-
-	for (auto const& rectWindow : activeWindowRects) {
-		alignas(16) struct nk_rect rectActiveWindow;
-		XMStoreFloat4A(reinterpret_cast<XMFLOAT4A*>(&rectActiveWindow), r2D_to_nk_rect(rectWindow));
-		if (nk_input_is_mouse_hovering_rect(&ctx->input, rectActiveWindow)) {
-			isHoveringWindow = true;
-			break;
+			if (!p2D_sub(point2D_t(nk_input.mouse_pos.x, nk_input.mouse_pos.y),
+				         point2D_t(nk_input.last_mouse_pos.x, nk_input.last_mouse_pos.y)).isZero()) { // bugfix: have clip cursor every time for it to stop at edges of screen properly
+						
+				nk_input.last_mouse_pos = nk_input.mouse_pos;  // only updated for whole pixel movement to improve clipping performance
+				bInputGUIDelta = true; // mouse cursor
+			}
 		}
 	}
 
@@ -1037,12 +1060,12 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 		switch (nk_input.mouse_state.button_state)
 		{
 		case eMouseButtonState::LEFT_PRESSED:
-			if (!isHoveringWindow) {
+			if (!isActiveWindow) {
 				MinCity::VoxelWorld->OnMouseLeft(eMouseButtonState::LEFT_PRESSED);
 			}
 			break;
 		case eMouseButtonState::RIGHT_PRESSED:
-			if (!isHoveringWindow) {
+			if (!isActiveWindow) {
 				MinCity::VoxelWorld->OnMouseRight(eMouseButtonState::RIGHT_PRESSED);
 			}
 			break;
@@ -1061,10 +1084,22 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 
 		if (!isHoveringWindow) {
 			if (nk_input.mouse_state.left_clicked) {
-				MinCity::VoxelWorld->OnMouseLeftClick();
+
+				if (!isWindowEnabled) {
+					MinCity::VoxelWorld->OnMouseLeftClick();
+				}
+				else {
+					MinCity::DispatchEvent(eEvent::ESCAPE); // outside a window click - back to game
+				}
 			}
 			else if (nk_input.mouse_state.right_clicked) {
-				MinCity::VoxelWorld->OnMouseRightClick();
+
+				if (!isWindowEnabled) {
+					MinCity::VoxelWorld->OnMouseRightClick();
+				}
+				else {
+					MinCity::DispatchEvent(eEvent::ESCAPE); // outside a window click - back to game
+				}
 			}
 		}
 	
@@ -1232,7 +1267,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 bool const  cNuklear::UpdateInput()  // returns true on input delta that affects gui
 {
 	/* Input */
-	return(::UpdateInput(_ctx, _win, _activeWindowRects));
+	return(::UpdateInput(_ctx, _win, _activeWindowRects, _bModalPrompted));
 }
 
 #ifdef DEBUG_LUT_WINDOW
@@ -1433,112 +1468,144 @@ void cNuklear::do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool
 
 	fp_seconds const accumulated(critical_now() - tLast);
 	float const t = SFM::saturate(accumulated / interval);
+	constinit static uint32_t descrambled_index(_countof(menu_descrambled)); // usage with seperate - 1
 
 	if (accumulated > interval) {
 		tLast = critical_now();
 		
 		seed = PsuedoRandomNumber32();
+
+		if (0 == --descrambled_index) {
+			descrambled_index = _countof(menu_descrambled);
+		}
 	}
 
 	SetSeed(seed);
 
-	constexpr eWindowName const subwindowName(eWindowName::WINDOW_QUIT);
+	if (!_bModalPrompted) {
+		constexpr eWindowName const subwindowName(eWindowName::WINDOW_MAIN);
 
-	if (nk_begin(_ctx, subwindowName._to_string(),
-		make_centered_window_rect(190, 445, _frameBufferSize),
-		NK_TEMP_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
-	{
-		static constexpr uint32_t const glyph_width(NK_FONT_WIDTH),
-										glyph_height(NK_FONT_HEIGHT * 0.5f);
+		if (nk_begin(_ctx, subwindowName._to_string(),
+			make_centered_window_rect(190, 445, _frameBufferSize),
+			NK_TEMP_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
+		{
+			static constexpr uint32_t const glyph_width(NK_FONT_WIDTH),
+											glyph_height(NK_FONT_HEIGHT * 0.5f);
 
-		struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+			struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
 
-		AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
-		
-		szHint = szMessage;
-		bResetHint = false;
-		bSmallHint = true;
+			AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
 
-		bool any_hovered(false);
+			szHint = szMessage;
+			bResetHint = false;
+			bSmallHint = true;
 
-		char glyph[2]{};
- 		
-		for (uint32_t row = 0; row < rows; ++row) {
+			bool any_hovered(false);
 
-			nk_layout_space_begin(_ctx, NK_STATIC, 0.01f, cols);
+			char glyph[2]{};
 
-			for (uint32_t col = 0; col < cols; ++col) {
+			for (uint32_t row = 0; row < rows; ++row) {
 
-				nk_layout_space_push(_ctx, nk_recti(col * glyph_width, row * glyph_height, glyph_width, glyph_height));
+				nk_layout_space_begin(_ctx, NK_STATIC, 0.01f, cols);
 
-				char const key(legend[row * cols + col]);
-				if (0 == key) {
-					uint32_t const position = PsuedoRandomNumber(0, count - 1);
-					glyph[0] = gui::cyberpunk_glyphs[position];
+				for (uint32_t col = 0; col < cols; ++col) {
 
-					nk_label(_ctx, glyph, NK_TEXT_CENTERED);
+					nk_layout_space_push(_ctx, nk_recti(col * glyph_width, row * glyph_height, glyph_width, glyph_height));
 
-					glyph[0] = 0;
-				}
-				else {
-					uint32_t const menu_item_index(((0xf0 & key) >> 4) - 1);
-					uint32_t const menu_item_character_index(0x0f & key);
-
-					if (menu_descrambled[menu_item_index]) {
-						PsuedoRandomNumber(); // *bugfix - discard next random number, which maintains sequence of random numbers so there isn't a sudden change in all glyphs after this one.
-						glyph[0] = menu_item[menu_item_index][menu_item_character_index];
-					}
-					else {
+					char const key(legend[row * cols + col]);
+					if (0 == key) {
 						uint32_t const position = PsuedoRandomNumber(0, count - 1);
 						glyph[0] = gui::cyberpunk_glyphs[position];
+
+						nk_label(_ctx, glyph, NK_TEXT_CENTERED);
+
+						glyph[0] = 0;
 					}
+					else {
+						uint32_t const menu_item_index(((0xf0 & key) >> 4) - 1);
+						uint32_t const menu_item_character_index(0x0f & key);
 
-					bool bHovered(false);
-
-					if (nk_button_label(_ctx, glyph, &bHovered)) {
-
-						switch (menu_item_index) {
-						case 0:
-							// @todo
-							MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
-							enableWindow<eWindowType::QUIT>(false);
-							nk_window_close(_ctx, subwindowName._to_string());
-							break;
-						case 1:
-							enableWindow<eWindowType::QUIT>(false);
-							enableWindow<eWindowType::LOAD>(true);
-							nk_window_close(_ctx, subwindowName._to_string());
-							break;
-						case 2:
-							enableWindow<eWindowType::QUIT>(false);
-							enableWindow<eWindowType::SAVE>(true);
-							nk_window_close(_ctx, subwindowName._to_string());
-							break;
-						case 3:
-							_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
-							enableWindow<eWindowType::QUIT>(false);
-							enableWindow<eWindowType::SAVE>(true);
-							nk_window_close(_ctx, subwindowName._to_string());
-							break;
+						if (menu_descrambled[menu_item_index]) {
+							PsuedoRandomNumber(); // *bugfix - discard next random number, which maintains sequence of random numbers so there isn't a sudden change in all glyphs after this one.
+							glyph[0] = menu_item[menu_item_index][menu_item_character_index];
 						}
-					}
-					else if (bHovered) {
-						menu_descrambled[0] = menu_descrambled[1] = menu_descrambled[2] = menu_descrambled[3] = false;
-						menu_descrambled[menu_item_index] = true;
-						any_hovered = true;
-					}
-					
-					glyph[0] = 0;
-				}
-			}
+						else {
+							uint32_t const position = PsuedoRandomNumber(0, count - 1);
+							glyph[0] = gui::cyberpunk_glyphs[position];
+						}
 
-			nk_layout_space_end(_ctx);
+						bool bHovered(false);
+
+						if (nk_button_label(_ctx, glyph, &bHovered)) {
+
+							switch (menu_item_index) {
+							case 0:
+								// @todo
+								MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
+								enableWindow<eWindowType::MAIN>(false);
+								nk_window_close(_ctx, subwindowName._to_string());
+								break;
+							case 1:
+								enableWindow<eWindowType::MAIN>(false);
+								enableWindow<eWindowType::LOAD>(true);
+								nk_window_close(_ctx, subwindowName._to_string());
+								break;
+							case 2:
+								enableWindow<eWindowType::MAIN>(false);
+								enableWindow<eWindowType::SAVE>(true);
+								nk_window_close(_ctx, subwindowName._to_string());
+								break;
+							case 3:
+								_bModalPrompted = true; // will (next frame) activate modal window to begin the exit process (main window->exit transition)
+								nk_window_close(_ctx, subwindowName._to_string()); // hides main window but does not close it in this case 
+								break;
+							}
+						}
+						else if (bHovered) {
+							menu_descrambled[0] = menu_descrambled[1] = menu_descrambled[2] = menu_descrambled[3] = false;
+							menu_descrambled[menu_item_index] = true;
+							any_hovered = true;
+						}
+
+						glyph[0] = 0;
+					}
+				}
+
+				nk_layout_space_end(_ctx);
+			}
+			if (!any_hovered) {
+
+				menu_descrambled[0] = menu_descrambled[1] = menu_descrambled[2] = menu_descrambled[3] = false;
+				menu_descrambled[descrambled_index - 1] = true;
+			}
+		} // end quit/menu window
+		nk_end(_ctx);
+
+	}
+	else { // modal
+
+		// clear hint while modal is active
+		szHint = "";
+		bResetHint = false;
+
+		std::string_view const szCityName(MinCity::getCityName());
+		int const select = do_modal_window(fmt::format(FMT_STRING("SAVE {:s} "), (szCityName.empty() ? "CITY" : stringconv::toUpper(szCityName))), "YES", "NO");
+		if (select >= 0) { // selection made
+
+			enableWindow<eWindowType::MAIN>(false);
+
+			if (select) {
+				_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
+				enableWindow<eWindowType::SAVE>(true);
+			}
+			else {
+				_iWindowQuitSelection = eWindowQuit::JUST_QUIT;
+				MinCity::DispatchEvent(eEvent::EXIT);
+			}
+			
+			_bModalPrompted = false; // required for any modal dialog prompt to reset itself when done.
 		}
-		if (!any_hovered) {
-			menu_descrambled[0] = menu_descrambled[1] = menu_descrambled[2] = menu_descrambled[3] = false;
-		}
-	} // end quit/menu window
-	nk_end(_ctx);
+	}
 }
 
 void cNuklear::do_cyberpunk_newsave_slot(int32_t& __restrict selected, float const width, float const height,
@@ -1793,7 +1860,6 @@ void cNuklear::do_cyberpunk_loadsave_window(bool const mode, std::string& __rest
 	static constexpr int32_t const slot_height(offscreen_thumbnail_height);
 	static constexpr float const slot_heightf((float)slot_height);
 	
-
 	eWindowName const subwindowName((mode ? eWindowName::WINDOW_SAVE : eWindowName::WINDOW_LOAD));
 
 	if (nk_begin(_ctx, subwindowName._to_string(),
@@ -2181,6 +2247,69 @@ void cNuklear::do_hint_window(std::string_view const windowName, std::string_vie
 	nk_end(_ctx); // end paused window
 }
 
+int const cNuklear::do_modal_window(std::string_view const prompt, std::string_view const option_succeed, std::string_view const option_fail)
+{
+	static constexpr eWindowName const windowName(eWindowName::WINDOW_MODAL);
+	int iReturn(-1);
+
+	if (nk_begin(_ctx, windowName._to_string(),
+		make_centered_window_rect(_frameBufferSize.x, 150, _frameBufferSize),
+		NK_TEMP_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
+	{
+		struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+		AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+
+		nk_layout_row_dynamic(_ctx, 40, 1);
+
+		{
+			static constexpr fp_seconds const interval(1.0f);
+
+			constinit static uint32_t scramble_index(1);
+			constinit static bool bBlink(false);
+			constinit static tTime tLast(zero_time_point);
+
+			fp_seconds const accumulated(critical_now() - tLast);
+			float const t = SFM::saturate(accumulated / interval);
+
+			std::string szText(prompt);
+
+			if (accumulated > interval) {
+				bBlink = !bBlink;
+				tLast = critical_now();
+				if (bBlink) {
+
+					scramble_index = PsuedoRandomNumber(0, szText.length() - 1);
+				}
+			}
+
+			if (bBlink) {
+				szText[scramble_index] = stringconv::toLower(szText[scramble_index]);
+			}
+
+			gui::add_horizontal_bar(szText, t);
+			nk_label(_ctx, szText.c_str(), NK_TEXT_CENTERED);
+		}
+
+		nk_layout_row_dynamic(_ctx, 40, 2);
+
+		if (nk_button_label(_ctx, option_succeed.data())) {
+
+			iReturn = 1;
+			nk_window_close(_ctx, windowName._to_string());
+		}
+
+		if (nk_button_label(_ctx, option_fail.data())) {
+
+			iReturn = 0;
+			nk_window_close(_ctx, windowName._to_string());
+		}
+	}
+	nk_end(_ctx); // end paused window
+
+	return(iReturn);
+}
+
 void  cNuklear::UpdateGUI()
 {
 	tTime const tLocal(high_resolution_clock::now());
@@ -2212,7 +2341,7 @@ void  cNuklear::UpdateGUI()
 	if (!MinCity::isPaused())
 	{
 		constexpr eWindowName const bgwindowName(eWindowName::WINDOW_HINT);
-		static std::string szHint(""); // isolated from non-paused hint
+		static std::string szHint(""); // isolated from paused hint
 		constinit static bool bSmallHint(false);
 
 		// required to prevent temporal display of incorrect "feedback/hint" text. This is triggered on a pause or opening of quit window
@@ -2379,10 +2508,10 @@ void  cNuklear::UpdateGUI()
 		*/
 
 		// this locally resets the "feedback/hint" text when there is not context set below only // done after below //
-		bool bResetHint(eWindowType::QUIT == _uiWindowEnabled); // only set to true so that changes to the hint persist into the save & load window when selected
+		bool bResetHint(eWindowType::MAIN == _uiWindowEnabled); // only set to true so that changes to the hint persist into the save & load window when selected
 
 		// window query user to quit
-		if (eWindowType::QUIT == _uiWindowEnabled)
+		if (eWindowType::MAIN == _uiWindowEnabled)
 		{
 			do_cyberpunk_mainmenu_window(szHint, bResetHint, bSmallHint);
 		}
@@ -2395,7 +2524,7 @@ void  cNuklear::UpdateGUI()
 
 			do_cyberpunk_loadsave_window(false, szHint, bResetHint, bSmallHint);
 		}
-		
+	
 		// ######################################################################################################################################## //
 
 		// reset hint if not used

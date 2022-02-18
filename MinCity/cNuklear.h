@@ -20,27 +20,28 @@ BETTER_ENUM(eNK_FONTS, uint32_t const,
 BETTER_ENUM(eWindowName, uint32_t const,
 
 	WINDOW_TOP_DEBUG,
-	WINDOW_QUIT,
+	WINDOW_MAIN,
 	WINDOW_SAVE,
 	WINDOW_LOAD,
 	WINDOW_PAUSED,
 	WINDOW_HINT,
 	WINDOW_MINCITY,
 	WINDOW_BOTTOM_MENU,
+	WINDOW_MODAL,
 	WINDOW_LUT
 );
 
 BETTER_ENUM(eWindowType, uint32_t const,
 
 	DISABLED = 0,
-	QUIT = 1,
+	MAIN = 1,
 	SAVE = 2,
 	LOAD = 3
 
 );
 BETTER_ENUM(eWindowQuit, int32_t const,
 
-	PENDING = -1,		// pending - encompasses all states except idle //
+	DISABLED = -1,
 	IDLE = 0,
 	JUST_QUIT = 2,
 	SAVE_AND_QUIT = 3
@@ -48,18 +49,19 @@ BETTER_ENUM(eWindowQuit, int32_t const,
 );
 BETTER_ENUM(eWindowSave, int32_t const,
 
-	PENDING = -1,		// pending - encompasses all states except idle //
+	DISABLED = -1,
 	IDLE = 0,
 	SAVE = 2
 
 );
 BETTER_ENUM(eWindowLoad, int32_t const,
 
-	PENDING = -1,		// pending - encompasses all states except idle //
+	DISABLED = -1,
 	IDLE = 0,
 	LOAD = 2
 
 );
+
 struct GLFWwindow; // forward decl //
 
 
@@ -104,7 +106,7 @@ public:
 	
 	template<uint32_t const windowType>
 	int32_t const getLastSelectionForWindow() const { 
-		if constexpr (eWindowType::QUIT == windowType) {
+		if constexpr (eWindowType::MAIN == windowType) {
 			return(_iWindowQuitSelection);
 		}
 		else if constexpr (eWindowType::SAVE == windowType) {
@@ -131,7 +133,7 @@ public:
 
 			// for enabling only reset these states if its the state were interested in
 			if (bEnable) {
-				if constexpr (eWindowType::QUIT == windowType) {
+				if constexpr (eWindowType::MAIN == windowType) {
 					_iWindowQuitSelection = eWindowQuit::IDLE;
 					_bHintReset = true;
 				}
@@ -145,14 +147,27 @@ public:
 				}
 			}
 			else { // disabling
-				if constexpr (eWindowType::QUIT != windowType) {
-					_iWindowQuitSelection = eWindowQuit::IDLE;	// must reset the root "quit" menu on exit of save or load dialogs
+				// for any window, disable any active modal window
+				_bModalPrompted = false;
+
+				if constexpr (eWindowType::MAIN == windowType) {
+					_iWindowQuitSelection = eWindowQuit::DISABLED;
+					_bHintReset = true;
 				}
+				else if constexpr (eWindowType::SAVE == windowType) {
+					_iWindowSaveSelection = eWindowSave::DISABLED;
+					_loadsaveWindow.bReset = true;
+				}
+				else if constexpr (eWindowType::LOAD == windowType) {
+					_iWindowLoadSelection = eWindowLoad::DISABLED;
+					_loadsaveWindow.bReset = true;
+				}
+
 			}
 		}
 		return(prior);
 	}
-	
+
 	bool const enableMinimapRendering(bool const bEnable) { return(_InterlockedCompareExchange(reinterpret_cast<uint32_t* const __restrict>(&_bMinimapRenderingEnabled), bEnable, !bEnable)); }
 
 	void Upload(uint32_t const resource_index, vk::CommandBuffer& __restrict cb_transfer,
@@ -194,6 +209,9 @@ private:
 	// hint window
 	void do_hint_window(std::string_view const windowName, std::string_view const szHint, bool const bSmallHint);
 
+	// modal window
+	int const do_modal_window(std::string_view const prompt, std::string_view const option_succeed, std::string_view const option_fail);
+
 	// custom widgets
 	bool const toggle_button(std::string_view const label, struct nk_image const* const img, bool const isActive = false, bool* const __restrict pbHovered = nullptr) const;
 
@@ -227,7 +245,8 @@ private:
 	uint32_t					_uiWindowEnabled;
 	uint32_t					_uiPauseProgress;
 	bool						_bHintReset,
-								_bEditControlFocused;
+								_bEditControlFocused,
+								_bModalPrompted;
 	bool                        _bMinimapRenderingEnabled;
 
 	alignas(16) VertexDecl::nk_vertex*		_vertices;
@@ -331,6 +350,7 @@ private:
 		}
 
 	} _loadsaveWindow;
+
 public:
 	cNuklear();
 

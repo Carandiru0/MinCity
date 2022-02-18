@@ -25,8 +25,9 @@ BETTER_ENUM(eEvent, uint32_t const,
 	LOAD,
 	NEW,
 
-	QUIT			   = (UINT32_MAX - 1),
-	EXPEDITED_SHUTDOWN = (QUIT + 1)
+	ESCAPE,
+	EXIT			   = (UINT32_MAX - 1),
+	EXPEDITED_SHUTDOWN = (EXIT + 1)
 
 );
 

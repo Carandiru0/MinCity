@@ -640,7 +640,7 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 	}
 }
 
-bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn)
+bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn, bool const bIgnore)
 {
 	static constexpr float const EPSILON = 0.00001f;
 	XMVECTORF32 const xmEPSILON{ EPSILON, EPSILON, 0.0f, 0.0f };
@@ -672,7 +672,7 @@ bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn)
 	}
 
 	// *************** use xmMotionCurrent ********************
-	if (_bMotionDelta) {	// handling motion //
+	if (!bIgnore && _bMotionDelta) {	// handling motion //
 
 		if (!_bDraggingMouse) // handle dragging start
 		{

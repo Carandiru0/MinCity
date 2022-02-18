@@ -512,8 +512,6 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 
 void cMinCity::Load()
 {
-	constinit static bool bDelay(true);
-
 	int32_t const load_state(Nuklear->getLastSelectionForWindow<eWindowType::LOAD>());
 
 	if (eWindowLoad::IDLE == load_state) {
@@ -529,8 +527,6 @@ void cMinCity::Load()
 }
 void cMinCity::Save(bool const bShutdownAfter) // no user prompt, immediate clean shutdown
 {
-	constinit static bool bDelay(true);
-
 	int32_t const save_state(Nuklear->getLastSelectionForWindow<eWindowType::SAVE>());
 
 	if (eWindowSave::IDLE == save_state) {
@@ -546,13 +542,36 @@ void cMinCity::Save(bool const bShutdownAfter) // no user prompt, immediate clea
 }
 int32_t const cMinCity::Quit(bool const bQueryStateOnly) // prompts user to quit, only returns result of prompt does not actually quit application, shutdown must be called in that case
 {
-	int32_t const quit_state(Nuklear->getLastSelectionForWindow<eWindowType::QUIT>());
-	
-	if (!bQueryStateOnly && eWindowQuit::IDLE == quit_state) {
+	int32_t const quit_state(Nuklear->getLastSelectionForWindow<eWindowType::MAIN>());
 
-		if (!Nuklear->enableWindow<eWindowType::QUIT>(true)) { // quit window not currently shown
+	if (!bQueryStateOnly) {
 
-			Pause(true); // matching unpause is in shutdown()
+		int32_t const load_state(Nuklear->getLastSelectionForWindow<eWindowType::LOAD>());
+		int32_t const save_state(Nuklear->getLastSelectionForWindow<eWindowType::SAVE>());
+
+		if (quit_state < 0) // disabled
+		{
+			if (!Nuklear->enableWindow<eWindowType::MAIN>(true)) { // main window not currently shown (returns previous state)
+
+				Pause(true); // matching unpause is in shutdown()
+			}
+		}
+		else if ( eWindowQuit::IDLE == quit_state ) { // main window already shown, back to game
+
+			Nuklear->enableWindow<eWindowType::MAIN>(false); // back to game
+			Pause(false); // always
+		}
+
+		if (eWindowLoad::IDLE == load_state) {
+
+			Nuklear->enableWindow<eWindowType::LOAD>(false);
+			Nuklear->enableWindow<eWindowType::MAIN>(true); // back to main menu
+		}
+
+		if (eWindowSave::IDLE == save_state) { 
+
+			Nuklear->enableWindow<eWindowType::SAVE>(false);
+			Nuklear->enableWindow<eWindowType::MAIN>(true); // back to main menu
 		}
 	}
 
@@ -783,13 +802,12 @@ void cMinCity::ProcessEvents()
 		case eEvent::NEW:
 			break;
 
-		//quit & expedited shutdown
-		case eEvent::QUIT:
-		{
-			if (eWindowQuit::PENDING & Nuklear->getLastSelectionForWindow<eWindowType::QUIT>()) {
-				Shutdown(Quit(true));
-			}
-		}
+		case eEvent::ESCAPE:
+			MinCity::Quit(); // this cancels any modal windows or any active windows and gets back to the game
+			break;
+		//exit & expedited shutdown
+		case eEvent::EXIT:
+			Shutdown(Quit(true)); // exits the game if the quitting state selection and the current selection are equal.
 			break;
 		//last
 		case eEvent::EXPEDITED_SHUTDOWN:

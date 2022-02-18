@@ -140,7 +140,7 @@ namespace world
 		
 		// input 
 		void OnKey(int32_t const key, bool const down, bool const ctrl = false);
-		bool const __vectorcall OnMouseMotion(FXMVECTOR xmMousePosition);
+		bool const __vectorcall OnMouseMotion(FXMVECTOR xmMousePosition, bool const bIgnore);
 		void OnMouseLeft(int32_t const state);
 		void OnMouseRight(int32_t const state);
 		void OnMouseLeftClick();
