@@ -16,8 +16,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <Math/v2_rotation_t.h>
 #include "IsoVoxel.h"
 #include "Declarations.h"
-#include "eStateGroups.h"
-#include "voxelState.h"
 #include "voxelScreen.h"
 #include "voxLink.h"
 #include "adjacency.h"
@@ -27,6 +25,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 #include "performance.h"
 #endif
+
+#pragma warning(disable : 4804) // unsafe usage of bool in setMetallic
 
 // forward declarations //
 namespace Volumetric
@@ -134,13 +134,13 @@ namespace voxB
 					x : 8,							// bits 1 : 24, Position (0 - 255) 256 Values per Component
 					y : 8,
 					z : 8,
-					Left : 1,						// bits 25 : 29, Adjacency (0 / 1) Binary boolean
+					Left : 1,						// bits 25 : 29, Adjacency
 					Right : 1,
 					Front : 1,
 					Back : 1,
 					Above : 1,
-					Material : 3;					// bits 30 : 32, Material (0/1) 8 values
-	
+					Hidden : 1,						// bit 30, Visibility
+					Reserved : 2;					// bits 31 : 32, Unused
 			};
 			
 			uint32_t Data; // union "mask" of above
@@ -150,19 +150,23 @@ namespace voxB
 		{
 			struct
 			{
-				uint32_t
-					Color : 24,		  // RGB 16.78 million voxel colors
-					Alpha : 8;		  
+				uint32_t // (largest type uses 24 bits)
+					Color : 24,						// RGB 16.78 million voxel colors
+					Video : 1,						// Videoscreen
+					Emissive : 1,					// Emission
+					Transparent : 1,				// Transparency
+					Metallic : 1,					// Metallic
+					Roughness : 4;					// Roughness
 			};
 
-			uint32_t RGBA;
+			uint32_t RGBM;
 		};
 
 
 		inline __m128i const XM_CALLCONV  getPosition() const { return(_mm_setr_epi32(x, y, z, 0)); }
 		
 		inline uint32_t const 			  getColor() const { return(Color); }
-		inline uint32_t const 			  getAlpha() const { return(Alpha); }
+
 		inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
 		inline void						  setAdjacency(uint32_t const Adj) { 
 			Left	= (0 != (BIT_ADJ_LEFT & Adj));
@@ -172,8 +176,18 @@ namespace voxB
 			Above	= (0 != (BIT_ADJ_ABOVE & Adj));
 		}
 
-		inline uint32_t const			  getMaterial() const { return( Material ); }
+		// Material (8 bits)
+		// -video (2 values)
+		// -emissive (2 values)
+		// -transparent (2 values)
+		// -metallic (2 values)
+		// -roughness (16 values)
+		inline bool const				  isMetallic() const { return(Metallic); }
+		inline void					      setMetallic(bool const metallic) { Metallic = metallic; }
 
+		inline float const				  getRoughness() const { return(float(Roughness) / 15.0f); }  // roughness returned in the range [0.0f ... 1.0f] **effectively only 4 values are ever returned or used
+		inline void						  setRoughness(float const roughness) { Roughness = SFM::floor_to_u32(SFM::saturate(roughness) * 15.0f + 0.5f); } // accepts value in the [0.0f ... 1.0f]
+		
 		inline voxelNormal const		  getNormal() const { return(voxelNormal(getAdjacency())); }
 
 		__inline __declspec(noalias) bool const operator<(voxelDescPacked const& rhs) const
@@ -189,28 +203,28 @@ namespace voxB
 			: x(Coord.x), y(Coord.y), z(Coord.z),
 				Left(0 != (BIT_ADJ_LEFT & Adj)), Right(0 != (BIT_ADJ_RIGHT & Adj)), Front(0 != (BIT_ADJ_FRONT & Adj)),
 			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)),
-				Material(0),
-				Color(inColor), Alpha(0)
+				Hidden(0), Reserved(0),
+				Color(inColor), Video(0), Emissive(0), Transparent(0), Metallic(0), Roughness(0)
 		{}
 		voxelDescPacked() = default;
 
 		voxelDescPacked(voxelDescPacked const& rhs) noexcept
-			: Data(rhs.Data), RGBA(rhs.RGBA)
+			: Data(rhs.Data), RGBM(rhs.RGBM)
 		{}
 		voxelDescPacked(voxelDescPacked&& rhs) noexcept
-			: Data(rhs.Data), RGBA(rhs.RGBA)
+			: Data(rhs.Data), RGBM(rhs.RGBM)
 		{}
 		voxelDescPacked const& operator=(voxelDescPacked const& rhs) noexcept
 		{
 			Data = rhs.Data;
-			RGBA = rhs.RGBA;
+			RGBM = rhs.RGBM;
 
 			return(*this);
 		}
 		voxelDescPacked const& operator=(voxelDescPacked&& rhs) noexcept
 		{
 			Data = rhs.Data;
-			RGBA = rhs.RGBA;
+			RGBM = rhs.RGBM;
 			 
 			return(*this);
 		}
@@ -245,8 +259,7 @@ namespace voxB
 	
 	typedef struct voxelModelBase
 	{		
-		voxelDescPacked const* __restrict   _Voxels;			// Finalized linear array of voxels (constant readonly memory)
-		voxelState* __restrict		        _State;
+		voxelDescPacked* __restrict   _Voxels;			// Finalized linear array of voxels (constant readonly memory)
 
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
@@ -262,34 +275,21 @@ namespace voxB
 		bool const	    _isDynamic_;
 
 		inline voxelModelBase(bool const isDynamic) 
-			: _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Extents{}, _isDynamic_(isDynamic), _Voxels(nullptr), _State(nullptr)
+			: _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Extents{}, _isDynamic_(isDynamic), _Voxels(nullptr)
 		{}
 
 		voxelModelBase(voxelModelBase const& src)
 			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
-			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _isDynamic_(src._isDynamic_), _Voxels(nullptr), _State(nullptr)
+			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _isDynamic_(src._isDynamic_), _Voxels(nullptr)
 		{
 			if (nullptr != src._Voxels) {
 
 				_Voxels = (voxelDescPacked* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, 16); // matches voxBinary usage (alignment)
 				__memcpy_stream<16>((void* __restrict)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
 			}
-
-			if (nullptr != src._State) {
-
-				_State = (voxelState * __restrict)scalable_aligned_malloc(_numVoxels * sizeof(voxelState), 16);
-				__memcpy_stream<16>(_State, src._State, _numVoxels * sizeof(voxelState));
-			}
 		}
 
 		void ComputeLocalAreaAndExtents();
-
-		void createState() {			// State is option and only created on models that request it
-			if (nullptr == _State) {
-				_State = (voxelState* __restrict)scalable_aligned_malloc(_numVoxels * sizeof(voxelState), 16);
-				memset(_State, 0, _numVoxels * sizeof(voxelState));
-			}
-		}
 
 		~voxelModelBase(); // defined at end of voxBinary.cpp
 
@@ -460,30 +460,22 @@ namespace voxB
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 					{			
-						bool Transparent(false), Emissive(false);
-						if (nullptr != model._State) {
+						instance.OnVoxel(xmIndex, voxel, vxl);
 
-							voxB::voxelState state(model._State[vxl]);
-							voxel.Alpha = Transparency; // only applicable if transparent voxel
-
-							state = instance.OnVoxel(xmIndex, voxel, state, vxl);
-
-							if (state.Hidden)
-								continue;
+						if (voxel.Hidden)
+							continue;
 							
-							Transparent = Faded | state.Transparent;
-							Emissive = (state.Emissive) & !Faded;			// dynamic emission state
-						}
-						else {
-							Emissive = Iso::isEmissive(rootVoxel);		// static emission state
-						}
+						bool const Transparent(Faded | voxel.Transparent);
+						bool const Emissive((voxel.Emissive & !Faded) || (!voxel.Emissive & Iso::isEmissive(rootVoxel)));
 
 						// Build hash //
 						uint32_t hash(0);
+						// ** see uniforms.vert for definition of constants used here **
 
-						hash |= voxel.getAdjacency();					//           0000 0000 0001 1111
-																		//           0000 RRRR RRRx xxxx
-						hash |= (Emissive << 12);						// 0000 0000 0001 xxxx xxxx xxxx
+						hash |= voxel.getAdjacency();						//           0000 0000 0001 1111
+						hash |= (Emissive << 5);							//           0000 0000 001x xxxx
+						hash |= (voxel.Metallic << 6);						// 0000 0000 0000 xxxx x1xx xxxx
+						hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 Uxxx xxxx
 
 						if (!EmissionOnly)
 						{	// xyz = visible relative UV,  w = detailed occlusion 
@@ -518,7 +510,7 @@ namespace voxB
 							}
 							else { // transparency enabled
 
-								hash |= ((voxel.Alpha >> 6) << 13);				// 0000 0000 011x xxxx xxxx xxxx
+								hash |= ((Transparency >> 6) << 13);				// 0000 0000 011x xxxx xxxx xxxx
 
 								if constexpr (Dynamic) {
 

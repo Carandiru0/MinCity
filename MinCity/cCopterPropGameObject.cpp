@@ -68,16 +68,14 @@ namespace world
 	}
 
 	// If currently visible event:
-	Volumetric::voxB::voxelState const cCopterPropGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
+	void __vectorcall cCopterPropGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
 	{
-		return(reinterpret_cast<cCopterPropGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, rOriginalVoxelState, vxl_index));
+		reinterpret_cast<cCopterPropGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	Volumetric::voxB::voxelState const cCopterPropGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+	void __vectorcall cCopterPropGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
 	{
 		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
-
-		Volumetric::voxB::voxelState voxelState(rOriginalVoxelState);
 
 		int32_t indexLight{};
 
@@ -96,7 +94,7 @@ namespace world
 			indexLight = 3;
 			break;
 		default:
-			return(voxelState); // any other voxel returns unchanged
+			return; // any other voxel returns unchanged
 		}
 
 		// parallel friendly algorithm (read-only)
@@ -104,15 +102,15 @@ namespace world
 		if (_this.bLightsOn) {
 
 			voxel.Color = _this.colorLights[indexLight];
-			voxelState.Emissive = (0 != voxel.Color);
+			voxel.Emissive = (0 != voxel.Color);
 		}
 		else {
 
 			voxel.Color = 0;
-			voxelState.Emissive = false;
+			voxel.Emissive = false;
 		}
 
-		return(voxelState); // this is only reachable if this voxel is a masked light
+		// this is only reachable if this voxel is a masked light
 	}
 
 	void __vectorcall cCopterPropGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, FXMVECTOR xmLocation, float const fElevation, v2_rotation_t const& azimuth)

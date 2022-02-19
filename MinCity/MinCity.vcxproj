@@ -273,7 +273,6 @@
     <ClInclude Include="cAbstractToolMethods.h" />
     <ClInclude Include="cAISkyMover.h" />
     <ClInclude Include="cAudio.h" />
-    <ClInclude Include="cAutomataGameObject.h" />
     <ClInclude Include="cBlueNoise.h" />
     <ClInclude Include="cBuildingGameObject.h" />
     <ClInclude Include="cCarGameObject.h" />
@@ -310,7 +309,6 @@
     <ClInclude Include="debug.h" />
     <ClInclude Include="Declarations.h" />
     <ClInclude Include="eDirection.h" />
-    <ClInclude Include="eStateGroups.h" />
     <ClInclude Include="eVoxelModels.h" />
     <ClInclude Include="explosion.h" />
     <ClInclude Include="globals.h" />
@@ -349,7 +347,6 @@
     <ClInclude Include="voxelKonstants.h" />
     <ClInclude Include="voxelModel.h" />
     <ClInclude Include="voxelModelInstance.h" />
-    <ClInclude Include="voxelState.h" />
     <ClInclude Include="voxel_range2d.h" />
     <ClInclude Include="voxLink.h" />
     <ClInclude Include="voxelScreen.h" />
@@ -367,7 +364,6 @@
     <ClCompile Include="cAIMover.cpp" />
     <ClCompile Include="cAISkyMover.cpp" />
     <ClCompile Include="cAudio.cpp" />
-    <ClCompile Include="cAutomataGameObject.cpp" />
     <ClCompile Include="cBlueNoise.cpp" />
     <ClCompile Include="cBuildingGameObject.cpp" />
     <ClCompile Include="cCarGameObject.cpp" />

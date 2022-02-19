@@ -263,9 +263,8 @@ void main() {
 
 	const vec3 grid_color = unpackColor(In._color) * grid; // only emissive can have color
 
-	vec3 color = lit( terrainHeight + grid_color, light_color,				// regular terrain lighting
+	vec3 color = lit( terrainHeight + grid_color, make_material(grid, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
 					  getOcclusion(In.uv.xyz), Ld.att,
-					  grid, ROUGHNESS,
 					  Ld.dir, N, V);
 	
 	outColor.rgb = color;
@@ -311,12 +310,11 @@ void main() {
 
 	const float decal_luminance = min(1.0f, road_segment.g * Ld.att * Ld.att * 2.0f);
 	vec3 reflection;
-	vec3 color = lit( road_segment.rgb, light_color,
+	vec3 color = lit( road_segment.rgb, make_material(decal_luminance, 0.0f, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g))), light_color,
 					  1.0f, Ld.att,
-	                  decal_luminance, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g)),
 					  Ld.dir, N, V, reflection, fresnelTerm );
 
-	color = mix(color, unpackColor(In.ambient) + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
+	color = mix(color, unpackColor(In._ambient) + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
 
 	const vec3 shineCol = 0.333333f * vec3(0.5f, 0.05f, 1.0f);
 
@@ -357,10 +355,9 @@ void main() {
 
 	const float decal_luminance = road_segment.a * Ld.att * Ld.att;
 	float fresnelTerm;  // feedback from lit
-	color.rgb = lit( road_segment.rgb, light_color,	// todo roads need actual street lights for proper lighting or else too dark
+	color.rgb = lit( road_segment.rgb, make_material(road_segment.a * 20.0f, 0.0f, ROUGHNESS), light_color,	// todo roads need actual street lights for proper lighting or else too dark
 						1.0f, // occlusion
 						min(1.0f, Ld.att + decal_luminance),
-						road_segment.a * 20.0f, ROUGHNESS, // emission, roughness   
 						Ld.dir, N, V, fresnelTerm);
 						    
 	vec3 refract_color;
@@ -389,9 +386,8 @@ void main() {
 			        
 #ifndef TRANS              
     
-	outColor.rgb = lit( unpackColor(In._color), light_color,
+	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
 						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
-	                    In._emission, ROUGHNESS,
 						Ld.dir, N, V );
 
 	//outColor.rgb = vec3(attenuation);
@@ -403,9 +399,8 @@ void main() {
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 
 	float fresnelTerm;  // feedback from lit      
-	const vec3 lit_color = lit( unpackColor(In._color), light_color,
+	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
 						    1.0f, getAttenuation(Ld.dist, VolumeLength),
-	                        In._emission, ROUGHNESS,
 						    Ld.dir, N, V, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //

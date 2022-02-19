@@ -611,7 +611,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 
 					pDestMem->ComputeLocalAreaAndExtents();
 #ifdef VOX_DEBUG_ENABLED	
-					FMT_LOG(VOX_LOG, "vox load ({:d}, {:d}, {:d}) " " mem usage {:d} bytes, {:d} voxels total", (headerChunk.dimensionX), (headerChunk.dimensionY), (headerChunk.dimensionZ), (pDestMem->_numVoxels * sizeof(voxelDescPacked)), pDestMem->_numVoxels);
+					FMT_LOG(VOX_LOG, "vox loaded ({:d}, {:d}, {:d}) " " mem usage {:d} bytes, {:d} voxels total", (headerChunk.dimensionX), (headerChunk.dimensionY), (headerChunk.dimensionZ), (pDestMem->_numVoxels * sizeof(voxelDescPacked)), pDestMem->_numVoxels);
 #endif		
 					return(true);
 				}
@@ -733,8 +733,6 @@ bool const LoadVOX(std::wstring_view const file_no_extension, voxelModelBase* co
 
 static void ApplyEmissive(voxelModelBase const* const __restrict pEmissive, voxelModelBase* const __restrict pOwner)
 {
-	pOwner->createState(); // Owner model uses State, create it
-
 	struct FuncMatch {
 		voxelModelBase const* const __restrict Emissive;
 		voxelModelBase* const __restrict	   Owner;
@@ -757,7 +755,7 @@ static void ApplyEmissive(voxelModelBase const* const __restrict pEmissive, voxe
 				do { // slow ass search but were sitting in multiple threads
 					if (pOwnerVoxel->x == x && pOwnerVoxel->y == y && pOwnerVoxel->z == z) {
 
-						voxelState* const __restrict State(Owner->_State + (pOwnerVoxel - Owner->_Voxels));
+						voxelDescPacked* const __restrict State(Owner->_Voxels + (pOwnerVoxel - Owner->_Voxels));
 						State->Emissive = true;
 						NumMatches.fetch_and_increment<tbb::relaxed>();
 						break;
@@ -800,8 +798,6 @@ bool const AddEmissiveVOX(std::wstring_view const file_no_extension, voxelModelB
 
 static bool const ApplyVideoscreen(voxelModelBase const* const __restrict pVideoscreen, voxelModelBase* const __restrict pOwner)
 {
-	pOwner->createState(); // Owner model uses State, create it
-
 	// A VecVoxels has a separate std::vector<T> per thread
 	typedef tbb::enumerable_thread_specific< vector<voxelDescPacked const*> > VecVoxels;
 
@@ -828,7 +824,7 @@ static bool const ApplyVideoscreen(voxelModelBase const* const __restrict pVideo
 				do { // slow ass search but were sitting in multiple threads
 					if (pOwnerVoxel->x == x && pOwnerVoxel->y == y && pOwnerVoxel->z == z) {
 
-						voxelState* const __restrict State(Owner->_State + (pOwnerVoxel - Owner->_Voxels));
+						voxelDescPacked* const __restrict State(Owner->_Voxels + (pOwnerVoxel - Owner->_Voxels));
 						State->Video = true;
 						v.emplace_back(pOwnerVoxel); // reference to voxel for flattened min/max op
 						break;
@@ -906,8 +902,6 @@ bool const AddVideoscreenVOX(std::wstring_view const file_no_extension, voxelMod
 
 void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
 {
-	pModel->createState(); // Owner model uses State, create it
-
 	struct FuncTransparentAll {
 		
 		voxelModelBase* const __restrict	   Model;
@@ -920,7 +914,7 @@ void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
 
 			for (uint32_t i = r.begin(); i != r.end(); ++i) {
 
-				Model->_State[i].Transparent = true;
+				Model->_Voxels[i].Transparent = true;
 				
 			}
 		}
@@ -938,8 +932,6 @@ void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
 
 static void ApplyTransparency(voxelModelBase const* const __restrict pTransparent, voxelModelBase* const __restrict pOwner)
 {
-	pOwner->createState(); // Owner model uses State, create it
-
 	struct FuncMatch {
 		voxelModelBase const* const __restrict Transparent;
 		voxelModelBase* const __restrict	   Owner;
@@ -962,7 +954,7 @@ static void ApplyTransparency(voxelModelBase const* const __restrict pTransparen
 				do { // slow ass search but were sitting in multiple threads
 					if (pOwnerVoxel->x == x && pOwnerVoxel->y == y && pOwnerVoxel->z == z) {
 
-						voxelState* const __restrict State(Owner->_State + (pOwnerVoxel - Owner->_Voxels));
+						voxelDescPacked* const __restrict State(Owner->_Voxels + (pOwnerVoxel - Owner->_Voxels));
 						State->Transparent = true;
 						NumMatches.fetch_and_increment<tbb::relaxed>();
 						break;
@@ -1054,10 +1046,6 @@ voxelModelBase::~voxelModelBase()
 {
 	if (_Voxels) {
 		scalable_aligned_free(const_cast<voxelDescPacked* __restrict>(_Voxels)); _Voxels = nullptr;
-	}
-
-	if (_State) {
-		scalable_aligned_free(_State); _State = nullptr;
 	}
 }
 

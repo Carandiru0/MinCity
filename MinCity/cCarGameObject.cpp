@@ -107,30 +107,28 @@ cCarGameObject& cCarGameObject::operator=(cCarGameObject&& src) noexcept
 }
 
 // If currently visible event:
-Volumetric::voxB::voxelState const __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
+void __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
 {
-	return(reinterpret_cast<cCarGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, rOriginalVoxelState, vxl_index));
+	reinterpret_cast<cCarGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
 }
 // ***** watchout - thread safety is a concern here this method is executed in parallel ******
-Volumetric::voxB::voxelState const __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+void __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
 {
 	Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
-
-	Volumetric::voxB::voxelState voxelState(rOriginalVoxelState);
 
 	switch(voxel.Color)
 	{
 	case MASK_COLOR_HEADLIGHT:
-		voxelState.Emissive = !(_this.left_signal_on || _this.right_signal_on);
+		voxel.Emissive = !(_this.left_signal_on || _this.right_signal_on);
 		break;
 	case MASK_COLOR_TAILLIGHT:
 		voxel.Color = _this.brakes_on ? 0x0000ff : 0x00007f; // bgra (bright red) when braking
 		break;
 	case MASK_COLOR_LEFTSIGNAL:
-		voxelState.Emissive = _this.left_signal_on;
+		voxel.Emissive = _this.left_signal_on;
 		break;
 	case MASK_COLOR_RIGHTSIGNAL:
-		voxelState.Emissive = _this.right_signal_on;
+		voxel.Emissive = _this.right_signal_on;
 		break;
 	case MASK_COLOR_PRIMARY:
 		voxel.Color = _this.primary_color;
@@ -139,8 +137,6 @@ Volumetric::voxB::voxelState const __vectorcall cCarGameObject::OnVoxel(FXMVECTO
 		voxel.Color = _this.secondary_color;
 		break;
 	}
-
-	return(voxelState);
 }
 
 namespace world

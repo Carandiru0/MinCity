@@ -21,6 +21,11 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #endif
 #endif
 
+#define emission x
+#define metallic y
+#define roughness z
+#define ambient w
+
 layout(location = 0) in vec4 inWorldPos;
 layout(location = 1) in vec4 inUV;
 #ifdef DYNAMIC
@@ -87,9 +92,8 @@ writeonly layout(location = 0) out streamOut
 	flat vec2	world_uv;
 #endif
 #ifndef BASIC
-	flat float   ambient;
 	flat float	 color;
-	flat float   emission;
+	flat vec4    material;
 	flat vec4    extra;
 	flat float	 passthru;
 #endif
@@ -146,10 +150,14 @@ const uint  NORTH = 0U,
 
 #else // not HEIGHT/ROAD
 
-#define SHIFT_EMISSION 12U
+#define SHIFT_EMISSION 5U
+#define SHIFT_METALLIC 6U
+#define SHIFT_ROUGHNESS 8U
 const uint MASK_ADJACENCY =  0x1FU;		/*           0000 0000 0001 1111 */
-const uint MASK_RESERVED = 0xE0U;		/*           0000 0000 RRRx xxxx */ // free to use
-const uint MASK_EMISSION = 0x1000U;		/*			 0001 RRRR xxxx xxxx */ 
+const uint MASK_EMISSION = 0x20U;		/*           0000 0000 001x xxxx */
+const uint MASK_METALLIC = 0x40U;		/*           0000 0000 01xx xxxx */
+const uint MASK_ROUGHNESS = 0xF00U;		/*			 0000 1111 Uxxx xxxx */ 
+
 #if defined(DYNAMIC) && defined(TRANS) 
 #define SHIFT_TRANSPARENCY 13U
 const uint MASK_TRANSPARENCY = 0x6000U;	/*			 011x xxxx xxxx xxxx */ 
@@ -234,8 +242,6 @@ void main() {
   
 #ifndef CLEAR
 
-  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count));
-
 #if defined(DYNAMIC) && defined(TRANS)  // transparent voxels only
 #if defined(ROAD)
   Out.extra.z = 0.25f;	// transparent road selection only (does not require configurable level of transparency)
@@ -315,8 +321,18 @@ void main() {
 #ifndef CLEAR
 #ifdef BASIC
   const float emissive = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-#else
+#else // not basic:
+
+#if !defined(HEIGHT) && !defined(ROAD) // voxels only:
+  Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
+  Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
+  Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
+  Out.material.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count));
+#else // terrain or road:
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
+  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count));
+#endif
+
 #endif
 #endif // clear
 

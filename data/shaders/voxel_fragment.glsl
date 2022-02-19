@@ -9,13 +9,14 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	vec4 N;
 	vec4 V;	
 	flat vec4 extra;	
-	flat float ambient;
 #ifndef BASIC
 #if defined(HEIGHT) || defined(ROAD)
 	vec2 world_uv;
 #ifdef ROAD
 	vec3 road_uv;
 #endif
+#else // voxels only
+	flat vec4 material;
 #endif
 #endif
 } Out;
@@ -26,13 +27,14 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 	readonly vec4 N;
 	readonly vec4 V;
 	readonly flat vec4 extra;	
-	readonly flat float ambient;
 #ifndef BASIC
 #if defined(T2D) || defined(ROAD)
 	readonly vec2 world_uv;
 #ifdef ROAD
 	readonly vec3 road_uv;
 #endif
+#else // voxels only
+	readonly flat vec4 material;
 #endif
 #endif
 } In;
@@ -41,8 +43,8 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 
 #define i_extra_00 uv.w			// *                          -special case careful this is also reserved entire uv vector (uv.xyzw) pass thru to fragment shader
-#define i_extra_0 N.w			// *						  - free, not used
-#define i_extra_1 V.w			// *						  - emission
+#define i_extra_0 N.w			// *						  - ambient (only used when road or terrain, normal voxels have material)
+#define i_extra_1 V.w			// *						  - emission (only used when road or terrain, normal voxels have material)
 #define f_extra_0 extra.x		// *						  - packed color
 #define f_extra_1 extra.y		// *						  - transparency
 #define f_extra_2 extra.z		// *                          - pass thru inverse weight maximum (transparency weighting max for this frame)
@@ -53,6 +55,7 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 // defaults //
 #define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
+#define _ambient i_extra_0
 #define _emission i_extra_1
 #define _color f_extra_0
 #define _time f_extra_3

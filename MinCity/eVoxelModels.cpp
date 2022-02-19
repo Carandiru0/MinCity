@@ -6,10 +6,6 @@
 #include "voxBinary.h"
 #include "voxelModel.h"
 
-#include "eStateGroups.h"
-#define VOXEL_ANIM_IMPLEMENTATION
-#include "voxelAnim.h"
-
 #include <vector>
 #include <Utility/stringconv.h>
 #include <tbb/tbb.h>
@@ -215,6 +211,5 @@ namespace Volumetric
 	}*/
 	void CleanUpAllVoxelModels()
 	{
-		CleanUpAllVoxelAnimations();
-	}
+		}
 }

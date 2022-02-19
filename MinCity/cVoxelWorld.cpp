@@ -32,7 +32,7 @@
 #include "cRockStageGameObject.h"
 #endif
 
-#include "cAutomataGameObject.h"
+//#include "cAutomataGameObject.h"
 #include "cRemoteUpdateGameObject.h"
 #include "cBuildingGameObject.h"
 #include "cTrafficSignGameObject.h"
@@ -4527,14 +4527,14 @@ namespace world
 				}
 
 				// last
-				{
+				/* {
 					auto it = cAutomataGameObject::begin();
 					while (cAutomataGameObject::end() != it) {
 
 						it->OnUpdate(tNow, tDelta);
 						++it;
 					}
-				}
+				}*/
 #ifdef GIF_MODE
 				
 				{

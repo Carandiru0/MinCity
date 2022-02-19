@@ -55,9 +55,8 @@ layout(location = 0) in streamIn
 	readonly flat vec2	world_uv;
 #endif
 #ifndef BASIC
-	readonly flat float   ambient;
 	readonly flat float	  color;
-	readonly flat float   emission;
+	readonly flat vec4    material;
 	readonly flat vec4    extra;
 	readonly flat float	  passthru;
 #endif
@@ -276,22 +275,23 @@ void main() {
 
 	// ** Per voxel ops *** //
 #ifndef BASIC
-	Out.ambient = In[0].ambient;
-
+	
 #ifdef _color
 	Out._color = In[0].color;
-#endif
-
-#ifdef _emission
-	Out._emission = In[0].emission;
 #endif
 
 #ifdef ROAD
 	Out.road_uv.z = In[0].extra.x; // road tile index in .z, which is good for indexing texture array nicely as special.xy already contains uv coords
 #endif
 	
-#if !(defined(HEIGHT) || defined(ROAD))
+#if !(defined(HEIGHT) || defined(ROAD)) // voxels only
+	Out.material = In[0].material; 
 	Out._passthru = In[0].passthru; // passthru extra data ****************************************************************************
+#else
+	Out._ambient = In[0].ambient;
+#ifdef _emission
+	Out._emission = In[0].emission;
+#endif
 #endif
 
 #ifdef _time

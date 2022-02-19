@@ -196,7 +196,7 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 
 // (intended for volumetric light) - returns attenuation and light color, uses directional derivatiuves to further shade lighting 
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
-float fetch_light_volumetric( out vec3 light_color, out float scattering, in const float emission, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
+float fetch_light_volumetric( out vec3 light_color, out float scattering, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 		
 	float attenuation;
 	const vec3 light_direction = getLightFast(light_color, attenuation, offset(uvw), VolumeLength);
@@ -269,14 +269,14 @@ void integrate_opacity(inout float opacity, in const float new_opacity, in const
 }
 
 // volumetric light
-void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, inout float opacity,
+void vol_lit(out vec3 light_color, out float emission, out float lightAmount, out float fogAmount, inout float opacity,
 		     in const vec3 p, in const float dt)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
 
 	// setup: 0 = not emissive
 	//        1 = emissive
-	const float emission = extract_emission(opacity_emission);
+	emission = extract_emission(opacity_emission);
 
 	// setup: 0 = not opaque
 	//        1 = opaque
@@ -284,7 +284,7 @@ void vol_lit(out vec3 light_color, out float lightAmount, out float fogAmount, i
 
 	// lightAmount = attenuation
 	float scattering;
-	lightAmount = fetch_light_volumetric(light_color, scattering, emission, p, opacity, dt);
+	lightAmount = fetch_light_volumetric(light_color, scattering, p, opacity, dt);
 	
 	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
 }
@@ -293,9 +293,9 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 {
 	//#########################
 	vec3 light_color;
-	float lightAmount, fogAmount;
+	float emission, lightAmount, fogAmount;
 	
-	vol_lit(light_color, lightAmount, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
+	vol_lit(light_color, emission, lightAmount, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -314,7 +314,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran *= sigma_dt;				// decay
+	voxel.tran *= sigma_dt + voxel.tran * emission;				// decay or grow with emission
 }
 
 

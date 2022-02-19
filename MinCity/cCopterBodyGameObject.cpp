@@ -81,16 +81,14 @@ namespace world
 	}
 
 	// If currently visible event:
-	Volumetric::voxB::voxelState const __vectorcall cCopterBodyGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
+	void __vectorcall cCopterBodyGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
 	{
-		return(reinterpret_cast<cCopterBodyGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, rOriginalVoxelState, vxl_index));
+		reinterpret_cast<cCopterBodyGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	Volumetric::voxB::voxelState const __vectorcall cCopterBodyGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+	void __vectorcall cCopterBodyGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
 	{
 		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
-
-		Volumetric::voxB::voxelState voxelState(rOriginalVoxelState);
 
 		if (_this.bLightsOn) {
 
@@ -104,11 +102,9 @@ namespace world
 		else {
 			if (MASK_COLOR_BLUE == voxel.Color || MASK_COLOR_RED == voxel.Color) {
 				voxel.Color = 0x00000000; // lights off
-				voxelState.Emissive = false;
+				voxel.Emissive = false;
 			}
 		}
-
-		return(voxelState);
 	}
 
 	bool const __vectorcall cCopterBodyGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)

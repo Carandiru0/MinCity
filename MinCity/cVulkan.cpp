@@ -2181,10 +2181,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
 	s.cb.draw(3, 1, 0, 0);
 
-	// SUBPASS - mouse resolve //
-	// nothing happens in this pass except the multisampled resolve already defined for this subpass //
-	s.cb.nextSubpass(vk::SubpassContents::eInline);
-
 	s.cb.endRenderPass();
 
 	{ // required at this point, light:

@@ -7,6 +7,8 @@
 
 namespace Volumetric
 {
+	// not used anymore
+	/*
 	static constexpr milliseconds const UPDATE_ANIM_INTERVAL_DEFAULT( 33 );
 
 	class voxelAnimStateGroup
@@ -97,9 +99,11 @@ namespace Volumetric
 
 	void UpdateAllVoxelAnimations(tTime const& tNow);
 	void CleanUpAllVoxelAnimations();
+
+	*/
 } // end ns;
 
-
+/*
 #ifdef VOXEL_ANIM_IMPLEMENTATION
 static vector< Volumetric::voxelAnimStateGroup* > _animations;
 
@@ -125,3 +129,4 @@ namespace Volumetric
 	}
 } // end ns
 #endif
+*/

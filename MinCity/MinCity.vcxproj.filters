@@ -117,9 +117,6 @@
     <ClInclude Include="voxelAnim.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="eStateGroups.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="volumetricOpacity.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -209,9 +206,6 @@
     </ClInclude>
     <ClInclude Include="cNonUpdateableGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
-    </ClInclude>
-    <ClInclude Include="voxelState.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="cBuildingGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
@@ -340,9 +334,6 @@
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
     <ClInclude Include="cProceduralGameObject.h">
-      <Filter>Header Files\Gameplay</Filter>
-    </ClInclude>
-    <ClInclude Include="cAutomataGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
   </ItemGroup>
@@ -510,9 +501,6 @@
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
     <ClCompile Include="cProceduralGameObject.cpp">
-      <Filter>Source Files\Gameplay</Filter>
-    </ClCompile>
-    <ClCompile Include="cAutomataGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>

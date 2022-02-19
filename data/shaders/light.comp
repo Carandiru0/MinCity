@@ -73,24 +73,23 @@ bool isLit( in const float sampled_packed_color )
 	return( 0.0f != sampled_packed_color );
 }
 
-#ifdef SEED
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
+vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
 {
-	vec4 samp = textureLod(seedMap[pc.index_input], (read_location + 0.5f) * InvVolumeDimensions, 0);
-	samp.xyz += normalize(current_location - samp.xyz) * fract((current_location - read_location)); // smooths changes when scrolling BIG TIME.
+	vec4 samp = textureLod(map, (read_location + 0.5f) * InvVolumeDimensions, 0);
+	samp.xyz += normalize(current_location - samp.xyz) * fract(current_location - read_location); // smooths changes when scrolling BIG TIME.
 
 	return( samp );
 }
-#else
-vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
+#ifdef SEED
+vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location )
 {
-	// input image is dynamically set with push constant
-
-	vec4 s0 = textureLod(pingpongTexture[pc.index_input], (read_location + 0.5f) * InvVolumeDimensions, 0);
-	s0.xyz += normalize(current_location - s0.xyz) * fract((current_location - read_location)); // smooths changes when scrolling BIG TIME.
-
-	return( s0 );
+	return(sampleInputVolume(seedMap[pc.index_input], current_location, read_location));
+}
+#else
+vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location )
+{
+	return(sampleInputVolume(pingpongTexture[pc.index_input], current_location, read_location));
 }
 #endif
 
@@ -176,9 +175,9 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 	barrier(); // required so that lds is coherent between the last writes and now reads
 	
 	ivec3 offset;
-	[[unroll]] for (offset.z = -1 ; offset.z <= 1 ; ++offset.z) {
-		[[unroll]] for (offset.y = -1 ; offset.y <= 1 ; ++offset.y) {
-			[[unroll]] for (offset.x = -1 ; offset.x <= 1 ; ++offset.x) {
+	for (offset.z = -1 ; offset.z <= 1 ; ++offset.z) {
+		for (offset.y = -1 ; offset.y <= 1 ; ++offset.y) {
+			for (offset.x = -1 ; offset.x <= 1 ; ++offset.x) {
 
 #ifdef SEED
 				propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offset);
@@ -210,16 +209,10 @@ void main()
 
 	const vec3 current_location = global_invocation_id * InvVolumeDimensions * WorldDimensions;
 
-#ifdef SEED
-   ivec3 location = ivec3(global_invocation_id);
-   imageStore(pingpongImage[pc.index_output], location, sampleInputVolume(current_location, location));
-#else
-
 	warp_local warp = populateLDS(current_location, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 	propogateBlocks(warp, current_location);
 
 	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
-#endif
 }
 
 #endif // not MIP

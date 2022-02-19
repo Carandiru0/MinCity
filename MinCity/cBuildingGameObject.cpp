@@ -92,22 +92,21 @@ namespace world
 	}
 
 	// helper functions
-	STATIC_INLINE_PURE bool const isVoxelWindow(Volumetric::voxB::voxelDescPacked const& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState)
+	STATIC_INLINE_PURE bool const isVoxelWindow(Volumetric::voxB::voxelDescPacked const& __restrict voxel)
 	{
-		return(rOriginalVoxelState.Emissive && (Volumetric::Konstants::PALETTE_WINDOW_INDEX == voxel.getColor()));
+		return(voxel.Emissive && (Volumetric::Konstants::PALETTE_WINDOW_INDEX == voxel.getColor()));
 	}
 
 	// If currently visible event:
-	Volumetric::voxB::voxelState const __vectorcall cBuildingGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, void const* const __restrict _this, uint32_t const vxl_index)
+	void __vectorcall cBuildingGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
 	{
-		return(reinterpret_cast<cBuildingGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, rOriginalVoxelState, vxl_index));
+		reinterpret_cast<cBuildingGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	Volumetric::voxB::voxelState const __vectorcall cBuildingGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, Volumetric::voxB::voxelState const& __restrict rOriginalVoxelState, uint32_t const vxl_index) const
+	void __vectorcall cBuildingGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
 	{
 		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
 
-		Volumetric::voxB::voxelState voxelState(rOriginalVoxelState);
 		tTime const tNow(now());
 
 		// destruction sequence ?
@@ -135,21 +134,21 @@ namespace world
 				heightLimit = SFM::min(newHeight, heightLimit);
 
 				if (voxel.y > heightLimit) {
-					voxelState.Hidden = true;
+					voxel.Hidden = true;
 				}
 				else if (voxel.y == heightLimit) {
-					voxelState.Emissive = true;
+					voxel.Emissive = true;
 				}
-				else if (isVoxelWindow(voxel, rOriginalVoxelState)) { // window lights eratic during destruction
-					voxelState.Emissive = PsuedoRandom5050();
+				else if (isVoxelWindow(voxel)) { // window lights eratic during destruction
+					voxel.Emissive = PsuedoRandom5050();
 				}
-				else if (rOriginalVoxelState.Video) {
+				else if (voxel.Video) {
 					if (!PsuedoRandom5050()) {
 						voxel.Color = 0; // screen random during destruction //
-						voxelState.Emissive = false;
+						voxel.Emissive = false;
 					}
 				}
-				return(voxelState);
+				return; // early exit
 			}
 		}
 		// creation sequence ?
@@ -168,34 +167,33 @@ namespace world
 				heightLimit = SFM::min(newHeight, heightLimit);
 
 				if (voxel.y > heightLimit) {
-					voxelState.Hidden = true;
+					voxel.Hidden = true;
 				}
 				else if (voxel.y == heightLimit) {
-					voxelState.Emissive = true;
+					voxel.Emissive = true;
 				}
-				else if (isVoxelWindow(voxel, rOriginalVoxelState)) { // window lights off during creation
-					voxelState.Emissive = false;
+				else if (isVoxelWindow(voxel)) { // window lights off during creation
+					voxel.Emissive = false;
 				}
-				else if (rOriginalVoxelState.Video) {
+				else if (voxel.Video) {
 					voxel.Color = 0; // screen off during creation //
-					voxelState.Emissive = false;
+					voxel.Emissive = false;
 				}
-				return(voxelState);
+				return; // early exit
 			}
 		}
 
 		// alive !
-		if (rOriginalVoxelState.Video && nullptr != _videoscreen) {
+		if (voxel.Video && nullptr != _videoscreen) {
 
 			_videoscreen->setAllowedObtainNewSequences(true);
 
 			voxel.Color = _videoscreen->getPixelColor(voxel.getPosition()) & 0x00FFFFFF; // no alpha
-			voxel.Alpha = Volumetric::eVoxelTransparency::ALPHA_75;
 
 			// if video color is pure black turn off emission
-			voxelState.Emissive = !(0 == voxel.Color);
+			voxel.Emissive = !(0 == voxel.Color);
 		}
-		else if (isVoxelWindow(voxel, rOriginalVoxelState) ) { // Only for specific emissive voxels, with matching palette index for building windows
+		else if (isVoxelWindow(voxel) ) { // Only for specific emissive voxels, with matching palette index for building windows
 
 			int32_t found_index(-1);
 
@@ -214,26 +212,24 @@ namespace world
 
 				if (_MutableState->_tCurrentInterval != nextInterval) {
 					//if ((nextInterval - tElapsed.count()) < (milliseconds(_tLightChangeInterval).count() >> 6)) {
-					bool const curEmissive(rOriginalVoxelState.Emissive);
+					bool const curEmissive(voxel.Emissive);
 					bool const nextEmissive = PsuedoRandomNumber(-1, instance->getModel()._numVoxelsEmissive - 1) >= 0;	// this is thread safe as vxl_index is always unique
 																			// note: previously, Psuedo has already set seed unique to the hash of the instance
 
 					if (nextEmissive != curEmissive) {
-						voxelState.Emissive = nextEmissive;
+						voxel.Emissive = nextEmissive;
 						_MutableState->_tCurrentInterval = nextInterval;
 
 						uint32_t const window_index = _MutableState->_changedWindowIndex;
-						_MutableState->_changedWindows[window_index] = sMutableState::Window(vxl_index, voxelState.Emissive);
+						_MutableState->_changedWindows[window_index] = sMutableState::Window(vxl_index, voxel.Emissive);
 						_MutableState->_changedWindowIndex = (window_index + 1) & (sMutableState::CACHE_SZ - 1);
 					}
 				}
 			}
 			else {
-				voxelState.Emissive = windows[found_index].emissive;
+				voxel.Emissive = windows[found_index].emissive;
 			}
 		}
-
-		return(voxelState);
 	}
 
 

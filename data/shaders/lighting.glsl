@@ -34,6 +34,16 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #define DownResDimensions (ScreenResDimensions*0.5f)
 #define InvDownResDimensions 1.0f / DownResDimensions
 
+#define emission x
+#define metallic y
+#define roughness z
+#define ambient w
+
+// for usage by terrain, road, etc that do not define materials per-voxel but rather the whole surface. Normal voxels *only* have per-voxel materials defined.
+vec4 make_material(in const float emission, in const float metallic, in const float roughness) {
+	return(vec4(emission, metallic, roughness, In._ambient)); // grabs ambient
+}
+
 #ifdef TRANS
 // ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Transparency
@@ -153,7 +163,7 @@ float fresnel(in const vec3 N, in const vec3 V)
 #endif
 
 // Albedo = straight color no shading or artificial lighting (voxel color in)
-vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float occlusion, in const float attenuation, in const float emission, in const float roughness,
+vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_color, in const float occlusion, in const float attenuation,
           in const vec3 L, in const vec3 N, in const vec3 V // L = light direction, N = normal, V = eye direction   all expected to be normalized
 #ifdef OUT_REFLECTION
 		  , out vec3 ambient_reflection
@@ -184,18 +194,18 @@ vec3 lit( in const vec3 voxelAlbedo, in const vec3 light_color, in const float o
 	const float fresnelTerm = fresnel(N, V);
 #endif
 
-	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * emission; /// emission important formula do not change (see notes below)
-	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, roughness) * fresnelTerm;
+	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
+	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm);
 
 	//return(vec3(NdotL * attenuation));
 
 			// ambient reflection (ambient light not affected by fresnel) - (attenuation in this case is global, from any light source)
-	return ( unpackColor(In.ambient) + ambient_reflection * (1.0f - specular_reflection_term) * occlusion +
+	return ( unpackColor(material.ambient) + ambient_reflection * (1.0f - specular_reflection_term) * occlusion +
 			  // diffuse color .   // diffuse shading/lighting								  // specular shading/lighting					
-		     fma( voxelAlbedo * occlusion + occlusion, ( diffuse_reflection_term + specular_reflection_term * ambient_reflection ) * light_color, 
+		     fma( albedo * occlusion + occlusion, ( diffuse_reflection_term + specular_reflection_term * ambient_reflection ) * light_color, 
 			       // emission				// ^^^^^^ this is like a + 1.0f but instead shaded
-			       voxelAlbedo * emission_term )
+			       albedo * emission_term )
 		   );					
 
 

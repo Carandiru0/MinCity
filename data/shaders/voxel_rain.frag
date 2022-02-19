@@ -73,9 +73,8 @@ void main() {
 	vec3 reflect_color;
 	float fresnelTerm;
 
-	const vec3 lit_color = lit( normalize(unpackColor(In.ambient)), light_color,
+	const vec3 lit_color = lit( normalize(unpackColor(In._ambient)), make_material(In._emission, 0.0f, ROUGHNESS), light_color,
 						 1.0f, getAttenuation(Ld.dist, VolumeLength), 
-	                     In._emission, ROUGHNESS,
 						 Ld.dir, N, V, reflect_color, fresnelTerm );
     
 	const float density = (1.0f - In._passthru);
@@ -83,7 +82,7 @@ void main() {
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, density * (1.0f - fresnelTerm) * 0.5f);
 
-	vec3 color = lit_color + mix(refract_color, reflect_color, fresnelTerm) * LIGHT_EFFECT_SCALE + unpackColor(In.ambient) * 10.0f * LIGHT_EFFECT_SCALE;
+	vec3 color = lit_color + mix(refract_color, reflect_color, fresnelTerm) * LIGHT_EFFECT_SCALE + unpackColor(In._ambient) * 10.0f * LIGHT_EFFECT_SCALE;
 
 	outColor = applyTransparency(color, In._transparency * pow(fresnelTerm, FRESNEL_POWER) * LIGHT_EFFECT_SCALE, weight);
 }
