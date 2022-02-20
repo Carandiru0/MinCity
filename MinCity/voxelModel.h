@@ -233,6 +233,12 @@ namespace voxB
 	
 	typedef struct voxelModelFeatures
 	{
+		static constexpr uint8_t const
+			RESERVED_0 = (1 << 0),
+			RESERVED_1 = (1 << 1),
+			RESERVED_2 = (1 << 2),
+			VIDEOSCREEN = (1 << 3);
+
 		voxelScreen const* videoscreen = nullptr;
 
 		voxelModelFeatures() = default;

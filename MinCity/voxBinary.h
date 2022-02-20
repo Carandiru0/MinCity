@@ -18,6 +18,7 @@ The VOX File format is Copyright to their respectful owners.
 #include "voxelModel.h"
 
 #include <string_view>
+#include <filesystem>
 
 #define VOX_FILE_EXT L".vox"
 #define V1X_FILE_EXT L".v1x"
@@ -31,7 +32,7 @@ namespace voxB
 // builds the voxel model, loading from magickavoxel .vox format, returning the model with the voxel traversal
 // *** will save a cached version of culled model if it doesn't exist
 // *** will load cached "culled" version if newer than matching .vox to speedify loading voxel models
-bool const LoadVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pDestMem, bool const stacked = false);
+bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem, bool const stacked = false);
 bool const AddEmissiveVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
 bool const AddVideoscreenVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
 bool const AddTransparentVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);

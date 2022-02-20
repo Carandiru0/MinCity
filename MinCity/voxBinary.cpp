@@ -224,7 +224,7 @@ static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restric
 
 // builds the voxel model, loading from magicavoxel .vox format, returning the model with the voxel traversal
 // supporting 256x256x256 size voxel model.
-static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t const * const (& __restrict pSourceVoxBinaryData)[2], std::wstring_view const file_no_extension)
+static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t const * const (& __restrict pSourceVoxBinaryData)[2])
 {
 	uint8_t const * pReadPointer(nullptr);
 	
@@ -248,10 +248,6 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 	ChunkDimensions const sizeChunk[2];
 
 	uint32_t const* __restrict pPaletteRoot[2]{};
-
-#ifdef VOX_DEBUG_ENABLED
-	FMT_LOG(VOX_LOG, "loading new vox model {:s}", stringconv::ws2s(file_no_extension));
-#endif
 
 	for (uint32_t stack = 0; stack < uiNumModels; ++stack)
 	{
@@ -534,6 +530,13 @@ typedef struct voxelModelDescHeader
 	char	 fileTypeTag[4];
 	uint32_t numVoxels;
 	uint8_t  dimensionX, dimensionY, dimensionZ;
+
+	uint32_t numVoxelsEmissive, 
+		     numVoxelsTransparent;
+
+	uint8_t	features;
+
+	// last
 	uint32_t reserved = 0;
 
 } voxelModelDescHeader;
@@ -549,9 +552,18 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase const*
 			voxelModelDescHeader const header{ { 'V', '1', 'X', ' ' }, pDestMem->_numVoxels,
 																	(uint8_t)pDestMem->_maxDimensions.x,
 																	(uint8_t)pDestMem->_maxDimensions.y,
-																	(uint8_t)pDestMem->_maxDimensions.z };
+																	(uint8_t)pDestMem->_maxDimensions.z,
+																	pDestMem->_numVoxelsEmissive, pDestMem->_numVoxelsTransparent,
+																	(uint8_t)((pDestMem->_Features.videoscreen ? voxelModelFeatures::VIDEOSCREEN : 0))};  // features appear in sequential order after this header in file if that feature exists.
 			//write file header
 			_fwrite_nolock(&header, sizeof(voxelModelDescHeader), 1, stream);
+
+			//write features, if they exist
+			if (voxelModelFeatures::VIDEOSCREEN == (header.features & voxelModelFeatures::VIDEOSCREEN)) {
+				if (pDestMem->_Features.videoscreen) {
+					_fwrite_nolock(pDestMem->_Features.videoscreen, sizeof(voxelScreen), 1, stream);
+				}
+			}
 		}
 		//write all voxelDescPacked 
 		uint32_t const numVoxels(pDestMem->_numVoxels);
@@ -594,9 +606,6 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 					&& headerChunk.dimensionY < Volumetric::MODEL_MAX_DIMENSION_XYZ 
 					&& headerChunk.dimensionZ < Volumetric::MODEL_MAX_DIMENSION_XYZ)
 				{
-					// directly allocate voxel array for model
-					pReadPointer += sizeof(headerChunk);		// move to expected voxel data chunk
-
 					pDestMem->_numVoxels = headerChunk.numVoxels;
 
 					uvec4_v xmDimensions(headerChunk.dimensionX, headerChunk.dimensionY, headerChunk.dimensionZ);
@@ -605,6 +614,31 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 
 					XMVECTOR const maxDimensions(xmDimensions.v4f());
 					XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(maxDimensions));
+
+					pDestMem->_numVoxelsEmissive = headerChunk.numVoxelsEmissive;
+					pDestMem->_numVoxelsTransparent = headerChunk.numVoxelsTransparent;
+
+					// directly allocate voxel array for model
+					pReadPointer += sizeof(headerChunk);		// move to expected features (if they exist) data chunk, or if they do not exist at all the voxel data chunk
+
+					if (voxelModelFeatures::VIDEOSCREEN == (headerChunk.features & voxelModelFeatures::VIDEOSCREEN)) {
+
+						if (nullptr == pDestMem->_Features.videoscreen) {
+							voxelScreen readScreen;
+							
+							ReadData((void* const __restrict)&readScreen, pReadPointer, sizeof(readScreen));
+
+							// validate the input before allocating memory (protection)
+							if (readScreen.screen_rect.left < readScreen.screen_rect.right && readScreen.screen_rect.top < readScreen.screen_rect.bottom) { // simple but effective vallidation of data
+								pDestMem->_Features.videoscreen = new voxelScreen(readScreen);
+							}
+							else {
+								// silently fail back to the original .vox model
+								return(false);
+							}
+							pReadPointer += sizeof(readScreen);		// move to expected voxel data chunk
+						}
+					}
 
 					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
 					memcpy_s((void* __restrict)pDestMem->_Voxels, pDestMem->_numVoxels * sizeof(voxelDescPacked const), pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
@@ -634,23 +668,24 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 // builds the voxel model, loading from magickavoxel .vox format, returning the model with the voxel traversal
 // *** will save a cached version of culled model if it doesn't exist
 // *** will load cached "culled" version if newer than matching .vox to speedify loading voxel models
-bool const LoadVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pDestMem, bool const stacked)
+bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem, bool const stacked)
 {
 	std::error_code error[2]{};
 
-	std::wstring szOrigPathFilename(VOX_DIR);
-	szOrigPathFilename += file_no_extension;
+	std::wstring szOrigPathFilename(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1)); // isolate path to just the folder
+	szOrigPathFilename += path.stem();
 	if (stacked) {
 		szOrigPathFilename += L"-0";
 	}
 	szOrigPathFilename += VOX_FILE_EXT;
+
 	if (!fs::exists(szOrigPathFilename)) {
 		return(false);
 	}
 
 	// determine if cached version exists
 	std::wstring szCachedPathFilename(VOX_CACHE_DIR);
-	szCachedPathFilename += file_no_extension;
+	szCachedPathFilename += path.stem();
 	szCachedPathFilename += V1X_FILE_EXT;
 
 	if (fs::exists(szCachedPathFilename)) {
@@ -677,8 +712,8 @@ bool const LoadVOX(std::wstring_view const file_no_extension, voxelModelBase* co
 	mmap[0] = mio::make_mmap_source(szOrigPathFilename, error[0]);
 
 	if (stacked) {
-		std::wstring szOrigPathFilenameStacked(VOX_DIR);
-		szOrigPathFilenameStacked += file_no_extension;
+		std::wstring szOrigPathFilenameStacked(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1));
+		szOrigPathFilenameStacked += path.stem();
 		szOrigPathFilenameStacked += L"-1";
 		szOrigPathFilenameStacked += VOX_FILE_EXT;
 		mmap[1] = mio::make_mmap_source(szOrigPathFilenameStacked, error[1]);
@@ -704,8 +739,17 @@ bool const LoadVOX(std::wstring_view const file_no_extension, voxelModelBase* co
 				std::swap(mmap_data[0], mmap_data[1]);
 			}
 
-			if (LoadVOX(pDestMem, mmap_data, file_no_extension)) {
+			if (LoadVOX(pDestMem, mmap_data)) {
 				FMT_LOG_OK(VOX_LOG, " < {:s} > loaded", stringconv::ws2s(szOrigPathFilename));
+
+				// @todo temporary - to be removed //
+				std::wstring file_no_extension(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1));
+				file_no_extension += path.stem();
+
+				voxB::AddEmissiveVOX(file_no_extension, pDestMem); // optional
+				voxB::AddTransparentVOX(file_no_extension, pDestMem); // optional
+				voxB::AddVideoscreenVOX(file_no_extension, pDestMem); // optional
+				// @todo temporary - to be removed //
 
 				if (SaveV1XCachedFile(szCachedPathFilename, pDestMem)) {
 					FMT_LOG_OK(VOX_LOG, " < {:s} > cached", stringconv::ws2s(szCachedPathFilename));

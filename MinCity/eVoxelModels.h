@@ -16,19 +16,18 @@
 #define FILE_WILD_TRANSPARENT L"_trans"
 
 // #### Same Order #### //// STATIC
-#define FILE_STATIC_EMPTY "empty__" 
-#define FILE_BUILDING_RESIDENTIAL "res__"
-#define FILE_BUILDING_COMMERCIAL "com__"
-#define FILE_BUILDING_INDUSTRIAL "ind__"
-#define FILE_STATIC_MISC "static_misc__" // last
+#define FILE_STATIC_EMPTY "empty" 
+#define FOLDER_BUILDING_RESIDENTIAL "residential"
+#define FOLDER_BUILDING_COMMERCIAL "commercial"
+#define FOLDER_BUILDING_INDUSTRIAL "industrial"
+#define FOLDER_STATIC_MISC "static_misc" // last
 
 // #### Same Order #### //// DYNAMIC
-#define FILE_DYNAMIC_EMPTY "empty__" 
-#define FILE_DYNAMIC_CARS "car__"
-#define FILE_DYNAMIC_MISC "dynamic_misc__" // last
+#define FILE_DYNAMIC_EMPTY FILE_STATIC_EMPTY 
+#define FOLDER_DYNAMIC_CARS "cars"
+#define FOLDER_DYNAMIC_MISC "dynamic_misc" // last
 
-#define FILE_SR_71_BLACKBIRD "sr71"
-#define FILE_HARRIER_JET "harrier"
+#define FOLDER_NAMED "named"
 
 extern tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC> > _dynamicModels;
 extern tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> > _staticModels;
@@ -63,10 +62,10 @@ namespace Volumetric
 
 	// #### No particular Order #### //// DYNAMIC or STATIC  -- saved indices for models index that are "special", index must match as loaded for the *group* it belongs to.
 	BETTER_ENUM(eVoxelModels_Indices, uint32_t const,
+ 
+		EMPTY = 0, // for both static & dynamic
 
-		// ** static misc ** 
-		EMPTY = 0,
-
+		// ** static misc **
 
 		// ** static named **
 		ROCK_STAGE = 0,

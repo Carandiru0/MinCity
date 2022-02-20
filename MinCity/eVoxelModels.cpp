@@ -7,8 +7,11 @@
 #include "voxelModel.h"
 
 #include <vector>
+#include <filesystem>
 #include <Utility/stringconv.h>
 #include <tbb/tbb.h>
+
+namespace fs = std::filesystem;
 
 inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC> > _dynamicModels;
 inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> > _staticModels;
@@ -22,10 +25,20 @@ namespace Volumetric
 
 	// this function is re-entrant for a group, appending correctly if called in such a way (eg. named files)
 	template<bool const DYNAMIC, bool const SINGLE_FILE = false>
-	static void LoadModelGroup(std::string_view const file_group, ModelGroup& __restrict groupInfo)
+	static void LoadModelGroup(std::string_view const folder_group, ModelGroup& __restrict groupInfo)
 	{
-		std::wstring wszFile;
-		std::wstring const wsz_file_group(stringconv::s2ws(file_group));
+		std::wstring folder_path(VOX_DIR);
+
+		if constexpr (SINGLE_FILE) { // file operation
+			folder_path += stringconv::s2ws(FOLDER_NAMED); // named files must be in the named vox dir.
+			folder_path += L'/';
+			folder_path += stringconv::s2ws(folder_group);	// contains file name, no extension.
+			folder_path += VOX_FILE_EXT;
+		}
+		else { // folder operation
+			folder_path += stringconv::s2ws(folder_group);
+			folder_path += L'/';
+		}
 
 		bool bExists(false);
 		uint32_t modelCount(groupInfo.size); // start with current count
@@ -42,37 +55,57 @@ namespace Volumetric
 
 		using voxModel = Volumetric::voxB::voxelModel<DYNAMIC>;
 		using voxIdent = Volumetric::voxB::voxelModelIdent<DYNAMIC>;
-		do {
-			if constexpr (SINGLE_FILE) {
-				wszFile = wsz_file_group;
-			}
-			else {
-				wszFile = fmt::format(FMT_STRING(L"{}{:03d}"), wsz_file_group, modelCount);
-			}
+
+		if constexpr (SINGLE_FILE) { // file operation
 
 			voxModel* __restrict pVox;
-			
-			if constexpr(DYNAMIC) {
+
+			if constexpr (DYNAMIC) {
 				pVox = &(*_dynamicModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
 			}
 			else {
 				pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
 			}
 
-			if ( (bExists = voxB::LoadVOX(wszFile, pVox)) ) {
-
-				voxB::AddEmissiveVOX(wszFile, pVox); // optional
-				voxB::AddTransparentVOX(wszFile, pVox); // optional
-				voxB::AddVideoscreenVOX(wszFile, pVox); // optional
+			if ((bExists = voxB::LoadVOX(folder_path, pVox))) {
 				++modelCount;
+			}
+		}
+		else { // folder operation
+			
+			for (auto const& entry : fs::directory_iterator(folder_path)) {
 
-				if constexpr (SINGLE_FILE) {
-					break; // done jump out of loop
+				if (entry.exists() && !entry.is_directory()) {
+					if (stringconv::case_insensitive_compare(VOX_FILE_EXT, entry.path().extension().wstring())) // only vox files 
+					{
+						// @todo temporary - to be removed //
+						if (entry.path().wstring().contains(L"_emissive") ||
+							entry.path().wstring().contains(L"_trans") ||
+							entry.path().wstring().contains(L"_video"))
+						{
+							continue;
+						}
+
+						// @todo temporary - to be removed //
+
+						voxModel* __restrict pVox;
+
+						if constexpr (DYNAMIC) {
+							pVox = &(*_dynamicModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
+						}
+						else {
+							pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
+						}
+
+						if ((bExists = voxB::LoadVOX(entry.path(), pVox))) {
+							++modelCount;
+						}
+
+					}
 				}
 			}
-
-		} while (bExists);
-
+		}
+		
 		// update the count
 		groupInfo.size += modelCount;
 	}
@@ -99,17 +132,17 @@ namespace Volumetric
 
 		_staticModels.reserve(999);
 
-		LoadModelGroup<STATIC>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
-		LoadModelGroup<STATIC>(FILE_BUILDING_RESIDENTIAL, isolated_group::Residential);
-		LoadModelGroup<STATIC>(FILE_BUILDING_COMMERCIAL, isolated_group::Commercial);
-		LoadModelGroup<STATIC>(FILE_BUILDING_INDUSTRIAL, isolated_group::Industrial);
+		LoadModelGroup<STATIC, true>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
+		LoadModelGroup<STATIC>(FOLDER_BUILDING_RESIDENTIAL, isolated_group::Residential);
+		LoadModelGroup<STATIC>(FOLDER_BUILDING_COMMERCIAL, isolated_group::Commercial);
+		LoadModelGroup<STATIC>(FOLDER_BUILDING_INDUSTRIAL, isolated_group::Industrial);
 
 #ifdef GIF_MODE
 		LoadModelNamed<STATIC>("rock_stage/rock_stage");
 #endif
 
 		// last!
-		LoadModelGroup<STATIC>(FILE_STATIC_MISC, isolated_group::StaticMisc); // last
+		LoadModelGroup<STATIC>(FOLDER_STATIC_MISC, isolated_group::StaticMisc); // last
 
 		return(Success);
 	}
@@ -121,8 +154,8 @@ namespace Volumetric
 
 		_dynamicModels.reserve(999);
 
-		LoadModelGroup<DYNAMIC>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
-		LoadModelGroup<DYNAMIC>(FILE_DYNAMIC_CARS, isolated_group::DynamicCars);
+		LoadModelGroup<DYNAMIC, true>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
+		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
 
 #ifdef GIF_MODE
 		LoadModelNamed<DYNAMIC>("rock_stage/guitar");
@@ -139,34 +172,7 @@ namespace Volumetric
 #endif
 
 		// last!
-		LoadModelGroup<DYNAMIC>(FILE_DYNAMIC_MISC, isolated_group::DynamicMisc); // last
-
-		// *** apply special functionality to specific models here *** //
-		Volumetric::voxB::ApplyAllTransparent((Volumetric::voxB::voxelModelBase*)Volumetric::getVoxelModel<eVoxelModels_Dynamic::MISC>(eVoxelModels_Indices::HOLOGRAM_GIRL));
-		Volumetric::voxB::ApplyAllTransparent((Volumetric::voxB::voxelModelBase*)Volumetric::getVoxelModel<eVoxelModels_Dynamic::MISC>(eVoxelModels_Indices::HOLOGRAM_GIRL2));
-
-		/*
-		{
-			Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC>& __restrict rVox = _dynamicModels.emplace_back(Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC>());
-
-			if (voxB::LoadVOX(L"" FILE_DEPTHCUBE, &rVox)) {
-
-				voxB::AddEmissiveVOX(L"" FILE_DEPTHCUBE, &rVox); // optional
-			}
-			else {
-				Success = false;
-			}
-		}*/
-		/*
-		if (voxB::LoadVOX(L"" FILE_SR_71_BLACKBIRD, &_dynamicModels[eVoxelModels_Dynamic::SR_71_BLACKBIRD])) {
-			++Success;
-		}
-
-		if (voxB::LoadVOX(L"" FILE_HARRIER_JET, &_dynamicModels[eVoxelModels_Dynamic::HARRIER_JET])) {
-			++Success;
-		}
-		*/
-
+		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last
 
 		return(Success);
 	}
@@ -178,16 +184,16 @@ namespace Volumetric
 
 		FMT_LOG(VOX_LOG, "loading voxel models.....");
 
-		tbb::task_group tG;
+		//tbb::task_group tG;
 
-		tG.run([&bSuccess] {
+		//tG.run([&bSuccess] {
 			bSuccess[0] = LoadAllStaticVoxelModels();
-		});
-		tG.run([&bSuccess] {
+		//});
+		//tG.run([&bSuccess] {
 			bSuccess[1] = LoadAllDynamicVoxelModels();
-		});
+		//});
 
-		tG.wait();
+		//tG.wait();
 
 		if (bSuccess[0]) {
 			FMT_LOG_OK(VOX_LOG, "static models loaded");

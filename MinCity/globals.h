@@ -83,6 +83,7 @@ extern void debug_out_nuklear_off();
 #else // **** must add to global detection macro below aswell **** //
 #define FULLSCREEN_EXCLUSIVE
 #define DEBUG_DISABLE_MUSIC
+#define DEBUG_CONSOLE
 //#define DEBUG_DEPTH_CUBE
 //#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
 //#define DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
@@ -95,7 +96,8 @@ extern void debug_out_nuklear_off();
 
 // **** global macro **** warning if debug options are enabled during release mode
 #if defined(DEBUG_DISABLE_MUSIC) \
-	|| defined(DEBUG_DEPTH_CUBE)						\
+	|| defined(DEBUG_DEPTH_CUBE)					\
+	|| defined(DEBUG_CONSOLE)						\
 	|| defined(DEBUG_PERFORMANCE_VOXEL_SUBMISSION)	\
 	|| defined(DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP) \
 

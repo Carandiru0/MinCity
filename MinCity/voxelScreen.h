@@ -17,6 +17,8 @@ namespace Volumetric
 			rect2D_t screen_rect;
 			bool major_axis;
 
+			voxelScreen() = default;
+
 			voxelScreen(rect2D_t const& screen_rect_, bool const major_axis_)
 				: screen_rect(screen_rect_.v), major_axis(major_axis_)
 			{}

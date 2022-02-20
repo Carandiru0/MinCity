@@ -1204,10 +1204,10 @@ __declspec(noinline) void cMinCity::CriticalInit()
 
 	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads, Globals::DEFAULT_STACK_SIZE);
 
-#ifndef NDEBUG
-	RedirectIOToConsole(); // *** must be just before the splash screen
+#if !defined(NDEBUG) || defined(DEBUG_CONSOLE)
+	RedirectIOToConsole();	// always on in debug builds, conditionally on in release builds with DEBUG_CONSOLE
 #else
-	RedirectIOToFile(); // *** must be just before the splash screen
+	RedirectIOToFile(); // default log all output to file
 #endif
 	
 	// todo: for some odd reason, externals are missing in build if these singletons are defined * const
