@@ -15,7 +15,10 @@
 #include "gui.h"
 #include <Utility/async_long_task.h>
 #include <filesystem>
-
+#include <algorithm>
+#include "eVoxelModels.h"
+#include "cImportGameObject.h"
+#include <Utility/async_long_task.h>
 #include <Imaging/Imaging/Imaging.h>
 
 #define NK_IMPLEMENTATION  // the only place this is defined
@@ -78,12 +81,11 @@ typedef struct alignas(16) sMouseState
 	bool    handled;
 
 	sMouseState()
-		: button_state(eMouseButtonState::INACTIVE),
-		tStamp(high_resolution_clock::now()),
-		left_clicked(false), right_clicked(false),
-		left_released(false), right_released(false),
+		: button_state(eMouseButtonState::INACTIVE), tStamp(high_resolution_clock::now()),
+		left_clicked(false), right_clicked(false), left_released(false), right_released(false),
 		handled(false)
-	{}
+	{
+	}
 } MouseState;
 
 NK_API const nk_rune*
@@ -198,7 +200,7 @@ void
 cNuklear::nk_focus_callback(GLFWwindow *const win, int const focused)
 {
 	if (focused) {
-		static constinit bool firstFocus{ true };
+		constinit static bool firstFocus{ true };
 		if (firstFocus) { // *bugfix, needs to be set on 1st focus so cursor starts at correct location.
 			nk_center_cursor(win);
 			firstFocus = false;
@@ -385,7 +387,7 @@ cNuklear::cNuklear()
 	_bUniformSet(false), _bUniformAcquireRequired(false),
 	_bAcquireRequired(false),
 	_bGUIDirty{ false, false }, _bEditControlFocused(false), _bModalPrompted(false),
-	_uiWindowEnabled(0), _iWindowQuitSelection(-1), _iWindowSaveSelection(-1), _iWindowLoadSelection(-1), 
+	_uiWindowEnabled(0), _iWindowQuitSelection(-1), _iWindowSaveSelection(-1), _iWindowLoadSelection(-1), _iWindowImportSelection(-1),
 	_uiPauseProgress(0),
 	_bHintReset(false), _loadsaveWindow{},
 	_bMinimapRenderingEnabled(false),
@@ -1117,7 +1119,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			nk_input.scroll.y = 0.0f; // must zero once handled
 		}
 	}
-	nk_input.mouse_state.handled = true;
+	nk_input.mouse_state.handled = true; // mark as handled
 	//
 	
 	{ // rate limited keys
@@ -1483,6 +1485,7 @@ void cNuklear::do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool
 	SetSeed(seed);
 
 	if (!_bModalPrompted) {
+		
 		constexpr eWindowName const subwindowName(eWindowName::WINDOW_MAIN);
 
 		if (nk_begin(_ctx, subwindowName._to_string(),
@@ -1540,10 +1543,13 @@ void cNuklear::do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool
 
 							switch (menu_item_index) {
 							case 0:
-								// @todo
-								MinCity::DispatchEvent(eEvent::PAUSE, new bool(false));
+								szHint = "GENERATING...";
+								bResetHint = false;
+								bSmallHint = false;
+
+								MinCity::DispatchEvent(eEvent::NEW);
 								enableWindow<eWindowType::MAIN>(false);
-								nk_window_close(_ctx, subwindowName._to_string());
+								nk_window_close(_ctx, subwindowName._to_string());  // hides main window but does not close it in this case 
 								break;
 							case 1:
 								enableWindow<eWindowType::MAIN>(false);
@@ -1602,7 +1608,7 @@ void cNuklear::do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool
 				_iWindowQuitSelection = eWindowQuit::JUST_QUIT;
 				MinCity::DispatchEvent(eEvent::EXIT);
 			}
-			
+
 			_bModalPrompted = false; // required for any modal dialog prompt to reset itself when done.
 		}
 	}
@@ -2310,6 +2316,347 @@ int const cNuklear::do_modal_window(std::string_view const prompt, std::string_v
 	return(iReturn);
 }
 
+void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint)
+{
+	constinit static world::cImportGameObject_Dynamic* model_dynamic(nullptr);
+	constinit static world::cImportGameObject_Static* model_static(nullptr);
+
+	static Volumetric::newVoxelModel voxelModel{};
+
+	if (!_bModalPrompted) {
+
+		eWindowName const windowName(eWindowName::WINDOW_IMPORT);
+		
+		struct nk_rect bounds = make_centered_window_rect(1080, 200, _frameBufferSize);
+		bounds.y = (float)_frameBufferSize.y - bounds.h * 1.5f;
+
+		if (nk_begin(_ctx, windowName._to_string(),
+			bounds,
+			NK_TEMP_WINDOW_BORDER | NK_WINDOW_SCROLL_AUTO_HIDE))
+		{
+			struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+			AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+
+			constinit static bool bFirstShown(true);
+
+			if (bFirstShown) {
+				_bModalPrompted = true;
+				bFirstShown = false;
+			}
+			else {
+
+				static constexpr fp_seconds const interval(1.0f);
+
+				constinit static uint32_t scramble_index(1);
+				constinit static bool bBlink(false);
+				constinit static tTime tLast(zero_time_point);
+
+				fp_seconds const accumulated(critical_now() - tLast);
+				float const t = SFM::saturate(accumulated / interval);
+
+				std::string szText(szHint);
+
+				if (accumulated > interval) {
+					tLast = critical_now();
+				}
+
+				if ((model_dynamic || model_static) && voxelModel.model) {
+
+					using colormap = vector<Volumetric::ImportColor>;
+					{
+						auto const& colors = world::cImportGameObject::getProxy().colors;
+
+						if (world::cImportGameObject::getProxy().active_color.color)
+						{
+							szHint = fmt::format(FMT_STRING("{:n} VOXELS"), world::cImportGameObject::getProxy().active_color.count);
+							bResetHint = false;
+							bSmallHint = true;
+						}
+
+						nk_layout_row_dynamic(_ctx, 48, 1);
+
+						nk_group_begin(_ctx, "colormap", 0);
+
+						nk_layout_row_static(_ctx, 48, 48, colors.size());
+
+						for (auto i = colors.cbegin(); i != colors.cend(); ++i) {
+
+							uvec4_t rgba;
+							SFM::unpack_rgba(i->color, rgba);
+
+							if (i->color == world::cImportGameObject::getProxy().active_color.color) {
+								SFM::unpack_rgba(SFM::lerp(0, i->color, t), rgba);
+							}
+
+							if (nk_button_color(_ctx, nk_rgb(rgba.r, rgba.g, rgba.b))) {
+								world::cImportGameObject::getProxy().active_color = *i;
+							}
+						}
+						nk_group_end(_ctx);
+					}
+					nk_layout_row_dynamic(_ctx, 40, 4);
+
+					auto& colors = world::cImportGameObject::getProxy().colors;
+
+					// binarch search for selected color in colormap
+					// access the ImportColor field n for current status, update on option selected.
+					colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color);
+					// ***now working on material*** access to color member forbidden.
+					if (colors.end() != iter_color) {
+						
+						nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
+
+						bool bApply(false);
+						if (nk_option_label(_ctx, "EMISSIVE", iter_color->material.Emissive)) {
+							iter_color->material.Emissive = !iter_color->material.Emissive;
+							bApply = true;
+						}
+						if (nk_option_label(_ctx, "TRANSPARENCY", iter_color->material.Transparent)) {
+							iter_color->material.Transparent = !iter_color->material.Transparent;
+							bApply = true;
+						}
+						if (nk_option_label(_ctx, "METALLIC", iter_color->material.Metallic)) {
+							iter_color->material.Metallic = !iter_color->material.Metallic;
+							bApply = true;
+						}
+						int iRoughness(iter_color->material.Roughness);
+						if (nk_slider_int(_ctx, 0, &iRoughness, 0xf, 1)) {
+							iter_color->material.Roughness = iRoughness;
+							bApply = true;
+						}
+
+						if (bApply) {
+							world::cImportGameObject::getProxy().apply_material(iter_color);
+						}
+
+						nk_style_pop_font(_ctx);
+					}
+
+					nk_layout_row_dynamic(_ctx, 40, 4);
+
+					nk_spacing(_ctx, 2);
+
+					bool hovered(false);
+					if (nk_button_label(_ctx, "SAVE", &hovered)) {
+
+						auto& colors = world::cImportGameObject::getProxy().colors;
+
+						// remove color from proxy
+						colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color); // fast binary search! binary search only returns a boolean & uses lower_bound internally. lower_bound returns an iterator.
+						if (colors.end() != iter_color) {
+
+							// select color to the right, or left if there is no right
+							if (colors.end() != (iter_color + 1)) {
+								world::cImportGameObject::getProxy().active_color = *(iter_color + 1);
+							}
+							else if (colors.end() != (iter_color - 1) && colors.begin() != iter_color) {
+								world::cImportGameObject::getProxy().active_color = *(iter_color - 1);
+							}
+							else { // no more colors to select - done for the model
+								world::cImportGameObject::getProxy().save(voxelModel.name); // saves the current model to a cache file, model is now imported.
+
+								voxelModel.model = nullptr; // clear
+								_bModalPrompted = true;
+								nk_window_close(_ctx, windowName._to_string()); // hides the import window
+							}
+
+							colors.erase(iter_color); // remove the current color
+
+							MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t( 100.0f * (1.0f - (colors.size() * world::cImportGameObject::getProxy().inv_start_color_count))));
+						}
+						else {
+							voxelModel.model = nullptr; // clear
+							_bModalPrompted = true;
+							nk_window_close(_ctx, windowName._to_string()); // hides the import window
+						}
+						
+					}
+					else if (hovered) {
+						szHint = "SAVE COLOR";
+						bResetHint = false;
+						bSmallHint = true;
+					}
+
+					hovered = false;
+
+					bool const fold_disabled(world::cImportGameObject::getProxy().colors.size() <= 1);
+					
+					if (fold_disabled) {
+						// visually disable button
+						nk_style_push_color(_ctx, &_ctx->style.button.text_normal, DISABLED_TEXT_COLOR);
+						nk_style_push_color(_ctx, &_ctx->style.button.text_hover, DISABLED_TEXT_COLOR);
+						nk_style_push_color(_ctx, &_ctx->style.button.text_active, DISABLED_TEXT_COLOR);
+					}
+
+					if (nk_button_label(_ctx, "FOLD", &hovered) && !fold_disabled) {
+
+						auto& colors = world::cImportGameObject::getProxy().colors;
+
+						colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color); // fast binary search! binary search only returns a boolean & uses lower_bound internally. lower_bound returns an iterator.
+						
+						if (colors.end() != iter_color) {
+
+							colormap::iterator closest_color(colors.end());
+
+							int32_t diffLeft(INT32_MAX), diffRight(INT32_MAX); // calculate the smallest difference between adjacent colors in the colormap in respect to the current color.
+							if (colors.end() != (iter_color - 1) && colors.begin() != iter_color) {
+								diffLeft = SFM::abs(((int32_t)(iter_color - 1)->color) - ((int32_t)iter_color->color));
+							}
+							if (colors.end() != (iter_color + 1)) {
+								diffRight = SFM::abs(((int32_t)(iter_color + 1)->color) - ((int32_t)iter_color->color));
+							}
+
+							if (diffLeft < diffRight) {
+
+								closest_color = (iter_color - 1);
+							}
+							else {
+								closest_color = (iter_color + 1);
+							}
+
+							if (colors.cend() != closest_color) {
+								
+								uint32_t const color_match(iter_color->color),
+											   color_to_set(closest_color->color);
+								
+								// change the color map
+								closest_color->count += iter_color->count; // "fold" into the closest color
+								world::cImportGameObject::getProxy().active_color = *closest_color; // select the color that the current color was folded into
+								colors.erase(iter_color); // remove the current color
+
+								// change all voxels in the actual voxel model from current color to closest color.
+								uint32_t const numVoxels(voxelModel.model->_numVoxels);
+								Volumetric::voxB::voxelDescPacked* pVoxels(voxelModel.model->_Voxels); // stream above is still storing, use the cached read of the models' voxels ++
+								for (uint32_t i = 0; i < numVoxels; ++i) {
+
+									Volumetric::voxB::voxelDescPacked const voxel(*pVoxels);
+
+									uint32_t const color = voxel.Color;
+									if (color == color_match) {
+										pVoxels->Color = color_to_set; // change to closest color, numVoxels remains the same
+									}
+
+									++pVoxels;
+								}
+							}
+							MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1.0f - (colors.size() * world::cImportGameObject::getProxy().inv_start_color_count)));
+						}
+					}
+					else if (hovered && !fold_disabled) {
+						szHint = "FOLD INTO CLOSEST COLOR";
+						bResetHint = false;
+						bSmallHint = true;
+					}
+
+					if (fold_disabled) {
+						// visually disable button
+						nk_style_pop_color(_ctx);
+						nk_style_pop_color(_ctx);
+						nk_style_pop_color(_ctx);
+					}
+
+					// when user clicks save also voxelModel.model = nullptr; // clear
+					// to goto next model
+					if (model_dynamic) {
+						model_dynamic->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
+					}
+					if (model_static) {
+						model_static->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
+					}
+				}
+				else {
+					voxelModel.model = nullptr; // clear
+					_bModalPrompted = true; // this will either start an import for the next voxel model, or exit the import window
+					nk_window_close(_ctx, windowName._to_string()); // hides the import window
+
+					if (model_dynamic) {
+						model_dynamic->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
+					}
+					if (model_static) {
+						model_static->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
+					}
+				}
+			}
+
+		} // end import window
+		nk_end(_ctx);
+	}
+	else // modal
+	{
+		// clear hint while modal is active
+		szHint = "";
+		bResetHint = false;
+
+		bool bExitImport(Volumetric::isNewModelQueueEmpty() && nullptr == voxelModel.model); // this allows the current model to be prompted until user selects yes/no
+
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS); // reset progress here!
+
+		if (!bExitImport)
+		{
+			// only when clear (current model is done) does the queue pop off a new voxel model
+			if (nullptr == voxelModel.model) { // clear
+				auto& queue(Volumetric::getNewModelQueue());
+				queue.try_pop(voxelModel);
+			}
+
+			if (nullptr != voxelModel.model && !voxelModel.name.empty()) {
+
+				int const select = do_modal_window(fmt::format(FMT_STRING("IMPORT MODEL {:s} "), stringconv::toUpper(voxelModel.name)), "YES", "NO");
+				if (select >= 0) { // selection made
+
+					using flags = Volumetric::eVoxelModelInstanceFlags;
+					constexpr uint32_t const common_flags(flags::GROUND_CONDITIONING | flags::INSTANT_CREATION | flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC);
+
+					if (select) {
+						_iWindowImportSelection = eWindowImport::IMPORT;
+
+						if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
+							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash()); // destroy last
+						}
+						if (model_static && model_static->getModelInstance()->getHash()) {
+							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash()); // destroy last
+						}
+
+						// will now show the import window and close this modal prompt
+						// add gameobject for import, load the colormap into importproxy																						// safe down-cast, memory pointed to by the pointer is allocated as such, and previously a pointer of that type.
+						if (voxelModel.dynamic) {
+							model_dynamic = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cImportGameObject_Dynamic, true>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<true> const* const>(voxelModel.model), common_flags);
+						}
+						else {
+							model_static = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cImportGameObject_Static, false>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<false> const* const>(voxelModel.model), common_flags);
+						}
+					}
+					else {
+						_iWindowImportSelection = eWindowImport::DISABLED;
+						// user selected no, disable import and goto main window
+						bExitImport = true;
+					}
+
+					_bModalPrompted = false; // required for any modal dialog prompt to reset itself when done.
+				}
+
+			}
+		}
+
+		if (bExitImport) { // if the queue is now empty
+
+			if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
+				MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash()); // destroy last
+			}
+			if (model_static && model_static->getModelInstance()->getHash()) {
+				MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash()); // destroy last
+			}
+			voxelModel.model = nullptr; // clear
+
+			enableWindow<eWindowType::IMPORT>(false);
+			MinCity::DispatchEvent(eEvent::NEW);
+			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
+		}
+		// otherwise the next file to import will prompt up next frame
+	}
+}
+
 void  cNuklear::UpdateGUI()
 {
 	tTime const tLocal(high_resolution_clock::now());
@@ -2524,7 +2871,10 @@ void  cNuklear::UpdateGUI()
 
 			do_cyberpunk_loadsave_window(false, szHint, bResetHint, bSmallHint);
 		}
-	
+		else if (eWindowType::IMPORT == _uiWindowEnabled) {
+
+			do_cyberpunk_import_window(szHint, bResetHint, bSmallHint);
+		}
 		// ######################################################################################################################################## //
 
 		// reset hint if not used

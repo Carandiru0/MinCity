@@ -58,7 +58,6 @@
 //#define DEBUG_MOUSE_HOVER_VOXEL
 #define DEBUG_FPS_WINDOW
 //#define DEBUG_LUT_WINDOW
-//#define DEBUG_LOADTIME_BC7_COMPRESSION_DISABLED
 //#define VOLUMETRIC_RAYMARCHING_DISABLED
 #define VOX_DEBUG_ENABLED
 //#define DEBUG_DISALLOW_RENDER_DISABLING	// note that this causes any swapchain recreation to fail, this is not normally on in release
@@ -173,7 +172,7 @@ namespace Globals
 								 ZOOM_SPEED = 0.44f;
 
 	static constexpr double const MINZ_DEPTH = (0.01 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
-	static constexpr double const MAXZ_DEPTH = (200.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
+	static constexpr double const MAXZ_DEPTH = (173.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 33;	 // 33ms = 30fps maximum gui update interval when no input is flagging the gui to be updated

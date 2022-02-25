@@ -98,12 +98,12 @@ namespace world
 	}
 
 	// If currently visible event:
-	void __vectorcall cBuildingGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
+	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cBuildingGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS)
 	{
-		reinterpret_cast<cBuildingGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
+		return(reinterpret_cast<cBuildingGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index));
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	void __vectorcall cBuildingGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
+	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cBuildingGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
 
@@ -148,7 +148,7 @@ namespace world
 						voxel.Emissive = false;
 					}
 				}
-				return; // early exit
+				return(voxel); // early exit
 			}
 		}
 		// creation sequence ?
@@ -179,7 +179,7 @@ namespace world
 					voxel.Color = 0; // screen off during creation //
 					voxel.Emissive = false;
 				}
-				return; // early exit
+				return(voxel); // early exit
 			}
 		}
 
@@ -230,6 +230,8 @@ namespace world
 				voxel.Emissive = windows[found_index].emissive;
 			}
 		}
+
+		return(voxel);
 	}
 
 

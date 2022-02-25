@@ -88,7 +88,6 @@ namespace world
 		rect2D_t const __vectorcall			getVisibleGridBounds() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		rect2D_t const __vectorcall			getVisibleGridBoundsClamped() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const __vectorcall		getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
-		
 		point2D_t const	__vectorcall		getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
 
 		v2_rotation_t const&		getAzimuth() const;
@@ -117,6 +116,7 @@ namespace world
 		void LoadTextures(); // 1st
 		void Initialize(); // 2nd
 		void OnLoaded(tTime const& __restrict tNow);
+		void Clear();
 
 		bool const renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 		
@@ -131,6 +131,7 @@ namespace world
 		void Render(uint32_t const resource_index) const;																														 //			3.)
 
 		// #################
+		void NewWorld();
 		void SaveWorld();
 		void LoadWorld();
 		bool const PreviewWorld(std::string_view const szCityName, CityInfo&& __restrict info, ImagingMemoryInstance* const __restrict load_thumbnail) const; // load_thumbnail is expected to be created already, of BGRA format and equal to thumbnail dimensions
@@ -314,6 +315,7 @@ namespace world
 	private:
 		UniformState						  _lastState, _currentState, _targetState;
 
+		Imaging						_terrainTempImage;
 		vku::TextureImage2D			*_terrainTexture,
 									* _gridTexture;
 		vku::TextureImage2DArray*	_roadTexture;

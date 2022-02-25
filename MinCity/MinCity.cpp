@@ -316,6 +316,7 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	Vulkan->CreateResources();
 
+	m_bNewEventsAllowed = true; // important for this to be enabled right here //
 	VoxelWorld->Initialize();
 
 	Vulkan->UpdateDescriptorSetsAndStaticCommandBuffer();
@@ -340,8 +341,6 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	if (!Audio->Initialize()) {
 		FMT_LOG_FAIL(AUDIO_LOG, "FMOD was unable to initialize!\n");
 	}
-
-	m_bNewEventsAllowed = true; // defaults to false on startup........
 	
 	// ****start up events must begin here**** //
 	DispatchEvent(eEvent::REFRESH_LOADLIST);
@@ -440,15 +439,33 @@ NO_INLINE std::filesystem::path const cMinCity::getUserFolder()
 
 void cMinCity::OnNew()
 {
+	constinit static int64_t _task_id_new(0);
+
 	async_long_task::wait_for_all(milliseconds(async_long_task::beats::frame));
 	m_eExclusivity = eExclusivity::NEW;
+
+	DispatchEvent(eEvent::PAUSE_PROGRESS); // reset progress here!
+
+	async_long_task::wait<background>(_task_id_new, "new"); // wait 1st on any "new" task to complete before creating a new "new" task
 
 	SAFE_DELETE(City);
 	City = new cCity(m_szCityName);
 
-	FMT_LOG(GAME_LOG, "New");
+	_task_id_new = async_long_task::enqueue<background>([&] {
 
-	m_eExclusivity = eExclusivity::DEFAULT;
+		DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1));
+		VoxelWorld->NewWorld();
+
+		// make sure user can see feedback of loading, regardless of how fast the "new" generation execution took
+		Sleep(milliseconds(async_long_task::beats::full_second).count());
+
+		FMT_LOG(GAME_LOG, "New World Generated");
+
+		DispatchEvent(eEvent::PAUSE, new bool(false));
+		DispatchEvent(eEvent::PAUSE_PROGRESS); // reset progress here!
+
+		DispatchEvent(eEvent::REVERT_EXCLUSIVITY);
+	});
 }
 void cMinCity::OnLoad()
 {
@@ -467,6 +484,8 @@ void cMinCity::OnLoad()
 		VoxelWorld->LoadWorld();
 
 		// make sure user can see feedback of loading, regardless of how fast the saving execution took
+		Sleep(milliseconds(async_long_task::beats::full_second).count());
+
 		FMT_LOG(GAME_LOG, "Loaded");
 
 		DispatchEvent(eEvent::PAUSE, new bool(false));
@@ -495,6 +514,7 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 		VoxelWorld->SaveWorld();
 
 		// make sure user can see feedback of saving, regardless of how fast the saving execution took
+		Sleep(milliseconds(async_long_task::beats::full_second).count());
 		FMT_LOG(GAME_LOG, "Saved");
 
 		if (bShutdownAfter) {
@@ -510,6 +530,10 @@ void cMinCity::OnSave(bool const bShutdownAfter)
 	});
 }
 
+void cMinCity::New()
+{
+	OnNew();
+}
 void cMinCity::Load()
 {
 	int32_t const load_state(Nuklear->getLastSelectionForWindow<eWindowType::LOAD>());
@@ -721,7 +745,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	// instead the currently used state of resources on the gpu is re-used; does not change
 	[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity) {
 		_mm_pause();
-		Sleep(async_long_task::beats::minimum);
 
 		// bring down cpu & power usage when standing by //
 		[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
@@ -763,61 +786,70 @@ void cMinCity::ProcessEvents()
 
 	std::pair<uint32_t, void*> new_event;
 
-	while (m_events.try_pop(new_event))
-	{
-		switch (new_event.first) {
-		case eEvent::PAUSE:
-			if (new_event.second) {
-				Pause(*((bool const* const)new_event.second));
+	while (!m_events.empty()) {
+		while (m_events.try_pop(new_event))
+		{
+			switch (new_event.first) {
+			case eEvent::PAUSE:
+				if (new_event.second) {
+					Pause(*((bool const* const)new_event.second));
+				}
+				else {
+					Pause(true);
+				}
+				break;
+			case eEvent::PAUSE_PROGRESS:
+				if (new_event.second) {
+					Nuklear->setPauseProgress(*((uint32_t const* const)new_event.second));
+				}
+				else {
+					Nuklear->setPauseProgress(0);
+				}
+				break;
+			case eEvent::REVERT_EXCLUSIVITY:
+				m_eExclusivity = eExclusivity::DEFAULT;
+				break;
+			case eEvent::REFRESH_LOADLIST:
+				VoxelWorld->RefreshLoadList();
+				break;
+			case eEvent::SAVE:
+				if (new_event.second) {
+					Save(*((bool const* const)new_event.second));
+				}
+				else {
+					Save();
+				}
+				break;
+			case eEvent::LOAD:
+				Load();
+				break;
+			case eEvent::NEW:
+				New();
+				break;
+			case eEvent::SHOW_IMPORT_WINDOW:
+				Pause(true); // always
+				Nuklear->enableWindow<eWindowType::IMPORT>(true);
+				break;
+			case eEvent::SHOW_MAIN_WINDOW:
+				Pause(true); // always
+				// fall-thru
+			case eEvent::ESCAPE:
+				MinCity::Quit(); // this cancels any modal windows or any active windows and gets back to the game
+				break;
+				//exit & expedited shutdown
+			case eEvent::EXIT:
+				Shutdown(Quit(true)); // exits the game if the quitting state selection and the current selection are equal.
+				break;
+				//last
+			case eEvent::EXPEDITED_SHUTDOWN:
+				Shutdown(0, true);
+				break;
+			default:
+				break;
 			}
-			else {
-				Pause(true);
-			}
-			break;
-		case eEvent::PAUSE_PROGRESS:
-			if (new_event.second) {
-				Nuklear->setPauseProgress(*((uint32_t const* const)new_event.second));
-			}
-			else {
-				Nuklear->setPauseProgress(0);
-			}
-			break;
-		case eEvent::REVERT_EXCLUSIVITY:
-			m_eExclusivity = eExclusivity::DEFAULT;
-			break;
-		case eEvent::REFRESH_LOADLIST:
-			VoxelWorld->RefreshLoadList();
-			break;
-		case eEvent::SAVE:
-			if (new_event.second) {
-				Save(*((bool const* const)new_event.second));
-			}
-			else {
-				Save();
-			}
-			break;
-		case eEvent::LOAD:
-			Load();
-			break;
-		case eEvent::NEW:
-			break;
 
-		case eEvent::ESCAPE:
-			MinCity::Quit(); // this cancels any modal windows or any active windows and gets back to the game
-			break;
-		//exit & expedited shutdown
-		case eEvent::EXIT:
-			Shutdown(Quit(true)); // exits the game if the quitting state selection and the current selection are equal.
-			break;
-		//last
-		case eEvent::EXPEDITED_SHUTDOWN:
-			Shutdown(0, true);
-			break;
-		default:
-			break;
+			SAFE_DELETE(new_event.second);
 		}
-
-		SAFE_DELETE(new_event.second);
 	}
 }
 void cMinCity::ClearEvents(bool const bDisableNewEventsAfter)
@@ -1119,7 +1151,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 
 namespace { // anonymous namespace private to this file only
 
-	static inline struct { // <--make contigous in memory
+	static inline struct { // <--make contigous in memory & ...
 
 		cVulkan					Vulkan;
 		cTextureBoy				TextureBoy;
@@ -1140,11 +1172,11 @@ namespace { // anonymous namespace private to this file only
 	// the pointers are all constinit so no guard check is required
 	// the actual instances are now properly assigned to the pointers.
 constinit inline cVulkan* const					cMinCity::Vulkan{ &_.Vulkan };
-constinit inline cTextureBoy* 					cMinCity::TextureBoy{ &_.TextureBoy };
-constinit inline cPostProcess* 					cMinCity::PostProcess{ &_.PostProcess };
+constinit inline cTextureBoy* const				cMinCity::TextureBoy{ &_.TextureBoy };
+constinit inline cPostProcess* const			cMinCity::PostProcess{ &_.PostProcess };
 constinit inline cNuklear* const				cMinCity::Nuklear{ &_.Nuklear };
 constinit inline world::cVoxelWorld* const		cMinCity::VoxelWorld{ &_.VoxelWorld };
-constinit inline world::cProcedural*			cMinCity::Procedural{ &_.Procedural };
+constinit inline world::cProcedural* const		cMinCity::Procedural{ &_.Procedural };
 constinit inline cUserInterface* const			cMinCity::UserInterface{ &_.UserInterface };
 constinit inline cAudio* const					cMinCity::Audio{ &_.Audio };
 
@@ -1210,23 +1242,30 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	RedirectIOToFile(); // default log all output to file
 #endif
 	
-	// todo: for some odd reason, externals are missing in build if these singletons are defined * const
-	// so for now they are defined * no const
+	// **bugfix - these variables get optimized out incorrectly, this prevents that from happening
 	// -they are properly initialized even before this, in the code above (constinit initialization)
-	cMinCity::TextureBoy = &_.TextureBoy;
-	cMinCity::PostProcess = &_.PostProcess;
-	cMinCity::Procedural = &_.Procedural;
+	if (nullptr == cMinCity::TextureBoy) {
+		FMT_LOG_FAIL(INFO_LOG, "TEX {:d}", (void* const)cMinCity::TextureBoy);
+	}
+	if (nullptr == cMinCity::PostProcess) {
+		FMT_LOG_FAIL(INFO_LOG, "PP {:d}", (void* const)cMinCity::PostProcess);
+	}
+	if (nullptr == cMinCity::Procedural) {
+		FMT_LOG_FAIL(INFO_LOG, "PRO {:d}", (void* const)cMinCity::Procedural);
+	}
 }
 
 __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 {
-	async_long_task::cancel_all();
+	async_long_task::cancel_all(); // cancel any outstanding or running tasks
 
 	// safe to bypass singleton pointers in CleanUp & CriticalCleanup *only* //
 
 	// huge memory leak bugfix
 	_.Vulkan.WaitPresentIdle();
 	_.Vulkan.WaitDeviceIdle();
+
+	async_long_task::wait_for_all(); // *bugfix for safe cleanup, all background tasks must complete
 
 	SAFE_DELETE(City);
 

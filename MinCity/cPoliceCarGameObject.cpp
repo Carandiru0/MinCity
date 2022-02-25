@@ -71,12 +71,12 @@ cPoliceCarGameObject& cPoliceCarGameObject::operator=(cPoliceCarGameObject&& src
 }
 
 // If currently visible event:
-void __vectorcall cPoliceCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
+VOXEL_EVENT_FUNCTION_RETURN __vectorcall cPoliceCarGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS)
 {
-	reinterpret_cast<cPoliceCarGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
+	return(reinterpret_cast<cPoliceCarGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index));
 }
 // ***** watchout - thread safety is a concern here this method is executed in parallel ******
-void __vectorcall cPoliceCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
+VOXEL_EVENT_FUNCTION_RETURN __vectorcall cPoliceCarGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 {
 	cCarGameObject::OnVoxel(xmIndex, voxel, vxl_index);
 
@@ -95,6 +95,8 @@ void __vectorcall cPoliceCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::v
 			voxel.Emissive = false;
 		}
 	}
+
+	return(voxel);
 }
 
 void __vectorcall cPoliceCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)

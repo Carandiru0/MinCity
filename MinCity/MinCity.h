@@ -24,6 +24,8 @@ BETTER_ENUM(eEvent, uint32_t const,
 	AUTO_SAVE,
 	LOAD,
 	NEW,
+	SHOW_IMPORT_WINDOW,
+	SHOW_MAIN_WINDOW,
 
 	ESCAPE,
 	EXIT			   = (UINT32_MAX - 1),
@@ -103,6 +105,7 @@ public:
 
 	// Update/Render Specific //
 	static void Pause(bool const bStateIsPaused);
+	static void New();
 	static void Load();
 	static void Save(bool const bShutdownAfter = false);
 	static int32_t const Quit(bool const bQueryStateOnly = false); // prompts user to quit, returns user selection (eWindowQuit)
@@ -126,11 +129,11 @@ private:
 /* #####################################_S I N G L E T O N S_######################################### */
 public: // constinit requirement
 	constinit static class cVulkan* const				Vulkan;
-	constinit static class cTextureBoy*					TextureBoy;
-	constinit static class cPostProcess*				PostProcess;
+	constinit static class cTextureBoy* const			TextureBoy;
+	constinit static class cPostProcess* const			PostProcess;
 	constinit static class cNuklear* const				Nuklear;
 	constinit static class world::cVoxelWorld* const	VoxelWorld;
-	constinit static class world::cProcedural*			Procedural;
+	constinit static class world::cProcedural* const	Procedural;
 	constinit static class cUserInterface* const		UserInterface;
 	constinit static class cAudio* const				Audio;
 	constinit static class cCity*						City;	// any access of City outside of this class is promised this pointer

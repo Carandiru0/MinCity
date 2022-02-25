@@ -733,7 +733,7 @@ void cVulkan::CreateVoxelResource(
 	}
 	
 	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-	pm.depthClampEnable(VK_TRUE); // want depth clamping behaviour (think near-z hole filling) for voxel rasterization shaders.
+	pm.depthClampEnable(VK_FALSE);
 
 	if constexpr (isClear) {
 		pm.depthCompareOp(vk::CompareOp::eNever);
@@ -799,7 +799,7 @@ void cVulkan::CreateVoxelChildResource(
 	pm.frontFace(vk::FrontFace::eClockwise);
 
 	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
-	pm.depthClampEnable(VK_TRUE);  // want depth clamping behaviour (think near-z hole filling) for voxel rasterization shaders.
+	pm.depthClampEnable(VK_FALSE); 
 	pm.depthTestEnable(VK_TRUE);
 	pm.depthWriteEnable(VK_FALSE); // *** bugfix: required for proper sorting of radial grid whether its opaque or transparent!
 

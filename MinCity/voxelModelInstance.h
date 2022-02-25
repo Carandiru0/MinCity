@@ -8,18 +8,7 @@
 #include "Declarations.h"
 #include <Random/superrandom.hpp>
 #include "types.h"
-
-// forward decl
-namespace Volumetric
-{
-	namespace voxB
-	{
-		template<bool const Dynamic>
-		class voxelModel;
-
-		struct voxelDescPacked;
-	} // end ns
-} // end ns
+#include "voxelModel.h"
 
 namespace Volumetric
 {
@@ -100,7 +89,12 @@ namespace Volumetric
 		}
 	};
 
-	typedef void (__vectorcall* voxel_event_function)(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict eventTarget, uint32_t const vxl_index);
+	// all parameters are passed by value in registers (__vectorcall) - fastest - no pointers or references to the data that matters "voxel" (optimization)
+#define VOXEL_EVENT_FUNCTION_PARAMETERS FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked voxel, void const* const __restrict _this, uint32_t const vxl_index
+#define VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked voxel, uint32_t const vxl_index
+#define VOXEL_EVENT_FUNCTION_RETURN Volumetric::voxB::voxelDescPacked const
+
+	typedef VOXEL_EVENT_FUNCTION_RETURN(__vectorcall* voxel_event_function)(VOXEL_EVENT_FUNCTION_PARAMETERS);
 
 	template< bool const Dynamic >
 	class voxelModelInstance : public voxelModelInstanceBase
@@ -126,7 +120,7 @@ namespace Volumetric
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
-		__inline void __vectorcall OnVoxel(FXMVECTOR xmIndex, voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const;
+		__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
@@ -168,11 +162,12 @@ namespace Volumetric
 		}
 	}
 	template<bool const Dynamic>
-	__inline void __vectorcall voxelModelInstance<Dynamic>::OnVoxel(FXMVECTOR xmIndex, voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
+	__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall voxelModelInstance<Dynamic>::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		if (eOnVoxel) {
-			(*eOnVoxel)(xmIndex, voxel, owner_gameobject, vxl_index);
+			return((*eOnVoxel)(xmIndex, voxel, owner_gameobject, vxl_index));
 		}
+		return(voxel);
 	}
 
 	class alignas(16) voxelModelInstance_Dynamic : public voxelModelInstance<voxB::DYNAMIC>

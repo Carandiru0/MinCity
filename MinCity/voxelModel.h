@@ -124,7 +124,7 @@ namespace voxB
 
 	} voxelNormal;
 
-	typedef struct voxelDescPacked	// Final 256x256x256 Structure
+	typedef struct alignas(16) voxelDescPacked	// Final 256x256x256 Structure
 	{
 		union
 		{
@@ -290,7 +290,7 @@ namespace voxB
 		{
 			if (nullptr != src._Voxels) {
 
-				_Voxels = (voxelDescPacked* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, 16); // matches voxBinary usage (alignment)
+				_Voxels = (voxelDescPacked* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, alignof(voxelDescPacked)); // matches voxBinary usage (alignment)
 				__memcpy_stream<16>((void* __restrict)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
 			}
 		}
@@ -466,7 +466,7 @@ namespace voxB
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 					{			
-						instance.OnVoxel(xmIndex, voxel, vxl);
+						voxel = instance.OnVoxel(xmIndex, voxel, vxl);  // per voxel operations!
 
 						if (voxel.Hidden)
 							continue;

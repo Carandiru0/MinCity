@@ -506,7 +506,7 @@ static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t co
 		
 		pDestMem->_numVoxels = (uint32_t)culledVoxels.size(); // save actual number of voxels - culled voxel total
 
-		pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+		pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
 		memcpy((void* __restrict)pDestMem->_Voxels, culledVoxels.data(), pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 		pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
@@ -640,7 +640,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 						}
 					}
 
-					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, 16); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
 					memcpy_s((void* __restrict)pDestMem->_Voxels, pDestMem->_numVoxels * sizeof(voxelDescPacked const), pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 					pDestMem->ComputeLocalAreaAndExtents();
@@ -665,10 +665,17 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 	return(false);
 }
 
+// @todo temporary - to be removed //
+bool const AddEmissiveVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
+bool const AddVideoscreenVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
+bool const AddTransparentVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
+// @todo temporary - to be removed //
+
+
 // builds the voxel model, loading from magickavoxel .vox format, returning the model with the voxel traversal
 // *** will save a cached version of culled model if it doesn't exist
 // *** will load cached "culled" version if newer than matching .vox to speedify loading voxel models
-bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem, bool const stacked)
+int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem, bool const stacked)
 {
 	std::error_code error[2]{};
 
@@ -680,7 +687,7 @@ bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __res
 	szOrigPathFilename += VOX_FILE_EXT;
 
 	if (!fs::exists(szOrigPathFilename)) {
-		return(false);
+		return(0);
 	}
 
 	// determine if cached version exists
@@ -696,7 +703,7 @@ bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __res
 		if (cachedmodifytime > voxmodifytime) {
 			if (LoadV1XCachedFile(szCachedPathFilename, pDestMem)) {
 				FMT_LOG_OK(VOX_LOG, " < {:s} > (cache) loaded", stringconv::ws2s(szCachedPathFilename));
-				return(true);
+				return(1); // returns existing cached model loaded
 			}
 			else {
 				FMT_LOG_FAIL(VOX_LOG, "unable to load cached .V1X file: {:s}, reverting to reload .VOX ....", stringconv::ws2s(szCachedPathFilename));
@@ -729,9 +736,8 @@ bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __res
 
 			if (stacked) {
 				if (!mmap[1].is_open() || !mmap[1].is_mapped()) {
-					__prefetch_vmem(mmap[1].data(), mmap[1].size());
 					FMT_LOG_FAIL(VOX_LOG, "unable to open stacked .VOX file: {:s}", stringconv::ws2s(szOrigPathFilename + L"-1"));
-					return(false);
+					return(0);
 				}
 
 				mmap_data[1] = (uint8_t*)mmap[1].data();
@@ -742,13 +748,14 @@ bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __res
 			if (LoadVOX(pDestMem, mmap_data)) {
 				FMT_LOG_OK(VOX_LOG, " < {:s} > loaded", stringconv::ws2s(szOrigPathFilename));
 
+				/*
 				// @todo temporary - to be removed //
 				std::wstring file_no_extension(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1));
 				file_no_extension += path.stem();
 
-				voxB::AddEmissiveVOX(file_no_extension, pDestMem); // optional
-				voxB::AddTransparentVOX(file_no_extension, pDestMem); // optional
-				voxB::AddVideoscreenVOX(file_no_extension, pDestMem); // optional
+				AddEmissiveVOX(file_no_extension, pDestMem); // optional
+				AddTransparentVOX(file_no_extension, pDestMem); // optional
+				AddVideoscreenVOX(file_no_extension, pDestMem); // optional
 				// @todo temporary - to be removed //
 
 				if (SaveV1XCachedFile(szCachedPathFilename, pDestMem)) {
@@ -757,7 +764,8 @@ bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __res
 				else {
 					FMT_LOG_FAIL(VOX_LOG, "unable to cache .VOX file to .V1X file: {:s}", stringconv::ws2s(szCachedPathFilename));
 				}
-				return(true);
+				*/
+				return(-1); // returns new model loaded
 			}
 			else {
 				FMT_LOG_FAIL(VOX_LOG, "unable to parse .VOX file: {:s}", stringconv::ws2s(szOrigPathFilename));
@@ -772,7 +780,7 @@ bool const LoadVOX(std::filesystem::path const path, voxelModelBase* const __res
 		FMT_LOG_FAIL(VOX_LOG, "unable to open file(s): {:s}", stringconv::ws2s(szOrigPathFilename));
 	}
 
-	return(false);
+	return(0); // fail
 }
 
 static void ApplyEmissive(voxelModelBase const* const __restrict pEmissive, voxelModelBase* const __restrict pOwner)

@@ -34,6 +34,19 @@ extern tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::ST
 
 namespace Volumetric
 {
+	typedef struct newVoxelModel
+	{
+		std::string				   name;
+		voxB::voxelModelBase*	   model = nullptr;
+		bool					   dynamic;
+
+		newVoxelModel() = default;
+		newVoxelModel(std::string_view const name_, voxB::voxelModelBase* const model_, bool const dynamic_)
+			: name(name_), model(model_), dynamic(dynamic_)
+		{}
+
+	} newVoxelModel;
+
 	// groups // *if groups are added, getModelGroupFromModelGroupID() must be updated
 
 	// #### Same Order #### //// STATIC
@@ -99,6 +112,10 @@ namespace Volumetric
 	);
 
 	bool const LoadAllVoxelModels();
+
+	bool const isNewModelQueueEmpty();
+
+	tbb::concurrent_queue< Volumetric::newVoxelModel >& getNewModelQueue();
 
 	void CleanUpAllVoxelModels();
 

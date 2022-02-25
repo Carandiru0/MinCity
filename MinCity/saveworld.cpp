@@ -57,6 +57,19 @@ namespace world
 		}
 	}
 
+	static bool const filter_static(uint32_t const gameobject_type)
+	{
+		switch (gameobject_type)  // *all filtered types even NoOwner types (eg.) lampposts)
+		{
+		case types::game_object_t::NonSaveable:
+			return(false);
+		default:
+			break;
+		}
+
+		return(true);
+	}
+
 	template<typename T>
 	static void BufferStaticModelInstance(uint32_t const hash, world::model_state const& world_model_state, T const& iter, vector<model_state_instance_static>& data_models, vector<model_root_index>& data_rootIndex, vector<uint8_t>& data_gameobjects) {
 
@@ -65,6 +78,9 @@ namespace world
 		if (iter->second) {
 
 			uint32_t const gameobject_type = iter->second->getOwnerGameObjectType();
+			// all filtered types *even NoOwner types (eg.) lampposts)
+			if (!filter_static(gameobject_type)) // only filtered
+				return;
 
 			auto const& iterFind = world_model_state.hshVoxelModelRootIndex.find(hash);
 			if (world_model_state.hshVoxelModelRootIndex.cend() != iterFind) {

@@ -16,6 +16,12 @@ namespace fs = std::filesystem;
 inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC> > _dynamicModels;
 inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> > _staticModels;
 
+namespace { // local to this file only}
+
+	static inline tbb::concurrent_queue< Volumetric::newVoxelModel > _new_models;
+
+} // end ns
+
 namespace Volumetric
 {
 	// Parallezing furth the loading of individual VOX models (task per model) only oversaturates the cpu cores
@@ -40,7 +46,6 @@ namespace Volumetric
 			folder_path += L'/';
 		}
 
-		bool bExists(false);
 		uint32_t modelCount(groupInfo.size); // start with current count
 
 		// record offset once
@@ -67,7 +72,14 @@ namespace Volumetric
 				pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
 			}
 
-			if ((bExists = voxB::LoadVOX(folder_path, pVox))) {
+			int const exists = voxB::LoadVOX(folder_path, pVox);
+			if (exists) {
+
+				if (exists < 0) { // new vox model detected 
+																		// safe up-cast to base type
+					_new_models.emplace(newVoxelModel{ fs::path(folder_path).filename().string(), reinterpret_cast<voxB::voxelModelBase*>(pVox), DYNAMIC });  // reference to new dynamic or static model
+				}
+
 				++modelCount;
 			}
 		}
@@ -97,10 +109,16 @@ namespace Volumetric
 							pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
 						}
 
-						if ((bExists = voxB::LoadVOX(entry.path(), pVox))) {
+						int const exists = voxB::LoadVOX(entry.path(), pVox);
+						if (exists) {
+
+							if (exists < 0) { // new vox model detected 
+																					// safe up-cast to base type
+								_new_models.emplace(newVoxelModel{ entry.path().filename().string(), reinterpret_cast<voxB::voxelModelBase*>(pVox), DYNAMIC });  // reference to new dynamic or static model
+							}
+
 							++modelCount;
 						}
-
 					}
 				}
 			}
@@ -211,11 +229,14 @@ namespace Volumetric
 		return(bSuccess[0] & bSuccess[1]);
 	}
 
-	/*void UpdateAllVoxelModels(tTime const& tNow)
-	{
-		UpdateAllVoxelAnimations(tNow);
-	}*/
+	bool const isNewModelQueueEmpty() { return(_new_models.empty()); }
+
+	tbb::concurrent_queue< Volumetric::newVoxelModel >& getNewModelQueue() { return(_new_models); }
+
 	void CleanUpAllVoxelModels()
 	{
-		}
+		// controlled demolition 
+		_dynamicModels.clear(); _dynamicModels.shrink_to_fit();
+		_staticModels.clear(); _staticModels.shrink_to_fit();
+	}
 }

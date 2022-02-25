@@ -33,12 +33,12 @@ namespace world {
 	namespace types {
 
 		BETTER_ENUM(game_object_t, uint32_t const,
-			NoOwner = 0, // bad number for enum, has no type
-			NonUpdateable = 1, // basic
-			Updateable = 2,	   // basic
-			Procedural = 3,    // advanced
+			NonSaveable = 0, // bad number for enum, has no type excluded from serialization when saving
+			NoOwner = 1, 
+			NonUpdateable = 2, // basic
+			Updateable = 3,	   // basic
+			Procedural = 4,    // advanced
 			// add game objects as needed here : //
-			AutomataGameObject,
 			BuildingGameObject,
 			CarGameObject,
 			PoliceCarGameObject,

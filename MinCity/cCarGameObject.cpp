@@ -107,12 +107,12 @@ cCarGameObject& cCarGameObject::operator=(cCarGameObject&& src) noexcept
 }
 
 // If currently visible event:
-void __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
+VOXEL_EVENT_FUNCTION_RETURN __vectorcall cCarGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS)
 {
-	reinterpret_cast<cCarGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
+	return(reinterpret_cast<cCarGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index));
 }
 // ***** watchout - thread safety is a concern here this method is executed in parallel ******
-void __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
+VOXEL_EVENT_FUNCTION_RETURN __vectorcall cCarGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 {
 	Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
 
@@ -137,6 +137,8 @@ void __vectorcall cCarGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::v
 		voxel.Color = _this.secondary_color;
 		break;
 	}
+	
+	return(voxel);
 }
 
 namespace world

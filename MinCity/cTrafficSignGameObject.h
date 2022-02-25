@@ -47,8 +47,8 @@ namespace world
 			return(types::game_object_t::TrafficSignGameObject);
 		}
 		// ALL derivatives of this class must call base function first in overriden methods, and check its return value
-		static void __vectorcall OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index);
-		void __vectorcall OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const;
+		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
+		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 
 		uint32_t const getState() const { return(_state); }
 		uint32_t const getColorSignalTurn() const { 

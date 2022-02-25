@@ -25,6 +25,7 @@ BETTER_ENUM(eWindowName, uint32_t const,
 	WINDOW_LOAD,
 	WINDOW_PAUSED,
 	WINDOW_HINT,
+	WINDOW_IMPORT,
 	WINDOW_MINCITY,
 	WINDOW_BOTTOM_MENU,
 	WINDOW_MODAL,
@@ -36,7 +37,8 @@ BETTER_ENUM(eWindowType, uint32_t const,
 	DISABLED = 0,
 	MAIN = 1,
 	SAVE = 2,
-	LOAD = 3
+	LOAD = 3,
+	IMPORT = 4
 
 );
 BETTER_ENUM(eWindowQuit, int32_t const,
@@ -59,6 +61,13 @@ BETTER_ENUM(eWindowLoad, int32_t const,
 	DISABLED = -1,
 	IDLE = 0,
 	LOAD = 2
+
+);
+BETTER_ENUM(eWindowImport, int32_t const,
+
+	DISABLED = -1,
+	IDLE = 0,
+	IMPORT = 2
 
 );
 
@@ -115,6 +124,9 @@ public:
 		else if constexpr (eWindowType::LOAD == windowType) {
 			return(_iWindowLoadSelection);
 		}
+		else if constexpr (eWindowType::IMPORT == windowType) {
+			return(_iWindowImportSelection);
+		}
 
 		return(0); // Common IDLE state is always zero for any window selection
 	}
@@ -145,6 +157,9 @@ public:
 					_iWindowLoadSelection = eWindowLoad::IDLE;
 					_loadsaveWindow.bReset = true;
 				}
+				else if constexpr (eWindowType::IMPORT == windowType) {
+					_iWindowImportSelection = eWindowImport::IDLE;
+				}
 			}
 			else { // disabling
 				// for any window, disable any active modal window
@@ -161,6 +176,9 @@ public:
 				else if constexpr (eWindowType::LOAD == windowType) {
 					_iWindowLoadSelection = eWindowLoad::DISABLED;
 					_loadsaveWindow.bReset = true;
+				}
+				else if constexpr (eWindowType::IMPORT == windowType) {
+					_iWindowImportSelection = eWindowImport::DISABLED;
 				}
 
 			}
@@ -205,6 +223,7 @@ private:
 	void do_cyberpunk_loadsave_slot(bool const mode, int32_t& __restrict selected, uint32_t const index, int32_t const slot, float const width, float const height,
 									eWindowName const windowName, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
 	void do_cyberpunk_loadsave_window(bool const mode, std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
+	void do_cyberpunk_import_window(std::string& __restrict szHint, bool& __restrict bResetHint, bool& __restrict bSmallHint);
 
 	// hint window
 	void do_hint_window(std::string_view const windowName, std::string_view const szHint, bool const bSmallHint);
@@ -241,7 +260,8 @@ private:
 	vku::double_buffer<bool>	_bGUIDirty;
 	int32_t						_iWindowQuitSelection,
 								_iWindowSaveSelection,
-								_iWindowLoadSelection;
+								_iWindowLoadSelection,
+								_iWindowImportSelection;
 	uint32_t					_uiWindowEnabled;
 	uint32_t					_uiPauseProgress;
 	bool						_bHintReset,

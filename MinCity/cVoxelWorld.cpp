@@ -13,6 +13,7 @@
 #include "cNuklear.h"
 #include "cPostProcess.h"
 #include "adjacency.h"
+#include <Utility/async_long_task.h>
 
 #define V2_ROTATION_IMPLEMENTATION
 #include "voxelAlloc.h"
@@ -32,7 +33,7 @@
 #include "cRockStageGameObject.h"
 #endif
 
-//#include "cAutomataGameObject.h"
+#include "cImportGameObject.h"
 #include "cRemoteUpdateGameObject.h"
 #include "cBuildingGameObject.h"
 #include "cTrafficSignGameObject.h"
@@ -230,10 +231,14 @@ static uint32_t const RenderNoiseImagePixel(float const u, float const v, supern
 
 void cVoxelWorld::GenerateGround()
 {
+	constinit static bool bInitialRun(true);
+
 	supernoise::NewNoisePermutation();
 
 	// Generate Image
 	Imaging imageNoise = MinCity::Procedural->GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep() );
+
+	MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(15));
 
 	// Create and Upload Texture //
 	{
@@ -241,37 +246,48 @@ void cVoxelWorld::GenerateGround()
 		Imaging resampledImg = ImagingResample(imageNoise, Iso::WORLD_GRID_SIZE << 1, Iso::WORLD_GRID_SIZE << 1, IMAGING_TRANSFORM_BICUBIC);
 		ImagingDelete(imageNoise); imageNoise = resampledImg;
 
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(20));
+
 		Imaging const filteredImg = MinCity::Procedural->BilateralFilter(imageNoise);
 		ImagingDelete(imageNoise); imageNoise = filteredImg;
 
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(30));
+
 		resampledImg = ImagingResample(imageNoise, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BICUBIC);
 		ImagingDelete(imageNoise); imageNoise = resampledImg;
+
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(35));
 
 		// terrain teture is multiple of voxel grid size, power of 2 and not exceeding 16384
 		// should be placed in dedicated memory on gpu
 		resampledImg = ImagingResample(imageNoise, world::TERRAIN_TEXTURE_SZ, world::TERRAIN_TEXTURE_SZ, IMAGING_TRANSFORM_BICUBIC);
 		ImagingDelete(imageNoise); imageNoise = resampledImg;
 
-#ifndef DEBUG_LOADTIME_BC7_COMPRESSION_DISABLED
-		Imaging imgCompressedBC7 = ImagingCompressBGRAToBC7(imageNoise);
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(40));
 
-		MinCity::TextureBoy->ImagingToTexture_BC7<false>(imgCompressedBC7, _terrainTexture);	// generated texture is in linear colorspace
-		
-#ifdef GIF_MODE
-		ImagingDelete(imageNoise); imageNoise = imgCompressedBC7; // hack for making ground flat for "gif mode" - need reflections
-#else
-		ImagingDelete(imgCompressedBC7);
-#endif
-#else
-		MinCity::TextureBoy->ImagingToTexture<false>(imageNoise, _terrainTexture); // generated texture is in linear colorspace
-#endif
-		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
+		if (_terrainTempImage) {
 
-		// imageNoise is released at end of function
+			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr;
+		}
 
-		// terrain grid mipmapped texture
-		MinCity::TextureBoy->LoadKTXTexture(_gridTexture, TEXTURE_DIR L"grid.ktx");
-		MinCity::TextureBoy->AddTextureToTextureArray(_gridTexture, TEX_GRID);
+		_terrainTempImage = ImagingCompressBGRAToBC7(imageNoise);
+
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
+
+		if (bInitialRun) { // first run at program load requires these things to be setup for texture array and is always run from the main thread
+
+			MinCity::TextureBoy->ImagingToTexture_BC7<false>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
+			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
+
+			MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
+
+			// imageNoise is released at end of function
+
+			// terrain grid mipmapped texture
+			MinCity::TextureBoy->LoadKTXTexture(_gridTexture, TEXTURE_DIR L"grid.ktx");
+			MinCity::TextureBoy->AddTextureToTextureArray(_gridTexture, TEX_GRID);
+			bInitialRun = false;
+		}
 	}
 
 	// Traverse Grid
@@ -2615,7 +2631,9 @@ namespace world
 	cVoxelWorld::cVoxelWorld()
 		:
 		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, _sim(nullptr),
-		_vMouse{}, _lastOcclusionQueryValid(false), _onLoadedRequired(false),
+		_vMouse{}, _lastOcclusionQueryValid(false),
+		_terrainTempImage(nullptr),
+		_onLoadedRequired(true),
 		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
@@ -2779,6 +2797,12 @@ namespace world
 		
 		Volumetric::LoadAllVoxelModels();
 
+		if (!Volumetric::isNewModelQueueEmpty()) {
+			MinCity::DispatchEvent(eEvent::SHOW_IMPORT_WINDOW);
+		}
+		else {
+			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
+		}
 #ifdef DEBUG_STORAGE_BUFFER
 		DebugStorageBuffer = new vku::StorageBuffer(sizeof(UniformDecl::DebugStorageBuffer), false, vk::BufferUsageFlagBits::eTransferDst);
 		DebugStorageBuffer->upload(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), init_debug_buffer);
@@ -2811,28 +2835,8 @@ namespace world
 
 	void cVoxelWorld::upload_model_state(vector<model_root_index> const& __restrict data_rootIndex, vector<model_state_instance_static> const& __restrict data_models_static, vector<model_state_instance_dynamic> const& __restrict data_models_dynamic)
 	{
-		// clear all voxel model instance containers
-		_queueWatchedInstances.clear();
-		_queueCleanUpInstances.clear();
-		_hshVoxelModelRootIndex.clear();
-		_hshVoxelModelInstances_Static.clear();
-		_hshVoxelModelInstances_Dynamic.clear();
-
-		// clear *all* game object colonies
-		cBuildingGameObject::clear();
-		cCarGameObject::clear();
-		cPoliceCarGameObject::clear();
-		cCopterPropGameObject::clear();
-		cCopterBodyGameObject::clear();
-		cRemoteUpdateGameObject::clear();
-		cTestGameObject::clear();
-		cTrafficControlGameObject::clear();
-		cTrafficSignGameObject::clear();
-		cSignageGameObject::clear();
+		Clear();
 		
-		// reset world / camera *bugfix important
-		resetCamera();
-
 		{ // do all root indices
 			for (size_t i = 0; i < data_rootIndex.size(); ++i) {
 				_hshVoxelModelRootIndex.emplace(data_rootIndex[i].hash, data_rootIndex[i].voxelIndex);
@@ -3072,9 +3076,50 @@ namespace world
 		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
 	}
 #endif
+	void cVoxelWorld::Clear()
+	{
+		// clear all voxel model instance containers
+		_queueWatchedInstances.clear();
+		_queueCleanUpInstances.clear();
+		_hshVoxelModelRootIndex.clear();
+		_hshVoxelModelInstances_Static.clear();
+		_hshVoxelModelInstances_Dynamic.clear();
+
+		// clear *all* game object colonies
+		cImportGameObject_Dynamic::clear();
+		cImportGameObject_Static::clear();
+		cBuildingGameObject::clear();
+		cCarGameObject::clear();
+		cPoliceCarGameObject::clear();
+		cCopterPropGameObject::clear();
+		cCopterBodyGameObject::clear();
+		cRemoteUpdateGameObject::clear();
+		cTestGameObject::clear();
+		cTrafficControlGameObject::clear();
+		cTrafficSignGameObject::clear();
+		cSignageGameObject::clear();
+
+		// reset world / camera *bugfix important
+		resetCamera();
+	}
+	void cVoxelWorld::NewWorld()
+	{
+		Clear();
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(10));
+
+		GenerateGround(); // generate new ground
+		
+		// must be last
+		_onLoadedRequired = true; // trigger onloaded() inside Update of VoxelWorld
+	}
 
 	void cVoxelWorld::OnLoaded(tTime const& __restrict tNow)
 	{
+		if (_terrainTempImage) {
+			MinCity::TextureBoy->ImagingToTexture_BC7<false>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
+			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
+		}
+
 		SAFE_DELETE(_sim);
 		_sim = new cSimulation();
 
@@ -3273,9 +3318,9 @@ namespace world
 				}
 				else {
 			*/
-				pTstGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(25, 25)),
-							Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
-				pTstGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
+				//pTstGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(25, 25)),
+				//			Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
+				//pTstGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
 			/*	}
 			}*/
 		}
@@ -3292,7 +3337,7 @@ namespace world
 		}
 #endif
 
-		_onLoadedRequired = false; // reset
+		_onLoadedRequired = false; // reset (must be last)
 	}
 
 	// *** no simultaneous !writes! to grid or grid data can occur while calling this function ***
@@ -4660,7 +4705,7 @@ namespace world
 
 			} // end !Paused //
 		}
-		else // first update program //
+		else // first update program + onLoadedRequired events //
 		{ // ### ONLOADED EVENT must be triggered here !! //
 			OnLoaded(tNow);
 		}
@@ -5487,6 +5532,7 @@ namespace world
 
 	void cVoxelWorld::CleanUp()
 	{
+		
 		SAFE_DELETE(_sim);
 
 		// cleanup special instances
@@ -5524,6 +5570,11 @@ namespace world
 			voxels.visibleTerrain.stagingBuffer[i].release();
 			voxels.visibleRoad.opaque.stagingBuffer[i].release();
 			voxels.visibleRoad.trans.stagingBuffer[i].release();
+		}
+
+		if (_terrainTempImage) {
+
+			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr;
 		}
 
 		SAFE_DELETE(_terrainTexture);

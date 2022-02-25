@@ -217,7 +217,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 }
 
 float fetch_bluenoise(in const vec2 pixel)
-{
+{												// @todo **** is this 2x because raymarch is half resolution?
 	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).x ); // *bluenoise RED channel used* // *bugfix - temporal blue noise now working with no visible noisyness!
 }
 float fetch_depth()
@@ -276,7 +276,7 @@ void vol_lit(out vec3 light_color, out float emission, out float lightAmount, ou
 
 	// setup: 0 = not emissive
 	//        1 = emissive
-	emission = extract_emission(opacity_emission);
+	emission = extract_emission(opacity_emission) * dt; // * dt very important, must be integrated
 
 	// setup: 0 = not opaque
 	//        1 = opaque
@@ -308,13 +308,13 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 
 	// Area Light-------------------------------------------------------------------------------
     const vec3 Li = fma(sigmaS, lightAmount, lightAmount) * light_color * PHASE_FUNCTION; // incoming light
-	const float sigma_dt = exp2(-sigmaE * lightAmount);
+	const float sigma_dt = exp2(-sigmaE * lightAmount * (emission + 1.0f));
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran *= sigma_dt + voxel.tran * emission;				// decay or grow with emission
+	voxel.tran *= sigma_dt + emission;				// decay or grows with emission
 }
 
 
@@ -343,7 +343,7 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const float 
 	
 	// NdotV clamped at 1.0f so that shading with NdotV doesn't disobey laws of conservation
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = 0.5f * mix(voxel.light, light_color * lightAmount, opacity) * voxel.tran;
+	voxel.light = mix(voxel.light, light_color * lightAmount, opacity) * voxel.tran;
 	voxel.a = bounce_scatter;
 }
 
@@ -542,7 +542,8 @@ void main() {
 
 	// output volumetric light
 	voxel.tran = 1.0f - clamp(voxel.tran, 0.0f, 1.0f); // <-- this is correct blending of light, don't change it. opacity = 1.0f - transmission
-	
+	//voxel.rgb = voxel.aaa;
+	//voxel.a = 0.95f;
 	imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
 	// - done!
 	//vec4 test = textureLod(fogMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f);

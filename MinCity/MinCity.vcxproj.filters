@@ -336,6 +336,9 @@
     <ClInclude Include="cProceduralGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
+    <ClInclude Include="cImportGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -501,6 +504,9 @@
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
     <ClCompile Include="cProceduralGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cImportGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>

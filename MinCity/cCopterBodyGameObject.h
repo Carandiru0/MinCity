@@ -34,8 +34,8 @@ namespace world
 
 		bool const __vectorcall OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
-		static void __vectorcall OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index);
-		void __vectorcall OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const;
+		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
+		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 
 		void SetOwnerCopter(cCopterGameObject* const& owner);
 

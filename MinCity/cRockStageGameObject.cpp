@@ -60,12 +60,12 @@ namespace world
 	}
 
 	// If currently visible event:
-	void __vectorcall cRockStageGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
+	void __vectorcall cRockStageGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS)
 	{
 		reinterpret_cast<cRockStageGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	void __vectorcall cRockStageGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
+	void __vectorcall cRockStageGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
 

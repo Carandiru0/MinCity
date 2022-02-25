@@ -81,12 +81,12 @@ namespace world
 	}
 
 	// If currently visible event:
-	void __vectorcall cCopterBodyGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, void const* const __restrict _this, uint32_t const vxl_index)
+	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cCopterBodyGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS)
 	{
-		reinterpret_cast<cCopterBodyGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index);
+		return(reinterpret_cast<cCopterBodyGameObject const* const>(_this)->OnVoxel(xmIndex, voxel, vxl_index));
 	}
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
-	void __vectorcall cCopterBodyGameObject::OnVoxel(FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked& __restrict voxel, uint32_t const vxl_index) const
+	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cCopterBodyGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
 
@@ -105,6 +105,8 @@ namespace world
 				voxel.Emissive = false;
 			}
 		}
+
+		return(voxel);
 	}
 
 	bool const __vectorcall cCopterBodyGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)

@@ -31,10 +31,8 @@ layout(location = 0) in streamIn /*not used, required for validation*/
 
 void main() {
 	
-	const vec4 colorVolumetric = subpassLoad(inputVolumetricColor);
-
-	outColor.rgb = colorVolumetric.rgb * colorVolumetric.a;	// pre-multiply for bilateral alpha
-	outColor.a = colorVolumetric.a;
+	// straight out - is already pre-multiplied in the proper place, the upsample shader *do not change*, results in a lot of noise dissapearing!
+	outColor = subpassLoad(inputVolumetricColor);
 }
 
 #elif defined(RESOLVE)
@@ -197,7 +195,9 @@ void main() {
 		vec4 volume_color = vec4(supersample(volumetricMap, In.uv, vdFd), alphaSumV);
 
 		expandBlurAA(volumetricMap, volume_color.rgb, In.uv, 1.0f - volume_color.a);  // softening of bilateral edges
-		outVolumetric = volume_color; // output alpha is setup for pre-multiplication which happens at blending pass in upsample.frag
+
+		volume_color.rgb *= volume_color.a;
+		outVolumetric = volume_color; // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
 	}
 
 	{ // Reflection
@@ -209,8 +209,8 @@ void main() {
 	
 		// no aliasing
 		expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges
-		outReflection = vec4(bounce_color, alphaSumR_Fade); // output alpha is setup for pre-multiplication which happens at reflection sampling in lighting.glsl
-
+		outReflection = vec4(bounce_color * 0.5f, alphaSumR_Fade); // output alpha is setup for pre-multiplication which happens at reflection sampling in lighting.glsl
+							 // only half the output energy actually gets reflected to bring down reflections to a darker, more natural level.
 		if (subgroupElect())
 		{
 			bounce_color = bounce_color + subgroupQuadSwapHorizontal(bounce_color);
