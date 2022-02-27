@@ -24,10 +24,16 @@ namespace Volumetric
 		
 		point2D_t const	__vectorcall								  getVoxelIndex() const { return(v2_to_p2D(getLocation())); }	// returns voxel index occupied by the origin of this instance
 																																	// this is synchronized as the "root voxel" index by the voxel world
-		void __vectorcall setElevation(float const fElevation_) { fElevation = fElevation_; }																															// this must use a floor type operation on the floating point vector to be correct
+		void __vectorcall											  setElevation(float const fElevation_) { fElevation = fElevation_; }																															// this must use a floor type operation on the floating point vector to be correct
 																																	// which v2_to_p2D does
-		tTime const& getCreationTime() const { return(tCreation); }
-		tTime const& getDestructionTime() const { return(tDestruction); }
+		tTime const&												  getCreationTime() const { return(tCreation); }
+		tTime const&												  getDestructionTime() const { return(tDestruction); }
+
+		milliseconds const											  getCreationSequenceLength() const { return(tSequenceLengthCreation); }
+		milliseconds const											  getDestructionSequenceLength() const { return(tSequenceLengthDestruction); }
+
+		void														  setCreationSequenceLength(milliseconds const length) { tSequenceLengthCreation = length; }
+		void														  setDestructionSequenceLength(milliseconds const length) { tSequenceLengthDestruction = length; }
 
 		voxelModelInstanceBase* const __restrict& __restrict getChild() const {	return(child); }
 		void setChild(voxelModelInstanceBase* const child_) { child = child_; }	// to simplify state - only *once* can a child be set, and that child then remains a child of this instance until this instance is destroyed, where it is destroyed aswell.
@@ -55,8 +61,9 @@ namespace Volumetric
 		}
 
 		bool const destroyPending() const { return(zero_time_point != tDestruction); }
-		void destroy() { if (zero_time_point == tDestruction) tDestruction = now(); } // instance scheduled for destruction
-		
+		void destroy() { if (zero_time_point == tDestruction) tDestruction = now(); } // instance scheduled for destruction (normally there is a destruction sequence)
+		void destroy(milliseconds const length) { destroy(); if (length != tSequenceLengthDestruction) tSequenceLengthDestruction = length; } // instance scheduled for destruction (normally there is a destruction sequence) definable sequence length override.
+
 	protected:
 		void destroyInstance() const;
 		
@@ -65,6 +72,8 @@ namespace Volumetric
 		uint32_t											flags;
 		tTime const											tCreation;
 		tTime												tDestruction;
+		milliseconds 										tSequenceLengthCreation,
+															tSequenceLengthDestruction;
 
 		XMFLOAT2A											vLoc;
 		alignas(16) float									fElevation;
@@ -112,6 +121,7 @@ namespace Volumetric
 		/// Transparency only has affect if loaded model has state groups defining the voxels that are transparent at load model time
 		void														  setTransparency(uint32_t const transparency_) { transparency = transparency_; } // use eVoxelTransparency enum
 		void														  setVoxelEventFunction(voxel_event_function const eventHandler) { eOnVoxel = eventHandler; }
+
 	public:
 		__inline bool const Validate() const;
 	public:
@@ -138,7 +148,7 @@ namespace Volumetric
 		if (zero_time_point != tDestruction) {
 
 			// sequence length for destruction is scaled by height of voxel model
-			milliseconds const tSequenceLength(model._maxDimensions.y * Konstants::DESTRUCTION_SEQUENCE_LENGTH);
+			milliseconds const tSequenceLength(tSequenceLengthDestruction * model._maxDimensions.y);
 
 			if (now() - tDestruction > tSequenceLength) {
 

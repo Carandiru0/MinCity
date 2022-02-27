@@ -376,6 +376,23 @@ vec3 magnify(in vec3 voxel)
 #endif
 
 #if defined(fragment_shader) // fragment shaders only
+vec3 supersample_premultiply(restrict in const sampler2D colorTex, in const vec2 uv, in const vec4 vdFd)	//  ** rotated grid 2x2 supersampling (RGSS / 4Rook) - with pre-multiplication of alpha
+{
+	// rotated grid uv offsets
+	const vec2 uvOffsets = vec2(0.125f, 0.375f);
+
+	// supersampled using 2x2 rotated grid
+	vec4 samp = textureLod(colorTex, uv + uvOffsets.x * vdFd.xy + uvOffsets.y * vdFd.zw, 0.0f);
+	vec3 color = samp.rgb * samp.a;
+	samp = textureLod(colorTex, uv + uvOffsets.x * vdFd.xy - uvOffsets.y * vdFd.zw, 0.0f);
+	color += samp.rgb * samp.a;
+	samp = textureLod(colorTex, uv + uvOffsets.y * vdFd.xy - uvOffsets.x * vdFd.zw, 0.0f);
+	color += samp.rgb * samp.a;
+	samp = textureLod(colorTex, uv + uvOffsets.y * vdFd.xy + uvOffsets.x * vdFd.zw, 0.0f);
+	color += samp.rgb * samp.a;
+
+	return(color * 0.25f);
+}
 vec3 supersample(restrict in const sampler2D colorTex, in const vec2 uv, in const vec4 vdFd)	//  ** rotated grid 2x2 supersampling (RGSS / 4Rook)
 {
 	// rotated grid uv offsets

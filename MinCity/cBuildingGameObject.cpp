@@ -118,7 +118,7 @@ namespace world
 			// check if still within "creation" sequence window
 			{
 				fp_seconds const tDelta = tNow - instance->getCreationTime();
-				fp_seconds const tSequenceLength = milliseconds(Volumetric::Konstants::CREATION_SEQUENCE_LENGTH * maxHeight);
+				fp_seconds const tSequenceLength = instance->getCreationSequenceLength() * maxHeight;
 
 				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp(0.0f, (float)maxHeight, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
 
@@ -126,7 +126,7 @@ namespace world
 				heightLimit = SFM::min(newHeight, heightLimit);
 			}
 			fp_seconds const tDelta = tNow - instance->getDestructionTime();
-			fp_seconds const tSequenceLength = milliseconds(Volumetric::Konstants::DESTRUCTION_SEQUENCE_LENGTH * maxHeight);
+			fp_seconds const tSequenceLength = instance->getDestructionSequenceLength() * maxHeight;
 			if (tDelta < tSequenceLength)
 			{
 				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp((float)maxHeight, 0.0f, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
@@ -157,7 +157,7 @@ namespace world
 			uint32_t const maxHeight(instance->getModel()._maxDimensions.y);
 
 			fp_seconds const tDelta = tNow - instance->getCreationTime();
-			fp_seconds const tSequenceLength = milliseconds(Volumetric::Konstants::CREATION_SEQUENCE_LENGTH * maxHeight);
+			fp_seconds const tSequenceLength = instance->getCreationSequenceLength() * maxHeight;
 			if (tDelta < tSequenceLength)
 			{
 				uint32_t heightLimit(maxHeight);

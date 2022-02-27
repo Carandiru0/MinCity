@@ -210,7 +210,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	const float fog_height = max(0.0f, uvw.z); // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
-	scattering = 1.0f - max(0.0f, dot(-light_direction, vec3(0,0,-1)));
+	scattering = 1.0f - max(0.0f, dot(-light_direction, vec3(0,0,-1))); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
 	scattering = fog_height * scattering * attenuation;
 
 	return(attenuation); // returns lightAmount  
@@ -269,7 +269,7 @@ void integrate_opacity(inout float opacity, in const float new_opacity, in const
 }
 
 // volumetric light
-void vol_lit(out vec3 light_color, out float emission, out float lightAmount, out float fogAmount, inout float opacity,
+void vol_lit(out vec3 light_color, out float emission, out float attenuation, out float fogAmount, inout float opacity,
 		     in const vec3 p, in const float dt)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
@@ -284,7 +284,7 @@ void vol_lit(out vec3 light_color, out float emission, out float lightAmount, ou
 
 	// lightAmount = attenuation
 	float scattering;
-	lightAmount = fetch_light_volumetric(light_color, scattering, p, opacity, dt);
+	attenuation = fetch_light_volumetric(light_color, scattering, p, opacity, dt);
 	
 	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
 }
@@ -293,9 +293,9 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 {
 	//#########################
 	vec3 light_color;
-	float emission, lightAmount, fogAmount;
+	float emission, attenuation, fogAmount;
 	
-	vol_lit(light_color, emission, lightAmount, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
+	vol_lit(light_color, emission, attenuation, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -307,8 +307,8 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = fma(sigmaS, lightAmount, lightAmount) * light_color * PHASE_FUNCTION; // incoming light
-	const float sigma_dt = exp2(-sigmaE * lightAmount * (emission + 1.0f));
+    const vec3 Li = fma(sigmaS, attenuation, attenuation) * light_color * PHASE_FUNCTION; // incoming light
+	const float sigma_dt = exp2(-sigmaE * attenuation * (emission + 1.0f));
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
@@ -319,10 +319,11 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 
 
 // reflected light
-void reflect_lit(out vec3 light_color, out float lightAmount, in const float opacity,
+void reflect_lit(out vec3 light_color, out float emission, out float attenuation, in const float opacity,
 				 in const vec3 p, in const float dt)
 {
-	lightAmount = fetch_light_reflected(light_color, p, opacity, dt);
+	emission = fetch_emission(p);
+	attenuation = fetch_light_reflected(light_color, p, opacity, dt);
 }
 
 void reflection(inout vec4 voxel, in const float bounce_scatter, in const float opacity, in const vec3 p, in const float dt)
@@ -337,13 +338,13 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const float 
 	// calculate lighting
 	//#########################
 	vec3 light_color;
-	float lightAmount;
-	
-	reflect_lit(light_color, lightAmount, opacity, p, dt);
+	float emission, attenuation;
+
+	reflect_lit(light_color, emission, attenuation, opacity, p, dt);
 	
 	// NdotV clamped at 1.0f so that shading with NdotV doesn't disobey laws of conservation
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = mix(voxel.light, light_color * lightAmount, opacity) * voxel.tran;
+	voxel.light = mix(vec3(0), voxel.light + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
 	voxel.a = bounce_scatter;
 }
 

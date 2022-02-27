@@ -11,31 +11,15 @@ namespace fs = std::filesystem;
 
 namespace Volumetric
 {
-	void ImportProxy::apply_color(colormap::iterator const& iter_current_color)
-	{
-		if (colors.end() != iter_current_color) {
-
-			ImportColor const color(*iter_current_color);
-
-			uint32_t max_count(color.count);
-
-			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels);
-			for (uint32_t i = 0; i < numVoxels; ++i) {
-
-				if (color.material.Color == pVoxels->Color) { // safe 24bit comparison, not affected by material bits soi this is the only way to compare ther color correctly.
-					pVoxels->Color = color.color; // this purposely clobbers the material bits so they are reset to zero
-
-					[[unlikely]] if (0 == --max_count) {
-						break; // finished early
-					}
-				}
-				++pVoxels;
-			}
-		}
-	}
 	void ImportProxy::apply_material(colormap::iterator const& iter_current_color)
 	{
+		constinit static uint32_t lastNumVoxelsEmissive{}, lastNumVoxelsTransparent{};
+
 		if (colors.end() != iter_current_color) {
+
+			// must reset //
+			model->_numVoxelsEmissive = lastNumVoxelsEmissive;
+			model->_numVoxelsTransparent = lastNumVoxelsTransparent;
 
 			ImportMaterial const material(iter_current_color->material);
 			
@@ -46,12 +30,23 @@ namespace Volumetric
 
 				if (material.Color == pVoxels->Color) { // safe 24bit comparison, not affected by material bits soi this is the only way to compare ther color correctly.
 					pVoxels->RGBM = material.RGBM;
+					pVoxels->Hidden = false; // always false here on output
 
 					[[unlikely]] if (0 == --max_count) {
 						break; // finished early
 					}
 				}
 				++pVoxels;
+			}
+
+			if (material.Emissive) {
+				lastNumVoxelsEmissive = model->_numVoxelsEmissive;
+				model->_numVoxelsEmissive += iter_current_color->count;
+			}
+			
+			if (material.Transparent) {
+				lastNumVoxelsTransparent = model->_numVoxelsTransparent;
+				model->_numVoxelsTransparent += iter_current_color->count;
 			}
 		}
 	}
@@ -93,14 +88,35 @@ namespace Volumetric
 			++pVoxels;
 		}
 		// all unique colors found
+
+		// convient initialization before voxel model instance is added to scene
+
 		active_color = colors[0]; // select first color on load
 		inv_start_color_count = 1.0f / (float)colors.size();
+
+		// last
 	}
 	void ImportProxy::save(std::string_view const name) const
 	{
 		if (model) {
-			// copy into the model's voxel buffer the current state of the voxels saved in the ImportProxy
-			__memcpy_stream<16>(model->_Voxels, voxels, numVoxels * sizeof(Volumetric::voxB::voxelDescPacked));
+			
+			// reset counts, ensure accurate count b4 saving to file
+			model->_numVoxelsEmissive = 0;
+			model->_numVoxelsTransparent = 0;
+
+			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels); // stream above is still storing, use the cached read of the models' voxels ++
+			for (uint32_t i = 0; i < numVoxels; ++i) {
+				pVoxels->Hidden = false; // always false here on save, ensure hidden is not set on any voxel b4 saving file
+
+				if (pVoxels->Emissive) {
+					++model->_numVoxelsEmissive;
+				}
+				if (pVoxels->Transparent) {
+					++model->_numVoxelsTransparent;
+				}
+
+				++pVoxels;
+			}
 
 			std::wstring szCachedPathFilename(VOX_CACHE_DIR);
 			szCachedPathFilename += fs::path(stringconv::toLower(name)).stem();
@@ -127,11 +143,14 @@ STATIC_INLINE_PURE bool const isVoxelWindow(Volumetric::voxB::voxelDescPacked co
 // common between dynamic & static
 STATIC_INLINE VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxelProxy(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS, Volumetric::ImportProxy const& __restrict proxy) 
 {
-	if (voxel.Color == proxy.active_color.color) {
-		voxel.Emissive = true;
-	}
-	else {
-		voxel.Hidden = true;
+	if (0 != proxy.active_color.material.Color)  // if active color is active (proxy is active)
+	{
+		if (voxel.Color == proxy.active_color.material.Color) {
+			voxel.RGBM = proxy.active_color.material.RGBM;
+		}
+		else {
+			voxel.Hidden = true;
+		}
 	}
 	return(voxel);
 }

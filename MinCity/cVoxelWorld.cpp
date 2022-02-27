@@ -523,7 +523,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 				_tBorderScroll = fp_seconds(SFM::max(0.0, _tBorderScroll.count()));
 
 				if (zero_time_duration == _tBorderScroll) {
-					translateCamera(vScroll);
+					translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
 					_bMotionDelta = true; // override so that dragging continue
 				}
 			}
@@ -4166,11 +4166,11 @@ namespace world
 			
 			// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
 			point2D_t const absDir(p2D_abs(vDir));
-			if (absDir.x > absDir.y) {
-				xmIso = XMVectorScale(xmIso, Iso::CAMERA_SCROLL_DISTANCE);
+			if (absDir.x > absDir.y) {		 // 0.75f gives more fine grained distance selection when using multiplier
+				xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 			}
 			else {
-				xmIso = XMVectorScale(xmIso, Iso::CAMERA_SCROLL_DISTANCE * cMinCity::getFramebufferAspect());
+				xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
 			}
 			
 			if (::translateCameraOrient(xmIso)) { // this then scrolls in direction camera is currently facing correctly
@@ -5081,7 +5081,10 @@ namespace world
 #endif
 	}
 
-	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
+	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, 
+																 vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, 
+																 vk::ImageView const& __restrict fullvolumetricImageView, vk::ImageView const& __restrict fullreflectionImageView,
+																 SAMPLER_SET_STANDARD_POINT)
 	{
 		// Set initial sampler value
 		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
@@ -5090,6 +5093,10 @@ namespace world
 		dsu.image(samplerLinearClamp, halfvolumetricImageView, vk::ImageLayout::eGeneral);
 		dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, halfreflectionImageView, vk::ImageLayout::eGeneral);
+		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, fullvolumetricImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu,
 		vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView,

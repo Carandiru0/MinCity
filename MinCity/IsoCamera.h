@@ -49,8 +49,9 @@ namespace Iso
 
 	static constexpr fp_seconds const
 		CAMERA_SCROLL_DELAY = fp_seconds(milliseconds(333));
+	static constexpr int32_t const
+		CAMERA_SCROLL_DISTANCE_MULTIPLIER = 1;    // 0 would be no multiplier (x1) same as input. 1 would be double multiplier (x2). 2 would be quadruple multiplier (4x)
 	static constexpr float const
-		CAMERA_SCROLL_DISTANCE = 1.5f,
 		CAMERA_TRANSLATE_SPEED = SFM::GOLDEN_RATIO * 2.0f, // good speed minimum
 		CAMERA_DAMPING = 0.09f;
 	static constexpr uint32_t const

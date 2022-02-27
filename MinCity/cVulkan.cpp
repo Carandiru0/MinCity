@@ -565,6 +565,7 @@ void cVulkan::CreateUpsampleResources()
 			dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
 			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // bluenoise
 			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);  // checkered volumetrics, reflection to resolve
+			dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);  // full resolution volumetrics & reflection (effectively last frames volumetric & reflection full resolution output)
 
 			_upData[index].descLayout = dslm.createUnique(_device);
 			// We need to create a descriptor set to tell the shader where
@@ -1721,7 +1722,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), _window->colorVolumetricImageView(), _window->colorReflectionImageView(), SAMPLER_SET_STANDARD_POINT);
 
 			// update descriptor set
 			_dsu.update(_device);

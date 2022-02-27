@@ -832,7 +832,8 @@ void cMinCity::ProcessEvents()
 				break;
 			case eEvent::SHOW_MAIN_WINDOW:
 				Pause(true); // always
-				// fall-thru
+				Nuklear->enableWindow<eWindowType::MAIN>(true);
+				break;
 			case eEvent::ESCAPE:
 				MinCity::Quit(); // this cancels any modal windows or any active windows and gets back to the game
 				break;

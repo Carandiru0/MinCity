@@ -327,10 +327,10 @@ void main() {
   Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
-  Out.material.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count));
+  Out.material.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
 #else // terrain or road:
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count));
+  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
 #endif
 
 #endif

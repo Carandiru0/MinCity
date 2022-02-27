@@ -9,7 +9,8 @@ namespace Volumetric
 		tCreation(now()), tDestruction{},
 		vLoc{}, fElevation(0.0f),
 		child(nullptr), 
-		owner_gameobject_type{}, owner_gameobject(nullptr), eOnRelease(nullptr)
+		owner_gameobject_type{}, owner_gameobject(nullptr), eOnRelease(nullptr),
+		tSequenceLengthCreation(Konstants::CREATION_SEQUENCE_LENGTH), tSequenceLengthDestruction(Konstants::DESTRUCTION_SEQUENCE_LENGTH)  // sequence length for destruction is scaled by height of voxel model
 	{
 		XMStoreFloat2A(&vLoc, p2D_to_v2(voxelIndex));
 
@@ -20,7 +21,7 @@ namespace Volumetric
 
 			fElevation = Iso::getRealHeight(oVoxel);
 		}
-	}
+	} 
 
 	voxelModelInstance_Dynamic::voxelModelInstance_Dynamic(voxB::voxelModel<voxB::DYNAMIC> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
 		: voxelModelInstance(refModel, hash, voxelIndex, flags_)

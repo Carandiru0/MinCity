@@ -51,10 +51,11 @@ layout(location = 1) out vec4 outReflection;
 
 layout (binding = 1) uniform sampler2DArray noiseMap;
 layout (binding = 2) uniform sampler2D checkeredMap[2]; // half resolution checkered volumetric light  &  bounce light (reflection)
+layout (binding = 3) uniform sampler2D fullMap[2]; // full resolution checkered volumetric light  &  bounce light (reflection)
 
-float fetch_bluenoise_scaled(in const vec2 uv)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
+float fetch_bluenoise_scaled(in const vec2 uv, in const float slice)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv, in const float scaled_bluenoise )
@@ -74,16 +75,127 @@ vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv,
 	return(color);
 }
 
+// full optimal gaussian offsets & kernel for denoise
+const vec2 offset[25] = vec2[25](
+	vec2(-1,-1),
+    vec2(-0.5,-1),
+    vec2(0,-1),
+    vec2(0.5,-1),
+    vec2(1,-1),
+    
+    vec2(-1,-0.5),
+    vec2(-0.5,-0.5),
+    vec2(0,-0.5),
+    vec2(0.5,-0.5),
+    vec2(1,-0.5),
+    
+    vec2(-1,0),
+    vec2(-0.5,0),
+    vec2(0,0),
+    vec2(0.5,0),
+    vec2(1,0),
+    
+    vec2(-1,0.5),
+    vec2(-0.5,0.5),
+    vec2(0,0.5),
+    vec2(0.5,0.5),
+    vec2(1,0.5),
+    
+    vec2(-1,1),
+    vec2(-0.5,1),
+    vec2(0,1),
+    vec2(0.5,1),
+    vec2(1,1)
+);
+const float kernel[25] = float[25](
+	1.0f/256.0f,
+    1.0f/64.0f,
+    3.0f/128.0f,
+    1.0f/64.0f,
+    1.0f/256.0f,
+    
+    1.0f/64.0f,
+    1.0f/16.0f,
+    3.0f/32.0f,
+    1.0f/16.0f,
+    1.0f/64.0f,
+    
+    3.0f/128.0f,
+	3.0f/32.0f,
+    9.0f/64.0f,
+    3.0f/32.0f,
+    3.0f/128.0f,
+    
+    1.0f/64.0f,
+    1.0f/16.0f,
+    3.0f/32.0f,
+    1.0f/16.0f,
+    1.0f/64.0f,
+    
+    1.0f/256.0f,
+    1.0f/64.0f,
+    3.0f/128.0f,
+    1.0f/64.0f,
+    1.0f/256.0f
+);
+// temporal path tracing denoiser (gaussian) algorithm - https://www.shadertoy.com/view/ldKBRV
+vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_current_frame, in const vec2 uv, in const float scaled_bluenoise) // awesome function
+{
+	vec4 f0 = textureLod(map_last_frame, uv, 0.0f);
+	vec4 f1 = reconstruct(map_current_frame, uv, scaled_bluenoise);
+
+	vec4 sf0 = vec4(0), sf1 = vec4(0);
+	float wf = 0.0f;
+
+	for (uint i = 0u; i < 25u; ++i) {
+		
+		vec2 guv;
+		float w0, w1;
+
+		guv = (uv * ScreenResDimensions + offset[i]) * InvScreenResDimensions;
+		// current frame
+		const vec4 s1 = reconstruct(map_current_frame, guv, scaled_bluenoise);
+		{
+			const vec4 t = f1 - s1;
+			const float d = dot(t,t);
+			w1 = exp(-d);
+		}
+
+		// screen resolution needs to be doubled for previous frame sample, as it is a full resolution textures
+		
+		guv = (uv * ScreenResDimensions * 2.0f + offset[i]) * InvScreenResDimensions * 0.5f;
+		// previous frame
+		const vec4 s0 = textureLod(map_last_frame, guv, 0.0f);
+		{
+			const vec4 t = f0 - s0;
+			const float d = dot(t,t);
+			w0 = exp(-d);
+		}
+			
+		const float w = w0 * w1;
+		const float wphi = w * kernel[i];
+		sf0 += s0 * wphi;
+		sf1 += s1 * wphi;
+		wf += wphi;
+	}
+
+	const vec4 t = sf1/wf - f0;
+	const float d = dot(t,t);
+	const float p = exp(-d); 
+
+	return mix(sf0/wf, sf1/wf, p);
+}
+
 void main() {
 	
 	// resolve 0 = set start
 	// resolve 1 = unset start
 	// resolve 2 = set start
 	// resolve 3 = unset start
-	const float scaled_bluenoise = fetch_bluenoise_scaled(In.uv);
-
-	outVolumetric = reconstruct(checkeredMap[VOLUME], In.uv, scaled_bluenoise);
-	outReflection = reconstruct(checkeredMap[REFLECT], In.uv, scaled_bluenoise);
+	const float scaled_bluenoise = fetch_bluenoise_scaled(In.uv, In.slice);
+	
+	outVolumetric = denoise_sample(fullMap[VOLUME], checkeredMap[VOLUME], In.uv, scaled_bluenoise);
+	outReflection = denoise_sample(fullMap[REFLECT], checkeredMap[REFLECT], In.uv, scaled_bluenoise);
 }
 
 #else // not resolve
@@ -120,7 +232,8 @@ vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2
 {
 	for ( int tap = 0 ; tap < TAPS ; ++tap ) 
 	{
-		color += textureLod(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0).rgb;
+		const vec4 samp = textureLod(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0);
+		color += samp.rgb * samp.a; // pre-multiply alpha
 	}
 
 	color *= INV_FTAPS; 
@@ -192,25 +305,27 @@ void main() {
 
 	{ // Volumetrics
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
-		vec4 volume_color = vec4(supersample(volumetricMap, In.uv, vdFd), alphaSumV);
+		vec3 volume_color = supersample_premultiply(volumetricMap, In.uv, vdFd);
 
-		expandBlurAA(volumetricMap, volume_color.rgb, In.uv, 1.0f - volume_color.a);  // softening of bilateral edges
+		expandBlurAA(volumetricMap, volume_color.rgb, In.uv, 1.0f - alphaSumV);  // softening of bilateral edges
 
-		volume_color.rgb *= volume_color.a;
-		outVolumetric = volume_color; // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
+		// already pre-multiplied, however alpha channel contains the bilateral alpha now instead
+		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
 	}
 
 	{ // Reflection
 		// Reflection map extra AA filtering and blur //      
-		vec3 bounce_color = supersample(reflectionMap, In.uv, vdFd);
+		vec3 bounce_color = supersample_premultiply(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
 		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
 	
 		// no aliasing
 		expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges
-		outReflection = vec4(bounce_color * 0.5f, alphaSumR_Fade); // output alpha is setup for pre-multiplication which happens at reflection sampling in lighting.glsl
-							 // only half the output energy actually gets reflected to bring down reflections to a darker, more natural level.
+
+		// already pre-multiplied, however alpha channel contains the bilateral alpha now instead
+		outReflection = vec4(bounce_color, alphaSumR_Fade); // output is pre-multiplied
+
 		if (subgroupElect())
 		{
 			bounce_color = bounce_color + subgroupQuadSwapHorizontal(bounce_color);

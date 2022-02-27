@@ -56,7 +56,7 @@ namespace Volumetric
 			: color(color_), count(0)
 		{}
 		__inline bool const operator<(ImportColor const& rhs) {  // for std::lower_bound & std::binary_search
-			return(color < rhs.color);
+			return(material.Color < rhs.material.Color);
 		}
 
 	} ImportColor;
@@ -88,7 +88,7 @@ namespace Volumetric
 			model = nullptr;
 
 			colors.clear();
-			active_color.color = 0;
+			active_color.color = 0; // this clears the material bits aswell
 			active_color.count = 0;
 			inv_start_color_count = 0.0f;
 			lights_on = true;

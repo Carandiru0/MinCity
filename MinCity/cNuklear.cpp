@@ -1562,6 +1562,7 @@ void cNuklear::do_cyberpunk_mainmenu_window(std::string& __restrict szHint, bool
 								nk_window_close(_ctx, subwindowName._to_string());
 								break;
 							case 3:
+								_iWindowQuitSelection = eWindowQuit::SAVE_AND_QUIT;
 								_bModalPrompted = true; // will (next frame) activate modal window to begin the exit process (main window->exit transition)
 								nk_window_close(_ctx, subwindowName._to_string()); // hides main window but does not close it in this case 
 								break;
@@ -2361,11 +2362,15 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 					tLast = critical_now();
 				}
 
+				auto& colors = world::cImportGameObject::getProxy().colors;
+
 				if ((model_dynamic || model_static) && voxelModel.model) {
 
 					using colormap = vector<Volumetric::ImportColor>;
+					static colormap::iterator previous(colors.end());
+
 					{
-						auto const& colors = world::cImportGameObject::getProxy().colors;
+						auto& colors = world::cImportGameObject::getProxy().colors;
 
 						if (world::cImportGameObject::getProxy().active_color.color)
 						{
@@ -2379,55 +2384,93 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						nk_group_begin(_ctx, "colormap", 0);
 
 						nk_layout_row_static(_ctx, 48, 48, colors.size());
-
-						for (auto i = colors.cbegin(); i != colors.cend(); ++i) {
+						
+						for (auto i = colors.begin(); i != colors.end(); ++i) {
 
 							uvec4_t rgba;
 							SFM::unpack_rgba(i->color, rgba);
 
-							if (i->color == world::cImportGameObject::getProxy().active_color.color) {
+							if (i->material.Color == world::cImportGameObject::getProxy().active_color.material.Color) {
 								SFM::unpack_rgba(SFM::lerp(0, i->color, t), rgba);
 							}
 
 							if (nk_button_color(_ctx, nk_rgb(rgba.r, rgba.g, rgba.b))) {
+
+								if (world::cImportGameObject::getProxy().active_color.material.Color) {
+									// "schedule" remove previous color, its done
+									previous = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color);
+								}
+								// set new active color
 								world::cImportGameObject::getProxy().active_color = *i;
 							}
 						}
+
+						if (colors.end() != previous) { // remove previously selected - 
+
+							MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(100.0f * (1.0f - (colors.size() * world::cImportGameObject::getProxy().inv_start_color_count))));
+
+							colors.erase(previous); // remove previously selected color
+							previous = colors.end(); // must reset static var for re-entry
+
+							if (colors.empty()) { // last-one ?
+
+								world::cImportGameObject::getProxy().save(voxelModel.name); // saves the current model to a cache file, model is now imported.
+
+								// reset/disable proxy
+								world::cImportGameObject::getProxy().active_color.color = 0;
+								world::cImportGameObject::getProxy().active_color.count = 0;
+
+								voxelModel.model = nullptr; // clear
+							}
+						}
+
 						nk_group_end(_ctx);
 					}
 					nk_layout_row_dynamic(_ctx, 40, 4);
 
-					auto& colors = world::cImportGameObject::getProxy().colors;
-
 					// binarch search for selected color in colormap
 					// access the ImportColor field n for current status, update on option selected.
-					colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color);
+					// require current color
+					colormap::iterator iter_color(std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color));
+
 					// ***now working on material*** access to color member forbidden.
 					if (colors.end() != iter_color) {
-						
+
 						nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
 
 						bool bApply(false);
-						if (nk_option_label(_ctx, "EMISSIVE", iter_color->material.Emissive)) {
-							iter_color->material.Emissive = !iter_color->material.Emissive;
-							bApply = true;
+						{
+							nk_bool checked(iter_color->material.Emissive);
+							if (nk_checkbox_label(_ctx, "EMISSIVE", &checked)) {
+								iter_color->material.Emissive = checked;
+								bApply = true;
+							}
 						}
-						if (nk_option_label(_ctx, "TRANSPARENCY", iter_color->material.Transparent)) {
-							iter_color->material.Transparent = !iter_color->material.Transparent;
-							bApply = true;
+						{
+							nk_bool checked(iter_color->material.Transparent);
+							if (nk_checkbox_label(_ctx, "TRANSPARENCY", &checked)) {
+								iter_color->material.Transparent = checked;
+								bApply = true;
+							}
 						}
-						if (nk_option_label(_ctx, "METALLIC", iter_color->material.Metallic)) {
-							iter_color->material.Metallic = !iter_color->material.Metallic;
-							bApply = true;
+						{
+							nk_bool checked(iter_color->material.Metallic);
+							if (nk_checkbox_label(_ctx, "METALLIC", &checked)) {
+								iter_color->material.Metallic = checked;
+								bApply = true;
+							}
 						}
-						int iRoughness(iter_color->material.Roughness);
-						if (nk_slider_int(_ctx, 0, &iRoughness, 0xf, 1)) {
-							iter_color->material.Roughness = iRoughness;
-							bApply = true;
+						{
+							nk_size roughness(iter_color->material.Roughness);
+							if (nk_progress(_ctx, &roughness, 0xf, nk_true)) {
+								iter_color->material.Roughness = roughness;
+								bApply = true;
+							}
 						}
 
 						if (bApply) {
 							world::cImportGameObject::getProxy().apply_material(iter_color);
+							world::cImportGameObject::getProxy().active_color = *iter_color;
 						}
 
 						nk_style_pop_font(_ctx);
@@ -2435,53 +2478,12 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 					nk_layout_row_dynamic(_ctx, 40, 4);
 
-					nk_spacing(_ctx, 2);
+					nk_spacing(_ctx, 3);
 
 					bool hovered(false);
-					if (nk_button_label(_ctx, "SAVE", &hovered)) {
-
-						auto& colors = world::cImportGameObject::getProxy().colors;
-
-						// remove color from proxy
-						colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color); // fast binary search! binary search only returns a boolean & uses lower_bound internally. lower_bound returns an iterator.
-						if (colors.end() != iter_color) {
-
-							// select color to the right, or left if there is no right
-							if (colors.end() != (iter_color + 1)) {
-								world::cImportGameObject::getProxy().active_color = *(iter_color + 1);
-							}
-							else if (colors.end() != (iter_color - 1) && colors.begin() != iter_color) {
-								world::cImportGameObject::getProxy().active_color = *(iter_color - 1);
-							}
-							else { // no more colors to select - done for the model
-								world::cImportGameObject::getProxy().save(voxelModel.name); // saves the current model to a cache file, model is now imported.
-
-								voxelModel.model = nullptr; // clear
-								_bModalPrompted = true;
-								nk_window_close(_ctx, windowName._to_string()); // hides the import window
-							}
-
-							colors.erase(iter_color); // remove the current color
-
-							MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t( 100.0f * (1.0f - (colors.size() * world::cImportGameObject::getProxy().inv_start_color_count))));
-						}
-						else {
-							voxelModel.model = nullptr; // clear
-							_bModalPrompted = true;
-							nk_window_close(_ctx, windowName._to_string()); // hides the import window
-						}
-						
-					}
-					else if (hovered) {
-						szHint = "SAVE COLOR";
-						bResetHint = false;
-						bSmallHint = true;
-					}
-
-					hovered = false;
 
 					bool const fold_disabled(world::cImportGameObject::getProxy().colors.size() <= 1);
-					
+
 					if (fold_disabled) {
 						// visually disable button
 						nk_style_push_color(_ctx, &_ctx->style.button.text_normal, DISABLED_TEXT_COLOR);
@@ -2489,12 +2491,12 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						nk_style_push_color(_ctx, &_ctx->style.button.text_active, DISABLED_TEXT_COLOR);
 					}
 
-					if (nk_button_label(_ctx, "FOLD", &hovered) && !fold_disabled) {
+					if (nk_button_label(_ctx, "f", &hovered) && !fold_disabled) {
 
 						auto& colors = world::cImportGameObject::getProxy().colors;
 
 						colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color); // fast binary search! binary search only returns a boolean & uses lower_bound internally. lower_bound returns an iterator.
-						
+
 						if (colors.end() != iter_color) {
 
 							colormap::iterator closest_color(colors.end());
@@ -2516,14 +2518,15 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 							}
 
 							if (colors.cend() != closest_color) {
-								
+
 								uint32_t const color_match(iter_color->color),
 											   color_to_set(closest_color->color);
-								
+
 								// change the color map
 								closest_color->count += iter_color->count; // "fold" into the closest color
 								world::cImportGameObject::getProxy().active_color = *closest_color; // select the color that the current color was folded into
 								colors.erase(iter_color); // remove the current color
+								previous = colors.end(); // iterator invalidated, update previous
 
 								// change all voxels in the actual voxel model from current color to closest color.
 								uint32_t const numVoxels(voxelModel.model->_numVoxels);
@@ -2555,28 +2558,28 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						nk_style_pop_color(_ctx);
 						nk_style_pop_color(_ctx);
 					}
-
-					// when user clicks save also voxelModel.model = nullptr; // clear
-					// to goto next model
-					if (model_dynamic) {
-						model_dynamic->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
-					}
-					if (model_static) {
-						model_static->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
-					}
 				}
 				else {
 					voxelModel.model = nullptr; // clear
+				}
+
+				if (nullptr == voxelModel.model) {
+					// to goto next model
+					if (!colors.empty()) {
+						if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
+							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash());
+							model_dynamic = nullptr;
+						}
+						if (model_static && model_static->getModelInstance()->getHash()) {
+							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash());
+							model_static = nullptr;
+						}
+					}
+
 					_bModalPrompted = true; // this will either start an import for the next voxel model, or exit the import window
 					nk_window_close(_ctx, windowName._to_string()); // hides the import window
-
-					if (model_dynamic) {
-						model_dynamic->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
-					}
-					if (model_static) {
-						model_static->getModelInstance()->destroy(); // release the instance that is visible, to make room for the potential next model to import.
-					}
 				}
+				// otherwise the only, or last model will be placed at the origin of the map
 			}
 
 		} // end import window
@@ -2626,11 +2629,18 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						else {
 							model_static = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cImportGameObject_Static, false>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<false> const* const>(voxelModel.model), common_flags);
 						}
+
+						_uiWindowEnabled = eWindowType::DISABLED; // workaround pause lock-out temporarilly
+						MinCity::Pause(false);
+						_uiWindowEnabled = eWindowType::IMPORT;
+						MinCity::VoxelWorld->resetCamera();
+						MinCity::VoxelWorld->translateCamera(point2D_t(0,13));
 					}
 					else {
 						_iWindowImportSelection = eWindowImport::DISABLED;
 						// user selected no, disable import and goto main window
 						bExitImport = true;
+						MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
 					}
 
 					_bModalPrompted = false; // required for any modal dialog prompt to reset itself when done.
@@ -2641,17 +2651,19 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 		if (bExitImport) { // if the queue is now empty
 
-			if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
-				MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash()); // destroy last
+			if (eWindowImport::IMPORT != _iWindowImportSelection) {
+				if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
+					MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash()); // destroy last
+				}
+				if (model_static && model_static->getModelInstance()->getHash()) {
+					MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash()); // destroy last
+				}
 			}
-			if (model_static && model_static->getModelInstance()->getHash()) {
-				MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash()); // destroy last
-			}
+			model_dynamic = nullptr;
+			model_static = nullptr;
 			voxelModel.model = nullptr; // clear
 
 			enableWindow<eWindowType::IMPORT>(false);
-			MinCity::DispatchEvent(eEvent::NEW);
-			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
 		}
 		// otherwise the next file to import will prompt up next frame
 	}
@@ -2701,120 +2713,127 @@ void  cNuklear::UpdateGUI()
 		// hint bg window "paused" window
 		do_hint_window(bgwindowName._to_string(), szHint, bSmallHint);
 
-		// Bottom Menu //
 		bool bResetHint(true);
-		uint32_t const window_offset(100);
-		uint32_t const window_width(_frameBufferSize.x - (window_offset << 1));
-		uint32_t const window_height(50);
 
-		nk_push_transparent_bg(_ctx);
+		if (eWindowType::IMPORT == _uiWindowEnabled) {
 
-		constexpr eWindowName const windowName(eWindowName::WINDOW_BOTTOM_MENU);
-		if (nk_begin(_ctx, windowName._to_string(),
-			nk_recti(window_offset, _frameBufferSize.y - window_height, window_width, window_height),
-			NK_WINDOW_NO_SCROLLBAR))
-		{
-			struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
-
-			AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
-
-			static constexpr int32_t const cols(8);
-			nk_layout_row_static(_ctx, 48, 48, cols);
-
-			//
-			bool bHovered(false);
-			uint32_t const activeTool(MinCity::UserInterface->getActivatedToolType());
-			uint32_t const activeSubTool(MinCity::UserInterface->getActivatedSubToolType());
-		
-			bHovered = false; // reset
-			if (toggle_button("p", _guiImages.demo, eTools::DEMO == activeTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::DEMO);
-			}
-			else if (bHovered) {
-				szHint = "DEMOLITION";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-
-			bHovered = false; // reset
-			if (toggle_button("e", _guiImages.road, eTools::ROADS == activeTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::ROADS);
-			}
-			else if (bHovered) {
-				szHint = "ROAD";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-
-			bHovered = false; // reset
-			if (toggle_button("r", _guiImages.zoning[eSubTool_Zoning::RESIDENTIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::RESIDENTIAL == activeSubTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::RESIDENTIAL);
-			}
-			else if (bHovered) {
-				szHint = "RESIDENTIAL";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-
-			bHovered = false; // reset
-			if (toggle_button("c", _guiImages.zoning[eSubTool_Zoning::COMMERCIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::COMMERCIAL == activeSubTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::COMMERCIAL);
-			}
-			else if (bHovered) {
-				szHint = "COMMERCIAL";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-
-			bHovered = false; // reset
-			if (toggle_button("i", _guiImages.zoning[eSubTool_Zoning::INDUSTRIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::INDUSTRIAL == activeSubTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::INDUSTRIAL);
-			}
-			else if (bHovered) {
-				szHint = "INDUSTRIAL";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-			
-			bHovered = false; // reset
-			if (toggle_button("s", _guiImages.power, eTools::POWER == activeTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::POWER);
-			}
-			else if (bHovered) {
-				szHint = "POWER";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-
-			bHovered = false; // reset
-			if (toggle_button("j", _guiImages.security, eTools::SECURITY == activeTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::SECURITY);
-			}
-			else if (bHovered) {
-				szHint = "SECURITY";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-
-			bHovered = false; // reset
-			if (toggle_button("x", _guiImages.science, eTools::SCIENCE == activeTool, &bHovered)) {
-				MinCity::UserInterface->setActivatedTool(eTools::SCIENCE);
-			}
-			else if (bHovered) {
-				szHint = "SCIENCE";
-				bResetHint = false;
-				bSmallHint = true;
-			}
-			//nk_layout_row_dynamic(_ctx, 36, cols);
-
-			//int32_t pop = MinCity::City->getPopulation();
-			//nk_property_int<true>(_ctx, "population ", 0, &pop, INT32_MAX, 1, 1);
+			do_cyberpunk_import_window(szHint, bResetHint, bSmallHint); // works in both paused & unpaused modes
 		}
-		nk_end(_ctx);
-		
-		nk_pop_transparent_bg(_ctx);
+		else {
+			// Main Bottom Menu //
+			uint32_t const window_offset(100);
+			uint32_t const window_width(_frameBufferSize.x - (window_offset << 1));
+			uint32_t const window_height(50);
 
-		// ######################################################################################################################################## //
+			nk_push_transparent_bg(_ctx);
+
+			constexpr eWindowName const windowName(eWindowName::WINDOW_BOTTOM_MENU);
+			if (nk_begin(_ctx, windowName._to_string(),
+				nk_recti(window_offset, _frameBufferSize.y - window_height, window_width, window_height),
+				NK_WINDOW_NO_SCROLLBAR))
+			{
+				struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+				AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+
+				static constexpr int32_t const cols(8);
+				nk_layout_row_static(_ctx, 48, 48, cols);
+
+				//
+				bool bHovered(false);
+				uint32_t const activeTool(MinCity::UserInterface->getActivatedToolType());
+				uint32_t const activeSubTool(MinCity::UserInterface->getActivatedSubToolType());
+
+				bHovered = false; // reset
+				if (toggle_button("p", _guiImages.demo, eTools::DEMO == activeTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::DEMO);
+				}
+				else if (bHovered) {
+					szHint = "DEMOLITION";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("e", _guiImages.road, eTools::ROADS == activeTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::ROADS);
+				}
+				else if (bHovered) {
+					szHint = "ROAD";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("r", _guiImages.zoning[eSubTool_Zoning::RESIDENTIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::RESIDENTIAL == activeSubTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::RESIDENTIAL);
+				}
+				else if (bHovered) {
+					szHint = "RESIDENTIAL";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("c", _guiImages.zoning[eSubTool_Zoning::COMMERCIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::COMMERCIAL == activeSubTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::COMMERCIAL);
+				}
+				else if (bHovered) {
+					szHint = "COMMERCIAL";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("i", _guiImages.zoning[eSubTool_Zoning::INDUSTRIAL - 1], eTools::ZONING == activeTool && eSubTool_Zoning::INDUSTRIAL == activeSubTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::ZONING, eSubTool_Zoning::INDUSTRIAL);
+				}
+				else if (bHovered) {
+					szHint = "INDUSTRIAL";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("s", _guiImages.power, eTools::POWER == activeTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::POWER);
+				}
+				else if (bHovered) {
+					szHint = "POWER";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("j", _guiImages.security, eTools::SECURITY == activeTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::SECURITY);
+				}
+				else if (bHovered) {
+					szHint = "SECURITY";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+
+				bHovered = false; // reset
+				if (toggle_button("x", _guiImages.science, eTools::SCIENCE == activeTool, &bHovered)) {
+					MinCity::UserInterface->setActivatedTool(eTools::SCIENCE);
+				}
+				else if (bHovered) {
+					szHint = "SCIENCE";
+					bResetHint = false;
+					bSmallHint = true;
+				}
+				//nk_layout_row_dynamic(_ctx, 36, cols);
+
+				//int32_t pop = MinCity::City->getPopulation();
+				//nk_property_int<true>(_ctx, "population ", 0, &pop, INT32_MAX, 1, 1);
+			}
+			nk_end(_ctx);
+
+			nk_pop_transparent_bg(_ctx);
+
+			// ######################################################################################################################################## //
+		}
 
 		// reset hint if not used
 		if (bResetHint) {

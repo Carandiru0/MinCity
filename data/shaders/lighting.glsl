@@ -108,14 +108,18 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 }
 #endif
 
-vec3 reflection(in const float luminance) 
+vec3 reflection(in const float lighting_luminance) 
 {
 	// no aliasing
-	const vec4 ambient_reflection = subpassLoad(ambientLightMap);
+	vec4 ambient_reflection = subpassLoad(ambientLightMap); // pre-multiplied in
+	
+	// proper blending of reflections with light * do not change *
+	const float reflection_luminance = dot(ambient_reflection.rgb, LUMA); // reflection luminance must be pre-multiplied with alpha to get correct ambient level
+	ambient_reflection.rgb = ambient_reflection.rgb * lighting_luminance; // raw color * the current direct lighting luminance which is based on the raw light color faded out by distance from the light. this is what the reflection would be if it were a light.
+	ambient_reflection.rgb = ambient_reflection.rgb * reflection_luminance / dot(ambient_reflection.rgb, LUMA); // bring it back to the original reflection luminance which is now weighed by
+	ambient_reflection.rgb = ambient_reflection.rgb * ambient_reflection.a; // further darkening (also fades out reflection based on distance to reflected object)
 
-	// pre-multiply for bilateral alpha - this also fades the reflection as distance grows greater
-	// the current luminance of the "area" affects the brightness of the reflection, with an inverse relationship (brightness of "area" lighting dominates, causing reflection to be less visible and blend in with lighting)
-	return( ambient_reflection.rgb * ambient_reflection.a * smoothstep(0.0f, 1.5f, 0.5f + (1.0f - luminance)) ); // bugfix: reflections not showing in very luminant areas - luminance modified by 0.5f
+	return(ambient_reflection.rgb);
 }
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
@@ -196,15 +200,14 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 
 	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
-	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm);
+	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 
-	//return(vec3(NdotL * attenuation));
-
-			// ambient reflection (ambient light not affected by fresnel) - (attenuation in this case is global, from any light source)
-	return ( unpackColor(material.ambient) + ambient_reflection * (1.0f - specular_reflection_term) * occlusion +
-			  // diffuse color .   // diffuse shading/lighting								  // specular shading/lighting					
-		     fma( albedo * occlusion + occlusion, ( diffuse_reflection_term + specular_reflection_term * ambient_reflection ) * light_color, 
-			       // emission				// ^^^^^^ this is like a + 1.0f but instead shaded
+	const vec3 ambient_reflection_term = unpackColor(material.ambient) + ambient_reflection * mix(1.0f - specular_reflection_term, specular_reflection_term, material.metallic) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
+			// ambient
+	return ( ambient_reflection_term +
+			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					
+		     fma( albedo * occlusion + 0.5f * occlusion, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
+			       // emission		// ^^^^^^ this splits the distribution of light to the albedo color and the actual light color 50/50, it is biased toward to the albedo color in the event the albedo color component is greater than 0.5f. Making bright objects appear brighter. (all modulated by the current occlusion). This makes occulusion emphasized, which looks nice as the effect of ambient occlusion is always very visible. *do not change*
 			       albedo * emission_term )
 		   );					
 
