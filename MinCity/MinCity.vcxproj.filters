@@ -339,6 +339,15 @@
     <ClInclude Include="cImportGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
+    <ClInclude Include="eInputEnabledBits.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="cLightGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="importproxy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -508,6 +517,12 @@
     </ClCompile>
     <ClCompile Include="cImportGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cLightGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="importproxy.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

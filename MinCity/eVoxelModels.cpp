@@ -202,16 +202,8 @@ namespace Volumetric
 
 		FMT_LOG(VOX_LOG, "loading voxel models.....");
 
-		//tbb::task_group tG;
-
-		//tG.run([&bSuccess] {
-			bSuccess[0] = LoadAllStaticVoxelModels();
-		//});
-		//tG.run([&bSuccess] {
-			bSuccess[1] = LoadAllDynamicVoxelModels();
-		//});
-
-		//tG.wait();
+		bSuccess[0] = LoadAllStaticVoxelModels();
+		bSuccess[1] = LoadAllDynamicVoxelModels();
 
 		if (bSuccess[0]) {
 			FMT_LOG_OK(VOX_LOG, "static models loaded");

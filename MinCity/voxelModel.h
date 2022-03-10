@@ -140,7 +140,8 @@ namespace voxB
 					Back : 1,
 					Above : 1,
 					Hidden : 1,						// bit 30, Visibility
-					Reserved : 2;					// bits 31 : 32, Unused
+					Light : 1,						// bit 31, Visibility (Light Only)
+					Reserved : 1;					// bit 32, Unused
 			};
 			
 			uint32_t Data; // union "mask" of above
@@ -363,13 +364,20 @@ namespace voxB
 		typedef struct no_vtable sRenderFuncBlockChunk {
 
 		private:
-			XMVECTOR const						xmVoxelOrigin, xmUV;
-			voxB::voxelDescPacked const* const __restrict voxelsIn;
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static;
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic;
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans;
-			Iso::Voxel const& __restrict		rootVoxel;
-			voxelModelInstance<Dynamic> const& instance;
+			XMVECTOR const											xmVoxelOrigin, xmUV;
+			voxB::voxelDescPacked const* const __restrict			voxelsIn;
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict		voxels_static;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_dynamic;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_trans;
+			Iso::Voxel const& __restrict							rootVoxel;
+			voxelModelInstance<Dynamic> const& __restrict			instance;
+
+			XMVECTOR const  maxDimensionsInv, maxDimensions;
+			float const		YDimension;
+			uint32_t const	Transparency;
+			bool const		Faded,
+							EmissionOnly;
+
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 			PerformanceType& PerformanceCounters;
 #endif		
@@ -392,7 +400,14 @@ namespace voxB
 				xmUV(xmUV_),
 				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
 				rootVoxel(rootVoxel_),
-				instance(instance_)
+				instance(instance_),
+
+				maxDimensionsInv(XMLoadFloat3A(&instance_.getModel()._maxDimensionsInv)), 
+				maxDimensions(uvec4_v(instance_.getModel()._maxDimensions).v4f()),
+				YDimension(XMVectorGetY(maxDimensions)),
+				Transparency(instance_.getTransparency()),
+				Faded(instance_.isFaded()),
+				EmissionOnly(instance_.isEmissionOnly())
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceCounters(PerformanceCounters_)
 #endif
@@ -409,18 +424,6 @@ namespace voxB
 				uint32_t const // pull out into registers from memory
 					vxl_begin(r.begin()),
 					vxl_end(r.end());
-
-				uint32_t const Transparency(instance.getTransparency());
-				bool const Faded(instance.isFaded()),
-						   EmissionOnly(instance.isEmissionOnly());
-
-				uint32_t const flags(instance.getFlags());
-
-				auto const& __restrict model(instance.getModel());
-
-				float const YDimension((float)model._maxDimensions.y);
-
-				XMVECTOR const maxDimensionsInv(XMLoadFloat3A(&model._maxDimensionsInv)), maxDimensions(uvec4_v(model._maxDimensions).v4f());
 
 				voxB::voxelDescPacked const* __restrict pVoxelsIn(voxelsIn + vxl_begin);
 
@@ -444,18 +447,19 @@ namespace voxB
 
 					XMVECTOR xmMiniVox = getMiniVoxelGridIndex(maxDimensions, maxDimensionsInv, _mm_cvtepi32_ps(voxel.getPosition()));
 
-					[[maybe_unused]] XMVECTOR xmAzimuth, xmPitch;  // rotation vectors (optimized out depending on "Dynamic")
+					[[maybe_unused]] XMVECTOR xmOrient;  // combined rotation vectors (optimized out depending on "Dynamic")
 
 					if constexpr (Dynamic) {
 						voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
 
-						xmAzimuth = instance_dynamic.getAzimuth().v2();
-						xmPitch = instance_dynamic.getPitch().v2();
+						XMVECTOR const xmAzimuth(instance_dynamic.getAzimuth().v2());
+						XMVECTOR const xmPitch(instance_dynamic.getPitch().v2());
 
 						// rotation order is important
 						// in this order, the rotations add together
 						// in the other order, each rotation is independent of each other
 						// no quaternions, no matrices, just vectors - simplest possible solution.
+						xmOrient = XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch);
 						xmMiniVox = v3_rotate_azimuth(v3_rotate_pitch(xmMiniVox, xmPitch), xmAzimuth);
 					}
 
@@ -474,23 +478,25 @@ namespace voxB
 						bool const Transparent(Faded | voxel.Transparent);
 						bool const Emissive((voxel.Emissive & !Faded) || (!voxel.Emissive & Iso::isEmissive(rootVoxel)));
 
-						// Build hash //
-						uint32_t hash(0);
-						// ** see uniforms.vert for definition of constants used here **
-
-						hash |= voxel.getAdjacency();						//           0000 0000 0001 1111
-						hash |= (Emissive << 5);							//           0000 0000 001x xxxx
-						hash |= (voxel.Metallic << 6);						// 0000 0000 0000 xxxx x1xx xxxx
-						hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 Uxxx xxxx
-
-						if (!EmissionOnly)
+						uint32_t const valid_color(voxel.getColor() & 0x00FFFFFF); // remove alpha
+						
+						if (!(EmissionOnly | voxel.Light))
 						{	// xyz = visible relative UV,  w = detailed occlusion 
 							// UV coordinates are not swizzled at this point, however by the fragment shader they are xzy
 							// UV coordinate describe the "visible grid" relative position bound to 0...VOXEL_MINIGRID_VISIBLE_XYZ
 							// these are not world coordinates! good for sampling view locked/aligned volumes such as the lightmap
 
+							// Build hash //
+							uint32_t hash(0);
+							// ** see uniforms.vert for definition of constants used here **
+
+							hash |= voxel.getAdjacency();						//           0000 0000 0001 1111
+							hash |= (Emissive << 5);							//           0000 0000 001x xxxx
+							hash |= (voxel.Metallic << 6);						// 0000 0000 0000 xxxx x1xx xxxx
+							hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 Uxxx xxxx
+
 							// Make All voxels relative to voxel root origin // inversion neccessary //
-							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)voxel.getColor())); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)valid_color)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 							if (!Transparent) {
 
@@ -500,7 +506,7 @@ namespace voxB
 										voxels_dynamic,
 										xmStreamOut,
 										xmUVs,
-										XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch),
+										xmOrient,
 										hash
 									);
 								}
@@ -516,7 +522,7 @@ namespace voxB
 							}
 							else { // transparency enabled
 
-								hash |= ((Transparency >> 6) << 13);				// 0000 0000 011x xxxx xxxx xxxx
+								hash |= ((Transparency >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
 
 								if constexpr (Dynamic) {
 
@@ -524,7 +530,7 @@ namespace voxB
 										voxels_trans,
 										xmStreamOut,
 										xmUVs,
-										XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch),
+										xmOrient,
 										hash
 									);
 								}
@@ -547,7 +553,7 @@ namespace voxB
 							// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
 							// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
 							// and is in the fragment shaderrecieved swizzled in xzy form
-							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, voxel.getColor());
+							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, valid_color);
 
 						}
 					}

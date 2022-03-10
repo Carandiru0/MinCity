@@ -180,6 +180,8 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 #endif
 		)
 { 
+	//return attenuation.xxx;
+
 	const float NdotL = 1.0f - max(0.0f, dot(N, -L)); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
 	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
@@ -206,9 +208,9 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 			// ambient
 	return ( ambient_reflection_term +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					
-		     fma( albedo * occlusion + 0.5f * occlusion, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
+		     fma( albedo * occlusion + luminance * occlusion, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
 			       // emission		// ^^^^^^ this splits the distribution of light to the albedo color and the actual light color 50/50, it is biased toward to the albedo color in the event the albedo color component is greater than 0.5f. Making bright objects appear brighter. (all modulated by the current occlusion). This makes occulusion emphasized, which looks nice as the effect of ambient occlusion is always very visible. *do not change*
-			       albedo * emission_term )
+			       albedo * emission_term)
 		   );					
 
 

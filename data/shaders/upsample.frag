@@ -232,8 +232,7 @@ vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2
 {
 	for ( int tap = 0 ; tap < TAPS ; ++tap ) 
 	{
-		const vec4 samp = textureLod(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0);
-		color += samp.rgb * samp.a; // pre-multiply alpha
+		color += textureLod(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0).rgb;
 	}
 
 	color *= INV_FTAPS; 
@@ -305,17 +304,17 @@ void main() {
 
 	{ // Volumetrics
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
-		vec3 volume_color = supersample_premultiply(volumetricMap, In.uv, vdFd);
+		vec3 volume_color = supersample(volumetricMap, In.uv, vdFd);
 
 		expandBlurAA(volumetricMap, volume_color.rgb, In.uv, 1.0f - alphaSumV);  // softening of bilateral edges
 
-		// already pre-multiplied, however alpha channel contains the bilateral alpha now instead
+		volume_color *= alphaSumV; // pre-multiply w/ bilateral alpha
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
 	}
 
 	{ // Reflection
 		// Reflection map extra AA filtering and blur //      
-		vec3 bounce_color = supersample_premultiply(reflectionMap, In.uv, vdFd);
+		vec3 bounce_color = supersample(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
 		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
@@ -323,8 +322,8 @@ void main() {
 		// no aliasing
 		expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges
 
-		// already pre-multiplied, however alpha channel contains the bilateral alpha now instead
-		outReflection = vec4(bounce_color, alphaSumR_Fade); // output is pre-multiplied
+		bounce_color.rgb *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha
+		outReflection = vec4(bounce_color, alphaSumR_Fade);
 
 		if (subgroupElect())
 		{

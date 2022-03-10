@@ -86,7 +86,7 @@ namespace Volumetric
 #ifndef NDEBUG
 						FMT_LOG_WARN(VOX_LOG, "Possible error - could not synchronize root voxel index of voxel model instance: {:d} at ({:d},{:d}) -> ({:d},{:d}), *voxel model instance new voxel index / location does not exist*", hashID, old_rootVoxel.x, old_rootVoxel.y, new_rootVoxel.x, new_rootVoxel.y);
 #endif
-						destroy(); // signalled for destruction //
+						destroy(milliseconds(0)); // signalled for destruction //
 						// bugfix: NOT SAFE to destroyInstance() (DIRECT Deletion) voxelmodel instance here, would be inside of a gameobject's update method, where it expects this voxelmodel instance to exist until its update method is complete 
 					}
 				}
@@ -102,7 +102,7 @@ namespace Volumetric
 #ifndef NDEBUG
 				FMT_LOG_FAIL(VOX_LOG, "Fatal - could not synchronize root voxel index of voxel model instance: {:d}, *voxel model instance hash not registered*", hashID);
 #endif		
-				destroy(); // signalled for destruction //
+				destroy(milliseconds(0)); // signalled for destruction //
 				// bugfix: NOT SAFE to destroyInstance() (DIRECT Deletion) voxelmodel instance here, would be inside of a gameobject's update method, where it expects this voxelmodel instance to exist until its update method is complete
 			}
 		}

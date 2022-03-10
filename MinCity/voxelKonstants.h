@@ -29,6 +29,8 @@ namespace Volumetric
 		GROUND_CONDITIONING = (1 << 3),
 		DESTROY_EXISTING_STATIC = (1 << 4),
 		DESTROY_EXISTING_DYNAMIC = (1 << 5),
+		IGNORE_EXISTING = (1 << 6),
+
 		//
 		CHILD_ONLY = (1 << 30),
 		// Last

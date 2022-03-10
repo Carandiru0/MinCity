@@ -307,7 +307,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = fma(sigmaS, attenuation, attenuation) * light_color * PHASE_FUNCTION; // incoming light
+    const vec3 Li = fma(sigmaS, attenuation, attenuation + emission) * light_color * PHASE_FUNCTION; // incoming light
 	const float sigma_dt = exp2(-sigmaE * attenuation * (emission + 1.0f));
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 
@@ -542,9 +542,8 @@ void main() {
 //#endif
 
 	// output volumetric light
-	voxel.tran = 1.0f - clamp(voxel.tran, 0.0f, 1.0f); // <-- this is correct blending of light, don't change it. opacity = 1.0f - transmission
-	//voxel.rgb = voxel.aaa;
-	//voxel.a = 0.95f;
+	voxel.a = clamp(voxel.tran, 0.0f, 1.0f); // in the blend stage, the blend operation is set to properly handle alpha (cVulkan.cpp)
+
 	imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
 	// - done!
 	//vec4 test = textureLod(fogMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f);

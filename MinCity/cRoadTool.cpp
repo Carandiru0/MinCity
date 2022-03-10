@@ -1763,7 +1763,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 							if (instance) {
 								auto const identity = instance->getModel().identity();
 								if (Volumetric::eVoxelModels_Dynamic::MISC == identity._modelGroup
-									&& Volumetric::eVoxelModels_Indices::TRAFFIC_SIGN == identity._index) {
+									&& Volumetric::eVoxelModel::DYNAMIC::MISC::TRAFFIC_SIGN == identity._index) {
 
 									// already has traffic sign in this location, user is modifying / extending an existing xing
 									bExistingTrafficSign = true;
@@ -1784,7 +1784,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 
 					world::cTrafficSignGameObject* const pGameObject = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cTrafficSignGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(
 						xingPoint[xing],
-						Volumetric::eVoxelModels_Indices::TRAFFIC_SIGN,
+						Volumetric::eVoxelModel::DYNAMIC::MISC::TRAFFIC_SIGN,
 						flags::INSTANT_CREATION);
 
 					if (pGameObject) {
@@ -1808,7 +1808,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 
 				pGameObject = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cTrafficControlGameObject, Volumetric::eVoxelModels_Static::EMPTY>(
 					currentPoint,
-					Volumetric::eVoxelModels_Indices::EMPTY,
+					Volumetric::eVoxelModel::STATIC::MISC::EMPTY,
 					flags::INSTANT_CREATION | flags::EMPTY_INSTANCE);
 
 
@@ -1827,7 +1827,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 					if (instance) {
 						auto const identity = instance->getModel().identity();
 						if (Volumetric::eVoxelModels_Static::EMPTY == identity._modelGroup
-							&& Volumetric::eVoxelModels_Indices::EMPTY == identity._index) {
+							&& Volumetric::eVoxelModel::STATIC::MISC::EMPTY == identity._index) {
 
 							pGameObject = instance->getOwnerGameObject<world::cTrafficControlGameObject>();
 						}
@@ -1892,7 +1892,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 				// place road sign - uses rotation only, want centered on road
 				world::cSignageGameObject* const pGameObject = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cSignageGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(
 					currentPoint,
-					Volumetric::eVoxelModels_Indices::ROAD_SIGN,
+					Volumetric::eVoxelModel::DYNAMIC::MISC::ROAD_SIGN,
 					flags::INSTANT_CREATION);
 
 				if (pGameObject) {
@@ -1904,7 +1904,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 		}
 		
 		// place lamp post - uses rotation & offset from center of road sidePoint[side]
-		auto const [hash, instance] = MinCity::VoxelWorld->placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(sidePoint[side], Volumetric::eVoxelModels_Indices::LAMP_POST,
+		auto const [hash, instance] = MinCity::VoxelWorld->placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(sidePoint[side], Volumetric::eVoxelModel::DYNAMIC::MISC::LAMP_POST,
 			flags::INSTANT_CREATION);
 		if (instance) {
 			instance->setAzimuth(rotation);
@@ -1947,8 +1947,8 @@ void cRoadTool::decorateRoadHistory()
 					area = r2D_add(area, voxelIndex);
 					area = r2D_sub(area, point2D_t(Iso::ROAD_SEGMENT_WIDTH, Iso::ROAD_SEGMENT_WIDTH));
 
-					MinCity::VoxelWorld->hideVoxelModelInstancesAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModels_Indices::LAMP_POST, &_undoExistingSignage);
-					MinCity::VoxelWorld->hideVoxelModelInstancesAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModels_Indices::ROAD_SIGN, &_undoExistingSignage);
+					MinCity::VoxelWorld->hideVoxelModelInstancesAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModel::DYNAMIC::MISC::LAMP_POST, &_undoExistingSignage);
+					MinCity::VoxelWorld->hideVoxelModelInstancesAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModel::DYNAMIC::MISC::ROAD_SIGN, &_undoExistingSignage);
 
 					if (Iso::isRoadNodeCenter(oVoxel)) {
 
@@ -1976,10 +1976,10 @@ void cRoadTool::decorateRoadHistory()
 						area = r2D_add(area, voxelIndex);
 						area = r2D_sub(area, point2D_t(LAMP_POST_INTERVAL, LAMP_POST_INTERVAL));
 
-						uint32_t const hashLamp = MinCity::VoxelWorld->hasVoxelModelInstanceAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModels_Indices::LAMP_POST);
+						uint32_t const hashLamp = MinCity::VoxelWorld->hasVoxelModelInstanceAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModel::DYNAMIC::MISC::LAMP_POST);
 						if (0 == hashLamp || hashLamp == pendingSign) {
 
-							uint32_t const hashSign = MinCity::VoxelWorld->hasVoxelModelInstanceAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModels_Indices::ROAD_SIGN);
+							uint32_t const hashSign = MinCity::VoxelWorld->hasVoxelModelInstanceAt(area, Volumetric::eVoxelModels_Dynamic::MISC, Volumetric::eVoxelModel::DYNAMIC::MISC::ROAD_SIGN);
 							if (0 == hashSign || hashSign == pendingSign) {
 
 								pendingSign = decorate_lamppost(voxelIndex, oVoxel, lamp_post_side, lamp_post_swapped_for_sign, _seed_signage, undoHistory);

@@ -74,42 +74,57 @@ namespace Volumetric
 	);
 
 	// #### No particular Order #### //// DYNAMIC or STATIC  -- saved indices for models index that are "special", index must match as loaded for the *group* it belongs to.
-	BETTER_ENUM(eVoxelModels_Indices, uint32_t const,
- 
-		EMPTY = 0, // for both static & dynamic
+	struct eVoxelModel
+	{
+		struct STATIC
+		{
+			struct MISC // ** static misc **
+			{
+				static inline uint32_t
 
-		// ** static misc **
+					EMPTY = 0;
+			};
+			struct NAMED // ** static named **
+			{
+				static inline uint32_t
 
-		// ** static named **
-		ROCK_STAGE = 0,
+					RESERVED = 0;
+			};
+		};
 
+		struct DYNAMIC
+		{
+			struct CARS // ** dynamic cars **
+			{
+				static inline uint32_t
 
-		// ** dynamic cars **
-		POLICE_CAR = 0, // from group CARS - should be the very first car file as index is used in a special way
+					POLICE = 0;  // from group CARS - should be the very first car file as index is used in a special way
+			};
+			struct MISC // ** dynamic misc **
+			{
+				static inline uint32_t
 
+					EMPTY = 0,
+					LAMP_POST = 4,
+					ROAD_SIGN = 5,
+					TRAFFIC_SIGN = 6,
+					COPTER_PROP = 7,
+					COPTER_BODY = 8,
+					LIGHT_X1 = 12,
+					LIGHT_X3 = 13,
+					LIGHT_X5 = 14,
+					LIGHT_X7 = 15,
+					LIGHT_X9 = 16,
+					LIGHT_X64 = 17;
+			};
+			struct NAMED // ** dynamic named **
+			{
+				static inline uint32_t
 
-		// ** dynamic misc **
-		DEPTH_CUBE = 0,
-		HOLOGRAM_GIRL = 1,
-		HOLOGRAM_GIRL2 = 2,
-		VOODOO_SKULL = 3,
-		LAMP_POST = 4,
-		ROAD_SIGN = 5,
-		TRAFFIC_SIGN = 6,
-		COPTER_PROP = 7,
-		COPTER_BODY = 8,
-		GIF_LIGHT = 9,
-
-
-		// ** dynamic named **
-		GUITAR = 0,
-		SINGER = 1,
-		MUSICIAN = 2,
-		LIGHT = 3,
-		CROWD = 4 // **** NOTE THERE ARE 7 CROWD VOXEL MODELS INCLUDING THIS ONE AFTERWARDS
-
-
-	);
+					RESERVED = 0;
+			};
+		};
+	};
 
 	bool const LoadAllVoxelModels();
 

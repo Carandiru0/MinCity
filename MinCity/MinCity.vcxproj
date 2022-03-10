@@ -280,6 +280,7 @@
     <ClInclude Include="cCopterBodyGameObject.h" />
     <ClInclude Include="cCopterGameObject.h" />
     <ClInclude Include="cCopterPropGameObject.h" />
+    <ClInclude Include="cLightGameObject.h" />
     <ClInclude Include="cImportGameObject.h" />
     <ClInclude Include="CityInfo.h" />
     <ClInclude Include="cNonUpdateableGameObject.h" />
@@ -310,11 +311,13 @@
     <ClInclude Include="debug.h" />
     <ClInclude Include="Declarations.h" />
     <ClInclude Include="eDirection.h" />
+    <ClInclude Include="eInputEnabledBits.h" />
     <ClInclude Include="eVoxelModels.h" />
     <ClInclude Include="explosion.h" />
     <ClInclude Include="globals.h" />
     <ClInclude Include="gui.h" />
     <ClInclude Include="ImageAnimation.h" />
+    <ClInclude Include="importproxy.h" />
     <ClInclude Include="lightBuffer3D.h" />
     <ClInclude Include="IsoCamera.h" />
     <ClInclude Include="IsoVoxel.h" />
@@ -372,6 +375,7 @@
     <ClCompile Include="cCopterBodyGameObject.cpp" />
     <ClCompile Include="cCopterGameObject.cpp" />
     <ClCompile Include="cCopterPropGameObject.cpp" />
+    <ClCompile Include="cLightGameObject.cpp" />
     <ClCompile Include="cImportGameObject.cpp" />
     <ClCompile Include="cNuklear.cpp" />
     <ClCompile Include="cPoliceCarGameObject.cpp" />
@@ -399,6 +403,7 @@
     <ClCompile Include="eVoxelModels.cpp" />
     <ClCompile Include="explosion.cpp" />
     <ClCompile Include="ImageAnimation.cpp" />
+    <ClCompile Include="importproxy.cpp" />
     <ClCompile Include="liveshader.cpp" />
     <ClCompile Include="loadworld.cpp" />
     <ClCompile Include="MinCity.cpp" />

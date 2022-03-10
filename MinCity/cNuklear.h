@@ -10,6 +10,7 @@
 #include <vector>
 #include "nk_custom.h" // safe to include here in header, only exposes public structs and methods
 #include "CityInfo.h"
+#include "eInputEnabledBits.h"
 
 BETTER_ENUM(eNK_FONTS, uint32_t const,
 
@@ -113,6 +114,8 @@ public:
 	void SetSpecializationConstants_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 	void UpdateDescriptorSet(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& sampler);
 	
+	void InputEnableWorld(uint32_t const bits, bool const bEnable = true) const;
+
 	template<uint32_t const windowType>
 	int32_t const getLastSelectionForWindow() const { 
 		if constexpr (eWindowType::MAIN == windowType) {
@@ -148,17 +151,22 @@ public:
 				if constexpr (eWindowType::MAIN == windowType) {
 					_iWindowQuitSelection = eWindowQuit::IDLE;
 					_bHintReset = true;
+					InputEnableWorld(eInputEnabledBits::ALL, false); // disabling interaction with game world on window opening
 				}
 				else if constexpr (eWindowType::SAVE == windowType) {
 					_iWindowSaveSelection = eWindowSave::IDLE;
 					_loadsaveWindow.bReset = true;
+					InputEnableWorld(eInputEnabledBits::ALL, false); // disabling interaction with game world on window opening
 				}
 				else if constexpr (eWindowType::LOAD == windowType) {
 					_iWindowLoadSelection = eWindowLoad::IDLE;
 					_loadsaveWindow.bReset = true;
+					InputEnableWorld(eInputEnabledBits::ALL, false); // disabling interaction with game world on window opening
 				}
 				else if constexpr (eWindowType::IMPORT == windowType) {
 					_iWindowImportSelection = eWindowImport::IDLE;
+					InputEnableWorld(eInputEnabledBits::ALL, false); // disabling interaction with game world on window opening
+					InputEnableWorld(eInputEnabledBits::MOUSE_RIGHT_DRAG, true); // enabling interaction with game world for import window user view orientation
 				}
 			}
 			else { // disabling
@@ -181,6 +189,7 @@ public:
 					_iWindowImportSelection = eWindowImport::DISABLED;
 				}
 
+				InputEnableWorld(eInputEnabledBits::ALL); // enabling interaction with game world on window closing
 			}
 		}
 		return(prior);

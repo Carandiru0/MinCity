@@ -250,7 +250,7 @@ bool const __vectorcall cCarGameObject::xing(state const& __restrict currentStat
 				if (FoundModelInstance) {
 
 					if (Volumetric::eVoxelModels_Dynamic::MISC == FoundModelInstance->getModel().identity()._modelGroup &&
-						Volumetric::eVoxelModels_Indices::TRAFFIC_SIGN == FoundModelInstance->getModel().identity()._index) {
+						Volumetric::eVoxelModel::DYNAMIC::MISC::TRAFFIC_SIGN == FoundModelInstance->getModel().identity()._index) {
 
 						pGameObject = FoundModelInstance->getOwnerGameObject<world::cTrafficSignGameObject>();
 
@@ -553,7 +553,7 @@ bool const cCarGameObject::forward(state const& __restrict currentState, state& 
 				}
 
 				if (!bFound) {
-					(*Instance)->destroy(); // todo: temporary
+					(*Instance)->destroy(milliseconds(0)); // todo: temporary
 					return(false);  // blocked by no road exists
 				}
 			}
@@ -858,7 +858,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 #endif
 #endif	
 
-					(*Instance)->destroy(); // car gets destroyed		
+					(*Instance)->destroy(milliseconds(0)); // car gets destroyed		
 				}
 			}
 			// nothing else changes, want _this.moving to equal true so that this state that isn't finished
@@ -885,7 +885,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 			}
 #endif
 #endif	
-			(*Instance)->destroy(); // car gets destroyed
+			(*Instance)->destroy(milliseconds(0)); // car gets destroyed
 		}
 	}
 }

@@ -322,7 +322,7 @@ namespace world
 														bDynamic = false;
 													}
 													
-													// we hae the world model instance associated with this hash. (loaded before in upload_model_state(), into the actual voxelworld)
+													// we have the world model instance associated with this hash. (loaded before in upload_model_state(), into the actual voxelworld)
 													if (instance) {
 
 														if (bDynamic) {

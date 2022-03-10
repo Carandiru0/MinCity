@@ -11,6 +11,7 @@
 #include "voxelModelInstance.h"
 #include "world.h"
 #include "data.h"
+#include "eInputEnabledBits.h"
 
 #include <optional>
 #include "volumetricOpacity.h"
@@ -117,6 +118,9 @@ namespace world
 		void Initialize(); // 2nd
 		void OnLoaded(tTime const& __restrict tNow);
 		void Clear();
+
+		template<bool const bEnable = true> // eInputEnabledBits
+		uint32_t const InputEnable(uint32_t const bits); 
 
 		bool const renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 		
@@ -236,12 +240,18 @@ namespace world
 		template<typename TNonUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TNonUpdateableGameObject* const placeNonUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
 
+		template<typename TNonUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
+		TNonUpdateableGameObject* const __vectorcall placeNonUpdateableInstanceAt(FXMVECTOR const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
 
+		
 		template<typename TUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags = 0);
 
 		template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
 		TUpdateableGameObject* const placeUpdateableInstanceAt(point2D_t const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
+
+		template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
+		TUpdateableGameObject* const placeUpdateableInstanceAt(FXMVECTOR const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags = 0);
 
 
 		template<typename TProceduralGameObject, bool const Dynamic> // allow polymorphic type to be passed, public preferred usage, returns the newly added game object instance
@@ -360,6 +370,7 @@ namespace world
 		XMFLOAT2A					_vDragLast;
 		tTime						_tDragStart = zero_time_point;
 		fp_seconds					_tBorderScroll;
+		uint32_t					_inputEnabledBits;
 		bool						_bMotionInvalidate = false, _bMotionDelta = false;
 		bool						_bDraggingMouse = false;
 
@@ -519,7 +530,7 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 			bDestroyed = destroyVoxelModelInstancesAt(vWorldArea, destroyExistingHashTypes);
 		}
 
-		if ( !bDestroyed ) // only if destruction is not neccessary
+		if ( !bDestroyed || Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING == (Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING & flags)) // only if destruction is not neccessary
 		{
 			uint32_t index(0);
 
@@ -742,6 +753,18 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 	return(nullptr);
 }
 
+template<typename TNonUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed
+TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(FXMVECTOR const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags)
+{
+	point2D_t const ivoxelIndex(v2_to_p2D_rounded(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(voxelIndex)));
+
+	auto const instance = placeNonUpdateableInstanceAt<TNonUpdateableGameObject, eVoxelModelGrpID>(ivoxelIndex, modelIndex, additional_flags);
+	if (instance) {
+
+		instance->getModelInstance()->setElevation(XMVectorGetY(voxelIndex));
+	}
+	return(instance);
+}
 
 template<typename TUpdateableGameObject, bool const Dynamic> // allow polymorphic type to be passed
 TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
@@ -801,7 +824,18 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 #endif
 	return(nullptr);
 }
+template<typename TUpdateableGameObject, int32_t const eVoxelModelGrpID> // allow polymorphic type to be passed
+TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(FXMVECTOR const voxelIndex, uint32_t const modelIndex, uint32_t const additional_flags)
+{
+	point2D_t const ivoxelIndex(v2_to_p2D_rounded(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(voxelIndex)));
 
+	auto const instance = placeUpdateableInstanceAt<TUpdateableGameObject, eVoxelModelGrpID>(ivoxelIndex, modelIndex, additional_flags);
+	if (instance) {
+
+		instance->getModelInstance()->setElevation(XMVectorGetY(voxelIndex));
+	}
+	return(instance);
+}
 
 template<typename TProceduralGameObject, bool const Dynamic> // allow polymorphic type to be passed
 TProceduralGameObject* const cVoxelWorld::placeProceduralInstanceAt(point2D_t const voxelIndex, Volumetric::voxB::voxelModel<Dynamic> const* const __restrict voxelModel, uint32_t const additional_flags)
@@ -861,6 +895,19 @@ TProceduralGameObject* const cVoxelWorld::placeProceduralInstanceAt(point2D_t co
 	}
 #endif
 	return(nullptr);
+}
+
+template<bool const bEnable> // eInputEnabledBits
+uint32_t const cVoxelWorld::InputEnable(uint32_t const bits)
+{
+	if constexpr (bEnable) {
+		_inputEnabledBits |= bits; // set the specified bits
+	}
+	else {
+		_inputEnabledBits &= ~bits; // clear the specified bits
+	}
+
+	return(_inputEnabledBits); // return the current inputenabledbits state
 }
 
 } // end ns world

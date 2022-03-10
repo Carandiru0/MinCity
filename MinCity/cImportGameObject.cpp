@@ -3,136 +3,11 @@
 #include "voxelModelInstance.h"
 #include "voxelKonstants.h"
 #include "voxelModel.h"
-#include "voxBinary.h"
-#include <filesystem>
-#include <Utility/stringconv.h>
-
-namespace fs = std::filesystem;
-
-namespace Volumetric
-{
-	void ImportProxy::apply_material(colormap::iterator const& iter_current_color)
-	{
-		constinit static uint32_t lastNumVoxelsEmissive{}, lastNumVoxelsTransparent{};
-
-		if (colors.end() != iter_current_color) {
-
-			// must reset //
-			model->_numVoxelsEmissive = lastNumVoxelsEmissive;
-			model->_numVoxelsTransparent = lastNumVoxelsTransparent;
-
-			ImportMaterial const material(iter_current_color->material);
-			
-			uint32_t max_count(iter_current_color->count);
-
-			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels);
-			for (uint32_t i = 0; i < numVoxels; ++i) {
-
-				if (material.Color == pVoxels->Color) { // safe 24bit comparison, not affected by material bits soi this is the only way to compare ther color correctly.
-					pVoxels->RGBM = material.RGBM;
-					pVoxels->Hidden = false; // always false here on output
-
-					[[unlikely]] if (0 == --max_count) {
-						break; // finished early
-					}
-				}
-				++pVoxels;
-			}
-
-			if (material.Emissive) {
-				lastNumVoxelsEmissive = model->_numVoxelsEmissive;
-				model->_numVoxelsEmissive += iter_current_color->count;
-			}
-			
-			if (material.Transparent) {
-				lastNumVoxelsTransparent = model->_numVoxelsTransparent;
-				model->_numVoxelsTransparent += iter_current_color->count;
-			}
-		}
-	}
-	void ImportProxy::load(voxB::voxelModelBase const* const model_)
-	{
-		reset(model_->_numVoxels);
-		model = const_cast<voxB::voxelModelBase* const>(model_); // remember model
-
-		// copy the base state of all voxels into proxy
-		__memcpy_stream<16>(voxels, model->_Voxels, numVoxels * sizeof(Volumetric::voxB::voxelDescPacked));
-
-		colors.reserve(256);
-		colors.clear();
-
-		Volumetric::voxB::voxelDescPacked const* pVoxels(model->_Voxels); // stream above is still storing, use the cached read of the models' voxels ++
-		for (uint32_t i = 0; i < numVoxels; ++i) {
-
-			Volumetric::voxB::voxelDescPacked const voxel(*pVoxels);
-
-			uint32_t const color = voxel.Color;
-
-			auto iter = std::lower_bound(colors.begin(), colors.end(), color);
-
-			auto iter_found(colors.end());
-			if (color == iter->color) {
-				iter_found = iter;
-			}
-			else if (color == (iter - 1)->color) {
-				iter_found = iter - 1;
-			}
-
-			if (colors.cend() == iter_found) { // only if unique
-				colors.insert(iter, ImportColor(color)); // will be sorted from lowest color to highest color order from lowest vector index to highest vector index
-			}
-			else {
-				++iter_found->count;
-			}
-			
-			++pVoxels;
-		}
-		// all unique colors found
-
-		// convient initialization before voxel model instance is added to scene
-
-		active_color = colors[0]; // select first color on load
-		inv_start_color_count = 1.0f / (float)colors.size();
-
-		// last
-	}
-	void ImportProxy::save(std::string_view const name) const
-	{
-		if (model) {
-			
-			// reset counts, ensure accurate count b4 saving to file
-			model->_numVoxelsEmissive = 0;
-			model->_numVoxelsTransparent = 0;
-
-			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels); // stream above is still storing, use the cached read of the models' voxels ++
-			for (uint32_t i = 0; i < numVoxels; ++i) {
-				pVoxels->Hidden = false; // always false here on save, ensure hidden is not set on any voxel b4 saving file
-
-				if (pVoxels->Emissive) {
-					++model->_numVoxelsEmissive;
-				}
-				if (pVoxels->Transparent) {
-					++model->_numVoxelsTransparent;
-				}
-
-				++pVoxels;
-			}
-
-			std::wstring szCachedPathFilename(VOX_CACHE_DIR);
-			szCachedPathFilename += fs::path(stringconv::toLower(name)).stem();
-			szCachedPathFilename += V1X_FILE_EXT;
-
-			// save / cache that model
-			if (SaveV1XCachedFile(szCachedPathFilename, model)) {
-				FMT_LOG_OK(VOX_LOG, " < {:s} > cached", stringconv::ws2s(szCachedPathFilename));
-			}
-			else {
-				FMT_LOG_FAIL(VOX_LOG, "unable to cache to .V1X file: {:s}", stringconv::ws2s(szCachedPathFilename));
-			}
-		}
-	}
-
-} // end ns
+#include "importproxy.h"
+#include "cVoxelWorld.h"
+#include <Math/v2_rotation_t.h>
+#include "eVoxelModels.h"
+#include "gui.h"
 
 // helper functions
 STATIC_INLINE_PURE bool const isVoxelWindow(Volumetric::voxB::voxelDescPacked const& __restrict voxel)
@@ -172,8 +47,104 @@ namespace world
 		}
 	}
 
+	cImportGameObject::cImportGameObject()
+		: _source{}, _target {}, _lights{}, _tStamp(zero_time_point)
+	{
+	}
+
+	void cImportGameObject::signal(tTime const& __restrict tNow)
+	{
+		_tStamp = tNow;
+
+		for (uint32_t i = 0; i < _numLights; ++i) {
+			XMStoreFloat3A(&_source[i], _lights[i]->getModelInstance()->getLocation3D());
+		}
+	}
+
+	void __vectorcall cImportGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
+	{
+		static constexpr float const tInvInterval(1.0f / fp_seconds(milliseconds(2000)).count());
+
+		fp_seconds const tDuration(tNow - _tStamp);
+
+		float const t(SFM::saturate(tDuration.count() * tInvInterval));
+
+		XMVECTOR const xmWorldOrigin(world::getOriginNoFractionalOffset());
+
+		XMVECTOR xmOrigin;
+		rect2D_t const rectLocalArea(r2D_grow(_proxy.model->_LocalArea, point2D_t(1)));
+		constexpr uint32_t const color(0xFFFFFFFF);
+
+		// vertical part
+		xmOrigin = p2D_to_v2(rectLocalArea.left_top());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_top(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.right_top());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.right_top(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.right_bottom());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.right_bottom(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.left_bottom());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_bottom(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+
+		// horizontal part
+		float const height((float)_proxy.model->_maxDimensions.y * Iso::MINI_VOX_SIZE * -2.0f);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.left_top());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, height);
+		gui::draw_line(gui::axis::x, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_top(), color, (uint32_t)rectLocalArea.width() << 1, gui::flags::emissive);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.left_bottom());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, height);
+		gui::draw_line(gui::axis::x, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_bottom(), color, (uint32_t)rectLocalArea.width() << 1, gui::flags::emissive);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.left_top());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, height);
+		gui::draw_line(gui::axis::z, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_top(), color, (uint32_t)rectLocalArea.height() << 1, gui::flags::emissive);
+
+		xmOrigin = p2D_to_v2(rectLocalArea.right_top());
+		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSetY(xmOrigin, height);
+		gui::draw_line(gui::axis::z, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.right_top(), color, (uint32_t)rectLocalArea.height() << 1, gui::flags::emissive);
+
+		for (uint32_t i = 0; i < _numLights; ++i) {
+
+			XMVECTOR xmLocation(_lights[i]->getModelInstance()->getLocation3D());
+
+			if (zero_time_point != _tStamp) {
+
+				if (t >= 1.0f) {
+
+					xmLocation = XMLoadFloat3A(&_target[i]);
+					_source[i] = _target[i];
+				}
+				else {
+				
+					xmLocation = SFM::lerp(XMLoadFloat3A(&_source[i]), XMLoadFloat3A(&_target[i]), t);
+				}
+			}
+
+			xmLocation = v3_rotate_azimuth(xmLocation, v2_rotation_t(tDelta.count() * XM_PI));
+
+			_lights[i]->getModelInstance()->setLocation3D(xmLocation);
+		}
+
+		if (t >= 1.0f) {
+			_tStamp = zero_time_point; // reset, sequence complete
+		}
+	}
+
+
 	cImportGameObject_Dynamic::cImportGameObject_Dynamic(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tNonUpdateableGameObject(instance_),
+		: tUpdateableGameObject(instance_),
 		_videoscreen(nullptr)
 	{
 		instance_->setOwnerGameObject<cImportGameObject_Dynamic>(this, &OnRelease_Dynamic);
@@ -184,10 +155,10 @@ namespace world
 			_videoscreen = &ImageAnimation::emplace_back(ImageAnimation(*voxelscreen, instance_->getHash()));
 		}
 
-		_proxy.load(reinterpret_cast<Volumetric::voxB::voxelModelBase const* const>(&instance_->getModel())); // safe up-cast to base
+		_proxy.load(this, reinterpret_cast<Volumetric::voxB::voxelModelBase const* const>(&instance_->getModel())); // safe up-cast to base
 	}
 	cImportGameObject_Static::cImportGameObject_Static(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_)
-		: tNonUpdateableGameObject(instance_),
+		: tUpdateableGameObject(instance_),
 		_videoscreen(nullptr)
 	{
 		instance_->setOwnerGameObject<cImportGameObject_Static>(this, &OnRelease_Static);
@@ -198,11 +169,11 @@ namespace world
 			_videoscreen = &ImageAnimation::emplace_back( ImageAnimation(*voxelscreen, instance_->getHash()) );
 		}
 
-		_proxy.load(reinterpret_cast<Volumetric::voxB::voxelModelBase const* const>(&instance_->getModel())); // safe up-cast to base
+		_proxy.load(this, reinterpret_cast<Volumetric::voxB::voxelModelBase const* const>(&instance_->getModel())); // safe up-cast to base
 	}
 
 	cImportGameObject_Dynamic::cImportGameObject_Dynamic(cImportGameObject_Dynamic&& src) noexcept
-		: tNonUpdateableGameObject(std::forward<tNonUpdateableGameObject&&>(src))
+		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src))
 	{
 		// important 
 		src.free_ownership();
@@ -222,7 +193,7 @@ namespace world
 	}
 	cImportGameObject_Dynamic& cImportGameObject_Dynamic::operator=(cImportGameObject_Dynamic&& src) noexcept
 	{
-		tNonUpdateableGameObject::operator=(std::forward<tNonUpdateableGameObject&&>(src));
+		tUpdateableGameObject::operator=(std::forward<tUpdateableGameObject&&>(src));
 		// important 
 		src.free_ownership();
 
@@ -242,7 +213,7 @@ namespace world
 		return(*this);
 	}
 	cImportGameObject_Static::cImportGameObject_Static(cImportGameObject_Static&& src) noexcept
-		: tNonUpdateableGameObject(std::forward<tNonUpdateableGameObject&&>(src))
+		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src))
 	{
 		// important 
 		src.free_ownership();
@@ -262,7 +233,7 @@ namespace world
 	}
 	cImportGameObject_Static& cImportGameObject_Static::operator=(cImportGameObject_Static&& src) noexcept
 	{
-		tNonUpdateableGameObject::operator=(std::forward<tNonUpdateableGameObject&&>(src));
+		tUpdateableGameObject::operator=(std::forward<tUpdateableGameObject&&>(src));
 		// important 
 		src.free_ownership();
 
@@ -290,8 +261,6 @@ namespace world
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cImportGameObject_Dynamic::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
-		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
-
 		voxel = OnVoxelProxy(xmIndex, voxel, vxl_index, _proxy);
 
 		// alive !
@@ -308,8 +277,6 @@ namespace world
 
 			voxel.Emissive = true;
 		}
-
-		_proxy.voxels[vxl_index] = voxel;
 
 		return(voxel);
 	}
@@ -322,8 +289,6 @@ namespace world
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cImportGameObject_Static::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
-		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
-
 		voxel = OnVoxelProxy(xmIndex, voxel, vxl_index, _proxy);
 
 		// alive !
@@ -341,9 +306,96 @@ namespace world
 			voxel.Emissive = true;
 		}
 
-		_proxy.voxels[vxl_index] = voxel;
-
 		return(voxel);
+	}
+
+	STATIC_INLINE XMVECTOR const __vectorcall next(FXMVECTOR xmWorldOrigin, FXMVECTOR xmLocalOrigin, float const radius, float const t)
+	{
+		XMVECTOR xmP1 = XMVectorAdd(xmWorldOrigin, XMVectorScale(xmLocalOrigin, Iso::MINI_VOX_STEP));
+		XMVECTOR xmP0 = xmWorldOrigin;
+
+		XMVECTOR xmDir = XMVector3Normalize(XMVectorSubtract(xmP1, xmP0));
+
+		v2_rotation_t const approx_angle = v2_rotation_t::lerp(-v2_rotation_constants::v270, v2_rotation_constants::v270, t);
+		xmDir = v3_rotate_pitch(xmDir, approx_angle);
+		xmDir = v3_rotate_azimuth(xmDir, approx_angle);
+
+		//                                                     +........ renormalize for accurate result
+		XMVECTOR const xmPos = XMVectorAdd(xmP1, XMVectorScale(XMVector3Normalize(xmDir), radius * Iso::MINI_VOX_SIZE));
+
+		FMT_LOG(INFO_LOG, "next @ {:f}", fp_seconds(now() - start()).count());
+
+		return(xmPos);
+	}
+
+	void cImportGameObject_Dynamic::signal(tTime const& __restrict tNow)  // must be done *after* apply_material
+	{
+		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
+
+		uint32_t const light_model_index(Volumetric::eVoxelModel::DYNAMIC::MISC::LIGHT_X1);
+		auto const* const light_model(Volumetric::getVoxelModel<Volumetric::eVoxelModels_Dynamic::MISC>(light_model_index));
+
+		float light_radius(0.0f);
+
+		[[likely]] if (light_model)
+		{
+			light_radius = XMVectorGetX(XMVector3Length(XMVectorScale(XMLoadFloat3A(&light_model->_Extents), 2.0f))); // hrmmm not sure why this is double of what it should be @todo
+		}
+
+		// create light instances....if not created before
+		for (uint32_t i = 0; i < _numLights; ++i) {
+
+			XMVECTOR const xmPos = next(instance->getLocation3D(), XMLoadFloat3A(&_proxy.bounds.Center), _proxy.bounds.Radius + light_radius, (float)i/(float)(_numLights - 1));
+
+			if (nullptr == _lights[i]) {
+
+				using flags = Volumetric::eVoxelModelInstanceFlags;
+				_lights[i] = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cLightGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(
+					xmPos,
+					Volumetric::eVoxelModel::DYNAMIC::MISC::LIGHT_X1,
+					flags::INSTANT_CREATION | flags::IGNORE_EXISTING);
+			}
+
+			XMStoreFloat3A(&_target[i], xmPos); // new target position to lerp to.
+		}
+
+		// last
+		cImportGameObject::signal(tNow);
+	}
+
+	void cImportGameObject_Static::signal(tTime const& __restrict tNow)  // must be done *after* apply_material
+	{
+		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
+
+		uint32_t const light_model_index(Volumetric::eVoxelModel::DYNAMIC::MISC::LIGHT_X1);
+		auto const* const light_model(Volumetric::getVoxelModel<Volumetric::eVoxelModels_Dynamic::MISC>(light_model_index));
+
+		float light_radius(0.0f);
+
+		[[likely]] if (light_model)
+		{
+			light_radius = XMVectorGetX(XMVector3Length(XMVectorScale(XMLoadFloat3A(&light_model->_Extents), 2.0f))); // hrmmm not sure why this is double of what it should be @todo
+		}
+
+		// create light instances....if not created before
+		for (uint32_t i = 0; i < _numLights; ++i) {
+
+			XMVECTOR const xmPos = next(instance->getLocation3D(), XMLoadFloat3A(&_proxy.bounds.Center), _proxy.bounds.Radius + light_radius, (float)i / (float)(_numLights - 1));
+
+			if (nullptr == _lights[i]) {
+
+				using flags = Volumetric::eVoxelModelInstanceFlags;
+				_lights[i] = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cLightGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(
+					xmPos,
+					Volumetric::eVoxelModel::DYNAMIC::MISC::LIGHT_X1,
+					flags::INSTANT_CREATION | flags::IGNORE_EXISTING);
+			}
+
+			XMStoreFloat3A(&_target[i], xmPos); // new target position to lerp to.
+		}
+
+		// last
+		cImportGameObject::signal(tNow);
 	}
 
 	cImportGameObject_Dynamic::~cImportGameObject_Dynamic()

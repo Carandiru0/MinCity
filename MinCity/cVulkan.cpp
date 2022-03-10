@@ -715,11 +715,11 @@ void cVulkan::CreateUpsampleResources()
 		pm.frontFace(vk::FrontFace::eCounterClockwise);
 
 		pm.blendBegin(VK_TRUE);
-		pm.blendSrcColorBlendFactor(vk::BlendFactor::eOne); // this is pre-multiplied alpha
-		pm.blendDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
+		pm.blendSrcColorBlendFactor(vk::BlendFactor::eOne); // this is pre-multiplied alpha *specific* to handle transmission properly. *do not change* https://patapom.com/topics/Revision2013/Revision%202013%20-%20Real-time%20Volumetric%20Rendering%20Course%20Notes.pdf
+		pm.blendDstColorBlendFactor(vk::BlendFactor::eSrcAlpha);
 		pm.blendColorBlendOp(vk::BlendOp::eAdd);
 		pm.blendSrcAlphaBlendFactor(vk::BlendFactor::eOne);
-		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha);
+		pm.blendDstAlphaBlendFactor(vk::BlendFactor::eSrcAlpha);
 		pm.blendAlphaBlendOp(vk::BlendOp::eAdd);
 		typedef vk::ColorComponentFlagBits ccbf;
 		pm.blendColorWriteMask(ccbf::eR | ccbf::eG | ccbf::eB); // must preserve alpha transparency mask) which is used by overlay pass

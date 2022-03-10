@@ -31,7 +31,7 @@
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-#define LIVESHADER_MODE
+//#define LIVESHADER_MODE
 
 #define DEBUG_SHOW_GUI_WINDOW_BORDERS
 #define DEBUG_DISABLE_MUSIC
@@ -172,7 +172,7 @@ namespace Globals
 								 ZOOM_SPEED = 0.44f;
 
 	static constexpr double const MINZ_DEPTH = (0.1 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
-	static constexpr double const MAXZ_DEPTH = (173.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
+	static constexpr double const MAXZ_DEPTH = (300.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 33;	 // 33ms = 30fps maximum gui update interval when no input is flagging the gui to be updated

@@ -200,6 +200,6 @@ void cPoliceCarGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds co
 
 void cPoliceCarGameObject::CreateCar()
 {
-	cCarGameObject::CreateCar<cPoliceCarGameObject>(Volumetric::eVoxelModels_Indices::POLICE_CAR);
+	cCarGameObject::CreateCar<cPoliceCarGameObject>(Volumetric::eVoxelModel::DYNAMIC::CARS::POLICE);
 }
 

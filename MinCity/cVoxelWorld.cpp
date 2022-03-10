@@ -27,6 +27,7 @@
 #include "tornado.h"
 #include "shockwave.h"
 #include "rain.h"
+#include "cImportGameObject.h"
 
 #ifdef GIF_MODE
 #include "cVideoScreenGameObject.h"
@@ -502,6 +503,8 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 			oCamera.Azimuth = v2_rotation_t( SFM::lerp(oCamera.PrevAzimuthAngle, oCamera.TargetAzimuthAngle, tInvDelta) );
 		}
 	}
+
+	if (eInputEnabledBits::MOUSE_EDGE_SCROLL == (_inputEnabledBits & eInputEnabledBits::MOUSE_EDGE_SCROLL))
 	{
 		// MOUSE-SIDE-SCROLLING //
 		if (eMouseButtonState::RIGHT_PRESSED != _mouseState) { // only if right mouse button is not pressed (dissallow camera rotation+sidescrolling)
@@ -518,7 +521,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 			);
 
 			if (!vScroll.isZero()) {
-				
+
 				_tBorderScroll -= delta();
 				_tBorderScroll = fp_seconds(SFM::max(0.0, _tBorderScroll.count()));
 
@@ -532,6 +535,11 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 				_tBorderScroll = fp_seconds(SFM::min(Iso::CAMERA_SCROLL_DELAY.count(), _tBorderScroll.count()));
 			}
 		}
+	}
+
+	bool bOneButtonDragging(false); // exclusively allow either left dragging or right dragging, not both at the same time, left takes priority. 
+
+	if (eInputEnabledBits::MOUSE_LEFT_DRAG == (_inputEnabledBits & eInputEnabledBits::MOUSE_LEFT_DRAG)) {
 
 		if (eMouseButtonState::LEFT_PRESSED == _mouseState) {  // LEFT DRAGGING //
 
@@ -543,11 +551,15 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 					_vDragLast = _vMouse;
 					_tDragStart = now();
+					bOneButtonDragging = true;
 				}
 			}
-
 		}
-		else if (eMouseButtonState::RIGHT_PRESSED == _mouseState) {  // RIGHT DRAGGING - ROTATION //
+	}
+
+	if (!bOneButtonDragging && eInputEnabledBits::MOUSE_LEFT_DRAG == (_inputEnabledBits & eInputEnabledBits::MOUSE_LEFT_DRAG)) {
+		
+		if (eMouseButtonState::RIGHT_PRESSED == _mouseState) {  // RIGHT DRAGGING - ROTATION //
 
 			if (_bMotionDelta) {
 				  
@@ -558,9 +570,9 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 					_vDragLast = _vMouse;
 					_tDragStart = now();
+					bOneButtonDragging = true;
 				}
 			}
-
 		}
 		
 	}
@@ -633,6 +645,9 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 {
+	if (eInputEnabledBits::KEYS != (_inputEnabledBits & eInputEnabledBits::KEYS))
+		return; // input disabled!
+
 	switch (key)
 	{
 	case GLFW_KEY_SPACE:
@@ -658,6 +673,9 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 
 bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn, bool const bIgnore)
 {
+	if (eInputEnabledBits::MOUSE_MOTION != (_inputEnabledBits & eInputEnabledBits::MOUSE_MOTION))
+		return(false); // input disabled!
+
 	static constexpr float const EPSILON = 0.00001f;
 	XMVECTORF32 const xmEPSILON{ EPSILON, EPSILON, 0.0f, 0.0f };
 
@@ -711,6 +729,9 @@ bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn, bool co
 }
 void cVoxelWorld::OnMouseLeft(int32_t const state)
 {
+	if (eInputEnabledBits::MOUSE_BUTTON_LEFT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_LEFT))
+		return; // input disabled!
+
 	if (eMouseButtonState::RELEASED == state) {
 		
 		_bDraggingMouse = false;
@@ -728,6 +749,9 @@ void cVoxelWorld::OnMouseLeft(int32_t const state)
 }
 void cVoxelWorld::OnMouseRight(int32_t const state)
 {
+	if (eInputEnabledBits::MOUSE_BUTTON_RIGHT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_RIGHT))
+		return; // input disabled!
+
 	if (eMouseButtonState::RELEASED == state) {
 		
 		_bDraggingMouse = false;
@@ -741,13 +765,21 @@ void cVoxelWorld::OnMouseRight(int32_t const state)
 }
 void cVoxelWorld::OnMouseLeftClick()
 {
+	if (eInputEnabledBits::MOUSE_BUTTON_LEFT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_LEFT))
+		return; // input disabled!
+
 	cMinCity::UserInterface->LeftMouseClickAction(XMLoadFloat2A(&_vMouse));
 }
 void cVoxelWorld::OnMouseRightClick()
 {
+	if (eInputEnabledBits::MOUSE_BUTTON_RIGHT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_RIGHT))
+		return; // input disabled!
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
+	if (eInputEnabledBits::MOUSE_SCROLL_WHEEL != (_inputEnabledBits & eInputEnabledBits::MOUSE_SCROLL_WHEEL))
+		return; // input disabled!
+
 	zoomCamera(delta);
 }
 void cVoxelWorld::OnMouseInactive()
@@ -2139,29 +2171,29 @@ namespace // private to this file (anonymous)
 			// required for voxels w/light, voxels w/o light & lights (hidden voxel)
 			XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-			uint32_t const color(oVoxel.index.w);
+			uint32_t const valid_color(oVoxel.index.w);
 
 			bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
 
 			if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
 
-				uint8_t const alpha((color >> 24) & 0xFF);
+				uint8_t const alpha((valid_color >> 24) & 0xFF);
 				bool const transparent(0xFF != alpha);
 
 				uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
 
 				// Build hash //
 				uint32_t hash(0);
+				// ** see uniforms.vert for definition of constants used here **
 
-				// optional hash |= voxel.getAdjacency();				 //           0000 0000 0001 1111
-				hash |= adjacency;
-				// unsupported hash |= (voxel.getOcclusion() << 5);		 //           0000 1111 111x xxxx
-
-				hash |= (uint32_t(emissive) << 12);						 // 0000 0000 0001 xxxx xxxx xxxx
-				hash |= (uint32_t(alpha >> 6) << 13);					 // 0000 0000 011x xxxx xxxx xxxx
+				hash |= adjacency;									//           0000 0000 0001 1111
+				hash |= (emissive << 5);							//           0000 0000 001x xxxx
+				// unsupported hash |= (voxel.Metallic << 6);		// 0000 0000 0000 xxxx x1xx xxxx
+				// unsupported hash |= (voxel.Roughness << 8);		// 0000 0000 0000 1111 Uxxx xxxx
+				hash |= (uint32_t(alpha >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
 
 				XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
-				XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+				XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(valid_color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 				if (transparent) {
 
@@ -2190,7 +2222,7 @@ namespace // private to this file (anonymous)
 			// if voxel is hidden then its just a light
 			if (emissive) {
 
-				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & color);
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & valid_color);
 
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -2631,7 +2663,7 @@ namespace world
 	cVoxelWorld::cVoxelWorld()
 		:
 		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, _sim(nullptr),
-		_vMouse{}, _lastOcclusionQueryValid(false),
+		_vMouse{}, _lastOcclusionQueryValid(false), _inputEnabledBits{},
 		_terrainTempImage(nullptr),
 		_onLoadedRequired(true),
 		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
@@ -2829,6 +2861,9 @@ namespace world
 		case types::game_object_t::SignageGameObject:
 			cSignageGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
 			break;
+		case types::game_object_t::LightGameObject:
+			cLightGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
+			break;
 		}
 
 	}
@@ -2911,11 +2946,11 @@ namespace world
 	cCopterGameObject* const cVoxelWorld::placeCopterInstanceAt(point2D_t const voxelIndex)
 	{
 		// body
-		auto const [hash_parent, instance_parent] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModels_Indices::COPTER_BODY, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE);
+		auto const [hash_parent, instance_parent] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_BODY, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE);
 
 		if (instance_parent) {
 
-			auto const [hash_prop, instance_prop] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModels_Indices::COPTER_PROP, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY);
+			auto const [hash_prop, instance_prop] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_PROP, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY);
 
 			if (instance_prop) {
 				instance_parent->setChild(instance_prop);
@@ -2927,7 +2962,7 @@ namespace world
 #ifndef NDEBUG
 		{
 			FMT_LOG_WARN(VOX_LOG, "placeCopterInstanceAt<{:s}> failed. modelIndex({:d}) of modelGroup({:d}) at voxelIndex({:d},{:d})",
-				"dynamic", Volumetric::eVoxelModels_Indices::COPTER_BODY, Volumetric::eVoxelModels_Dynamic::MISC, voxelIndex.x, voxelIndex.y);
+				"dynamic", Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_BODY, Volumetric::eVoxelModels_Dynamic::MISC, voxelIndex.x, voxelIndex.y);
 		}
 #endif
 		return(nullptr);
@@ -4535,6 +4570,25 @@ namespace world
 				}
 				// update all dynamic/updateable game objects //
 				{
+					// import //
+					{
+						auto it = cImportGameObject_Dynamic::begin();
+						while (cImportGameObject_Dynamic::end() != it) {
+
+							it->OnUpdate(tNow, tDelta);
+							++it;
+						}
+					}
+					{
+						auto it = cImportGameObject_Static::begin();
+						while (cImportGameObject_Static::end() != it) {
+
+							it->OnUpdate(tNow, tDelta);
+							++it;
+						}
+					}
+				}
+				{
 					// traffic controllers - *should be done b4 cars* //
 					auto it = cTrafficControlGameObject::begin();
 					while (cTrafficControlGameObject::end() != it) {
@@ -4580,18 +4634,6 @@ namespace world
 						++it;
 					}
 				}*/
-#ifdef GIF_MODE
-				
-				{
-					auto it = cRockStageGameObject::begin();
-					while (cRockStageGameObject::end() != it) {
-
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
-				}
-#endif
-
 
 				// ---------------------------------------------------------------------------//
 				CleanUpInstanceQueue(); // *** must be done after all game object updates *** //

@@ -20,6 +20,9 @@
 #include "cImportGameObject.h"
 #include <Utility/async_long_task.h>
 #include <Imaging/Imaging/Imaging.h>
+#include "importproxy.h"
+
+
 
 #define NK_IMPLEMENTATION  // the only place this is defined
 #include "nk_include.h"
@@ -1272,6 +1275,15 @@ bool const  cNuklear::UpdateInput()  // returns true on input delta that affects
 	return(::UpdateInput(_ctx, _win, _activeWindowRects, _bModalPrompted));
 }
 
+void cNuklear::InputEnableWorld(uint32_t const bits, bool const bEnable) const // cannot resolve mincity.h and cvoxelworld.h in the header file. work-around so it can be access from template function enableWindow()
+{
+	if (bEnable) {
+		MinCity::VoxelWorld->InputEnable<true>(bits);
+	}
+	else {
+		MinCity::VoxelWorld->InputEnable<false>(bits);
+	}
+}
 #ifdef DEBUG_LUT_WINDOW
 void cNuklear::draw_lut_window(tTime const& __restrict tNow, uint32_t const height_offset)
 {
@@ -2367,7 +2379,8 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 				if ((model_dynamic || model_static) && voxelModel.model) {
 
 					using colormap = vector<Volumetric::ImportColor>;
-					static colormap::iterator previous(colors.end());
+
+					auto& previous(world::cImportGameObject::getProxy().previous);
 
 					{
 						auto& colors = world::cImportGameObject::getProxy().colors;
@@ -2410,7 +2423,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 							MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(100.0f * (1.0f - (colors.size() * world::cImportGameObject::getProxy().inv_start_color_count))));
 
 							colors.erase(previous); // remove previously selected color
-							previous = colors.end(); // must reset static var for re-entry
+							previous = colors.end(); // must reset
 
 							if (colors.empty()) { // last-one ?
 
@@ -2469,8 +2482,14 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						}
 
 						if (bApply) {
-							world::cImportGameObject::getProxy().apply_material(iter_color);
-							world::cImportGameObject::getProxy().active_color = *iter_color;
+
+							static constexpr fp_seconds const tRateLimit(milliseconds(250));
+							constinit static tTime tLast{ zero_time_point };
+
+							if (fp_seconds(now() - tLast) > tRateLimit) {
+								world::cImportGameObject::getProxy().apply_material(iter_color);
+								tLast = now();
+							}
 						}
 
 						nk_style_pop_font(_ctx);
@@ -2624,12 +2643,13 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						// will now show the import window and close this modal prompt
 						// add gameobject for import, load the colormap into importproxy																						// safe down-cast, memory pointed to by the pointer is allocated as such, and previously a pointer of that type.
 						if (voxelModel.dynamic) {
-							model_dynamic = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cImportGameObject_Dynamic, true>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<true> const* const>(voxelModel.model), common_flags);
+							model_dynamic = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cImportGameObject_Dynamic, true>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<true> const* const>(voxelModel.model), common_flags);
 						}
 						else {
-							model_static = MinCity::VoxelWorld->placeNonUpdateableInstanceAt<world::cImportGameObject_Static, false>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<false> const* const>(voxelModel.model), common_flags);
+							model_static = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cImportGameObject_Static, false>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<false> const* const>(voxelModel.model), common_flags);
 						}
 
+						// setup the scene //
 						_uiWindowEnabled = eWindowType::DISABLED; // workaround pause lock-out temporarilly
 						MinCity::Pause(false);
 						_uiWindowEnabled = eWindowType::IMPORT;
