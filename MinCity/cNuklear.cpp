@@ -2931,14 +2931,14 @@ void  cNuklear::UpdateGUI()
 
 	int32_t windowHeight = 240;
 	if (bCameraOpen | bPerformanceOpen | bLightmapOpen | bInstancesOpen | bVoxelsOpen) {
-		windowHeight = SFM::max(windowHeight, 660);
+		windowHeight = SFM::max(windowHeight, 800);
 	}
 
 	constexpr eWindowName const windowName(eWindowName::WINDOW_MINCITY);
 
 	if (nk_begin_titled(_ctx, windowName._to_string(), 
-		fmt::format(FMT_STRING("MINCITY  ({:.2f} s -- {:.1f} ms)"), fp_seconds(tLocal - start()).count(), fp_seconds(MinCity::Vulkan->frameTimeAverage()).count() * 1000.0f).c_str(),
-		nk_recti(450, 50, 600, windowHeight),
+		fmt::format(FMT_STRING("MINCITY     {:.2f}S  {:.1f}MS"), fp_seconds(tLocal - start()).count(), fp_seconds(MinCity::Vulkan->frameTimeAverage()).count() * 1000.0f).c_str(),
+		nk_recti(450, 50, 700, windowHeight),
 		(!bMainWindowStartOpen ? NK_WINDOW_MINIMIZED : NK_WINDOW_BORDER) |
 		NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
 	{
@@ -2947,6 +2947,8 @@ void  cNuklear::UpdateGUI()
 
 			AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window
 		}
+		nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
+
 		//if (nk_tree_push(_ctx, NK_TREE_TAB, "Minimap", NK_MINIMIZED))
 		//{
 		//	nk_layout_row_static(_ctx, guiImages._miniMapImage->h, guiImages._miniMapImage->w, 1);
@@ -3090,7 +3092,7 @@ void  cNuklear::UpdateGUI()
 			tLastInterval = high_resolution_clock::now();
 		}
 		
-		if (nk_tree_push(_ctx, NK_TREE_TAB, "Performance", NK_MAXIMIZED))
+		if (nk_tree_push(_ctx, NK_TREE_TAB, "PERFORMANCE", NK_MAXIMIZED))
 		{
 			nk_layout_row_begin(_ctx, NK_STATIC, 200, 1);
 			nk_layout_row_push(_ctx, 750);
@@ -3148,9 +3150,9 @@ void  cNuklear::UpdateGUI()
 
 			nk_layout_row_begin(_ctx, NK_STATIC, 32, 2);
 
-			nk_layout_row_push(_ctx, 375);
+			nk_layout_row_push(_ctx, 700);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Grid Duration> {:d} us"), duration_cast<microseconds>(resolvedResult.grid_duration).count());
+			szText = fmt::format(FMT_STRING("GRID DURATION> {:d} US"), duration_cast<microseconds>(resolvedResult.grid_duration).count());
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
@@ -3160,61 +3162,70 @@ void  cNuklear::UpdateGUI()
 
 			nk_layout_row_push(_ctx, 375);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Operations> {:d}"), resolvedResult.total_operations);
+			szText = fmt::format(FMT_STRING("OPERATIONS> {:d}"), resolvedResult.total_operations);
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
 			nk_layout_row_push(_ctx, 375);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Threads> {:d}"), resolvedResult.getThreadCount());
-			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
-			NK_POP_COLOR(_ctx);
-
-			nk_layout_row_end(_ctx);
-
-			nk_layout_row_begin(_ctx, NK_STATIC, 32, 2);
-
-			nk_layout_row_push(_ctx, 375);
-			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Average Op Duration> {:d} us"), duration_cast<microseconds>(resolvedResult.avg_operation_duration).count());
-			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
-			NK_POP_COLOR(_ctx);
-
-			nk_layout_row_push(_ctx, 375);
-			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Max Op Duration> {:d} us"), duration_cast<microseconds>(resolvedResult.max_operation_duration).count());
+			szText = fmt::format(FMT_STRING("THREADS> {:d}"), resolvedResult.getThreadCount());
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
 			nk_layout_row_end(_ctx);
 
-			nk_layout_row_begin(_ctx, NK_STATIC, 32, 2);
+			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
 
-			nk_layout_row_push(_ctx, 375);
+			nk_layout_row_push(_ctx, 700);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Average Iterations> {:d}"), resolvedResult.avg_iterations);
+			szText = fmt::format(FMT_STRING("AVERAGE OP DURATION> {:d} US"), duration_cast<microseconds>(resolvedResult.avg_operation_duration).count());
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
-			nk_layout_row_push(_ctx, 375);
+			nk_layout_row_end(_ctx);
+			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+			nk_layout_row_push(_ctx, 700);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Max Iterations> {:d}"), resolvedResult.max_iterations);
+			szText = fmt::format(FMT_STRING("MAX OP DURATION> {:d} US"), duration_cast<microseconds>(resolvedResult.max_operation_duration).count());
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
 			nk_layout_row_end(_ctx);
 
-			nk_layout_row_begin(_ctx, NK_STATIC, 32, 2);
+			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
 
-			nk_layout_row_push(_ctx, 375);
+			nk_layout_row_push(_ctx, 700);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Average Iteration Duration> {:d} us"), duration_cast<microseconds>(resolvedResult.avg_iteration_duration).count());
+			szText = fmt::format(FMT_STRING("AVERAGE ITERATIONS> {:d}"), resolvedResult.avg_iterations);
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
-			nk_layout_row_push(_ctx, 375);
+			nk_layout_row_end(_ctx);
+			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+			nk_layout_row_push(_ctx, 700);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
-			szText = fmt::format(FMT_STRING("Max Iteration Duration> {:d} us"), duration_cast<microseconds>(resolvedResult.max_iteration_duration).count());
+			szText = fmt::format(FMT_STRING("MAX ITERATIONS> {:d}"), resolvedResult.max_iterations);
+			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+			NK_POP_COLOR(_ctx);
+
+			nk_layout_row_end(_ctx);
+
+			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+			nk_layout_row_push(_ctx, 700);
+			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
+			szText = fmt::format(FMT_STRING("AVERAGE ITERATION DURATION> {:d} US"), duration_cast<microseconds>(resolvedResult.avg_iteration_duration).count());
+			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+			NK_POP_COLOR(_ctx);
+
+			nk_layout_row_end(_ctx);
+			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+			nk_layout_row_push(_ctx, 700);
+			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
+			szText = fmt::format(FMT_STRING("MAX ITERATION DURATION> {:d} US"), duration_cast<microseconds>(resolvedResult.max_iteration_duration).count());
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 			NK_POP_COLOR(_ctx);
 
@@ -3229,7 +3240,7 @@ void  cNuklear::UpdateGUI()
 #endif
 
 #ifndef NDEBUG
-		if (nk_tree_push(_ctx, NK_TREE_TAB, "Camera", NK_MINIMIZED))
+		if (nk_tree_push(_ctx, NK_TREE_TAB, "CAMERA", NK_MINIMIZED))
 		{
 			XMFLOAT2A vIsoCenterOffset;
 			std::string szText;
@@ -3241,7 +3252,7 @@ void  cNuklear::UpdateGUI()
 			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
 			nk_layout_row_push(_ctx, 550);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-			nk_label(_ctx, "x axis:", NK_TEXT_LEFT);
+			nk_label(_ctx, "X AXIS:", NK_TEXT_LEFT);
 			NK_POP_COLOR(_ctx);
 			nk_layout_row_end(_ctx);
 
@@ -3260,7 +3271,7 @@ void  cNuklear::UpdateGUI()
 			nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
 			nk_layout_row_push(_ctx, 550);
 			NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-			nk_label(_ctx, "z axis:", NK_TEXT_LEFT);
+			nk_label(_ctx, "Z AXIS:", NK_TEXT_LEFT);
 			NK_POP_COLOR(_ctx);
 			nk_layout_row_end(_ctx);
 
@@ -3293,7 +3304,7 @@ void  cNuklear::UpdateGUI()
 				static constexpr uint32_t const COLOR_REFRESH = 120,
 					MINMAX_REFRESH = COLOR_REFRESH * 10;
 				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-				nk_label(_ctx, "voxel camera origin offset:", NK_TEXT_LEFT);
+				nk_label(_ctx, "VOXEL CAMERA ORIGIN OFFSET:", NK_TEXT_LEFT);
 				NK_POP_COLOR(_ctx);
 
 				nk_layout_row_dynamic(_ctx, 25, 2);
@@ -3372,24 +3383,24 @@ void  cNuklear::UpdateGUI()
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				nk_layout_row_dynamic(_ctx, 25, 4);
-				szText = fmt::format(FMT_STRING("min({:f})"), vMin.x);
+				szText = fmt::format(FMT_STRING("MIN({:f})"), vMin.x);
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMinX));
 
-				szText = fmt::format(FMT_STRING("max({:f})"), vMax.x);
+				szText = fmt::format(FMT_STRING("MAX({:f})"), vMax.x);
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMaxX));
 
 
-				szText = fmt::format(FMT_STRING("min({:f})"), vMin.y);
+				szText = fmt::format(FMT_STRING("MIN({:f})"), vMin.y);
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMinY));
 
-				szText = fmt::format(FMT_STRING("max({:f})"), vMax.y);
+				szText = fmt::format(FMT_STRING("MAX({:f})"), vMax.y);
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMaxY));
 			}
 
 			nk_layout_row_dynamic(_ctx, 20, 1);
 			{
 				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-				nk_label(_ctx, "voxel world origin:", NK_TEXT_LEFT);
+				nk_label(_ctx, "VOXEL WORLD ORIGIN:", NK_TEXT_LEFT);
 				NK_POP_COLOR(_ctx);
 
 				nk_layout_row_dynamic(_ctx, 25, 2);
@@ -3411,7 +3422,7 @@ void  cNuklear::UpdateGUI()
 			nk_layout_row_dynamic(_ctx, 20, 1);
 			{
 				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-				nk_label(_ctx, "voxel mouse hover index:", NK_TEXT_LEFT);
+				nk_label(_ctx, "VOXEL MOUSE HOVER INDEX:", NK_TEXT_LEFT);
 				NK_POP_COLOR(_ctx);
 
 				nk_layout_row_dynamic(_ctx, 32, 2);
@@ -3431,14 +3442,14 @@ void  cNuklear::UpdateGUI()
 			//NK_POP_FONT(_ctx);
 		} // bCameraOpen
 
-		if (nk_tree_push(_ctx, NK_TREE_TAB, "Instances", NK_MINIMIZED))
+		if (nk_tree_push(_ctx, NK_TREE_TAB, "INSTANCES", NK_MINIMIZED))
 		{
 			nk_layout_row_dynamic(_ctx, 32, 3);
 			{
 				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-				nk_label(_ctx, "dynamic", NK_TEXT_LEFT);
-				nk_label(_ctx, "static", NK_TEXT_LEFT);
-				nk_label(_ctx, "root indices", NK_TEXT_LEFT);
+				nk_label(_ctx, "DYNAMIC", NK_TEXT_LEFT);
+				nk_label(_ctx, "STATIC", NK_TEXT_LEFT);
+				nk_label(_ctx, "ROOT INDICES", NK_TEXT_LEFT);
 				NK_POP_COLOR(_ctx);
 
 				nk_layout_row_dynamic(_ctx, 32, 3);
@@ -3467,15 +3478,15 @@ void  cNuklear::UpdateGUI()
 			bInstancesOpen = false;
 		}
 
-		if (nk_tree_push(_ctx, NK_TREE_TAB, "Voxels", NK_MINIMIZED))
+		if (nk_tree_push(_ctx, NK_TREE_TAB, "VOXELS", NK_MINIMIZED))
 		{
 			nk_layout_row_dynamic(_ctx, 32, 4);
 			{
 				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(127, 0, 255));
-				nk_label(_ctx, "dynamic", NK_TEXT_LEFT);
-				nk_label(_ctx, "static", NK_TEXT_LEFT);
-				nk_label(_ctx, "terrain", NK_TEXT_LEFT);
-				nk_label(_ctx, "light", NK_TEXT_LEFT);
+				nk_label(_ctx, "DYNAMIC", NK_TEXT_LEFT);
+				nk_label(_ctx, "STATIC", NK_TEXT_LEFT);
+				nk_label(_ctx, "TERRAIN", NK_TEXT_LEFT);
+				nk_label(_ctx, "LIGHT", NK_TEXT_LEFT);
 				NK_POP_COLOR(_ctx);
 
 				nk_layout_row_dynamic(_ctx, 32, 4);
@@ -3510,6 +3521,7 @@ void  cNuklear::UpdateGUI()
 		}
 #endif
 		bMainWindowStartOpen = true;
+		nk_style_pop_font(_ctx);
 	}
 	else {
 		bMainWindowStartOpen = false;  // reset state
@@ -3533,7 +3545,7 @@ void  cNuklear::UpdateGUI()
 		nk_style_push_color(_ctx, &_ctx->style.window.header.label_normal, nk_rgb(255, 255, 255));
 
 		constexpr eWindowName const windowName(eWindowName::WINDOW_TOP_DEBUG);
-		if (nk_begin_titled(_ctx, windowName._to_string(), szDebugMessage.c_str(), nk_rect(0, 0, Globals::DEFAULT_SCREEN_WIDTH, 24),
+		if (nk_begin_titled(_ctx, windowName._to_string(), stringconv::toUpper(szDebugMessage).c_str(), nk_rect(0, 0, Globals::DEFAULT_SCREEN_WIDTH, 24),
 			NK_WINDOW_NO_INPUT | NK_WINDOW_BACKGROUND |
 			NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE ))
 		{

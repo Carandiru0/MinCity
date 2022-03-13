@@ -1049,8 +1049,9 @@ namespace world
 
 					mini::bits->set_bit(index);
 
+					auto const* const miniVoxel = getMiniVoxelAt(voxelIndex);
 					setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
-						&(*mini::voxels.emplace_back(xmLocation, uvIndex, color, flags, getMiniVoxelAt(voxelIndex)))));
+						&(*mini::voxels.emplace_back(xmLocation, uvIndex, color, flags, miniVoxel))));
 
 					return(true); // visible
 				}
@@ -2549,11 +2550,14 @@ namespace // private to this file (anonymous)
 							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
 
 							Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
-							++pMiniVoxels; // sequentially access for best cache prediction
-
+							
 							if (nullptr != pMiniVoxel) { // mini-voxels, if they exist for this grid cell, must be rendered. The minivoxels are dynamic and cleared / added every frame. The frustum check happens at a different location (addVoxel). All added mini voxels have already benn frustum checked.
 								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
+								// clear minivoxel after render is complete - saves clearing the whole grid - only clears what is used!
+								*const_cast<Iso::mini::Voxel const** __restrict>(pMiniVoxels) = nullptr; // safe cast - no tricks - clears a pointer to the data, no need to clear the actual data
 							}
+
+							++pMiniVoxels; // sequentially access for best cache prediction
 						} // for
 
 					} // for
@@ -2807,13 +2811,13 @@ namespace world
 			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			the::temp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			 
-			__memclr_stream<CACHE_LINE_BYTES>(the::grid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			__memclr_stream<CACHE_LINE_BYTES>(the::temp._protected, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			memset(the::grid._protected, 0, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			memset(the::temp._protected, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			
 			mini::voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 			mini::bits = volume::create();
-			clearMiniVoxels();
+			clearMiniVoxels(true);
 
 			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::grid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
 			FMT_LOG(VOX_LOG, "mini grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::temp[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
@@ -3573,10 +3577,6 @@ namespace world
 
 	void cVoxelWorld::RenderTask_Normal(uint32_t const resource_index) const // OPACITY is enabled for update, and reources are mapped during normal rendering
 	{
-		// clears w/o requirement of being mapped //
-		_OpacityMap.clear();
-
-
 		// mapping //
 		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.stagingBuffer[resource_index].map();
 		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Terrain(MappedVoxels_Terrain_Start);
@@ -3606,21 +3606,25 @@ namespace world
 		// mapped clears // parallel = higher bandwidth achieved //
 		tbb::parallel_invoke(
 			[&] {
+				// clears w/o requirement of being mapped //
+				_OpacityMap.clear();
+			},
+			[&] {
 				__memclr_stream<32>(MappedVoxels_Terrain_Start, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
 			},
-			[&] {
+				[&] {
 				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
 			},
-			[&] {
+				[&] {
 				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
 			},
-			[&] {
+				[&] {
 				__memclr_stream<32>(MappedVoxels_Static_Start, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
 			},
-			[&] {
+				[&] {
 				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
 			},
-			[&] {
+				[&] {
 				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
 			});
 		
@@ -4754,19 +4758,19 @@ namespace world
 	}
 
 	// voxel painting
-	void cVoxelWorld::clearMiniVoxels()
+	void cVoxelWorld::clearMiniVoxels(bool const bPaused)
 	{
-		tbb::parallel_invoke(
-			[&] {
-				__memclr_stream<CACHE_LINE_BYTES>(mini::bits->data(), mini::bits->size());
-			},
-			[&] {
-				__memclr_stream<CACHE_LINE_BYTES>(the::temp, sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			},
-			[&] {
-				mini::voxels.clear();
+		[[unlikely]] if (bPaused) {
+			// **bugfix - because nothing is rendered while the window is not active (user alt-tabbed, etc) the "reset" that each minivoxel does for it self after being rendered never happens.
+			// this results in an evergrowing linked list, resulting in undefined behaviour. So while paused this works around that by clearing the pointers to the vector of minivoxels.
+			// so there is no separate clear while not paused - which is the normal path.
+			memset(the::temp, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE); // set all pointers to nullptr
+			// clearing the vector must follow
+		}
 
-			});
+		mini::voxels.clear(); // this cleverely only clears the count, not the actual data in the vector. so any pointers to the data, which exist, are invalid and point to undefined data.
+							  // the bug actually still pointed to the old data (not zeroed) and resulted in undefined behaviour. That behaviour resulted in voxels being added to existing voxels every frame, boom was an ~indefinite loop of voxels to traverse in the linked list.
+		mini::bits->clear();
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)

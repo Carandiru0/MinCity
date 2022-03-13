@@ -93,6 +93,11 @@ static void InitializeDebugVariables()
 
 #endif
 
+size_t const hardware_concurrency() // access helper (global function)
+{
+	return(MinCity::hardware_concurrency());
+}
+
 void cMinCity::LoadINI()
 {
 	wchar_t const* const szINIFile(L"./MinCity.ini");
@@ -686,7 +691,7 @@ void cMinCity::UpdateWorld()
 	}
 
 	// *first*
-	VoxelWorld->clearMiniVoxels(); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface)
+	VoxelWorld->clearMiniVoxels(bPaused | !MinCity::Vulkan->isRenderingEnabled()); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface) *bugfix - DEBUG_DISALLOW_PAUSE_FOCUS_LOST causes major issue. To still allow debugging of normal (unpaused) state, isRenderingEnabled is added here to solve the problem with clearing minivoxels properly while window is "inactive" or focus is lost.
 
 	// *second*
 	bool const bInputDelta = Nuklear->UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE))); // always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary
@@ -1285,12 +1290,14 @@ __declspec(noinline) void cMinCity::CriticalCleanup()
 }
 
 int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
-					    _In_opt_ HINSTANCE hPrevInstance,
-					    _In_ LPTSTR    lpCmdLine,
-					    _In_ int       nCmdShow)
+					    [[maybe_unused]] _In_opt_ HINSTANCE hPrevInstance,
+						[[maybe_unused]] _In_ LPTSTR lpCmdLine,
+						[[maybe_unused]] _In_ int nCmdShow)
  
 {  
-	UNREFERENCED_PARAMETER(hPrevInstance);	
+	(void)UNREFERENCED_PARAMETER(hPrevInstance);
+	(void)UNREFERENCED_PARAMETER(lpCmdLine);
+	(void)UNREFERENCED_PARAMETER(nCmdShow);
 	g_hInstance = hInstance;
 
 	cMinCity::CriticalInit();

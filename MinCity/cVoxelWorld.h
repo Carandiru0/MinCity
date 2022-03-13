@@ -91,11 +91,10 @@ namespace world
 		point2D_t const __vectorcall		getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const	__vectorcall		getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
 
-		v2_rotation_t const&		getAzimuth() const;
-		float const					getZoomFactor() const;
-		UniformState const& __vectorcall getCurrentState() const { return(_currentState); }
-
-
+		v2_rotation_t const&				getAzimuth() const;
+		float const							getZoomFactor() const;
+		UniformState const& __vectorcall	getCurrentState() const { return(_currentState); }
+		
 		// Accessors
 		Volumetric::voxelOpacity const& __restrict				getVolumetricOpacity() const { return(_OpacityMap); }
 
@@ -272,7 +271,7 @@ namespace world
 		void destroyVoxelModelInstance(uint32_t const hash);  // concurrency safe
 		void destroyImmediatelyVoxelModelInstance(uint32_t const hash);  // not concurrency safe *** (public) // typically instances destroy themselves asynchronously, this is for special purposes
 
-		void clearMiniVoxels();
+		void clearMiniVoxels(bool const bPaused);
 		void CleanUp();
 
 		size_t const numRootIndices() const { return(_hshVoxelModelRootIndex.size()); }

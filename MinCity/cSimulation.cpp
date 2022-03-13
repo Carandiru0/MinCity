@@ -163,10 +163,10 @@ static void __vectorcall generate(rect2D_t const simArea, Iso::Voxel const* cons
 	
 	// clear all zone occupancy grids
 	for (uint32_t i = 0; i < 3; ++i) {
-		__memclr_stream<CACHE_LINE_BYTES>(packing::theZone[i], Iso::WORLD_GRID_SIZE * sizeof(bit_row<Iso::WORLD_GRID_SIZE>)); // reset
+		memset(packing::theZone[i], 0, Iso::WORLD_GRID_SIZE * sizeof(bit_row<Iso::WORLD_GRID_SIZE>)); // reset
 	}
 	// clear all road occupancy grid
-	__memclr_stream<CACHE_LINE_BYTES>(packing::theRoad, Iso::WORLD_GRID_SIZE * sizeof(bit_row<Iso::WORLD_GRID_SIZE>)); // reset
+	memset(packing::theRoad, 0, Iso::WORLD_GRID_SIZE * sizeof(bit_row<Iso::WORLD_GRID_SIZE>)); // reset
 
 	//for (uint32_t y = simArea.top; y < simArea.bottom; ++y) {
 	//

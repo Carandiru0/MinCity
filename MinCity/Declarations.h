@@ -29,17 +29,18 @@ namespace VertexDecl
 		__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, uint32_t const hash) noexcept
 			: worldPos(XMVectorSetW(worldPos_, SFM::uintBitsToFloat(hash))), uv_vr(uv_vr_)
 		{}
-		__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_vr_) noexcept
-			: worldPos(worldPos_), uv_vr(uv_vr_)
-		{}
+		//__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_vr_) noexcept
+		//	: worldPos(worldPos_), uv_vr(uv_vr_)
+		//{}
 		VoxelNormal() = default;
+		__forceinline __vectorcall VoxelNormal(VoxelNormal&& relegate) noexcept = default;
 		__forceinline void __vectorcall operator=(VoxelNormal&& relegate) noexcept {
 			worldPos = std::move(relegate.worldPos);
 			uv_vr = std::move(relegate.uv_vr);
 		}
-	
-		VoxelNormal(VoxelNormal const&) = default;
+		
 	private:
+		VoxelNormal(VoxelNormal const&) = delete;
 		VoxelNormal& operator=(VoxelNormal const&) = delete;
 	};
 	struct no_vtable alignas(16) VoxelDynamic : public VoxelNormal {
@@ -50,17 +51,16 @@ namespace VertexDecl
 			: VoxelNormal(worldPos_, uv_vr_, hash), orient_reserved(orient_reserved_)
 		{}
 		VoxelDynamic() = default;
-		__forceinline __vectorcall VoxelDynamic(VoxelDynamic&& relegate) noexcept
-			: VoxelNormal(worldPos, uv_vr), orient_reserved(std::move(relegate.orient_reserved))
-		{}
+		__forceinline __vectorcall VoxelDynamic(VoxelDynamic&& relegate) noexcept = default;
 		__forceinline void __vectorcall operator=(VoxelDynamic&& relegate) noexcept {
 
-			((VoxelNormal* const)this)->operator=(std::forward<VoxelDynamic&&>(relegate));
+			worldPos = std::move(relegate.worldPos);
+			uv_vr = std::move(relegate.uv_vr);
 			orient_reserved = std::move(relegate.orient_reserved);
 		}
-	
-		VoxelDynamic(VoxelDynamic const&) = default;
+		
 	private:
+		VoxelDynamic(VoxelDynamic const&) = delete;
 		VoxelDynamic& operator=(VoxelDynamic const&) = delete;
 	};
 

@@ -6,8 +6,8 @@
 
 BETTER_ENUM(eThreadBatchGrainSize, uint32_t const,	// batch (*minimums*) sizes for major tbb parallel loops, representing minimum granularity of tasks in 2D or 1D
 
-	GRID_RENDER_2D = 16U, // <--- this includes ground, is 2 dimensional and should be small (auto-partitioning - load balanced)
-	MODEL = 64U,		 // minimum voxels processed in a single task, will be a lot larger as is split uniformly across affinity
+	GRID_RENDER_2D = 4U, // <--- this includes ground, is 2 dimensional and should be small (auto-partitioning - load balanced)
+	MODEL = 256U,		 // minimum voxels processed in a single task, will be a lot larger as is split uniformly across affinity
 	RADIAL = 32U,		 // ""        ""      ""     for a row in a single task, adaptively larger based on row size and is split uniformly across affinity
 	GEN_PLOT = 1U		 // minimum unit for auto partitioner - *bugfix: must be equal to one otherwise buildings on plot intersect each other.
 );

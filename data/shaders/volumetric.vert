@@ -16,13 +16,13 @@ writeonly layout(location = 0) out streamOut
 // "World Visible Volume"			 // xyz
 layout (constant_id = 0) const float WorldDimensions = 0.0f;
 
-const vec2 resolution = vec2(1400, 1040);
 void main() {
  			
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 
 	precise vec3 volume_translation = vec3(WorldDimensions * 0.5f, WorldDimensions, WorldDimensions * 0.5f);
-	volume_translation = -0.5f - (volume_translation - inPos.xyz); // this perfectly aligns the center of the volume *do not change*
+
+	volume_translation = (-0.5f - (volume_translation - inPos.xyz)) + vec3(-0.25f,-0.25f,0.25f); // this perfectly aligns the center of the volume *do not change* *verified*
 
 	precise vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 

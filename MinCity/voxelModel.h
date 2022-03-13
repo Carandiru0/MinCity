@@ -204,7 +204,7 @@ namespace voxB
 			: x(Coord.x), y(Coord.y), z(Coord.z),
 				Left(0 != (BIT_ADJ_LEFT & Adj)), Right(0 != (BIT_ADJ_RIGHT & Adj)), Front(0 != (BIT_ADJ_FRONT & Adj)),
 			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)),
-				Hidden(0), Reserved(0),
+				Hidden(0), Light(0), Reserved(0),
 				Color(inColor), Video(0), Emissive(0), Transparent(0), Metallic(0), Roughness(0)
 		{}
 		voxelDescPacked() = default;
@@ -292,7 +292,7 @@ namespace voxB
 			if (nullptr != src._Voxels) {
 
 				_Voxels = (voxelDescPacked* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, alignof(voxelDescPacked)); // matches voxBinary usage (alignment)
-				__memcpy_stream<16>((void* __restrict)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
+				memcpy((void* __restrict)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
 			}
 		}
 
