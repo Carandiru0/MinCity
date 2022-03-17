@@ -172,7 +172,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
 			
-		auto const [quadrant_visibility, width] = gui::draw_string(axis, xmOrigin, origin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
+		auto const [quadrant_visibility, width] = gui::draw_string(axis, xmOrigin, color, gui::flags::emissive, "${:d}", total_cost.amount); // abgr - rgba backwards
 
 		// checking required next frame?
 		bFindMaxVisibility = (quadrant_visibility < MIN_VISIBILITY);
@@ -185,7 +185,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
-		gui::draw_string(gui::axis::x, xmOrigin, origin, color, gui::flags::emissive, "{:.{}f}", quadrant_visibility, 1); // abgr - rgba backwards
+		gui::draw_string(gui::axis::x, xmOrigin, color, gui::flags::emissive, "{:.{}f}", quadrant_visibility, 1); // abgr - rgba backwards
 
 		/*
 		static constexpr fp_seconds const

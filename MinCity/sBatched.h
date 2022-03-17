@@ -46,7 +46,7 @@ struct sBatched
 		T* __restrict outStream = atomic_mem_ptr.fetch_and_add<tbb::release>(count);
 #pragma loop( ivdep )
 		for (uint32_t i = 0; i < count; ++i) {
-			__streaming_store(outStream, std::forward<T const&& __restrict>(data_set[i]));
+			__streaming_store(outStream, data_set[i]);
 			++outStream;
 		}
 		Count = 0;
@@ -67,7 +67,7 @@ struct sBatched
 		uint32_t const count(Count);
 #pragma loop( ivdep )
 		for (uint32_t i = 0; i < count; ++i) {
-			__streaming_store(mem_ptr, std::forward<T const&& __restrict>(data_set[i]));
+			__streaming_store(mem_ptr, data_set[i]);
 			++mem_ptr;
 		}
 		Count = 0;

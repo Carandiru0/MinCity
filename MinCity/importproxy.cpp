@@ -26,8 +26,8 @@ namespace Volumetric
 	{
 		if (colors.end() != iter_current_color) {
 
-			uvec4_v xmMin(UINT32_MAX, UINT32_MAX, UINT32_MAX, 0),
-				    xmMax(0);
+			ivec4_v mini(INT32_MAX, INT32_MAX, INT32_MAX),
+				    maxi(INT32_MIN, INT32_MIN, INT32_MIN);
 
 			uint32_t numEmissive(0), numTransparent(0); // must be updating the whole count
 
@@ -43,8 +43,8 @@ namespace Volumetric
 					pVoxels->Hidden = false; // always false here on output
 
 					__m128i const xmPosition(pVoxels->getPosition());
-					xmMin.v = SFM::min(xmMin.v, xmPosition);
-					xmMax.v = SFM::max(xmMax.v, xmPosition);
+					mini.v = SFM::min(mini.v, xmPosition);
+					maxi.v = SFM::max(maxi.v, xmPosition);
 				}
 
 				numEmissive += (uint32_t)pVoxels->Emissive;
@@ -57,10 +57,11 @@ namespace Volumetric
 			model->_numVoxelsEmissive = numEmissive;
 			model->_numVoxelsTransparent = numTransparent;
 
-			// Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis
-			XMVECTOR xmDir(XMVectorSubtract(xmMax.v4f(), xmMin.v4f()));
-			XMStoreFloat3A(&bounds.Center, XMVectorScale(xmDir, 0.5f));
-			XMStoreFloat(&bounds.Radius, XMVectorScale(XMVector3Length(xmDir), 0.5f));
+			XMVECTOR const xmMin(mini.v4f()), xmMax(maxi.v4f());
+			XMVECTOR const xmExtent(XMVectorScale(XMVectorSubtract(xmMax, xmMin), 0.5f));
+
+			XMStoreFloat3A(&bounds.Extents, XMVectorScale(XMVectorAbs(xmExtent), Iso::MINI_VOX_STEP));
+			XMStoreFloat3A(&bounds.Center, XMVectorZero());
 
 			active_color = *iter_current_color;
 

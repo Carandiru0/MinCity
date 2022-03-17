@@ -111,6 +111,7 @@ namespace world
 		void XM_CALLCONV translateCameraOrient(FXMVECTOR const xmDisplacement);
 		void resetCameraAngleZoom(); // gradual over time
 		void resetCamera(); // immediatte
+		void setCameraTurnTable(bool const enable);
 
 		// Main Methods //
 		void LoadTextures(); // 1st
@@ -372,7 +373,7 @@ namespace world
 		uint32_t					_inputEnabledBits;
 		bool						_bMotionInvalidate = false, _bMotionDelta = false;
 		bool						_bDraggingMouse = false;
-
+		bool						_bCameraTurntable = false;
 		bool						_onLoadedRequired;
 
 		sExplosionInstance*			_activeExplosion;

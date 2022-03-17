@@ -61,7 +61,7 @@ namespace Volumetric
 		ImportColor			active_color;
 		float				inv_start_color_count;
 
-		DirectX::BoundingSphere bounds;
+		BoundingBox			bounds;
 
 		void reset(world::cImportGameObject* const game_object_);
 		void apply_material(colormap::iterator const& iter_current_color);

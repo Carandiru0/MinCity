@@ -150,12 +150,12 @@ namespace UniformDecl
 } // end ns UniformDecl
 
 // special functions for declaration streaming
-INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const&& __restrict src)
+INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const& __restrict src)
 {
 	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
 	_mm256_stream_ps((float* const __restrict)std::assume_aligned<32>(dest), _mm256_set_m128(src.uv_vr, src.worldPos));
 }
-INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* __restrict dest, VertexDecl::VoxelDynamic const&& __restrict src)
+INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* __restrict dest, VertexDecl::VoxelDynamic const& __restrict src)
 {
 	dest = std::assume_aligned<16>(dest);
 

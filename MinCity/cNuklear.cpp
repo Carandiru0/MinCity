@@ -2345,7 +2345,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 		if (nk_begin(_ctx, windowName._to_string(),
 			bounds,
-			NK_TEMP_WINDOW_BORDER | NK_WINDOW_SCROLL_AUTO_HIDE))
+			NK_TEMP_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
 		{
 			struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
 
@@ -2483,99 +2483,10 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 						if (bApply) {
 
-							static constexpr fp_seconds const tRateLimit(milliseconds(250));
-							constinit static tTime tLast{ zero_time_point };
-
-							if (fp_seconds(now() - tLast) > tRateLimit) {
-								world::cImportGameObject::getProxy().apply_material(iter_color);
-								tLast = now();
-							}
+							world::cImportGameObject::getProxy().apply_material(iter_color);
 						}
 
 						nk_style_pop_font(_ctx);
-					}
-
-					nk_layout_row_dynamic(_ctx, 40, 4);
-
-					nk_spacing(_ctx, 3);
-
-					bool hovered(false);
-
-					bool const fold_disabled(world::cImportGameObject::getProxy().colors.size() <= 1);
-
-					if (fold_disabled) {
-						// visually disable button
-						nk_style_push_color(_ctx, &_ctx->style.button.text_normal, DISABLED_TEXT_COLOR);
-						nk_style_push_color(_ctx, &_ctx->style.button.text_hover, DISABLED_TEXT_COLOR);
-						nk_style_push_color(_ctx, &_ctx->style.button.text_active, DISABLED_TEXT_COLOR);
-					}
-
-					if (nk_button_label(_ctx, "f", &hovered) && !fold_disabled) {
-
-						auto& colors = world::cImportGameObject::getProxy().colors;
-
-						colormap::iterator iter_color = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color); // fast binary search! binary search only returns a boolean & uses lower_bound internally. lower_bound returns an iterator.
-
-						if (colors.end() != iter_color) {
-
-							colormap::iterator closest_color(colors.end());
-
-							int32_t diffLeft(INT32_MAX), diffRight(INT32_MAX); // calculate the smallest difference between adjacent colors in the colormap in respect to the current color.
-							if (colors.end() != (iter_color - 1) && colors.begin() != iter_color) {
-								diffLeft = SFM::abs(((int32_t)(iter_color - 1)->color) - ((int32_t)iter_color->color));
-							}
-							if (colors.end() != (iter_color + 1)) {
-								diffRight = SFM::abs(((int32_t)(iter_color + 1)->color) - ((int32_t)iter_color->color));
-							}
-
-							if (diffLeft < diffRight) {
-
-								closest_color = (iter_color - 1);
-							}
-							else {
-								closest_color = (iter_color + 1);
-							}
-
-							if (colors.cend() != closest_color) {
-
-								uint32_t const color_match(iter_color->color),
-											   color_to_set(closest_color->color);
-
-								// change the color map
-								closest_color->count += iter_color->count; // "fold" into the closest color
-								world::cImportGameObject::getProxy().active_color = *closest_color; // select the color that the current color was folded into
-								colors.erase(iter_color); // remove the current color
-								previous = colors.end(); // iterator invalidated, update previous
-
-								// change all voxels in the actual voxel model from current color to closest color.
-								uint32_t const numVoxels(voxelModel.model->_numVoxels);
-								Volumetric::voxB::voxelDescPacked* pVoxels(voxelModel.model->_Voxels); // stream above is still storing, use the cached read of the models' voxels ++
-								for (uint32_t i = 0; i < numVoxels; ++i) {
-
-									Volumetric::voxB::voxelDescPacked const voxel(*pVoxels);
-
-									uint32_t const color = voxel.Color;
-									if (color == color_match) {
-										pVoxels->Color = color_to_set; // change to closest color, numVoxels remains the same
-									}
-
-									++pVoxels;
-								}
-							}
-							MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(1.0f - (colors.size() * world::cImportGameObject::getProxy().inv_start_color_count)));
-						}
-					}
-					else if (hovered && !fold_disabled) {
-						szHint = "FOLD INTO CLOSEST COLOR";
-						bResetHint = false;
-						bSmallHint = true;
-					}
-
-					if (fold_disabled) {
-						// visually disable button
-						nk_style_pop_color(_ctx);
-						nk_style_pop_color(_ctx);
-						nk_style_pop_color(_ctx);
 					}
 				}
 				else {

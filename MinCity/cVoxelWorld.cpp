@@ -637,10 +637,15 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 		//rotateCamera(tDelta.count() * -4.0f); // *** temporary turntable rotation
 	}
 
-	if (MinCity::isPaused() && MinCity::isFocused()) {
+	if ((MinCity::isPaused() | _bCameraTurntable) && MinCity::isFocused()) {
+
 		rotateCamera(time_to_float(fp_seconds(delta()))); // *** slow turntable rotation using delta directly is ok here
 	}
 	return(xmOrigin);
+}
+void cVoxelWorld::setCameraTurnTable(bool const enable)
+{
+	_bCameraTurntable = enable;
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)

@@ -17,10 +17,10 @@ namespace gui
 	// - [emissive] makes the minivoxels all lightsources.
 	 
 	// isometric diagonal line draws down-right (+X), // isometric vertical line draws up (-Y), // isometric diagonal line draws up-right (+Z)
-	STATIC_INLINE void __vectorcall draw_line(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t length, uint32_t const flags = 0);
+	STATIC_INLINE void __vectorcall draw_line(uint32_t const axis, XMVECTOR xmLocation, uint32_t const color, uint32_t length, uint32_t const flags = 0);
 	
 	template <bool const query_only = false, typename... Args>
-	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const;
+	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const;
 
 	STATIC_INLINE_PURE void __vectorcall add_vertical_bar(std::string& str, float const t);
 	template<bool const reversed = false>
@@ -29,8 +29,8 @@ namespace gui
 	STATIC_INLINE_PURE void __vectorcall add_barcode(std::string& str, uint32_t const length, int64_t const seed);
 	STATIC_INLINE_PURE void __vectorcall add_cyberpunk_glyph(std::string& str, uint32_t const length, int64_t const seed);
 
-	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
-	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
+	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
+	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, uint32_t const color, uint32_t const bars, float const t, uint32_t const flags = 0);
 
 	
 } // end ns
@@ -83,10 +83,12 @@ namespace gui
 		static constexpr uint32_t const mini_voxel_length = 2;
 	} // end ns
 
-	STATIC_INLINE void __vectorcall draw_line(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t length, uint32_t const flags) // [forward] or [up-right]
+	STATIC_INLINE void __vectorcall draw_line(uint32_t const axis, XMVECTOR xmLocation, uint32_t const color, uint32_t length, uint32_t const flags) // [forward] or [up-right]
 	{
 		if (0 == length)
 			return;
+		
+		point2D_t voxelIndex(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation)));
 
 		XMVECTOR const xmAxis(internal::axis::v[axis].v);
 		point2D_t const ptAxis(internal::axis::p[axis]);
@@ -221,7 +223,7 @@ namespace gui
 	} // end ns
 
 	template <bool const query_only, typename... Args>
-	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, point2D_t voxelIndex, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const
+	STATIC_INLINE auto draw_string(uint32_t const axis, XMVECTOR xmLocation, uint32_t const color, uint32_t const flags, std::string_view const fmt, const Args& ... args) -> std::pair<float const, uint32_t const> const
 	{
 		std::string const str( fmt::format(fmt, args...) );
 		float visible(0.0f), count(0.0f);
@@ -229,6 +231,8 @@ namespace gui
 		uint32_t mini_length(internal::mini_voxel_length);
 		uint32_t string_width(0);
 		char character(0), last_character(0);
+
+		point2D_t voxelIndex(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation)));
 
 		XMVECTOR const xmAxis(internal::axis::v[axis].v);
 		point2D_t const ptAxis(internal::axis::p[axis]);
@@ -333,7 +337,7 @@ namespace gui
 		}
 	}
 
-	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
+	STATIC_INLINE uint32_t const __vectorcall draw_vertical_progress_bar(uint32_t const axis, XMVECTOR xmLocation, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
 	{
 		float tRemaining(((float)length / internal::font_height_max) * SFM::clamp(t, 0.0f, 1.0f));
 
@@ -341,14 +345,14 @@ namespace gui
 			std::string szBar("");
 			add_vertical_bar(szBar, tRemaining);
 
-			draw_string(axis, xmLocation, voxelIndex, color, flags, szBar);
+			draw_string(axis, xmLocation, color, flags, szBar);
 			xmLocation = SFM::__fma(_mm_set1_ps(internal::font_height_max), internal::axis::v[gui::axis::y], xmLocation);
 			--tRemaining;
 		}
 
 		return(internal::font_width - 1);
 	}
-	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
+	STATIC_INLINE uint32_t const __vectorcall draw_horizontal_progress_bar(uint32_t const axis, XMVECTOR const xmLocation, uint32_t const color, uint32_t const length, float const t, uint32_t const flags)
 	{
 		std::string szBar("");
 		float tRemaining(((float)length / internal::font_width_max) * SFM::clamp(t, 0.0f, 1.0f));
@@ -358,7 +362,7 @@ namespace gui
 			--tRemaining;
 		}
 
-		auto const [visibility, width] = draw_string(axis, xmLocation, voxelIndex, color, flags, szBar);
+		auto const [visibility, width] = draw_string(axis, xmLocation, color, flags, szBar);
 
 		return( width );
 	}

@@ -71,49 +71,89 @@ namespace world
 
 		XMVECTOR const xmWorldOrigin(world::getOriginNoFractionalOffset());
 
-		XMVECTOR xmOrigin;
+		XMVECTOR xmOrigin, xmControl;
 		rect2D_t const rectLocalArea(r2D_grow(_proxy.model->_LocalArea, point2D_t(1)));
 		constexpr uint32_t const color(0xFFFFFFFF);
 
 		// vertical part
-		xmOrigin = p2D_to_v2(rectLocalArea.left_top());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_top(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+		XMVECTOR const xmCenter(XMLoadFloat3A(&_proxy.bounds.Center)), 
+			           xmExtents(XMLoadFloat3A(&_proxy.bounds.Extents));
+ 		XMVECTOR const xmMin(XMVectorSubtract(xmCenter, xmExtents)),
+			           xmMax(XMVectorAdd(xmCenter, xmExtents));
 
-		xmOrigin = p2D_to_v2(rectLocalArea.right_top());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.right_top(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+		xmControl = XMVectorSelectControl(0, 0, 0, 0);      // "left top"
+		xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl);
+		xmOrigin = XMVectorSetY(xmOrigin, 0.0f);
+		//xmOrigin = p2D_to_v2(rectLocalArea.left_top());
+		//xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_line(gui::axis::y, xmOrigin, 0x000000ff, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
 
-		xmOrigin = p2D_to_v2(rectLocalArea.right_bottom());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.right_bottom(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+		xmControl = XMVectorSelectControl(0, 0, 1, 0);      // "left bottom"
+		xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl); 
+		xmOrigin = XMVectorSetY(xmOrigin, 0.0f);
+		//xmOrigin = p2D_to_v2(rectLocalArea.right_top());
+		//xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_line(gui::axis::y, xmOrigin, 0x0000ff00, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
 
-		xmOrigin = p2D_to_v2(rectLocalArea.left_bottom());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		gui::draw_line(gui::axis::y, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_bottom(), color, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+		xmControl = XMVectorSelectControl(1, 0, 0, 0);      // "right top"
+		xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl); 
+		xmOrigin = XMVectorSetY(xmOrigin, 0.0f);
+		//xmOrigin = p2D_to_v2(rectLocalArea.right_bottom());
+		//xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_line(gui::axis::y, xmOrigin, 0x00ff0000, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
+
+		xmControl = XMVectorSelectControl(1, 0, 1, 0);       // "right bottom"
+		xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl); 
+		xmOrigin = XMVectorSetY(xmOrigin, 0.0f);
+		//xmOrigin = p2D_to_v2(rectLocalArea.left_bottom());
+		//xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
+		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+		gui::draw_line(gui::axis::y, xmOrigin, 0x0000ffff, (uint32_t)_proxy.model->_maxDimensions.y, gui::flags::emissive);
 
 		// horizontal part
-		float const height((float)_proxy.model->_maxDimensions.y * Iso::MINI_VOX_SIZE * -2.0f);
+		static constexpr fp_seconds const tInterval(milliseconds(2500));
+		constinit static fp_seconds tAccumulate(zero_time_duration);
 
-		xmOrigin = p2D_to_v2(rectLocalArea.left_top());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, height);
-		gui::draw_line(gui::axis::x, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_top(), color, (uint32_t)rectLocalArea.width() << 1, gui::flags::emissive);
+		float const height_reset((float)_proxy.model->_maxDimensions.y * Iso::MINI_VOX_SIZE * 2.0f);
+		tAccumulate += tDelta;
 
-		xmOrigin = p2D_to_v2(rectLocalArea.left_bottom());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, height);
-		gui::draw_line(gui::axis::x, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_bottom(), color, (uint32_t)rectLocalArea.width() << 1, gui::flags::emissive);
+		//float const height = SFM::lerp(height_reset, 0.0f, SFM::saturate(tAccumulate / tInterval));
 
-		xmOrigin = p2D_to_v2(rectLocalArea.left_top());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, height);
-		gui::draw_line(gui::axis::z, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.left_top(), color, (uint32_t)rectLocalArea.height() << 1, gui::flags::emissive);
+		if (tAccumulate >= tInterval) {
+			tAccumulate -= tInterval;
+		}
 
-		xmOrigin = p2D_to_v2(rectLocalArea.right_top());
-		xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin);
-		xmOrigin = XMVectorSetY(xmOrigin, height);
-		gui::draw_line(gui::axis::z, XMVectorSubtract(xmOrigin, xmWorldOrigin), rectLocalArea.right_top(), color, (uint32_t)rectLocalArea.height() << 1, gui::flags::emissive);
+		point2D_t const vWidthHeight(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorAbs(XMVectorSubtract(xmMax, xmMin)))));
+
+		for (float height = height_reset; height >= 0.0f; --height) {
+
+			xmControl = XMVectorSelectControl(0, 0, 0, 0);      // "left top"
+			xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl);
+			xmOrigin = XMVectorSetY(xmOrigin, -height);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+			gui::draw_line(gui::axis::x, xmOrigin, color, (uint32_t)vWidthHeight.x << 1, gui::flags::emissive | gui::flags::hidden);
+
+			xmControl = XMVectorSelectControl(0, 0, 1, 0);      // "left bottom"
+			xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl);
+			xmOrigin = XMVectorSetY(xmOrigin, -height);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+			gui::draw_line(gui::axis::x, xmOrigin, color, (uint32_t)vWidthHeight.x << 1, gui::flags::emissive | gui::flags::hidden);
+
+			xmControl = XMVectorSelectControl(0, 0, 0, 0);      // "left top"
+			xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl);
+			xmOrigin = XMVectorSetY(xmOrigin, -height);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+			gui::draw_line(gui::axis::z, xmOrigin, color, (uint32_t)vWidthHeight.y << 1, gui::flags::emissive | gui::flags::hidden);
+
+			xmControl = XMVectorSelectControl(1, 0, 0, 0);      // "right top"
+			xmOrigin = XMVectorSelect(xmMin, xmMax, xmControl);
+			xmOrigin = XMVectorSetY(xmOrigin, -height);
+			xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
+			gui::draw_line(gui::axis::z, xmOrigin, color, (uint32_t)vWidthHeight.y << 1, gui::flags::emissive | gui::flags::hidden);
+		}
 
 		for (uint32_t i = 0; i < _numLights; ++i) {
 
@@ -343,9 +383,12 @@ namespace world
 		}
 
 		// create light instances....if not created before
+		XMVECTOR const xmLocalLocation(XMLoadFloat3A(&_proxy.bounds.Center));
+		float const local_radius(XMVectorGetX(XMVector3Length(XMLoadFloat3A(&_proxy.bounds.Extents))));
+
 		for (uint32_t i = 0; i < _numLights; ++i) {
 
-			XMVECTOR const xmPos = next(instance->getLocation3D(), XMLoadFloat3A(&_proxy.bounds.Center), _proxy.bounds.Radius + light_radius, (float)i/(float)(_numLights - 1));
+			XMVECTOR const xmPos = next(instance->getLocation3D(), xmLocalLocation, local_radius + light_radius, (float)i / (float)(_numLights - 1));
 
 			if (nullptr == _lights[i]) {
 
@@ -378,9 +421,12 @@ namespace world
 		}
 
 		// create light instances....if not created before
+		XMVECTOR const xmLocalLocation(XMLoadFloat3A(&_proxy.bounds.Center));
+		float const local_radius(XMVectorGetX(XMVector3Length(XMLoadFloat3A(&_proxy.bounds.Extents))));
+
 		for (uint32_t i = 0; i < _numLights; ++i) {
 
-			XMVECTOR const xmPos = next(instance->getLocation3D(), XMLoadFloat3A(&_proxy.bounds.Center), _proxy.bounds.Radius + light_radius, (float)i / (float)(_numLights - 1));
+			XMVECTOR const xmPos = next(instance->getLocation3D(), xmLocalLocation, local_radius + light_radius, (float)i / (float)(_numLights - 1));
 
 			if (nullptr == _lights[i]) {
 
