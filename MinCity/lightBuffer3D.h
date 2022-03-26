@@ -16,7 +16,7 @@ typedef tbb::enumerable_thread_specific< XMFLOAT3A > Bounds; // per thread insta
 // 3D Version ################################################################################################ //
 template< typename XMFLOAT4A, uint32_t const LightWidth, uint32_t const LightHeight, uint32_t const LightDepth,  // non-uniform size ok for light volume
 							  uint32_t const Size>				 // uniform size ok for world visible volume
-struct alignas(CACHE_LINE_BYTES) lightBuffer3D : public writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
+struct lightBuffer3D : public writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
 	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x00, 0xFF, 0xFF, 0xFF };
 
@@ -41,11 +41,11 @@ public:
 		tbb::parallel_invoke(
 			[&] {
 				// clear internal memory
-				__memclr_stream<32>(_internal, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
+				__memclr_stream<64>(_internal, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
 			},
 			[&] {
 				// clear internal cache
-				__memclr_stream<32>(_cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
+				__memclr_stream<64>(_cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
 			});
 	}
 
@@ -89,7 +89,7 @@ public:
 		// no clearing is then required. this does update the whole volume, so a fast threaded copy is beneficial here.
 		// on the actual staging -> gpu copy (this is copy to staging [write-combined memory]) the bounds min, max are used to actually only upload the minimum volume area that has updated.
 		size_t const size(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
-		__memcpy_threaded<32>(stagingBuffer.map(), _cache, size, 
+		__memcpy_threaded<64>(stagingBuffer.map(), _cache, size, 
 						      size / hw_concurrency); // faster copy with 32 - guarnteed that size is multiple of XMFLOAT4A (16) x2 (32) - due to the entire volume using a size that is always an even number. Otherwise this would be 1 off and the _16 would have to be used
 		stagingBuffer.unmap();
 	}
@@ -235,17 +235,13 @@ public:
 	{
 		writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth>::clear_tracking();
 
-		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES);
-		_cache = (XMFLOAT4A*)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES);
+		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance and to prevent false sharing
+		_cache = (XMFLOAT4A* __restrict)scalable_aligned_malloc(LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
 
 		clear();
 	}
 	~lightBuffer3D()
 	{
-		// memory is now automagically freed on process exit scalable_aligned_free(internal);
-		//_internal = nullptr;
-		//_cache = nullptr;
-
 		if (_internal) {
 			scalable_aligned_free(_internal); _internal = nullptr;
 		}
@@ -260,14 +256,14 @@ private:
 	void operator=(lightBuffer3D const&) = delete;
 	void operator=(lightBuffer3D&&) = delete;
 private:
+	std::atomic_uint32_t* __restrict	_internal;
+	XMFLOAT4A* __restrict				_cache;
+
 	Bounds 								  _maximum,		// ** xzy form for all bounds / extents !!!
-								          _minimum;
+									      _minimum;
 
 	uvec4_t								  _max_extents,
 										  _min_extents;
-
-	alignas(CACHE_LINE_BYTES) std::atomic_uint32_t* __restrict	_internal;
-	alignas(CACHE_LINE_BYTES) XMFLOAT4A* __restrict				_cache;
 };
 
 

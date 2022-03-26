@@ -19,7 +19,7 @@
 			
 // 3D Version ################################################################################################ //
 template< typename T, uint32_t const X, uint32_t const Y, uint32_t const Z >
-struct alignas(CACHE_LINE_BYTES) writeonlyBuffer3D {
+struct writeonlyBuffer3D {
 
 protected:
 	static constexpr size_t const ATOMIC_SPREAD = 24ULL;
