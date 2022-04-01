@@ -16,7 +16,7 @@ namespace Volumetric
 												// 512x256x512 times VoxelNormal = 12.8 GB !!!! where a "line" of 2x256x512 times VoxelNormal = 50 MB
 	// needs measurement from stress test
 	BETTER_ENUM(Allocation, uint32_t const,
-		VOXEL_RENDER_FACTOR_BITS = 4,
+		VOXEL_RENDER_FACTOR_BITS = 3,
 		VOXEL_SCREEN_XYZ = Iso::SCREEN_VOXELS_X + Iso::SCREEN_VOXELS_Y + Iso::SCREEN_VOXELS_Z,
 
 		VOXEL_GRID_VISIBLE_XZ = Iso::SCREEN_VOXELS_XZ,

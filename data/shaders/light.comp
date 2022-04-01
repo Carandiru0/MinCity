@@ -74,22 +74,19 @@ bool isLit( in const float sampled_packed_color )
 }
 
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 current_location, in const vec3 read_location ) // best jfa result with texelFetch
+vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location ) // best jfa result with texelFetch
 {
-	vec4 samp = textureLod(map, (read_location + 0.5f) * InvVolumeDimensions, 0);
-	samp.xyz += normalize(current_location - samp.xyz) * fract(current_location - read_location); // smooths changes when scrolling BIG TIME.
-
-	return( samp );
+	return( textureLod(map, read_location * InvVolumeDimensions, 0) );
 }
 #ifdef SEED
-vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location )
+vec4 sampleInputVolume( in const vec3 read_location )
 {
-	return(sampleInputVolume(seedMap[pc.index_input], current_location, read_location));
+	return(sampleInputVolume(seedMap[pc.index_input], read_location));
 }
 #else
-vec4 sampleInputVolume( in const vec3 current_location, in const vec3 read_location )
+vec4 sampleInputVolume( in const vec3 read_location )
 {
-	return(sampleInputVolume(pingpongTexture[pc.index_input], current_location, read_location));
+	return(sampleInputVolume(pingpongTexture[pc.index_input], read_location));
 }
 #endif
 
@@ -99,16 +96,16 @@ shared vec4 warp_lds[GROUP_SIZE_XY][GROUP_SIZE_XY][GROUP_SIZE_Z];
 
 #define localToGlobal(local) fma(gl_WorkGroupID.xyz, vec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z), local)
 
-vec4 populateLDS(in const vec3 current_location, in const ivec3 local_location) {
+vec4 populateLDS(in const ivec3 local_location) {
 
-	const warp_local warp = sampleInputVolume(current_location, localToGlobal(local_location));
+	const warp_local warp = sampleInputVolume(localToGlobal(local_location));
 	warp_lds[local_location.x][local_location.y][local_location.z] = warp;
 
 	// barrier moved to propogateBlocks
 	return( warp );
 }
 //vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
-vec4 group_load( in const vec3 current_location, in const ivec3 local_location ) {
+vec4 group_load( in const ivec3 local_location ) {
 
 	const bool bZero = all(greaterThanEqual(local_location, ivec3(0)));
 	const bool bGroup = bZero && all(lessThan(local_location, ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)));
@@ -118,7 +115,7 @@ vec4 group_load( in const vec3 current_location, in const ivec3 local_location )
 		return( warp_lds[local_location.x][local_location.y][local_location.z] );
 	}
 	// regular path - border texture addressing on texture sampler so out of bounds are handled with no light returned.
-	return( sampleInputVolume(current_location, localToGlobal(local_location)) );
+	return( sampleInputVolume(localToGlobal(local_location)) );
 	
 	/*
 	return(
@@ -132,7 +129,7 @@ vec4 group_load( in const vec3 current_location, in const ivec3 local_location )
 
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
 
-	const warp_local read_warp = group_load(current_location, read_location);
+	const warp_local read_warp = group_load(read_location);
 
 	[[flatten]] if ( isLit(read_warp.packed_color) ) {	// new
 			
@@ -207,12 +204,10 @@ void main()
 			return;
 	}
 
-	const vec3 current_location = global_invocation_id * InvVolumeDimensions * WorldDimensions;
+	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
+	propogateBlocks(warp, global_invocation_id * InvVolumeDimensions * WorldDimensions);
 
-	warp_local warp = populateLDS(current_location, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
-	propogateBlocks(warp, current_location);
-
-	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
+	imageStore(pingpongImage[pc.index_output], ivec3(global_invocation_id), warp);
 }
 
 #endif // not MIP
@@ -420,6 +415,8 @@ void main()
 			// d0 is currently normalized to range [0.0f ... 1.0f]
 			vec3 current_light_color = sampleC(pingpongTexture[pc.index_input], current_color, current_location, d0);
 
+			imageStore(outTemporalC[1 - pc.index_filter], iLocation, current_light_color.rgbb); // *bugfix - don't want to include history for the update of the last volumes result, which is used next time - being the new history.
+			
 			current_light_color = temporalBlendC(inTemporalC[pc.index_filter], inTemporalDD[pc.index_filter], current_light_color, uvw, d0);
 
 			// ### temporal supersampled output - result moves to output
@@ -430,11 +427,12 @@ void main()
 			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
 			current_light_color = mix(current_color, current_light_color, t0);
 			
-			imageStore(outTemporalC[1 - pc.index_filter], iLocation, current_light_color.rgbb);
 			imageStore(outTemporalCFinal, iLocation, vec4(current_light_color.rgb, 1.0f));
 		}
 
 		{ // reflection
+			imageStore(outTemporalR[1 - pc.index_filter], iLocation, current_color.rgbb); // *bugfix - don't want to include history for the update of the last volumes result, which is used next time - being the new history.
+			
 			vec3 current_reflect_color = temporalBlendR(inTemporalR[pc.index_filter], current_color, uvw);
 
 			// ### temporal supersampled output - result moves to output
@@ -445,7 +443,6 @@ void main()
 			// only apply to color, is based off of the signed distance above. -apply to direction causes more weird things.
 			current_reflect_color = mix(current_color, current_reflect_color, t0);
 
-			imageStore(outTemporalR[1 - pc.index_filter], iLocation, current_reflect_color.rgbb);
 			imageStore(outTemporalR[2], iLocation, vec4(current_reflect_color.rgb, 1.0f));
 		}
 	}

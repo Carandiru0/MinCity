@@ -31,7 +31,7 @@
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
-//#define LIVESHADER_MODE
+#define LIVESHADER_MODE
 
 #define DEBUG_SHOW_GUI_WINDOW_BORDERS
 #define DEBUG_DISABLE_MUSIC
@@ -67,10 +67,10 @@
 #define DEBUG_STORAGE_BUFFER
 #endif
 
-#define DEBUG_DISALLOW_PAUSE_FOCUS_LOST
+//#define DEBUG_DISALLOW_PAUSE_FOCUS_LOST
 
 #ifdef LIVESHADER_MODE
-#define DEBUG_DISALLOW_RENDER_DISABLING	// note that this causes any swapchain recreation to fail, this is not normally on in release
+//#define DEBUG_DISALLOW_RENDER_DISABLING	// note that this causes any swapchain recreation to fail, this is not normally on in release
 #endif
 
 extern void debug_out_nuklear(std::string const message); 
@@ -172,7 +172,7 @@ namespace Globals
 								 ZOOM_SPEED = 0.44f;
 
 	static constexpr double const MINZ_DEPTH = (0.1 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
-	static constexpr double const MAXZ_DEPTH = (300.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
+	static constexpr double const MAXZ_DEPTH = (400.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 33;	 // 33ms = 30fps maximum gui update interval when no input is flagging the gui to be updated

@@ -554,6 +554,7 @@ namespace voxB
 							// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
 							// and is in the fragment shaderrecieved swizzled in xzy form
 							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, valid_color);
+							
 
 						}
 					}

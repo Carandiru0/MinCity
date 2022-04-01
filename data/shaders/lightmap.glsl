@@ -171,18 +171,18 @@ void lightmap_fetch_distance( out float light_distance, in const vec3 uvw) {
 void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// rndC sampling
-	lightmap_internal_fetch_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions + 0.5f));  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 void getLightMapFast( out float light_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// rndC sampling
-	lightmap_internal_fetch_fast(light_distance, light_color, rndC(uvw * LightVolumeDimensions + 0.5f));  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 #ifdef FAST_LIGHTMAP
 void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// rndC sampling
-	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, rndC(uvw * LightVolumeDimensions + 0.5f));  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 #endif
 

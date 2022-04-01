@@ -34,7 +34,6 @@ const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float PHASE_FUNCTION = 1.0 / (4.0 * PI); // Isotropic
 
 #define EPSILON 0.000000001f
-#define FOG_SATURATION (GOLDEN_RATIO_ZERO * 1.0f) // [higher] = brighter, more "popout" of lit fog - will washout if too high, [lower] = darker, less "popout" of lit fog - will washout if too low.
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
 
 //#define DEBUG_VOLUMETRIC
@@ -118,7 +117,7 @@ vec3 offset(in const vec3 uvw)
 vec2 offset(in const vec2 uv)
 {
 	return(uv); // linear interpolation (best)
-	//return((floor(uv * VolumeDimensions.xy)) * InvVolumeDimensions.xy); // exact to the voxel but has banding
+	//return((floor(uv * VolumeDimensions)) * InvVolumeDimensions); // exact to the voxel but has banding
 }
 
 float fetch_opacity_emission( in const vec3 uvw) { // interpolates opacity & emission
@@ -207,11 +206,12 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	// *bugfix - emission removed due to severe aliasing. resolution also improved after this change!
 	// fog                         
 	// random distribution on a hemisphere normalized vector pointing upwards (.xyz)
-	const float fog_height = max(0.0f, uvw.z); // fog is for entire volume so no limit on maximum height
+	const float fog_height = max(0.0f, uvw.z);//max(0.0f, -uvw.z); // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
-	scattering = 1.0f - max(0.0f, dot(-light_direction, vec3(0,0,-1))); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
-	scattering = fog_height * scattering * attenuation;
+	scattering = max(0.0f, dot(light_direction, vec3(0,0,-1))); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
+	scattering = scattering * (fog_height + 1.0f); //mix(fog_height, scattering, scattering);
+	scattering = 1.0f - exp2(-scattering * 0.1f);
 
 	return(attenuation); // returns lightAmount  
 }
@@ -283,13 +283,10 @@ void vol_lit(out vec3 light_color, out float emission, out float attenuation, ou
 	integrate_opacity(opacity, extract_opacity(opacity_emission), dt);
 
 	// lightAmount = attenuation
-	float scattering;
-	attenuation = fetch_light_volumetric(light_color, scattering, p, opacity, dt);
-	
-	fogAmount = 1.0f - exp2(fma(-FOG_SATURATION, scattering, -FOG_SATURATION * emission)); // exp smooths noise from scattering (uses the hemisphere)
+	attenuation = fetch_light_volumetric(light_color, fogAmount, p, opacity, dt);
 }
 
-void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt)
+void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt, in const float interval_length)
 {
 	//#########################
 	vec3 light_color;
@@ -303,12 +300,12 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	// this is balanced so that sigmaS remains conservative. Only emission can bring the level of sigmaS above 1.0f
 	//lightAmount = lightAmount * random_hemi_up.w;
 
-	const float sigmaS = fogAmount * voxel.tran;
+	const float sigmaS = fogAmount * voxel.tran * attenuation;
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = fma(sigmaS, attenuation, attenuation + emission) * light_color * PHASE_FUNCTION; // incoming light
-	const float sigma_dt = exp2(-sigmaE * attenuation * (emission + 1.0f));
+    const vec3 Li = (sigmaS + attenuation) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+	const float sigma_dt = exp2(-sigmaE * attenuation * dt*MAX_STEPS*interval_length); // *bugfix - "dt*MAX_STEPS*interval_length" normalizes the contribution of this iteration. Fixes where bottom of screen(near) had higher light density than top of screen(far).
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
@@ -344,7 +341,7 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const float 
 	
 	// NdotV clamped at 1.0f so that shading with NdotV doesn't disobey laws of conservation
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = mix(vec3(0), voxel.light + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
+	voxel.light = mix(vec3(0.0f), voxel.light + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
 	voxel.a = bounce_scatter;
 }
 
@@ -441,7 +438,7 @@ void main() {
 	// without modifying interval variables start position
 	
 	// adjust start position by "bluenoise step"	
-	const float jittered_interval = dt * fetch_bluenoise(gl_FragCoord.xy) * GOLDEN_RATIO_ZERO; // jittered offset should be scaled by golden ratio zero (hides some noise)
+	const float jittered_interval = dt * 0.25f * fetch_bluenoise(gl_FragCoord.xy) * GOLDEN_RATIO_ZERO; // jittered offset should be scaled by golden ratio zero (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -467,7 +464,7 @@ void main() {
 		
 			// -------------------------------- part lighting ----------------------------------------------------
 			// ## evaluate light
-			evaluateVolumetric(voxel, opacity, p, dt * 2.0f); // evaluated at 2x dt because of skipped light evaluation (only every second step)
+			evaluateVolumetric(voxel, opacity, p, dt * 2.0f, interval_length); // evaluated at 2x dt because of skipped light evaluation (only every second step)
 
 			// ## test hit voxel
 			[[branch]] if( bounced(opacity) ) {	
@@ -509,7 +506,7 @@ void main() {
 			vec4 refine_voxel = voxel;
 			float refine_opacity = opacity;
 
-			evaluateVolumetric(refine_voxel, refine_opacity, p, dt);
+			evaluateVolumetric(refine_voxel, refine_opacity, p, dt, interval_length);
 
 			[[branch]] if (refine_opacity > opacity) { // is next opacity closer?
 				// take refinement
@@ -528,7 +525,7 @@ void main() {
 			interval_remaining += dt;
 			p += interval_remaining * rd;  // this is the last "partial" step!
 
-			evaluateVolumetric(voxel, opacity, p, interval_remaining);
+			evaluateVolumetric(voxel, opacity, p, interval_remaining, interval_length);
 		}
 	} // end volumetric scope
 
@@ -543,7 +540,8 @@ void main() {
 
 	// output volumetric light
 	voxel.a = clamp(voxel.tran, 0.0f, 1.0f); // in the blend stage, the blend operation is set to properly handle alpha (cVulkan.cpp)
-
+	//voxel.rgb *= 1.0f - voxel.a;
+	
 	imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
 	// - done!
 	//vec4 test = textureLod(fogMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f);

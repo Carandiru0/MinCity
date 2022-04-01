@@ -18,7 +18,6 @@
 #include <algorithm>
 #include "eVoxelModels.h"
 #include "cImportGameObject.h"
-#include <Utility/async_long_task.h>
 #include <Imaging/Imaging/Imaging.h>
 #include "importproxy.h"
 

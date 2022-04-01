@@ -6,7 +6,7 @@
 
 BETTER_ENUM(eThreadBatchGrainSize, uint32_t const,	// batch (*minimums*) sizes for major tbb parallel loops, representing minimum granularity of tasks in 2D or 1D
 
-	GRID_RENDER_2D = 4U, // <--- this includes ground, is 2 dimensional and should be small (auto-partitioning - load balanced)
+	GRID_RENDER_2D = 8U, // <--- this includes ground, is 2 dimensional and should be small (auto-partitioning - load balanced)
 	MODEL = 256U,		 // minimum voxels processed in a single task, will be a lot larger as is split uniformly across affinity
 	RADIAL = 32U,		 // ""        ""      ""     for a row in a single task, adaptively larger based on row size and is split uniformly across affinity
 	GEN_PLOT = 1U		 // minimum unit for auto partitioner - *bugfix: must be equal to one otherwise buildings on plot intersect each other.
@@ -35,8 +35,8 @@ BETTER_ENUM(eStreamingBatchSize, uint32_t const,		// batch sizes for batched str
 template<typename T, uint32_t const Size>
 struct sBatched
 {
-	T			data_set[Size];
-	uint32_t	Count;
+	alignas(64) T			data_set[Size];  // *bugfix: over aligned to avoid false sharing.
+	uint32_t				Count;
 
 	// methods to use coupled with atomic memory pointer with a global or unknown range/bounds ( maximum benefit obtained )
 	__SAFE_BUF __inline void __vectorcall out(tbb::atomic<T*>& __restrict atomic_mem_ptr)
@@ -54,7 +54,7 @@ struct sBatched
 	template<class... Args>
 	__SAFE_BUF __inline void __vectorcall emplace_back(tbb::atomic<T*>& __restrict atomic_mem_ptr, Args&&... args) {
 
-		data_set[Count] = std::move(T(args...));
+		data_set[Count] = std::move<T&&>(T(args...));
 
 		if (++Count >= Size) {
 			out(atomic_mem_ptr);
@@ -75,7 +75,7 @@ struct sBatched
 	template<class... Args>
 	__SAFE_BUF __inline void __vectorcall emplace_back(T*& __restrict mem_ptr, Args&&... args) {
 
-		data_set[Count] = std::move(T(args...));
+		data_set[Count] = std::move<T&&>(T(args...));
 
 		if (++Count >= Size) {
 			out(mem_ptr);
