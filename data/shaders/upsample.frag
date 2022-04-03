@@ -215,9 +215,10 @@ layout (binding = 3) uniform sampler2DArray noiseMap; // bluenoise
 layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumetric light
 layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
-/*
+
 // (no longer required due to denoising filter in previous stage)
-const float POISSON_RADIUS = 3.0f;
+/*
+const float POISSON_RADIUS = 9.0f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
 
 const int TAPS = 12;
@@ -319,7 +320,7 @@ void main() {
 		vec3 bounce_color = supersample(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
-		//bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f (no longer required due to denoising filter in previous stage)
+		// bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f (no longer required due to denoising filter in previous stage)
 	
 		// no aliasing
 		expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges

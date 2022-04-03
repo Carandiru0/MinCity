@@ -209,9 +209,9 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	const float fog_height = max(0.0f, uvw.z);//max(0.0f, -uvw.z); // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
-	scattering = max(0.0f, dot(light_direction, vec3(0,0,-1))); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
-	scattering = scattering * (fog_height + 1.0f); //mix(fog_height, scattering, scattering);
-	scattering = 1.0f - exp2(-scattering * 0.1f);
+	scattering = max(0.0f, dot(light_direction, vec3(0,0,-1))); // **bugfix for correct lighting. 
+	scattering = scattering * (fog_height + 1.0f);				// *do not modify*
+	scattering = 1.0f - exp2(-scattering * dt * 8.0f);			// *do not modify*
 
 	return(attenuation); // returns lightAmount  
 }
