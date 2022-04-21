@@ -141,7 +141,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <StringPooling>true</StringPooling>
-      <SupportJustMyCode>false</SupportJustMyCode>
+      <SupportJustMyCode>true</SupportJustMyCode>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
     </ClCompile>
     <Link>

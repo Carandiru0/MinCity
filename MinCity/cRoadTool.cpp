@@ -29,20 +29,20 @@ cRoadTool::cRoadTool()
 
 }
 
-STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped()
+STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped() // bloody-hell
 {
+	static constexpr float const CELL_SIZE(Iso::ROAD_SEGMENT_WIDTH);
+	static constexpr float const INV_CELL_SIZE(1.0f / CELL_SIZE);
+
 	point2D_t const hoverVoxel(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
-	/*
-	point2D_t hoverVoxelSnapped(
-		SFM::roundToMultipleOf<false>(hoverVoxel.x, (int32_t)Iso::ROAD_SEGMENT_WIDTH),
-		SFM::roundToMultipleOf<false>(hoverVoxel.y, (int32_t)Iso::ROAD_SEGMENT_WIDTH)
-	);
+	XMVECTOR xmHoverVoxel(p2D_to_v2(p2D_adds(hoverVoxel, Iso::SEGMENT_SIDE_WIDTH))); // (start) offset to the center if the grid cell.
 
-	hoverVoxelSnapped = p2D_add(hoverVoxelSnapped, p2D_muls(p2D_sgn(p2D_sub(hoverVoxel, hoverVoxelSnapped)), Iso::SEGMENT_SIDE_WIDTH));
-	*/
+	xmHoverVoxel = XMVectorMultiply(xmHoverVoxel, XMVectorReplicate(INV_CELL_SIZE));
 
-	return(hoverVoxel);
+	xmHoverVoxel = XMVectorMultiply(SFM::floor(xmHoverVoxel), XMVectorReplicate(CELL_SIZE));
+
+	return(v2_to_p2D(xmHoverVoxel)); // (end) snapped
 }
 
 template<bool const perpendicular_side = true> // otherwise in-line with current direction

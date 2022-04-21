@@ -2550,13 +2550,28 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash()); // destroy last
 						}
 
+						point2D_t const origin{};
+						rect2D_t vWorldArea(-128,-128,128,128);
+						
+						world::setVoxelsHeightAt(vWorldArea, 0);
+						
+						// leave a border of terrain around model
+						vWorldArea = world::voxelArea_grow(vWorldArea, point2D_t(1, 1));
+
+						// smooth border of model area with surrounding terrain
+						world::smoothRect(vWorldArea);
+
+						// go around perimeter doing lerp between border
+						// *required* recompute adjacency for area as height of voxels has changed
+						world::recomputeGroundAdjacency(vWorldArea);
+						
 						// will now show the import window and close this modal prompt
 						// add gameobject for import, load the colormap into importproxy																						// safe down-cast, memory pointed to by the pointer is allocated as such, and previously a pointer of that type.
 						if (voxelModel.dynamic) {
-							model_dynamic = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cImportGameObject_Dynamic, true>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<true> const* const>(voxelModel.model), common_flags);
+							model_dynamic = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cImportGameObject_Dynamic, true>(origin, reinterpret_cast<Volumetric::voxB::voxelModel<true> const* const>(voxelModel.model), common_flags);
 						}
 						else {
-							model_static = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cImportGameObject_Static, false>(point2D_t{}, reinterpret_cast<Volumetric::voxB::voxelModel<false> const* const>(voxelModel.model), common_flags);
+							model_static = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cImportGameObject_Static, false>(origin, reinterpret_cast<Volumetric::voxB::voxelModel<false> const* const>(voxelModel.model), common_flags);
 						}
 
 						// setup the scene //
@@ -2564,7 +2579,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						MinCity::Pause(false);
 						_uiWindowEnabled = eWindowType::IMPORT;
 						MinCity::VoxelWorld->resetCamera();
-						MinCity::VoxelWorld->translateCamera(point2D_t(0,13));
+						MinCity::VoxelWorld->translateCamera(point2D_t(0,13));						
 					}
 					else {
 						_iWindowImportSelection = eWindowImport::DISABLED;

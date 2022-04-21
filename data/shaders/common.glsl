@@ -35,7 +35,7 @@ float saturation(in const vec3 rgb) {
 
 float whiteness(in const vec3 rgb) {
     
-    return (1.0f-saturation(rgb)) * ((rgb.r+rgb.g+rgb.b)/3.0f);
+	return(rgb.x * rgb.y * rgb.z);
 }
 
 // https://www.shadertoy.com/view/MtjBWz - thanks iq

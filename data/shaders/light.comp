@@ -373,7 +373,7 @@ void main()
 	// spatial interpolation
 	const warp_local current_warp = textureLod(pingpongTexture[pc.index_input], uvw, 0);
 
-	const vec3 current_location = uvw * WorldDimensions;
+	const vec3 current_location = uvw * WorldDimensions + 0.5f;
 
 	float t0, d0;
 	// #################################################################################################################

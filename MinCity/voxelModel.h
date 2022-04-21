@@ -192,10 +192,17 @@ namespace voxB
 		inline voxelNormal const		  getNormal() const { return(voxelNormal(getAdjacency())); }
 
 		__inline __declspec(noalias) bool const operator<(voxelDescPacked const& rhs) const
-		{		
-			return(y < rhs.y);  // no point in sorting by depth(.z) - ie.) if camera rotates around model
-		}						// this provides some z depth overdraw compensation however with topmost voxels occluding voxels below
-								// **note: model is loaded upside down, so top is actually 0 and bottom is max height
+		{
+			bool bReturn(false);
+
+			// sort by position order y,z,x
+			bReturn |= (y < rhs.y);
+			bReturn |= bReturn & (z < rhs.z);
+			bReturn |= bReturn & (x < rhs.x);
+
+			return(bReturn);
+		}
+		
 		__inline __declspec(noalias) bool const operator!=(voxelDescPacked const& rhs) const
 		{	
 			return(Data != rhs.Data);
