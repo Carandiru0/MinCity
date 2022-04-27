@@ -16,7 +16,7 @@ STATIC_INLINE_PURE bool const isVoxelWindow(Volumetric::voxB::voxelDescPacked co
 }
 
 // common between dynamic & static
-STATIC_INLINE VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxelProxy(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS, Volumetric::ImportProxy const& __restrict proxy) 
+STATIC_INLINE VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxelProxy(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS, Volumetric::ImportProxy const& __restrict proxy)
 {
 	if (0 != proxy.active_color.material.Color)  // if active color is active (proxy is active)
 	{
@@ -62,7 +62,7 @@ namespace world
 	}
 
 	void __vectorcall cImportGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
-	{
+	{		
 		static constexpr float const tInvInterval(1.0f / fp_seconds(milliseconds(2000)).count());
 
 		fp_seconds const tDuration(tNow - _tStamp);

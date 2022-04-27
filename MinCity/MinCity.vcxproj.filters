@@ -348,6 +348,9 @@
     <ClInclude Include="importproxy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="cLevelSetGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -523,6 +526,9 @@
     </ClCompile>
     <ClCompile Include="importproxy.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cLevelSetGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

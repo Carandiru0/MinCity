@@ -51,7 +51,6 @@ namespace world {
 			TrafficControlGameObject,
 			SignageGameObject,
 			LightGameObject
-
 		);
 
 	} // end ns types

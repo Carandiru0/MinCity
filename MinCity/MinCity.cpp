@@ -339,7 +339,7 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	// #### City pointer must be valid starting *here*
 	City = new cCity(m_szCityName);
 
-	VoxelWorld->Update(m_tNow, zero_time_duration, true, true, true);
+	VoxelWorld->Update(m_tNow, zero_time_duration, true, true);
 	
 	UserInterface->Initialize();
 
@@ -659,19 +659,19 @@ NO_INLINE static bool const GradualStartUp(size_t const frameCount, bool const& 
 	return(GradualStartUpOngoing); // signal as gradual startup complete
 }
 
-void cMinCity::UpdateWorld() 
+void cMinCity::UpdateWorld()
 {
 	constinit static bool bWasPaused(false);
-	constinit static tTime 
+	constinit static tTime
 		tLast{ zero_time_point },
 		tLastGUI{ zero_time_point };
 
 	duration tDeltaFixedStep(delta());
 	tTime tNow{ high_resolution_clock::now() };
-	tTime const 
+	tTime const
 		tCriticalNow(tNow),
 		tCriticalLast(tLast);
-				
+
 	{
 		[[unlikely]] if (m_bGradualStartingUp) {
 			m_bGradualStartingUp = GradualStartUp(m_frameCount, m_bRunning);
@@ -687,6 +687,7 @@ void cMinCity::UpdateWorld()
 	}
 	else if (bWasPaused) {
 		tLast = tNow; // resume as if no time elapsed
+		m_tCriticalNow = tNow; // synchronize
 		bWasPaused = false;
 	}
 
@@ -708,19 +709,21 @@ void cMinCity::UpdateWorld()
 		tAccumulate += std::min(duration(tCriticalNow - tCriticalLast), fixed_delta_x2_duration);
 	}
 
-	// add to fixed timestamp n fixed steps, while also removing the fixed step from the accumulator
-	bool bFirstUpdate(true);
-
+	// add to fixed timestamp n fixed steps, while also removing the fixed step from the 
+	bool updateTriggered(false);
 	while (tAccumulate >= delta()) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
 		m_tCriticalNow += delta();
 
 		tAccumulate -= delta();
-
-		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused, bFirstUpdate); // world/game uses regular timing, with a fixed timestep (best practice)
-		bFirstUpdate = false;
+		updateTriggered = true;
 	}
+
+	if (updateTriggered) {
+		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
+	}
+	
 	// fractional amount for render path (uniform shader variables)
 	VoxelWorld->UpdateUniformState(time_to_float(fp_seconds(tAccumulate) / fp_seconds(delta()))); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
@@ -1229,7 +1232,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 
 	// changes timing resolution, affects threading, scheduling, sleep, waits etc globally (important)
 	// https://docs.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
-	timeEndPeriod(1); // ensure that the regular default timer resolution is active
+	timeBeginPeriod(1); // ensure that the regular default timer resolution is active
 
 	int32_t const num_hw_threads(SetupEnvironment());
 
@@ -1287,6 +1290,7 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {
 	SAFE_DELETE(TASK_INIT);
+	timeEndPeriod(1);
 }
 
 int __stdcall _tWinMain(_In_ HINSTANCE hInstance,

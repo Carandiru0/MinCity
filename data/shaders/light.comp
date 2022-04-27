@@ -205,7 +205,7 @@ void main()
 	}
 
 	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
-	propogateBlocks(warp, global_invocation_id * InvVolumeDimensions * WorldDimensions);
+	propogateBlocks(warp, global_invocation_id * InvVolumeDimensions * WorldDimensions + 0.5f);
 
 	imageStore(pingpongImage[pc.index_output], ivec3(global_invocation_id), warp);
 }
@@ -222,7 +222,7 @@ float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_
 }
 float normalize_distance(in const float d) // normalized distance, [0.0f ... 1.0f]
 {
-	return(d * InvWorldLength * 2.0f - 1.0f);
+	return(min(1.0f, d * InvWorldLength));
 }
 vec3 emitter_to_direction(in const vec3 emitter_location, in const vec3 current_location)
 {
@@ -247,27 +247,27 @@ void temporalBlendDD( in const restrict sampler3D inputTemporalDD, inout vec3 di
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(-0.5f,0,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, blending);
+	dist = smin(dist, neighbour.w * 0.5f + 0.5f, blending); // signed texture sample - range [-1,1] convert to [0,1]
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0.5f,0,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, blending);
+	dist = smin(dist, neighbour.w * 0.5f + 0.5f, blending); // signed texture sample - range [-1,1] convert to [0,1]
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,-0.5f,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, blending);
+	dist = smin(dist, neighbour.w * 0.5f + 0.5f, blending); // signed texture sample - range [-1,1] convert to [0,1]
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0.5f,0), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, blending);
+	dist = smin(dist, neighbour.w * 0.5f + 0.5f, blending); // signed texture sample - range [-1,1] convert to [0,1]
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0,-0.5f), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, blending);
+	dist = smin(dist, neighbour.w * 0.5f + 0.5f, blending); // signed texture sample - range [-1,1] convert to [0,1]
 
 	neighbour = textureLod(inputTemporalDD, fma(vec3(0,0,0.5f), InvVolumeDimensions, uvw), 0);
 	direction = normalize(normalize(neighbour.xyz) + direction);
-	dist = smin(dist, neighbour.w, blending);
+	dist = smin(dist, neighbour.w * 0.5f + 0.5f, blending); // signed texture sample - range [-1,1] convert to [0,1]
 }		
 
 vec3 temporalBlendR( in const restrict sampler3D inputTemporalR, in vec3 color, in const vec3 uvw )
@@ -366,7 +366,6 @@ void main()
 		if ( any(greaterThanEqual(gl_GlobalInvocationID.xyz - VolumeDimensions, vec3(0))) )
 			return;
 	}
-
 	const ivec3 iLocation = ivec3(gl_GlobalInvocationID.xyz);
 	const vec3 uvw = gl_GlobalInvocationID.xyz * InvVolumeDimensions;
 
@@ -393,12 +392,13 @@ void main()
 		// // get absolute difference (for vectors, the data, does not require usage of abs)
 		// see: https://homepages.inf.ed.ac.uk/rbf/HIPR2/pixsub.htm
 		{
-			const float diff_distance = current_direction_distance.w - original_distance; // no abs is important
+			const float diff_distance = (current_direction_distance.w - original_distance); // no abs is important
 			current_direction_distance.w = current_direction_distance.w - diff_distance;
-			d0 = current_direction_distance.w * 0.5f + 0.5f;
-			t0 = d0 / (original_distance * 0.5f + 0.5f); // this parameter is only for *color*
+			d0 = current_direction_distance.w;
+			t0 = d0 / original_distance; // this parameter is only for *color*
 		}
-
+		
+		current_direction_distance.w = current_direction_distance.w * 2.0f - 1.0f; // expand to range [-1,1] for signed texture precision usage
 		imageStore(outTemporalDD[1 - pc.index_filter], iLocation, current_direction_distance);
 
 		

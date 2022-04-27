@@ -9,20 +9,21 @@
 namespace Volumetric
 {
 	static constexpr uint32_t const	
-		MODEL_MAX_DIMENSION_XYZ = 256;	// supporting 256x256x256 size voxel model
+		MODEL_MAX_DIMENSION_XYZ = 256,	// supporting 256x256x256 size voxel model
+		LEVELSET_MAX_DIMENSIONS_XYZ = 128;
 
 	static constexpr uint32_t const
 		VOXEL_MINIMAP_LINES_PER_CHUNK = 2;		// should be an even factor of world size - caution the world size volume will eat memory exponenially,
 												// 512x256x512 times VoxelNormal = 12.8 GB !!!! where a "line" of 2x256x512 times VoxelNormal = 50 MB
 	// needs measurement from stress test
 	BETTER_ENUM(Allocation, uint32_t const,
-		VOXEL_RENDER_FACTOR_BITS = 3,
+		VOXEL_RENDER_FACTOR_BITS = 4,
 		VOXEL_SCREEN_XYZ = Iso::SCREEN_VOXELS_X + Iso::SCREEN_VOXELS_Y + Iso::SCREEN_VOXELS_Z,
 
 		VOXEL_GRID_VISIBLE_XZ = Iso::SCREEN_VOXELS_XZ,
 		VOXEL_GRID_VISIBLE_X = Iso::SCREEN_VOXELS_X,
 		VOXEL_GRID_VISIBLE_Z = Iso::SCREEN_VOXELS_Z,
-		VOXEL_GRID_VISIBLE_TOTAL = VOXEL_GRID_VISIBLE_X * VOXEL_GRID_VISIBLE_Z * 3,
+		VOXEL_GRID_VISIBLE_TOTAL = VOXEL_GRID_VISIBLE_X * VOXEL_GRID_VISIBLE_Z,
 
 		VOXEL_MINIGRID_VISIBLE_X = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_X,
 		VOXEL_MINIGRID_VISIBLE_Y = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_Y,

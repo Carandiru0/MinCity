@@ -204,7 +204,7 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 
-	const vec3 ambient_reflection_term = unpackColor(material.ambient) + ambient_reflection * mix(1.0f - specular_reflection_term, specular_reflection_term, material.metallic) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
+	const vec3 ambient_reflection_term = unpackColor(material.ambient) + ambient_reflection * mix(diffuse_reflection_term, specular_reflection_term, material.roughness) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
 			// ambient
 	return ( ambient_reflection_term +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					

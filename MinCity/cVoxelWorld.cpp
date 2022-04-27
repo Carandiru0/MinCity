@@ -28,6 +28,7 @@
 #include "shockwave.h"
 #include "rain.h"
 #include "cImportGameObject.h"
+#include "cLevelSetGameObject.h"
 
 #ifdef GIF_MODE
 #include "cVideoScreenGameObject.h"
@@ -86,6 +87,8 @@ namespace // private to this file (anonymous)
 		XMFLOAT2A TargetPosition, Displacement;
 		XMFLOAT2A Velocity;
 
+		XMFLOAT3A ZoomExtents;
+		
 		float InitialDistanceToTarget;
 
 		float ZoomFactor;
@@ -97,17 +100,22 @@ namespace // private to this file (anonymous)
 			  tRotateStart,
 			  tZoomStart;
 
-		bool Motion;
+		bool Motion,
+			 ZoomToExtentsInitialDirection,
+			 ZoomToExtents;
 
 		CameraEntity()
 			:
 			Origin(0, 0, 0), // virtual coordinates
 			voxelFractionalGridOffset{},
+			ZoomExtents{},
 			ZoomFactor(Globals::DEFAULT_ZOOM_SCALAR),
 			tTranslateStart{ zero_time_point },
 			tRotateStart{ zero_time_point },
 			tZoomStart{ zero_time_point },
-			Motion(false)
+			Motion(false), 
+			ZoomToExtentsInitialDirection(false),
+			ZoomToExtents(false)
 		{}
 
 		void reset()
@@ -3341,12 +3349,9 @@ namespace world
 #endif
 		{ // test dynamics 
 			cTestGameObject* pTstGameObj(nullptr);
-			//cAutomataGameObject* pAutoGameObj(nullptr);
+			cLevelSetGameObject* pSphereGameObj(nullptr);
 
-			//pAutoGameObj = placeProceduralInstanceAt<cAutomataGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
-			//	Volumetric::eVoxelModels_Indices::VOODOO_SKULL);
-			//pAutoGameObj->getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
-			//pAutoGameObj->setRule(3, 4);
+			pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
 			/*
 			if (PsuedoRandom5050()) {
@@ -3370,7 +3375,7 @@ namespace world
 		}
 
 
-		{ // copter dynamic
+		/*{ // copter dynamic
 			cCopterGameObject* pGameObj = placeCopterInstanceAt(p2D_add(getVisibleGridCenter(), point2D_t(-25, -25)));
 			if (pGameObj) {
 				FMT_LOG_OK(GAME_LOG, "Copter launched");
@@ -3378,7 +3383,7 @@ namespace world
 			else {
 				FMT_LOG_FAIL(GAME_LOG, "No Copter for you - nullptr");
 			}
-		}
+		}*/
 #endif
 
 		_onLoadedRequired = false; // reset (must be last)
@@ -4097,17 +4102,66 @@ namespace world
 		return(false); // zoom cancelled
 	}
 
-	void __vectorcall cVoxelWorld::zoomCamera(float const inout)
+	bool const __vectorcall cVoxelWorld::zoomCamera(FXMVECTOR const xmExtents)	// to maximize zoom to a world aabb located at center of cameras
 	{
-		constinit static tTime tLast{ zero_time_point };
+		//XMMATRIX const xmViewProj(XMMatrixMultiply(_Visibility.getViewMatrix(), _Visibility.getProjectionMatrix()));
+		
+		//point2D_t const frameBufferSize(MinCity::getFramebufferSize());
+		//XMVECTOR const xmFrameBufferSize(p2D_to_v2(frameBufferSize));
 
-		tTime const tNow(critical_now());
-		if (tNow - tLast > fixed_delta_x2_duration)
-		{
-			if (::zoomCamera(SFM::round_to_i32(inout) > 0 ? -1 : 1)) { // mouse delta is linear steps of 1 only allowed, also is inverted
-				tLast = tNow;
+		//XMVECTOR const xmScreenSpaceMax(SFM::WorldToScreen(xmExtents, xmFrameBufferSize, xmViewProj));
+		//point2D_t const screenPointMax(v2_to_p2D_rounded(xmScreenSpaceMax));
+		
+		//XMVECTOR const xmScreenSpaceMin(SFM::WorldToScreen(XMVectorNegate(xmExtents), xmFrameBufferSize, xmViewProj));
+		//point2D_t const screenPointMin(v2_to_p2D_rounded(xmScreenSpaceMin));
+
+		//rect2D_t screenSpaceAABB(screenPointMin, screenPointMax);
+		
+		int const iContainment = _Visibility.AABBIntersectFrustum(XMVectorZero(), xmExtents);
+		float zoom_direction(0.0f);
+
+		if (iContainment > 0) { // fully inside
+			zoom_direction = 1.0f;
+
+			if (!oCamera.ZoomToExtents) {
+				oCamera.ZoomToExtentsInitialDirection = true;
+				oCamera.ZoomToExtents = true;
+				XMStoreFloat3A(&oCamera.ZoomExtents, xmExtents);
+			}
+			else if (!oCamera.ZoomToExtentsInitialDirection) { // going in opposite direction ?
+				// change in direction, stop auto-zooming
+				oCamera.ZoomToExtents = false;
 			}
 		}
+		else { // intersecting or fully outside
+			zoom_direction = -1.0f;
+
+			if (!oCamera.ZoomToExtents) {
+				oCamera.ZoomToExtentsInitialDirection = false;
+				oCamera.ZoomToExtents = true;
+				XMStoreFloat3A(&oCamera.ZoomExtents, xmExtents);
+			}
+			else if (oCamera.ZoomToExtentsInitialDirection) { // going in opposite direction ?
+				// change in direction, stop auto-zooming
+				oCamera.ZoomToExtents = false;
+			}
+		}
+
+		if (oCamera.ZoomToExtents) {
+			zoomCamera(zoom_direction);
+		}
+		else {
+			//reset
+			XMStoreFloat3A(&oCamera.ZoomExtents, XMVectorZero());
+			oCamera.ZoomToExtentsInitialDirection = false;
+		} 
+
+		return(oCamera.ZoomToExtents);
+	}
+	
+	void __vectorcall cVoxelWorld::zoomCamera(float const inout)
+	{
+		::zoomCamera(-SFM::round_to_i32(inout)); // is inverted
 	}
 
 	STATIC_INLINE bool const __vectorcall rotateCamera(float const anglerelative)
@@ -4115,7 +4169,7 @@ namespace world
 		if (0.0f != anglerelative) {
 			// setup lerp
 			oCamera.PrevAzimuthAngle = oCamera.Azimuth.angle();
-			oCamera.TargetAzimuthAngle = oCamera.Azimuth.angle() + anglerelative;
+			oCamera.TargetAzimuthAngle = oCamera.Azimuth.angle() + anglerelative * 2.0f;
 
 			// signal transition
 			oCamera.tRotateStart = critical_now();
@@ -4129,15 +4183,7 @@ namespace world
 
 	void __vectorcall cVoxelWorld::rotateCamera(float const anglerelative)
 	{
-		constinit static tTime tLast{ zero_time_point };
-
-		tTime const tNow(critical_now());
-		if (tNow - tLast > fixed_delta_x2_duration)
-		{
-			if (::rotateCamera(anglerelative)) {
-				tLast = tNow;
-			}
-		}
+		::rotateCamera(anglerelative);
 	}
 
 	STATIC_INLINE bool const XM_CALLCONV translateCamera(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does not orient in current direction of camera
@@ -4199,54 +4245,30 @@ namespace world
 
 	void __vectorcall cVoxelWorld::translateCamera(point2D_t const vDir)	// intended for scrolling from mouse hitting screen extents
 	{
-		constinit static tTime tLast{ zero_time_point };
-
-		tTime const tNow(now());
-		if (tNow - tLast > fixed_delta_x2_duration)
-		{
-			XMVECTOR xmIso = p2D_to_v2(point2D_t(-vDir.y, vDir.x)); // must be swapped and 1st component negated (reflected)
-			xmIso = XMVector2Normalize(xmIso);
-			xmIso = v2_rotate(xmIso, v2_rotation_constants::v225); // 225 degrees is perfect rotation to align isometry to window up/down left/right
+		XMVECTOR xmIso = p2D_to_v2(point2D_t(-vDir.y, vDir.x)); // must be swapped and 1st component negated (reflected)
+		xmIso = XMVector2Normalize(xmIso);
+		xmIso = v2_rotate(xmIso, v2_rotation_constants::v225); // 225 degrees is perfect rotation to align isometry to window up/down left/right
 			
-			// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
-			point2D_t const absDir(p2D_abs(vDir));
-			if (absDir.x > absDir.y) {		 // 0.75f gives more fine grained distance selection when using multiplier
-				xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
-			}
-			else {
-				xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
-			}
-			
-			if (::translateCameraOrient(xmIso)) { // this then scrolls in direction camera is currently facing correctly
-				tLast = tNow;
-			}
+		// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
+		point2D_t const absDir(p2D_abs(vDir));
+		if (absDir.x > absDir.y) {		 // 0.75f gives more fine grained distance selection when using multiplier
+			xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 		}
+		else {
+			xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
+		}
+			
+		::translateCameraOrient(xmIso); // this then scrolls in direction camera is currently facing correctly
 	}
 
 	void XM_CALLCONV cVoxelWorld::translateCamera(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does not orient in current direction of camera
 	{
-		constinit static tTime tLast{ zero_time_point };
-
-		tTime const tNow(now());
-		if (tNow - tLast > fixed_delta_x2_duration)
-		{
-			if (::translateCamera(xmDisplacement)) {
-				tLast = tNow;
-			}
-		}
+		::translateCamera(xmDisplacement);
 	}
 
 	void XM_CALLCONV cVoxelWorld::translateCameraOrient(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does orient in current direction of camera
 	{
-		constinit static tTime tLast{ zero_time_point };
-
-		tTime const tNow(now());
-		if (tNow - tLast > fixed_delta_x2_duration)
-		{
-			if (::translateCameraOrient(xmDisplacement)) {
-				tLast = tNow;
-			}
-		}
+		::translateCameraOrient(xmDisplacement);
 	}
 
 	void cVoxelWorld::resetCameraAngleZoom()
@@ -4482,7 +4504,7 @@ namespace world
 		// special input handling (required every frame) //
 		HoverVoxel();
 	}
-	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateFrame, bool const bFirstUpdateProgram)
+	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateProgram)
 	{
 		tTime const tStart(start());
 
@@ -4501,11 +4523,9 @@ namespace world
 			[[unlikely]] if (eExclusivity::DEFAULT != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
 				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
 
-			if (bFirstUpdateFrame) {
-				updateMouseOcclusion(bPaused);
-			}
+			updateMouseOcclusion(bPaused);
 
-			if (bFirstUpdateFrame && _sim) {
+			if (_sim) {
 				_sim->run(tNow, tDelta, the::grid);
 			}
 
@@ -4529,6 +4549,12 @@ namespace world
 
 			// any operations that do not need to execute while paused should not
 			if (!bPaused) {
+
+				if (oCamera.ZoomToExtents) {
+
+					// auto zoom to AABB extents feature
+					zoomCamera(XMLoadFloat3A(&oCamera.ZoomExtents));
+				}
 
 				{ // static instance validation
 
@@ -4635,14 +4661,14 @@ namespace world
 				}
 
 				// last
-				/* {
-					auto it = cAutomataGameObject::begin();
-					while (cAutomataGameObject::end() != it) {
+				{
+					auto it = cLevelSetGameObject::begin();
+					while (cLevelSetGameObject::end() != it) {
 
 						it->OnUpdate(tNow, tDelta);
 						++it;
 					}
-				}*/
+				}
 
 				// ---------------------------------------------------------------------------//
 				CleanUpInstanceQueue(); // *** must be done after all game object updates *** //

@@ -211,13 +211,11 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	// *bugfix - emission removed due to severe aliasing. resolution also improved after this change!
 	// fog                         
 	// random distribution on a hemisphere normalized vector pointing upwards (.xyz)
-	const float fog_height = max(0.0f, uvw.z);//max(0.0f, -uvw.z); // fog is for entire volume so no limit on maximum height
+	const float fog_height = 2.0f * max(0.0f, uvw.z);//max(0.0f, -uvw.z); // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
-	float bn_scaled = bn;
-	bn_scaled = bn_scaled * (17.0f/255.0f);
-	scattering = fog_height + mix(1.0f + bn_scaled, PI, attenuation);				// *do not modify*
-	scattering = exp2(-scattering * nDotL * 10.0f);			// *do not modify*
+	scattering = fog_height + mix(1.0f + bn * (17.0f/255.0f), PI, attenuation);				// *do not modify*
+	scattering = exp2(-scattering * 6.0f * (1.0f - opacity));			// *do not modify*
 
 	return(attenuation); // returns lightAmount  
 }

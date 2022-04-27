@@ -280,6 +280,7 @@
     <ClInclude Include="cCopterBodyGameObject.h" />
     <ClInclude Include="cCopterGameObject.h" />
     <ClInclude Include="cCopterPropGameObject.h" />
+    <ClInclude Include="cLevelSetGameObject.h" />
     <ClInclude Include="cLightGameObject.h" />
     <ClInclude Include="cImportGameObject.h" />
     <ClInclude Include="CityInfo.h" />
@@ -375,6 +376,7 @@
     <ClCompile Include="cCopterBodyGameObject.cpp" />
     <ClCompile Include="cCopterGameObject.cpp" />
     <ClCompile Include="cCopterPropGameObject.cpp" />
+    <ClCompile Include="cLevelSetGameObject.cpp" />
     <ClCompile Include="cLightGameObject.cpp" />
     <ClCompile Include="cImportGameObject.cpp" />
     <ClCompile Include="cNuklear.cpp" />

@@ -832,7 +832,7 @@ static void ApplyEmissive(voxelModelBase const* const __restrict pEmissive, voxe
 }
 bool const AddEmissiveVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked)
 {
-	voxelModelBase emissivePart(pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
+	voxelModelBase emissivePart(*pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
 
 	std::wstring szEmissiveIntensityFilename(file_no_extension); szEmissiveIntensityFilename += FILE_WILD_EMISSIVE;
 
@@ -932,7 +932,7 @@ static bool const ApplyVideoscreen(voxelModelBase const* const __restrict pVideo
 }
 bool const AddVideoscreenVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked)
 {
-	voxelModelBase videoscreenPart(pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
+	voxelModelBase videoscreenPart(*pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
 
 	std::wstring szVideoscreenFilename(file_no_extension); szVideoscreenFilename += FILE_WILD_VIDEO;
 
@@ -1034,7 +1034,7 @@ static void ApplyTransparency(voxelModelBase const* const __restrict pTransparen
 }
 bool const AddTransparentVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked)
 {
-	voxelModelBase transparentPart(pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
+	voxelModelBase transparentPart(*pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
 
 	std::wstring szTransparencyFilename(file_no_extension); szTransparencyFilename += FILE_WILD_TRANSPARENT;
 

@@ -286,15 +286,13 @@ namespace voxB
 		uint32_t		_numVoxelsEmissive;
 		uint32_t		_numVoxelsTransparent;
 
-		bool const	    _isDynamic_;
-
-		inline voxelModelBase(bool const isDynamic) 
-			: _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Extents{}, _isDynamic_(isDynamic), _Voxels(nullptr)
+		inline voxelModelBase() 
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)
 		{}
 
 		voxelModelBase(voxelModelBase const& src)
 			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
-			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _isDynamic_(src._isDynamic_), _Voxels(nullptr)
+			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr)
 		{
 			if (nullptr != src._Voxels) {
 
@@ -303,6 +301,19 @@ namespace voxB
 			}
 		}
 
+		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)
+		{
+			vec4_v const maxDimensions(width, height, depth);
+			
+			maxDimensions.xyzw(_maxDimensions);
+			
+			XMVECTOR const xmDimensions(maxDimensions.v4f());
+			XMStoreFloat3A(&_maxDimensionsInv, XMVectorReciprocal(xmDimensions));
+
+			_Voxels = (voxelDescPacked * __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * (width * height * depth), alignof(voxelDescPacked)); // matches voxBinary usage (alignment)
+		}
+		
 		void ComputeLocalAreaAndExtents();
 
 		~voxelModelBase(); // defined at end of voxBinary.cpp
@@ -321,13 +332,16 @@ namespace voxB
 		constexpr bool const isDynamic() const { return(Dynamic); }
 		
 		inline voxelModel(voxelModelIdent<Dynamic>&& identity)
-		: voxelModelBase(Dynamic), _identity(std::forward<voxelModelIdent<Dynamic>&&>(identity))
+		: _identity(std::forward<voxelModelIdent<Dynamic>&&>(identity))
 		{}
 
 		voxelModel(voxelModel<Dynamic> const& src)
 			: voxelModelBase(src), _identity(src._identity)
 		{}
 
+		voxelModel(uint32_t const width, uint32_t const height, uint32_t const depth)
+			: voxelModelBase(width, height, depth), _identity{ 0, 0 }
+		{}
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,

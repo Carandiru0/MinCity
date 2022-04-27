@@ -14,7 +14,7 @@
 namespace fs = std::filesystem;
 
 inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::DYNAMIC> > _dynamicModels;
-inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> > _staticModels;
+inline tbb::concurrent_vector< Volumetric::voxB::voxelModel<Volumetric::voxB::STATIC> >  _staticModels;
 
 namespace { // local to this file only}
 

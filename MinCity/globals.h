@@ -67,7 +67,7 @@
 #define DEBUG_STORAGE_BUFFER
 #endif
 
-//#define DEBUG_DISALLOW_PAUSE_FOCUS_LOST
+#define DEBUG_DISALLOW_PAUSE_FOCUS_LOST
 
 #ifdef LIVESHADER_MODE
 //#define DEBUG_DISALLOW_RENDER_DISABLING	// note that this causes any swapchain recreation to fail, this is not normally on in release
@@ -170,8 +170,8 @@ namespace Globals
 								 MIN_ZOOM_FACTOR = DEFAULT_ZOOM_SCALAR, // fits the bounded volume in release builds
 #endif
 								 ZOOM_SPEED = 0.44f;
-
-	static constexpr double const MINZ_DEPTH = (0.1 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
+							// Parallel Projections have a magnitude greater range in precision. Orthographic projection has nearly infinite accuracy compared to perspective projection. *Do not optimize these values further* The high depth buffer precision is supported, when coupled with a 32bit depth buffer.
+	static constexpr double const MINZ_DEPTH = (0.001 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
 	static constexpr double const MAXZ_DEPTH = (400.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 

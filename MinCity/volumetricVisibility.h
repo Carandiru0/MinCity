@@ -28,7 +28,9 @@ namespace Volumetric
 		__inline bool const XM_CALLCONV SphereTestFrustum(FXMVECTOR const xmPosition, float const fRadius) const;
 		template <bool const skip_near_plane = false>
 		__inline bool const XM_CALLCONV AABBTestFrustum(FXMVECTOR const xmPosition, FXMVECTOR const xmExtents) const;
-
+		template <bool const skip_near_plane = false>
+		__inline int const XM_CALLCONV AABBIntersectFrustum(FXMVECTOR const xmPosition, FXMVECTOR const xmExtents) const;
+		
 		void XM_CALLCONV UpdateFrustum(FXMMATRIX const xmView, float const ZoomFactor, size_t const framecount);
 
 		void Initialize();
@@ -53,8 +55,8 @@ namespace Volumetric
 	template <bool const skip_near_plane>
 	__inline bool const XM_CALLCONV volumetricVisibility::SphereTestFrustum(FXMVECTOR const xmPosition, float const fRadius) const
 	{
-		// Load the sphere.
-		XMVECTOR const vRadius(XMVectorNegate(XMVectorReplicate(fRadius * ERROR_COMPENSATION)));	// allow error % over
+		// Load the sphere.			// used to negate vector, now negation is included from ERROR_COMPENSATION
+		XMVECTOR const vRadius(XMVectorReplicate(fRadius * -ERROR_COMPENSATION));	// allow error % over
 
 		// Set w of the center to one so we can dot4 with all consecutive planes.
 		XMVECTOR const vCenter(XMVectorInsert<0, 0, 0, 0, 1>(xmPosition, XMVectorSplatOne()));
@@ -97,7 +99,7 @@ namespace Volumetric
 	template <bool const skip_near_plane>
 	__inline bool const XM_CALLCONV volumetricVisibility::AABBTestFrustum(FXMVECTOR const xmPosition, FXMVECTOR const xmExtents) const
 	{
-		// Load the box.		// used to negate vector, now negation is included in scale
+		// Load the box.		// used to negate vector, now negation is included from ERROR_COMPENSATION
 		XMVECTOR const vExtents(XMVectorScale(xmExtents, -ERROR_COMPENSATION)); // allow error % over 
 
 		// Set w of the center to one so we can dot4 with all consecutive planes.
@@ -128,5 +130,135 @@ namespace Volumetric
 
 		// **** If the box is inside all planes it is inside.
 		return(true);
+	}
+		
+	// more expensive aabb frustum intersection test - https://gist.github.com/Kinwailo/d9a07f98d8511206182e50acda4fbc9b
+	// returns:
+	// 1 if box is inside frustum 
+	// 0 if box is outside frustum
+	// -1 if box is intersecting frustum
+	template <bool const skip_near_plane>
+	__inline int const XM_CALLCONV volumetricVisibility::AABBIntersectFrustum(FXMVECTOR const xmPosition, FXMVECTOR const xmExtents) const
+	{
+		/*
+		int iContainment(1); // default to INSIDE
+		
+		// Load the box.		// used to negate vector, now negation is included in scale
+		XMVECTOR const vExtents(XMVectorScale(xmExtents, -ERROR_COMPENSATION)); // allow error % over 
+
+		// Test against each plane.
+		XMVECTOR const xmMin(XMVectorSubtract(xmPosition, vExtents)), xmMax(XMVectorAdd(xmPosition, vExtents));
+		XMVECTOR vmin(XMVectorZero()), vmax(XMVectorZero());
+		
+		uint32_t start;
+		if constexpr (skip_near_plane) {
+			start = 1;
+		}
+		else {
+			start = 0;
+		}
+		for (uint32_t i = start; i < 6; ++i) {
+			// X axis 
+			if (_Plane[i].x > 0) {
+				vmin = XMVectorInsert<0, 1, 0, 0, 0>(vmin, XMVectorSplatX(xmMin)); // vmin.x = mins.x;
+				vmax = XMVectorInsert<0, 1, 0, 0, 0>(vmax, XMVectorSplatX(xmMax)); // vmax.x = maxs.x;
+			}
+			else {
+				vmin = XMVectorInsert<0, 1, 0, 0, 0>(vmin, XMVectorSplatX(xmMax)); // vmin.x = maxs.x;
+				vmax = XMVectorInsert<0, 1, 0, 0, 0>(vmax, XMVectorSplatX(xmMin)); // vmax.x = mins.x;
+			}
+
+			// Y axis 
+			if (_Plane[i].y > 0) {
+				vmin = XMVectorInsert<0, 0, 1, 0, 0>(vmin, XMVectorSplatY(xmMin)); // vmin.y = mins.y;
+				vmax = XMVectorInsert<0, 0, 1, 0, 0>(vmax, XMVectorSplatY(xmMax)); // vmax.y = maxs.y;
+			}
+			else {
+				vmin = XMVectorInsert<0, 0, 1, 0, 0>(vmin, XMVectorSplatY(xmMax)); // vmin.y = maxs.y;
+				vmax = XMVectorInsert<0, 0, 1, 0, 0>(vmax, XMVectorSplatY(xmMin)); // vmax.y = mins.y;
+			}
+
+			// Z axis 
+			if (_Plane[i].z > 0) {
+				vmin = XMVectorInsert<0, 0, 0, 1, 0>(vmin, XMVectorSplatZ(xmMin)); // vmin.z = mins.z;
+				vmax = XMVectorInsert<0, 0, 0, 1, 0>(vmax, XMVectorSplatZ(xmMax)); // vmax.z = maxs.z;
+			}
+			else {
+				vmin = XMVectorInsert<0, 0, 0, 1, 0>(vmin, XMVectorSplatZ(xmMax)); // vmin.z = maxs.z;
+				vmax = XMVectorInsert<0, 0, 0, 1, 0>(vmax, XMVectorSplatZ(xmMin)); // vmax.z = mins.z;
+			}
+
+			// Set w of the min/max bounds to one so we can dot4 with all consecutive planes.
+			vmin = XMVectorInsert<0, 0, 0, 0, 1>(vmin, XMVectorSplatOne());
+			vmax = XMVectorInsert<0, 0, 0, 0, 1>(vmax, XMVectorSplatOne());
+			
+			XMVECTOR dp;
+			dp = _mm_dp_ps(XMLoadFloat4A(&_Plane[i]), vmin, 0xff);
+			if (XMVectorGetX(dp) > 0.0f)	// **** If the box is outside any plane it is outside.
+				return(0); // OUTSIDE
+
+			dp = _mm_dp_ps(XMLoadFloat4A(&_Plane[i]), vmax, 0xff);
+			if (XMVectorGetX(dp) >= 0.0f)
+				iContainment = -1; // INTERSECTING
+		}
+		*/
+		
+		// Load the box.		// used to negate vector, now negation is included from ERROR_COMPENSATION
+		XMVECTOR const vExtents(XMVectorScale(xmExtents, ERROR_COMPENSATION)); // allow error % over 
+
+		// Set w of the center to one so we can dot4 with all consecutive planes.
+		XMVECTOR const vCenter(XMVectorInsert<0, 0, 0, 0, 1>(xmPosition, XMVectorSplatOne()));
+
+		bool Outside(false), Inside(false);
+
+		// Test against each plane.
+		if constexpr (!skip_near_plane) {
+			Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_NEAR]));
+			Outside = !Inside;
+		}
+		
+		bool AnyOutside = Outside;
+		bool AllInside = Inside;
+
+		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_FAR]));
+		Outside = !Inside;
+		
+		AnyOutside |= Outside;
+		AllInside &= Inside;
+
+		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_RIGHT]));
+		Outside = !Inside;
+		
+		AnyOutside |= Outside;
+		AllInside &= Inside;
+
+		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_LEFT]));
+		Outside = !Inside;
+		
+		AnyOutside |= Outside;
+		AllInside &= Inside;
+
+		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_TOP]));
+		Outside = !Inside;
+		
+		AnyOutside |= Outside;
+		AllInside &= Inside;
+
+		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_BOTTOM]));
+		Outside = !Inside;
+		
+		AnyOutside |= Outside;
+		AllInside &= Inside;
+
+		// If the box is outside any plane it is outside.
+		if (AnyOutside)
+			return(0);
+
+		// If the box is inside all planes it is inside.
+		if (AllInside)
+			return(1);
+
+		// The box is not inside all planes or outside a plane, it may intersect.
+		return(-1);
 	}
 }

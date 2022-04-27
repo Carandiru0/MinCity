@@ -159,11 +159,13 @@ typedef struct key_event
 	int32_t action;
 } key_event;
 
-static inline struct alignas(16) // double clicking is purposely not supported for ease of use (touch tablet or touch screen)
+static inline struct // double clicking is purposely not supported for ease of use (touch tablet or touch screen)
 {
-	static constexpr uint32_t const MAX_TYPED = 64; // lots of room for multiple key actions / frame
+	static constexpr uint32_t const MAX_TYPED = 24; // lots of room for multiple key actions / frame
 
 	bool input_focused;
+		 
+	bool skip_click;
 
 	struct nk_vec2 scroll;
 	struct nk_vec2 mouse_pos;
@@ -179,7 +181,7 @@ static inline struct alignas(16) // double clicking is purposely not supported f
 	key_event keys[MAX_TYPED];
 
 	void reset() {
-
+		
 		characters_count = 0;
 		memset(characters, 0, sizeof(uint32_t) * MAX_TYPED);
 
@@ -280,11 +282,11 @@ nk_mouse_button_callback(GLFWwindow* const window, int const button, int const a
 		{
 		case eMouseButtonState::RELEASED:
 			if (eMouseButtonState::LEFT_PRESSED == nk_input.mouse_state.button_state) {
-				state.left_clicked = (state.tStamp - nk_input.mouse_state.tStamp < MouseState::CLICK_DELTA);
+				state.left_clicked = !nk_input.skip_click && (state.tStamp - nk_input.mouse_state.tStamp < MouseState::CLICK_DELTA);
 				state.left_released = true;
 			}
 			else if (eMouseButtonState::RIGHT_PRESSED == nk_input.mouse_state.button_state) {
-				state.right_clicked = (state.tStamp - nk_input.mouse_state.tStamp < MouseState::CLICK_DELTA);
+				state.right_clicked = !nk_input.skip_click && (state.tStamp - nk_input.mouse_state.tStamp < MouseState::CLICK_DELTA);
 				state.right_released = true;
 			}
 			break;
@@ -1105,6 +1107,8 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 					MinCity::DispatchEvent(eEvent::ESCAPE); // outside a window click - back to game
 				}
 			}
+			
+			nk_input.skip_click = false; // always reset
 		}
 	
 	} // handled ?
@@ -2381,6 +2385,8 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 					auto& previous(world::cImportGameObject::getProxy().previous);
 
+					bool bApplyMaterial(false);
+					
 					{
 						auto& colors = world::cImportGameObject::getProxy().colors;
 
@@ -2423,7 +2429,8 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 							colors.erase(previous); // remove previously selected color
 							previous = colors.end(); // must reset
-
+							bApplyMaterial = true;
+							
 							if (colors.empty()) { // last-one ?
 
 								world::cImportGameObject::getProxy().save(voxelModel.name); // saves the current model to a cache file, model is now imported.
@@ -2450,37 +2457,36 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 						nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
 
-						bool bApply(false);
 						{
 							nk_bool checked(iter_color->material.Emissive);
 							if (nk_checkbox_label(_ctx, "EMISSIVE", &checked)) {
 								iter_color->material.Emissive = checked;
-								bApply = true;
+								bApplyMaterial = true;
 							}
 						}
 						{
 							nk_bool checked(iter_color->material.Transparent);
 							if (nk_checkbox_label(_ctx, "TRANSPARENCY", &checked)) {
 								iter_color->material.Transparent = checked;
-								bApply = true;
+								bApplyMaterial = true;
 							}
 						}
 						{
 							nk_bool checked(iter_color->material.Metallic);
 							if (nk_checkbox_label(_ctx, "METALLIC", &checked)) {
 								iter_color->material.Metallic = checked;
-								bApply = true;
+								bApplyMaterial = true;
 							}
 						}
 						{
 							nk_size roughness(iter_color->material.Roughness);
 							if (nk_progress(_ctx, &roughness, 0xf, nk_true)) {
 								iter_color->material.Roughness = roughness;
-								bApply = true;
+								bApplyMaterial = true;
 							}
 						}
 
-						if (bApply) {
+						if (bApplyMaterial) {
 
 							world::cImportGameObject::getProxy().apply_material(iter_color);
 						}
@@ -2494,21 +2500,19 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 				if (nullptr == voxelModel.model) {
 					// to goto next model
-					if (!colors.empty()) {
-						if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
-							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash());
-							model_dynamic = nullptr;
-						}
-						if (model_static && model_static->getModelInstance()->getHash()) {
-							MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash());
-							model_static = nullptr;
-						}
+					
+					if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
+						MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash());
+						model_dynamic = nullptr;
+					}
+					if (model_static && model_static->getModelInstance()->getHash()) {
+						MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash());
+						model_static = nullptr;
 					}
 
 					_bModalPrompted = true; // this will either start an import for the next voxel model, or exit the import window
 					nk_window_close(_ctx, windowName._to_string()); // hides the import window
 				}
-				// otherwise the only, or last model will be placed at the origin of the map
 			}
 
 		} // end import window
@@ -2579,13 +2583,23 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						MinCity::Pause(false);
 						_uiWindowEnabled = eWindowType::IMPORT;
 						MinCity::VoxelWorld->resetCamera();
-						MinCity::VoxelWorld->translateCamera(point2D_t(0,13));						
+						//MinCity::VoxelWorld->translateCamera(point2D_t(0,13));		
+						
+						if (voxelModel.dynamic) {
+							if (model_dynamic) {
+								MinCity::VoxelWorld->zoomCamera(XMLoadFloat3A(&model_dynamic->getModelInstance()->getModel()._Extents));
+							}
+						}
+						else {
+							if (model_static) {
+								MinCity::VoxelWorld->zoomCamera(XMLoadFloat3A(&model_static->getModelInstance()->getModel()._Extents));
+							}
+						}
 					}
 					else {
 						_iWindowImportSelection = eWindowImport::DISABLED;
 						// user selected no, disable import and goto main window
 						bExitImport = true;
-						MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
 					}
 
 					_bModalPrompted = false; // required for any modal dialog prompt to reset itself when done.
@@ -2597,10 +2611,10 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 		if (bExitImport) { // if the queue is now empty
 
 			if (eWindowImport::IMPORT != _iWindowImportSelection) {
-				if (model_dynamic && model_dynamic->getModelInstance()->getHash()) {
+				if (model_dynamic && model_dynamic->getModelInstance()->getHash() && !model_dynamic->getModelInstance()->destroyPending()) {
 					MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_dynamic->getModelInstance()->getHash()); // destroy last
 				}
-				if (model_static && model_static->getModelInstance()->getHash()) {
+				if (model_static && model_static->getModelInstance()->getHash() && !model_static->getModelInstance()->destroyPending()) {
 					MinCity::VoxelWorld->destroyImmediatelyVoxelModelInstance(model_static->getModelInstance()->getHash()); // destroy last
 				}
 			}
@@ -2609,6 +2623,11 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 			voxelModel.model = nullptr; // clear
 
 			enableWindow<eWindowType::IMPORT>(false);
+
+			MinCity::VoxelWorld->resetCamera();
+			
+			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
+			nk_input.skip_click = true; // bugfix for main window being closed shortly thereafter
 		}
 		// otherwise the next file to import will prompt up next frame
 	}
