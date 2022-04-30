@@ -211,7 +211,7 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 float getAttenuation(in float normalized_light_distance, in const float volume_length) // this is half of the equation, when light volume is generated, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
 {
 	// denormalization and scaling to world coordinates (actual world distance) + 1.0
-	return( 1.0f / (fma(normalized_light_distance, volume_length, 1.0f)) );
+	return( 1.0f / fma(normalized_light_distance, volume_length, 1.0f) );
 }
 
 #ifdef FAST_LIGHTMAP // only used in volumetric raymarch - replaced with newer functions below.

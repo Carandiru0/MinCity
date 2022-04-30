@@ -141,8 +141,9 @@
       <MinimalRebuild>false</MinimalRebuild>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <StringPooling>true</StringPooling>
-      <SupportJustMyCode>true</SupportJustMyCode>
+      <SupportJustMyCode>false</SupportJustMyCode>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <OmitFramePointers>false</OmitFramePointers>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

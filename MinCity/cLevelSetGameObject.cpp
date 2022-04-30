@@ -4,6 +4,7 @@
 #include "MinCity.h"
 #include "cVoxelWorld.h"
 #include <tbb/tbb.h>
+#include <Noise/supernoise.hpp>
 
 namespace world
 {
@@ -85,58 +86,58 @@ namespace world
 		SFM::saturate_to_u8(XMVectorScale(XMVector3Length(xmUVW), 255.0f), rgba);
 		
 		bool const odd(((voxel.x & 1) & (voxel.y & 1) & (voxel.z & 1)));
-		voxel.Color = SFM::pack_rgba(rgba);
+		//voxel.Color = SFM::pack_rgba(rgba);
 		//voxel.setMetallic(true);
-		voxel.setRoughness(0.5f);
-		//voxel.Emissive = odd;
+		//voxel.setRoughness(0.5f);
+		voxel.Emissive = odd;
 		//voxel.Transparent = true;
 		//voxel.Hidden = !odd;
+		
+		//voxel.Emissive = (voxel.Color & 0xff) > 0xef;
 		
 		return(voxel);
 	}
 
-	STATIC_INLINE_PURE bool const __vectorcall op(uvec4_v const voxel, float const t)
+	STATIC_INLINE_PURE float const __vectorcall op(uvec4_v const voxel, float const t)
 	{				
 		XMVECTOR xmUVW(XMVectorMultiply(voxel.v4f(), XMVectorReplicate(_xmInvBounds)));
 		
-		//xmUVW = SFM::__fms(xmUVW, XMVectorReplicate(2.0f), XMVectorReplicate(1.0f));
+		xmUVW = SFM::__fms(xmUVW, XMVectorReplicate(2.0f), XMVectorReplicate(1.0f));
+		
+		// explosion scaling
+		xmUVW = XMVectorScale(xmUVW, 2.0f);
 		
 		XMFLOAT3A vUVW;
 		XMStoreFloat3A(&vUVW, xmUVW);
 		
-		XMVECTOR xmSDF;
+		// sphere
+		float sdf = XMVectorGetX(XMVector3Length(xmUVW)) - 1.0f; // 1.0f is the limits of the level set volume (128x128x128) that a sphere can fit into. (normalized)
 		
-		//p.x += sin(p.y + PI2 * fract(iTime * 0.8)) * 0.3;
-		//vec2 q = vec2(length(p.xz), p.y);
-		//return smoothstep(0.0, 1.2, q.x) - 0.1 * q.y;
+		// spiral noise
+		//sdf += supernoise::getSpiralNoise3D(vUVW.x, vUVW.y, vUVW.z, SFM::abs(SFM::__sin(t)) ) * 2.4f;
 		
-		//xmSDF = XMVector3Length(xmUVW);
-		//xmSDF = XMVectorSubtract(xmSDF, XMVectorReplicate(0.75f));
+		// 1 - explosion scaling
+		sdf *= 0.5f;
 		
 		//XMFLOAT3A vSDF;
 		//XMStoreFloat3A(&vSDF, xmSDF);
 		
-		XMFLOAT3A vSaved(vUVW);
-		vUVW.z = SFM::sincos(&vUVW.x, -vUVW.y + XM_2PI * SFM::fract(t * 0.8f));
+		//XMFLOAT3A vSaved(vUVW);
+		//vUVW.z = SFM::sincos(&vUVW.x, -vUVW.y + XM_2PI * t);
 				
-		vUVW.x = vSaved.x + vUVW.x * 0.3f;
-		vUVW.z = vSaved.z + vUVW.z * 0.3f;
+		//vUVW.x = vSaved.x + vUVW.x * 0.3f;
+		//vUVW.z = vSaved.z + vUVW.z * 0.3f;
 		
-		xmSDF = XMVectorSet(XMVectorGetX(XMVector2Length(XMVectorSet(vUVW.x, vUVW.z, 0.0f, 0.0f))), -vUVW.y, 0.0f, 0.0f);
-		
-		xmSDF = SFM::triangle_wave(XMVectorReplicate(-1.0f), XMVectorReplicate(1.0f), xmUVW);
-		xmSDF = SFM::__sin(XMVectorScale(xmSDF, XM_2PI * SFM::__sin(t * 0.125f)));
+		//xmSDF = XMVectorSet(XMVectorGetX(XMVector2Length(XMVectorSet(vUVW.x, vUVW.z, 0.0f, 0.0f))), -vUVW.y, 0.0f, 0.0f);
+		//float const sz = SFM::abs(SFM::__sin(t * 0.125f));
+		//xmSDF = SFM::triangle_wave(XMVectorReplicate(0.0f), XMVectorReplicate(1.0f), xmUVW);
+		//xmSDF = XMVectorMultiplyAdd(SFM::smoothstep(XMVectorReplicate(0.0f), XMVectorReplicate(0.75f), xmSDF), XMVectorReplicate(2.0f), XMVectorReplicate(-1.0f));
+		//xmSDF = SFM::__sin(XMVectorScale(xmSDF, XM_2PI * SFM::__sin(t * 0.125f)));
 		//xmSDF = XMVectorSubtract(xmSDF, XMVectorReplicate(0.25f));
-		
-		XMFLOAT3A vSDF;
-		XMStoreFloat3A(&vSDF, xmSDF);
-		
-		float const fSDF(vSDF.x + vSDF.y + vSDF.z);
-		
+			
 		//float const fSDF(SFM::smoothstep(0.0f, 1.2f, vSDF.x) - 0.1f * vSDF.y);
 		
-		
-		return(fSDF < 0.0f && fSDF > -Iso::MINI_VOX_SIZE);  // less than zero is inside, added > -Iso::MINI_VOX_SIZE * 0.5f makes the resulting voxel model hollow.
+		return(sdf);
 	}
 	void cLevelSetGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
@@ -146,11 +147,12 @@ namespace world
 			alignas(CACHE_LINE_BYTES) local_volume* const __restrict	bits;
 			tbb::atomic<uint32_t>& __restrict							active_voxel_count; // only valid after all parallel operations
 			Volumetric::voxB::voxelDescPacked* const __restrict			linear_voxel_array;
+			float const													tStamp;
 			
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
-			__forceinline sRenderFuncBlockChunk(local_volume* const __restrict bits_, tbb::atomic<uint32_t>& __restrict active_voxel_count_, Volumetric::voxB::voxelDescPacked* const __restrict linear_voxel_array_)
-				: bits(bits_), active_voxel_count(active_voxel_count_), linear_voxel_array(linear_voxel_array_)
+			__forceinline sRenderFuncBlockChunk(local_volume* const __restrict bits_, tbb::atomic<uint32_t>& __restrict active_voxel_count_, Volumetric::voxB::voxelDescPacked* const __restrict linear_voxel_array_, float const tStamp_)
+				: bits(bits_), active_voxel_count(active_voxel_count_), linear_voxel_array(linear_voxel_array_), tStamp(tStamp_)
 			{}
 
 			void __vectorcall operator()(tbb::blocked_range3d<uint32_t, uint32_t, uint32_t> const& r) const {
@@ -163,20 +165,32 @@ namespace world
 					x_begin(r.cols().begin()),
 					x_end(r.cols().end());
 
-				float const tNow(duration_cast<fp_seconds>(now() - start()).count());
-				
 				for (uint32_t z = z_begin; z < z_end; ++z) {
 
 					for (uint32_t y = y_begin; y < y_end; ++y) {
 
 						for (uint32_t x = x_begin; x < x_end; ++x) {
 
-							bool const inside(op(uvec4_v(x, z, y), tNow));
+							float const distance(op(uvec4_v(x, z, y), tStamp));
+
+							bool const inside(distance < 0.0f && distance > -Iso::MINI_VOX_SIZE); // less than zero is inside, added > -Iso::MINI_VOX_SIZE makes the resulting voxel model hollow.
+							
 							bits->write_bit(x, z, y, inside); // clear or set required
 							
 							if (inside) {
 								Volumetric::voxB::voxelDescPacked voxel{};
+								
 								voxel.x = x; voxel.y = z; voxel.z = y;
+								
+								float const d = -distance;
+								
+								uint32_t const red = SFM::saturate_to_u8((1.0f - (1.0f / (1.0f + d))) * 255.0f);
+								uint32_t const green = SFM::saturate_to_u8((1.0f / (1.0f + d)) * 255.0f);
+								uint32_t const blue = SFM::saturate_to_u8((1.0f / (1.0f + d * d)) * 255.0f);
+								
+								voxel.Color = SFM::pack_rgba(red, green, blue, 0);
+								//voxel.Emissive = blue > 0xaf;
+								
 								linear_voxel_array[active_voxel_count++] = voxel;
 							}
 						}
@@ -193,7 +207,7 @@ namespace world
 			0, Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, 8,	// row
 			0, Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, 8	// col
 			),
-			RenderFuncBlockChunk(_bits, numVoxels, getModel()->_Voxels), part
+			RenderFuncBlockChunk(_bits, numVoxels, getModel()->_Voxels, duration_cast<fp_seconds>(now() - start()).count()), part
 		);
 	
 		getModel()->_numVoxels = numVoxels;

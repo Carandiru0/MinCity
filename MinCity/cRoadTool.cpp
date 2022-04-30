@@ -31,6 +31,7 @@ cRoadTool::cRoadTool()
 
 STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped() // bloody-hell
 {
+	
 	static constexpr float const CELL_SIZE(Iso::ROAD_SEGMENT_WIDTH);
 	static constexpr float const INV_CELL_SIZE(1.0f / CELL_SIZE);
 
@@ -43,6 +44,8 @@ STATIC_INLINE_PURE point2D_t const getHoveredVoxelIndexSnapped() // bloody-hell
 	xmHoverVoxel = XMVectorMultiply(SFM::floor(xmHoverVoxel), XMVectorReplicate(CELL_SIZE));
 
 	return(v2_to_p2D(xmHoverVoxel)); // (end) snapped
+	
+	//return(MinCity::VoxelWorld->getHoveredVoxelIndex()); // not snapped
 }
 
 template<bool const perpendicular_side = true> // otherwise in-line with current direction

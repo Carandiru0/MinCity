@@ -87,6 +87,27 @@ vec2 subpixel_filter(in vec2 pixel) // good function, works with any texture sam
 }
 #endif
 
+// https://www.shadertoy.com/view/Xt23zV - Dave Hoskins 
+// Linear Step - give it a range [edge0, edge1] and a fraction between [0...1]
+// returns the normalized [0...1] equivalent of whatever range [edge0, edge1] is, linearly.
+// (like smoothstep, except it's purely linear
+float linearstep(in const float edge0, in const float edge1, in const float x)
+{
+    return( clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f) );
+}
+
+float inverse_linearstep(in const float edge0, in const float edge1, in const float d)
+{
+	//       (x - edge0)
+	// d = ---------------
+	//     (edge1 - edge0)
+	//
+	// x = d * (edge1 - edge0) + edge0
+	//
+	// herbie optimized -> fma(d, edge1 - edge0, edge0)
+    return( clamp(fma(d, edge1 - edge0, edge0), 0.0f, 1.0f) );
+}
+
 // Ken Perlin suggests an improved version of the smoothstep() function, 
 // which has zero 1st- and 2nd-order derivatives at x = 0 and x = 1.
 float smootherstep(in const float edge0, in const float edge1, in float x) 

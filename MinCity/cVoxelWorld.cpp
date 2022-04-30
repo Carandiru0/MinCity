@@ -27,6 +27,7 @@
 #include "tornado.h"
 #include "shockwave.h"
 #include "rain.h"
+#include "cLightGameObject.h"
 #include "cImportGameObject.h"
 #include "cLevelSetGameObject.h"
 
@@ -512,6 +513,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 		}
 	}
 
+	_bIsEdgeScrolling = false; // always reset
 	if (eInputEnabledBits::MOUSE_EDGE_SCROLL == (_inputEnabledBits & eInputEnabledBits::MOUSE_EDGE_SCROLL))
 	{
 		// MOUSE-SIDE-SCROLLING //
@@ -535,6 +537,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 				if (zero_time_duration == _tBorderScroll) {
 					translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
+					_bIsEdgeScrolling = true;
 					_bMotionDelta = true; // override so that dragging continue
 				}
 			}
@@ -874,7 +877,7 @@ void cVoxelWorld::setOcclusionInstances()
 void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 {
 	//FMT_NUKLEAR_DEBUG(true, "{:d} , {:d}   {:d} , {:d}  {:s}", _occlusion.groundVoxelIndex.x, _occlusion.groundVoxelIndex.y, _occlusion.occlusionVoxelIndex.x, _occlusion.occlusionVoxelIndex.y, (_lastOcclusionQueryValid ? "true" : "false"));
-	[[unlikely]] if (bPaused) {
+	[[unlikely]] if (bPaused || _bIsEdgeScrolling) { // *bugfix - add exception to not hide buildings / etc while scrolling the view (gives the appearance of "pop-in" depending on what is under the mouse *undesired).
 		clearOcclusionInstances();
 		return;
 	}
@@ -3351,7 +3354,7 @@ namespace world
 			cTestGameObject* pTstGameObj(nullptr);
 			cLevelSetGameObject* pSphereGameObj(nullptr);
 
-			pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
+			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
 			/*
 			if (PsuedoRandom5050()) {
@@ -4297,6 +4300,7 @@ namespace world
 	void cVoxelWorld::resetCamera()
 	{
 		oCamera.reset();
+		_bCameraTurntable = false;
 	}
 
 	// pixel perfect mouse picking used instead, leaving this here just in case ray picking is needed in future

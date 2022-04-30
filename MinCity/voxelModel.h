@@ -312,6 +312,8 @@ namespace voxB
 			XMStoreFloat3A(&_maxDimensionsInv, XMVectorReciprocal(xmDimensions));
 
 			_Voxels = (voxelDescPacked * __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * (width * height * depth), alignof(voxelDescPacked)); // matches voxBinary usage (alignment)
+			
+			ComputeLocalAreaAndExtents();
 		}
 		
 		void ComputeLocalAreaAndExtents();

@@ -710,17 +710,14 @@ void cMinCity::UpdateWorld()
 	}
 
 	// add to fixed timestamp n fixed steps, while also removing the fixed step from the 
-	bool updateTriggered(false);
+
 	while (tAccumulate >= delta()) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
 		m_tCriticalNow += delta();
 
 		tAccumulate -= delta();
-		updateTriggered = true;
-	}
-
-	if (updateTriggered) {
+		// *bugfix - it's absoletly critical to keep this in the while loop, otherwise frame rate independent motion will be broken.
 		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
 	

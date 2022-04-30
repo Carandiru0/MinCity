@@ -58,14 +58,15 @@ namespace Volumetric
 			model->_numVoxelsTransparent = numTransparent;
 
 			XMVECTOR const xmMin(mini.v4f()), xmMax(maxi.v4f());
-			XMVECTOR const xmExtent(XMVectorScale(XMVectorSubtract(xmMax, xmMin), 0.5f));
-
-			XMStoreFloat3A(&bounds.Extents, XMVectorScale(XMVectorAbs(xmExtent), Iso::MINI_VOX_STEP));
-			XMStoreFloat3A(&bounds.Center, XMVectorZero());
-
+			
+			XMVECTOR const xmBounds(XMVectorSubtract(XMVectorScale(xmMax, Iso::MINI_VOX_STEP), XMVectorScale(xmMin, Iso::MINI_VOX_STEP)));
+			
+			XMVECTOR const xmExtent(XMVectorScale(XMVectorAbs(xmBounds), 0.5f));
+			XMStoreFloat3A(&bounds.Extents, xmExtent);
+			
+			XMStoreFloat3A(&bounds.Center, XMVectorAdd(XMVectorScale(xmMin, Iso::MINI_VOX_STEP), xmExtent));
+			
 			active_color = *iter_current_color;
-
-			game_object->signal(now());
 		}
 	}
 	void ImportProxy::load(world::cImportGameObject* const game_object_, voxB::voxelModelBase const* const model_)

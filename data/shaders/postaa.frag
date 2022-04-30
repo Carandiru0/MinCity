@@ -167,7 +167,7 @@ vec3 anamorphicFlare(in const vec2 uv)
 //const vec3 gui_bleed = vec3( 349.019e-3f, 200e-3f, 635.294e-3f );
 
 const vec3 gui_green = vec3(266.666e-3f, 913.725e-3f, 537.254e-3f); // 0x0089E944  - abgr
-const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
+const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);		// 0x00CAFF9E  - abgr
 	
 //const vec3 gui_bleed = vec3(1.0f, 545.098e-3f, 152.941e-3f);
 //const vec3 gui_nixie = vec3(960.784e-3f, 1.0f, 94.1176e-3f);

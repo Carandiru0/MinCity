@@ -366,6 +366,7 @@ namespace world
 		uint32_t					_inputEnabledBits;
 		bool						_bMotionInvalidate = false, _bMotionDelta = false;
 		bool						_bDraggingMouse = false;
+		bool						_bIsEdgeScrolling = false;
 		bool						_bCameraTurntable = false;
 		bool						_onLoadedRequired;
 

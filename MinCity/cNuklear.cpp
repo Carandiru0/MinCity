@@ -2582,8 +2582,10 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						_uiWindowEnabled = eWindowType::DISABLED; // workaround pause lock-out temporarilly
 						MinCity::Pause(false);
 						_uiWindowEnabled = eWindowType::IMPORT;
+						
 						MinCity::VoxelWorld->resetCamera();
-						//MinCity::VoxelWorld->translateCamera(point2D_t(0,13));		
+						//MinCity::VoxelWorld->translateCamera(point2D_t(0,13));	
+						MinCity::VoxelWorld->setCameraTurnTable(true);
 						
 						if (voxelModel.dynamic) {
 							if (model_dynamic) {
@@ -2625,7 +2627,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 			enableWindow<eWindowType::IMPORT>(false);
 
 			MinCity::VoxelWorld->resetCamera();
-			
+						
 			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
 			nk_input.skip_click = true; // bugfix for main window being closed shortly thereafter
 		}

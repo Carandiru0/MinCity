@@ -399,6 +399,7 @@ void main()
 		}
 		
 		current_direction_distance.w = current_direction_distance.w * 2.0f - 1.0f; // expand to range [-1,1] for signed texture precision usage
+		
 		imageStore(outTemporalDD[1 - pc.index_filter], iLocation, current_direction_distance);
 
 		

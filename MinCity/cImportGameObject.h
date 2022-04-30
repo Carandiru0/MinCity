@@ -3,7 +3,6 @@
 #include "cUpdateableGameObject.h"
 #include <Utility/type_colony.h>
 #include "ImageAnimation.h"
-#include "cLightGameObject.h"
 
 // forward decl
 namespace Volumetric
@@ -23,18 +22,9 @@ namespace world
 {
 	class cImportGameObject
 	{
-	protected:
-		static constexpr uint32_t const _numLights = 3;
-
 	public:
-		virtual void signal(tTime const& __restrict tNow);
-
 		void __vectorcall OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
-	protected:
-		XMFLOAT3A		  _source[_numLights];
-		XMFLOAT3A		  _target[_numLights];
-		cLightGameObject* _lights[_numLights];
-		tTime			  _tStamp;
+
 	public:
 		static Volumetric::ImportProxy&		getProxy() { return(_proxy); }
 	protected:
@@ -52,8 +42,7 @@ namespace world
 
 		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
 		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
-
-		virtual void signal(tTime const& __restrict tNow) override final;
+		
 	public:
 		cImportGameObject_Dynamic(cImportGameObject_Dynamic&& src) noexcept;
 		cImportGameObject_Dynamic& operator=(cImportGameObject_Dynamic&& src) noexcept;
@@ -84,7 +73,6 @@ namespace world
 		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
 		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 
-		virtual void signal(tTime const& __restrict tNow) override final;
 	public:
 		cImportGameObject_Static(cImportGameObject_Static&& src) noexcept;
 		cImportGameObject_Static& operator=(cImportGameObject_Static&& src) noexcept;
