@@ -21,6 +21,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "adjacency.h"
 
 #include "sBatched.h"
+#include <Utility/bit_volume.h>
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 #include "performance.h"
@@ -193,14 +194,16 @@ namespace voxB
 
 		__inline __declspec(noalias) bool const operator<(voxelDescPacked const& rhs) const
 		{
-			bool bReturn(false);
+			// slices ordered by Z 
+			// (z * xMax * yMax) + (y * xMax) + x;
 
-			// sort by position order y,z,x
-			bReturn |= (y < rhs.y);
-			bReturn |= bReturn & (z < rhs.z);
-			bReturn |= bReturn & (x < rhs.x);
+			// slices ordered by Y: <---- USING Y
+			// (y * xMax * zMax) + (z * xMax) + x;
 
-			return(bReturn);
+			uint32_t const index((y * Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ) + (z * Volumetric::MODEL_MAX_DIMENSION_XYZ) + x);
+			uint32_t const index_rhs((rhs.y * Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ) + (rhs.z * Volumetric::MODEL_MAX_DIMENSION_XYZ) + rhs.x);
+
+			return(index < index_rhs);
 		}
 		
 		__inline __declspec(noalias) bool const operator!=(voxelDescPacked const& rhs) const
@@ -239,6 +242,40 @@ namespace voxB
 		
 	} voxelDescPacked;
 	
+	using model_volume = bit_volume<Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ>;
+
+	STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex, model_volume const* const __restrict bits)
+	{
+		ivec4_t iIndex;
+		ivec4_v(xmIndex).xyzw(iIndex);
+
+		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
+		//	left = voxB::BIT_ADJ_LEFT,
+		//	right = voxB::BIT_ADJ_RIGHT,
+		//	front = voxB::BIT_ADJ_FRONT,
+		//	back = voxB::BIT_ADJ_BACK,
+		//	above = voxB::BIT_ADJ_ABOVE
+
+		uint32_t adjacent(0);
+
+		if (iIndex.x - 1 >= 0) {
+			adjacent |= bits->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
+		}
+		if (iIndex.x + 1 < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+			adjacent |= bits->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
+		}
+		if (iIndex.z - 1 >= 0) {
+			adjacent |= bits->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
+		}
+		if (iIndex.z + 1 < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+			adjacent |= bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+		}
+		if (iIndex.y + 1 < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+			adjacent |= bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
+		}
+		return(adjacent);
+	}
+	
 	typedef struct voxelModelFeatures
 	{
 		static constexpr uint8_t const
@@ -275,16 +312,16 @@ namespace voxB
 	{		
 		voxelDescPacked* __restrict   _Voxels;			// Finalized linear array of voxels (constant readonly memory)
 
+		uint32_t 		_numVoxels;						// # of voxels activated
+		uint32_t		_numVoxelsEmissive;
+		uint32_t		_numVoxelsTransparent;
+		
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
 		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis)
 		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels)
 		
 		voxelModelFeatures _Features;
-
-		uint32_t 		_numVoxels;						// # of voxels activated
-		uint32_t		_numVoxelsEmissive;
-		uint32_t		_numVoxelsTransparent;
 
 		inline voxelModelBase() 
 			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)

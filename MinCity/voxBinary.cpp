@@ -224,304 +224,239 @@ static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restric
 
 // builds the voxel model, loading from magicavoxel .vox format, returning the model with the voxel traversal
 // supporting 256x256x256 size voxel model.
-static bool const LoadVOX( voxelModelBase* const __restrict pDestMem, uint8_t const * const (& __restrict pSourceVoxBinaryData)[2])
+static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t const* const& __restrict pSourceVoxBinaryData)
 {
-	uint8_t const * pReadPointer(nullptr);
-	
+	uint8_t const* pReadPointer(nullptr);
+
 	static constexpr uint32_t const  OFFSET_MAIN_CHUNK = 8;				// n bytes to structures
 	static constexpr uint32_t const  TAG_LN = 4;
-	static constexpr char const      TAG_VOX[TAG_LN] 				= { 'V', 'O', 'X', ' ' },
-									 TAG_MAIN[TAG_LN] 				= { 'M', 'A', 'I', 'N' },
-									 TAG_DIMENSIONS[TAG_LN] 		= { 'S', 'I', 'Z', 'E' },
-									 TAG_XYZI[TAG_LN] 				= { 'X', 'Y', 'Z', 'I' },
-									 TAG_PALETTE[TAG_LN]			= { 'R', 'G', 'B', 'A' };	
+	static constexpr char const      TAG_VOX[TAG_LN] = { 'V', 'O', 'X', ' ' },
+		TAG_MAIN[TAG_LN] = { 'M', 'A', 'I', 'N' },
+		TAG_DIMENSIONS[TAG_LN] = { 'S', 'I', 'Z', 'E' },
+		TAG_XYZI[TAG_LN] = { 'X', 'Y', 'Z', 'I' },
+		TAG_PALETTE[TAG_LN] = { 'R', 'G', 'B', 'A' };
 
 	static constexpr uint8_t const TAG_DUMMY = 0xFF;
 
-	uint32_t const uiNumModels = (nullptr == pSourceVoxBinaryData[1]) ? 1 : 2;  // Only supportimg up to 2 models - the base and above "models". Default is 1 or the base model
-	uint32_t uiNumModelsLoaded(0);
-	uint32_t uiNumVoxelsPerStack[2]{ 0 };
-	uint32_t uiTotalNumVoxels(0);
+	uint32_t numVoxels(0);
 
-	VoxelData const* __restrict pVoxelRoot[2]{};
+	VoxelData const* __restrict pVoxelRoot{};
 
-	ChunkDimensions const sizeChunk[2];
+	ChunkDimensions const sizeChunk;
 
-	uint32_t const* __restrict pPaletteRoot[2]{};
+	uint32_t const* __restrict pPaletteRoot{};
 
-	for (uint32_t stack = 0; stack < uiNumModels; ++stack)
-	{
-		pReadPointer = pSourceVoxBinaryData[stack];
+	pReadPointer = pSourceVoxBinaryData;
 
-		if (CompareTag(_countof(TAG_VOX), pReadPointer, TAG_VOX)) {
-			// skip version #
+	if (CompareTag(_countof(TAG_VOX), pReadPointer, TAG_VOX)) {
+		// skip version #
 
-			// read MAIN Chunk
-			ChunkHeader const rootChunk;
+		// read MAIN Chunk
+		ChunkHeader const rootChunk;
 
-			pReadPointer += OFFSET_MAIN_CHUNK;
-			ReadData((void* const __restrict) &rootChunk, pReadPointer, sizeof(rootChunk));
+		pReadPointer += OFFSET_MAIN_CHUNK;
+		ReadData((void* const __restrict) & rootChunk, pReadPointer, sizeof(rootChunk));
 
-			if (CompareTag(_countof(TAG_MAIN), (uint8_t const* const)rootChunk.id, TAG_MAIN)) { // if we have a valid structure for root chunk
+		if (CompareTag(_countof(TAG_MAIN), (uint8_t const* const)rootChunk.id, TAG_MAIN)) { // if we have a valid structure for root chunk
 
-				// ChunkData
-				if (rootChunk.numbyteschildren > 0) {
+			// ChunkData
+			if (rootChunk.numbyteschildren > 0) {
 
-					pReadPointer += sizeof(ChunkHeader);		// move to expected "SIZE" chunk
+				pReadPointer += sizeof(ChunkHeader);		// move to expected "SIZE" chunk
 
-					// read pointer is at expected "SIZE" chunk
-					ReadData((void* const __restrict) &sizeChunk[stack], pReadPointer, sizeof(sizeChunk));
+				// read pointer is at expected "SIZE" chunk
+				ReadData((void* const __restrict) & sizeChunk, pReadPointer, sizeof(sizeChunk));
 
-					if (CompareTag(_countof(TAG_DIMENSIONS), (uint8_t const* const)sizeChunk[stack].id, TAG_DIMENSIONS)) { // if we have a valid structure for size chunk
+				if (CompareTag(_countof(TAG_DIMENSIONS), (uint8_t const* const)sizeChunk.id, TAG_DIMENSIONS)) { // if we have a valid structure for size chunk
 
-						ChunkVoxels voxelsChunk;
-						pReadPointer += sizeof(ChunkDimensions);	// move to expected "XYZI" chunk
-						ReadData((void* const __restrict) &voxelsChunk, pReadPointer, sizeof(voxelsChunk));
+					ChunkVoxels voxelsChunk;
+					pReadPointer += sizeof(ChunkDimensions);	// move to expected "XYZI" chunk
+					ReadData((void* const __restrict) & voxelsChunk, pReadPointer, sizeof(voxelsChunk));
 
-						if (CompareTag(_countof(TAG_XYZI), (uint8_t const* const)voxelsChunk.id, TAG_XYZI)) { // if we have a valid structure for xyzi chunk
+					if (CompareTag(_countof(TAG_XYZI), (uint8_t const* const)voxelsChunk.id, TAG_XYZI)) { // if we have a valid structure for xyzi chunk
 
-							pReadPointer += sizeof(ChunkVoxels);	// move to expected voxel array data
+						pReadPointer += sizeof(ChunkVoxels);	// move to expected voxel array data
 
-							// Use Target Memory for loading
-							if ((sizeChunk[stack].Width <= Volumetric::MODEL_MAX_DIMENSION_XYZ)
-								&& (sizeChunk[stack].Height <= Volumetric::MODEL_MAX_DIMENSION_XYZ) // .vox .z is up direction in file format
-								&& (sizeChunk[stack].Depth <= Volumetric::MODEL_MAX_DIMENSION_XYZ)
-								&& voxelsChunk.numVoxels > 0) { // ensure less than maximum dimension suported
+						// Use Target Memory for loading
+						if ((sizeChunk.Width <= Volumetric::MODEL_MAX_DIMENSION_XYZ)
+							&& (sizeChunk.Height <= Volumetric::MODEL_MAX_DIMENSION_XYZ) // .vox .z is up direction in file format // vox files map height to "z"
+							&& (sizeChunk.Depth <= Volumetric::MODEL_MAX_DIMENSION_XYZ)
+							&& voxelsChunk.numVoxels > 0) { // ensure less than maximum dimension suported
 
-								uiNumVoxelsPerStack[stack] = voxelsChunk.numVoxels;
+							numVoxels = voxelsChunk.numVoxels;
 
-								uiTotalNumVoxels += uiNumVoxelsPerStack[stack];
+							// input linear access array
+							pVoxelRoot = reinterpret_cast<VoxelData const* const>(pReadPointer);
 
-								// input linear access array
-								pVoxelRoot[stack] = reinterpret_cast<VoxelData const* const>(pReadPointer);
+							//-------------------------------------------------------------------------------------------------------------------------//
+							ChunkHeader paletteChunk;
+							pReadPointer += sizeof(VoxelData) * voxelsChunk.numVoxels;	// move to expected "RGBA" chunk
+							ReadData((void* const __restrict) & paletteChunk, pReadPointer, sizeof(paletteChunk));
 
-								//-------------------------------------------------------------------------------------------------------------------------//
-								ChunkHeader paletteChunk;
-								pReadPointer += sizeof(VoxelData) * uiNumVoxelsPerStack[stack];	// move to expected "RGBA" chunk
-								ReadData((void* const __restrict) &paletteChunk, pReadPointer, sizeof(paletteChunk));
+							if (CompareTag(_countof(TAG_PALETTE), (uint8_t const* const)paletteChunk.id, TAG_PALETTE)) { // if we have a valid structure for xyzi chunk
 
-								if (CompareTag(_countof(TAG_PALETTE), (uint8_t const* const)paletteChunk.id, TAG_PALETTE)) { // if we have a valid structure for xyzi chunk
-								
-									pReadPointer += sizeof(ChunkHeader);	// move to expected RGBA PALETTE array data
+								pReadPointer += sizeof(ChunkHeader);	// move to expected RGBA PALETTE array data
 
-									pPaletteRoot[stack] = reinterpret_cast<uint32_t const* const>(pReadPointer);
-								}
-								else { // palette chunk missing, should be default palette then
-									pPaletteRoot[stack] = reinterpret_cast<uint32_t const* const>(default_palette);
-								}
-
-								++uiNumModelsLoaded;
+								pPaletteRoot = reinterpret_cast<uint32_t const* const>(pReadPointer);
 							}
-#ifdef VOX_DEBUG_ENABLED
-							else {
-								FMT_LOG_FAIL(VOX_LOG, "vox chunk dimensions too large");
-								return(false);
+							else { // palette chunk missing, should be default palette then
+								pPaletteRoot = reinterpret_cast<uint32_t const* const>(default_palette);
 							}
-#endif
 						}
 #ifdef VOX_DEBUG_ENABLED
 						else {
-							FMT_LOG_FAIL(VOX_LOG, "expected XYZI chunk fail");
+							FMT_LOG_FAIL(VOX_LOG, "vox chunk dimensions too large");
 							return(false);
 						}
-#endif	
+#endif
 					}
 #ifdef VOX_DEBUG_ENABLED
 					else {
-						FMT_LOG_FAIL(VOX_LOG, "expected SIZE chunk fail");
+						FMT_LOG_FAIL(VOX_LOG, "expected XYZI chunk fail");
 						return(false);
 					}
-#endif		
+#endif	
 				}
 #ifdef VOX_DEBUG_ENABLED
 				else {
-					FMT_LOG_FAIL(VOX_LOG, "root has no children chunk data fail");
+					FMT_LOG_FAIL(VOX_LOG, "expected SIZE chunk fail");
 					return(false);
 				}
-#endif
+#endif		
 			}
 #ifdef VOX_DEBUG_ENABLED
 			else {
-				FMT_LOG_FAIL(VOX_LOG, "no MAIN tag");
+				FMT_LOG_FAIL(VOX_LOG, "root has no children chunk data fail");
 				return(false);
 			}
 #endif
 		}
 #ifdef VOX_DEBUG_ENABLED
 		else {
-			FMT_LOG_FAIL(VOX_LOG, "no VOX tag");
+			FMT_LOG_FAIL(VOX_LOG, "no MAIN tag");
 			return(false);
 		}
-#endif	
-
-	} // for
-
-	if (uiNumModels == uiNumModelsLoaded)
-	{
-		vector<VoxelData> allVoxelData;
-		allVoxelData.reserve(uiTotalNumVoxels); allVoxelData.resize(uiTotalNumVoxels);
-
-		{
-			VoxelData* __restrict pBuffer = allVoxelData.data();
-
-			uint32_t remaining_count((uint32_t const)allVoxelData.size());
-
-			// copy data into temporary memory buffer
-			for (uint32_t stack = 0; stack < uiNumModels; ++stack)
-			{
-				uint32_t const current_count(uiNumVoxelsPerStack[stack]);
-
-				memcpy_s(pBuffer, remaining_count * sizeof(VoxelData), pVoxelRoot[stack], current_count * sizeof(VoxelData));
-				pBuffer += current_count;
-				remaining_count -= current_count;
-			}
-		}
-
-		// if stacked, must offset all height by base stack
-		if (uiNumModels > 1) {
-			VoxelData* __restrict pCurSecondStack(allVoxelData.data() + uiNumVoxelsPerStack[0]);
-			uint32_t numVoxelsSecondStack(uiNumVoxelsPerStack[1]);
-
-			while (0 != numVoxelsSecondStack) {
-
-				pCurSecondStack->z += sizeChunk[0].Height;		// vox files map height to "z"
-
-				++pCurSecondStack;
-				--numVoxelsSecondStack;
-			}
-		}
-
-		// A VecVoxels has a separate std::vector<T> per thread
-		typedef tbb::enumerable_thread_specific< vector<voxelDescPacked> > VecVoxels;
-
-		const struct FuncAdjacency {
-			uint32_t const						numVoxels,
-												numVoxelsFirstStack;
-			VoxelData const* const __restrict	rootVoxel;
-			VecVoxels& __restrict				tmpVectors;
-			uint32_t const* const __restrict	pPaletteRoot[2];
-
-			__inline FuncAdjacency(
-				uint32_t const numVoxels_,
-				uint32_t const _numVoxelsFirstStack, 
-				VoxelData const* const __restrict rootVoxel_,
-				VecVoxels& __restrict tmpVectors_,
-				uint32_t const* const __restrict pPaletteRootFirstStack,
-				uint32_t const* const __restrict pPaletteRootSecondStack)
-				: numVoxels(numVoxels_), numVoxelsFirstStack(_numVoxelsFirstStack), rootVoxel(rootVoxel_), tmpVectors(tmpVectors_),
-				pPaletteRoot{ pPaletteRootFirstStack, pPaletteRootSecondStack }
-			{}
-
-			void operator()(const tbb::blocked_range<uint32_t>& r) const {
-
-				VecVoxels::reference v = tmpVectors.local();
-				for (uint32_t i = r.begin(); i != r.end(); ++i) {
-
-					uint8_t pendingAdjacency;
-					VoxelData curVoxel(*(rootVoxel + i));
-
-					if (BuildAdjacency(numVoxels, curVoxel, rootVoxel, pendingAdjacency)) {
-
-						uint32_t color(0);
-						if (0 != curVoxel.paletteIndex) {
-							// resolve color from palette using the palette index of this voxel
-							color = (i < numVoxelsFirstStack ? pPaletteRoot[0][curVoxel.paletteIndex - 1] : pPaletteRoot[1][curVoxel.paletteIndex - 1]) & 0x00FFFFFF; // no alpha
-						}
-						v.emplace_back(voxelDescPacked(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), // *note -> swizzle of y and z here
-													   pendingAdjacency, color));
-					}
-				}
-			}
-		};
-		// output linear access array
-		VecVoxels tmpVectors;
-
-		// load all voxels	// size = (numVoxels - voxelsCulled) * [sizeof(voxelDescPacked) (4bytes)]
-		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, uiTotalNumVoxels), 
-			FuncAdjacency(uiTotalNumVoxels, uiNumVoxelsPerStack[0], 
-						  allVoxelData.data(), tmpVectors,
-						  pPaletteRoot[0], pPaletteRoot[1]));
-
-		// free temporary concatenated buffer
-		allVoxelData.resize(0); allVoxelData.shrink_to_fit();
-
-		vector<voxelDescPacked> culledVoxels;
-		culledVoxels.reserve(uiTotalNumVoxels);
-
-		// move from all voxels to culled voxels
-		uvec4_v xmMin(UINT32_MAX, UINT32_MAX, UINT32_MAX,0),
-			    xmMax(0);
-
-		tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
-		for (tbb::flattened2d<VecVoxels>::const_iterator
-			i = flat_view.begin(); i != flat_view.end(); ++i) {
-			voxelDescPacked const voxel(*i);
-
-			__m128i const xmPosition(voxel.getPosition());
-			xmMin.v = SFM::min(xmMin.v, xmPosition);
-			xmMax.v = SFM::max(xmMax.v, xmPosition);
-
-			// add to culled voxels vector
-			culledVoxels.emplace_back(voxel);
-		}
-		
-		// Actual dimensiuons of model saved, bugfix for "empty space around true model extents"
-		uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(xmMax.v, xmMin.v)));  // bugfix: minimum 1 voxel dimension size on any axis
-
-		// reset for dimensions from model (stacked) .vox file size chunk
-		xmMax = uvec4_v(0);
-
-		for (uint32_t stack = 0; stack < uiNumModels; ++stack)
-		{
-			xmMax.v = SFM::max(xmMax.v, uvec4_v(sizeChunk[stack].Width, sizeChunk[stack].Height, sizeChunk[stack].Depth).v);
-		}
-		uvec4_v const xmVOXDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(xmMax.v, _mm_set1_epi32(1))));  // here the file dimensions size is made index based rather than count based then: 
-																												// bugfix: minimum 1 voxel dimension size on any axis
-
-#ifdef VOX_DEBUG_ENABLED
-		uvec4_t dimensions, vox_dimensions;
-		xmDimensions.xyzw(dimensions);
-		xmVOXDimensions.xyzw(vox_dimensions);
-		
-		if (dimensions.x != vox_dimensions.x ||
-			dimensions.y != vox_dimensions.y ||
-			dimensions.z != vox_dimensions.z) {
-
-			FMT_LOG_WARN(VOX_LOG, "dimension mismatch calculated({:d}, {:d}, {:d}) != file({:d}, {:d}, {:d})",
-				dimensions.x, dimensions.y, dimensions.z,
-				vox_dimensions.x, vox_dimensions.y, vox_dimensions.z);
-
-		}
 #endif
-		// take maximum of calculated and file dimensions
-		xmDimensions.v = SFM::max(xmDimensions.v, xmVOXDimensions.v);
-
-		// store final dimensions
-		XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(xmDimensions.v4f()));
-		xmDimensions.xyzw(pDestMem->_maxDimensions);
-
-		// Sort the voxels by "slices" on .y (height offset) axis
-		culledVoxels.shrink_to_fit();
-		tbb::parallel_sort(culledVoxels.begin(), culledVoxels.end());
-		
-		pDestMem->_numVoxels = (uint32_t)culledVoxels.size(); // save actual number of voxels - culled voxel total
-
-		pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
-		memcpy((void* __restrict)pDestMem->_Voxels, culledVoxels.data(), pDestMem->_numVoxels * sizeof(voxelDescPacked const));
-
-		pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
-#ifdef VOX_DEBUG_ENABLED	
-		FMT_LOG(VOX_LOG, "vox loaded ({:d}, {:d}, {:d}) " " mem usage {:d} bytes, {:d} voxels culled", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.z, pDestMem->_maxDimensions.y, (pDestMem->_numVoxels * sizeof(voxelDescPacked)), (uiTotalNumVoxels - pDestMem->_numVoxels));
-#endif		
-		return(true);
 	}
+#ifdef VOX_DEBUG_ENABLED
 	else {
-		FMT_LOG_FAIL(VOX_LOG, "unable to load a set of vox model(s)");
+		FMT_LOG_FAIL(VOX_LOG, "no VOX tag");
 		return(false);
 	}
+#endif	
 
-	FMT_LOG_FAIL(VOX_LOG, "unknown error loading a set of vox model(s)");
-	return(false);
+	vector<Volumetric::voxB::voxelDescPacked> allVoxels;
+	allVoxels.reserve(numVoxels); allVoxels.resize(numVoxels);
+	
+	{ // adjacency
+		using model_volume = Volumetric::voxB::model_volume;
+
+		// Here: accurate counts, cull voxels & encode adjacency w/ consideration of transparency, optimize model.
+		alignas(CACHE_LINE_BYTES) model_volume* __restrict bits(nullptr);
+		bits = model_volume::create();
+
+		{ // adjacency
+
+			struct { // avoid lambda heap
+
+				Volumetric::voxB::voxelDescPacked* const __restrict pVoxels;
+				VoxelData const* const __restrict					pVoxelData;
+				uint32_t const* const __restrict					pPaletteRoot;
+
+			} p = { allVoxels.data(), pVoxelRoot, pPaletteRoot };
+
+			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
+
+				VoxelData const curVoxel(*(p.pVoxelData + i));
+
+				uint32_t color(0);
+				if (0 != curVoxel.paletteIndex) {
+					// resolve color from palette using the palette index of this voxel
+					color = p.pPaletteRoot[curVoxel.paletteIndex - 1] & 0x00FFFFFF; // no alpha
+				}
+
+				p.pVoxels[i] = std::move<voxelDescPacked&&>(voxelDescPacked(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), // *note -> swizzle of y and z here
+					                                                        0, color));
+
+				bits->set_bit(curVoxel.x, curVoxel.z, curVoxel.y); // *note -> swizzle of y and z here also required
+			});
+
+			// encode adjacency
+			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
+				uvec4_v const localIndex(p.pVoxels[i].x, p.pVoxels[i].y, p.pVoxels[i].z);
+
+				p.pVoxels[i].setAdjacency(encode_adjacency(localIndex, bits)); // apply adjacency
+			});
+		}
+
+		// cleanup, volume no longer required - adjacency is encoded
+		if (bits) {
+			model_volume::destroy(bits);
+			bits = nullptr;
+		}
+	}
+
+	// get bounds manually
+	uvec4_v mini(Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ),
+		    maxi(0, 0, 0);
+	Volumetric::voxB::voxelDescPacked const* pVoxels(allVoxels.data());
+
+	for (uint32_t i = 0; i < numVoxels; ++i) {
+
+		__m128i const xmPosition(pVoxels->getPosition());
+		mini.v = SFM::min(mini.v, xmPosition);
+		maxi.v = SFM::max(maxi.v, xmPosition);
+		
+		++pVoxels;
+	}
+			
+	// Actual dimensiuons of model saved, bugfix for "empty space around true model extents"
+	uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(maxi.v, mini.v)));  // bugfix: minimum 1 voxel dimension size on any axis
+
+	// reset for dimensions from model (stacked) .vox file size chunk
+	maxi = uvec4_v(0);
+	maxi.v = SFM::max(maxi.v, uvec4_v(sizeChunk.Width, sizeChunk.Height, sizeChunk.Depth).v);
+	
+	uvec4_v const xmVOXDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(maxi.v, _mm_set1_epi32(1))));  // here the file dimensions size is made index based rather than count based then: 
+																											// bugfix: minimum 1 voxel dimension size on any axis
+#ifdef VOX_DEBUG_ENABLED
+	uvec4_t dimensions, vox_dimensions;
+	xmDimensions.xyzw(dimensions);
+	xmVOXDimensions.xyzw(vox_dimensions);
+		
+	if (dimensions.x != vox_dimensions.x ||
+		dimensions.y != vox_dimensions.y ||
+		dimensions.z != vox_dimensions.z) {
+
+		FMT_LOG_WARN(VOX_LOG, "dimension mismatch calculated({:d}, {:d}, {:d}) != file({:d}, {:d}, {:d})",
+			dimensions.x, dimensions.y, dimensions.z,
+			vox_dimensions.x, vox_dimensions.y, vox_dimensions.z);
+
+	}
+#endif
+	// take maximum of calculated and file dimensions
+	xmDimensions.v = SFM::max(xmDimensions.v, xmVOXDimensions.v);
+
+	// store final dimensions
+	XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(xmDimensions.v4f()));
+	xmDimensions.xyzw(pDestMem->_maxDimensions);
+
+	// Sort the voxels by y "slices", then z "rows", then x "columns"
+	allVoxels.shrink_to_fit();
+	tbb::parallel_sort(allVoxels.begin(), allVoxels.end());
+		
+	pDestMem->_numVoxels = (uint32_t)allVoxels.size();
+
+	pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+	memcpy((void* __restrict)pDestMem->_Voxels, allVoxels.data(), pDestMem->_numVoxels * sizeof(voxelDescPacked const));
+
+	pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
+	
+#ifdef VOX_DEBUG_ENABLED	
+	FMT_LOG(VOX_LOG, "vox loaded ({:d}, {:d}, {:d}) ", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.z, pDestMem->_maxDimensions.y);
+#endif	
+	
+	return(true);
 }
 
 // see voxelModel.h
@@ -543,8 +478,107 @@ typedef struct voxelModelDescHeader
 
 namespace fs = std::filesystem;
 
-bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase const* const __restrict pDestMem)
+bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem)
 {
+	Volumetric::voxB::voxelDescPacked* __restrict pVoxels(pDestMem->_Voxels);
+	uint32_t numVoxels(pDestMem->_numVoxels);
+
+	{ // redo adjacency, to take transparency into account
+
+		using model_volume = Volumetric::voxB::model_volume;
+
+		// Here: accurate counts, cull voxels & encode adjacency w/ consideration of transparency, optimize model.
+		alignas(CACHE_LINE_BYTES) model_volume* __restrict bits(nullptr);
+		bits = model_volume::create();
+
+		{ // adjacency
+
+			struct { // avoid lambda heap
+
+				Volumetric::voxB::voxelDescPacked* const __restrict pVoxels;
+
+			} p = { pVoxels };
+
+			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
+
+				p.pVoxels[i].Hidden = false; // always false here on save, ensure hidden is not set on any voxel b4 saving file
+
+				// add to temp volume *only if not transparent - this excludes transparent voxels so that when adjacency is considered for neighbours of any voxel, it now leaves the transparent ones out of the adjacency calculation.
+				if (!p.pVoxels[i].Transparent) {
+					bits->set_bit(p.pVoxels[i].x, p.pVoxels[i].y, p.pVoxels[i].z);
+				}
+			});
+
+			// encode adjacency
+			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
+				uvec4_v const localIndex(p.pVoxels[i].x, p.pVoxels[i].y, p.pVoxels[i].z);
+
+				if (!p.pVoxels[i].Transparent) { // want to keep existing adjacency for transparent voxels, as they are not considered for adjacency re-calculation.
+					p.pVoxels[i].setAdjacency(encode_adjacency(localIndex, bits)); // apply adjacency
+				}
+			});
+		}
+
+		// cleanup, volume no longer required - adjacency is encoded
+		if (bits) {
+			model_volume::destroy(bits);
+			bits = nullptr;
+		}
+	}
+
+	{ // culling
+
+		// A VecVoxels has a separate std::vector<T> per thread
+		typedef tbb::enumerable_thread_specific< vector<voxelDescPacked> > VecVoxels;
+
+		// output linear access array
+		VecVoxels tmpVectors;
+		
+		struct { // avoid lambda heap
+
+			Volumetric::voxB::voxelDescPacked const* const __restrict pVoxels;
+
+			VecVoxels& __restrict tmpVectors;
+
+		} p = { pVoxels, tmpVectors };
+
+		tbb::parallel_for(uint32_t(0), numVoxels, [&p](uint32_t const i) {
+
+			static constexpr uint32_t const all(BIT_ADJ_LEFT | BIT_ADJ_RIGHT | BIT_ADJ_FRONT | BIT_ADJ_BACK | BIT_ADJ_ABOVE);
+
+			if (all != p.pVoxels[i].getAdjacency()) { // cull all voxels that have been completely surrounded by other voxels, which implies this voxel is hidden regardless of transparency or other things.
+				
+				p.tmpVectors.local().emplace_back(p.pVoxels[i]);
+			}
+		});
+
+		// reset count and tally number of voxels
+		uint32_t numVoxelsEmissive(0),			
+				 numVoxelsTransparent(0);		
+
+		numVoxels = 0;
+
+		tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
+		for (tbb::flattened2d<VecVoxels>::const_iterator
+			i = flat_view.begin(); i != flat_view.end(); ++i) {
+			
+			numVoxelsEmissive += i->Emissive;			// only voxels that are not culled are included in the final counts.
+			numVoxelsTransparent += i->Transparent;
+
+			*pVoxels = *i;
+			++pVoxels;
+			++numVoxels;
+		}
+
+		tbb::parallel_sort(pDestMem->_Voxels, pVoxels);
+
+		// accurate counts - now only the culled set of voxels.
+		pDestMem->_numVoxels = numVoxels;
+		pDestMem->_numVoxelsEmissive = numVoxelsEmissive;
+		pDestMem->_numVoxelsTransparent = numVoxelsTransparent;
+	}
+		
+	// save to file
 	FILE* __restrict stream(nullptr);
 	if ((0 == _wfopen_s(&stream, path.data(), L"wbS")) && stream) {
 
@@ -566,13 +600,13 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase const*
 			}
 		}
 		//write all voxelDescPacked 
-		uint32_t const numVoxels(pDestMem->_numVoxels);
-		voxelDescPacked const* __restrict pVoxels = pDestMem->_Voxels;
-
-		_fwrite_nolock(&pVoxels[0], sizeof(voxelDescPacked), numVoxels, stream);
+		_fwrite_nolock(&pDestMem->_Voxels[0], sizeof(voxelDescPacked), pDestMem->_numVoxels, stream);
 
 		_fclose_nolock(stream);
 
+#ifdef VOX_DEBUG_ENABLED	
+		FMT_LOG(VOX_LOG, "v1x saved ({:d}, {:d}, {:d}) " " mem usage {:d} bytes", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.z, pDestMem->_maxDimensions.y, (pDestMem->_numVoxels * sizeof(voxelDescPacked)));
+#endif
 		return(true);
 	}
 	
@@ -665,25 +699,16 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 	return(false);
 }
 
-// @todo temporary - to be removed //
-bool const AddEmissiveVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
-bool const AddVideoscreenVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
-bool const AddTransparentVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked = false);
-// @todo temporary - to be removed //
-
 
 // builds the voxel model, loading from magickavoxel .vox format, returning the model with the voxel traversal
 // *** will save a cached version of culled model if it doesn't exist
 // *** will load cached "culled" version if newer than matching .vox to speedify loading voxel models
-int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem, bool const stacked)
+int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem)
 {
-	std::error_code error[2]{};
+	std::error_code error{};
 
 	std::wstring szOrigPathFilename(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1)); // isolate path to just the folder
 	szOrigPathFilename += path.stem();
-	if (stacked) {
-		szOrigPathFilename += L"-0";
-	}
 	szOrigPathFilename += VOX_FILE_EXT;
 
 	if (!fs::exists(szOrigPathFilename)) {
@@ -715,56 +740,19 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 		// otherwise fallthrough and reload vox file
 	}
 
-	mio::mmap_source mmap[2]{};
-	mmap[0] = mio::make_mmap_source(szOrigPathFilename, error[0]);
+	mio::mmap_source mmap{};
+	mmap = mio::make_mmap_source(szOrigPathFilename, error);
 
-	if (stacked) {
-		std::wstring szOrigPathFilenameStacked(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1));
-		szOrigPathFilenameStacked += path.stem();
-		szOrigPathFilenameStacked += L"-1";
-		szOrigPathFilenameStacked += VOX_FILE_EXT;
-		mmap[1] = mio::make_mmap_source(szOrigPathFilenameStacked, error[1]);
-	}
+	if (!error) {
 
-	if (!error[0] && !error[1]) {
+		if (mmap.is_open() && mmap.is_mapped()) {
+			__prefetch_vmem(mmap.data(), mmap.size());
 
-		if (mmap[0].is_open() && mmap[0].is_mapped()) {
-			__prefetch_vmem(mmap[0].data(), mmap[0].size());
-
-			uint8_t const* __restrict mmap_data[2]{ nullptr };
-			mmap_data[0] = (uint8_t*)mmap[0].data();
-
-			if (stacked) {
-				if (!mmap[1].is_open() || !mmap[1].is_mapped()) {
-					FMT_LOG_FAIL(VOX_LOG, "unable to open stacked .VOX file: {:s}", stringconv::ws2s(szOrigPathFilename + L"-1"));
-					return(0);
-				}
-
-				mmap_data[1] = (uint8_t*)mmap[1].data();
-				// loading in correct order requires swap so that top model is above base model
-				std::swap(mmap_data[0], mmap_data[1]);
-			}
+			uint8_t const* __restrict mmap_data( (uint8_t const*)mmap.data() );
 
 			if (LoadVOX(pDestMem, mmap_data)) {
 				FMT_LOG_OK(VOX_LOG, " < {:s} > loaded", stringconv::ws2s(szOrigPathFilename));
 
-				/*
-				// @todo temporary - to be removed //
-				std::wstring file_no_extension(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1));
-				file_no_extension += path.stem();
-
-				AddEmissiveVOX(file_no_extension, pDestMem); // optional
-				AddTransparentVOX(file_no_extension, pDestMem); // optional
-				AddVideoscreenVOX(file_no_extension, pDestMem); // optional
-				// @todo temporary - to be removed //
-
-				if (SaveV1XCachedFile(szCachedPathFilename, pDestMem)) {
-					FMT_LOG_OK(VOX_LOG, " < {:s} > cached", stringconv::ws2s(szCachedPathFilename));
-				}
-				else {
-					FMT_LOG_FAIL(VOX_LOG, "unable to cache .VOX file to .V1X file: {:s}", stringconv::ws2s(szCachedPathFilename));
-				}
-				*/
 				return(-1); // returns new model loaded
 			}
 			else {
@@ -782,175 +770,6 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 
 	return(0); // fail
 }
-
-static void ApplyEmissive(voxelModelBase const* const __restrict pEmissive, voxelModelBase* const __restrict pOwner)
-{
-	struct FuncMatch {
-		voxelModelBase const* const __restrict Emissive;
-		voxelModelBase* const __restrict	   Owner;
-		tbb::atomic<uint32_t>& __restrict	   NumMatches;
-
-		__inline FuncMatch(voxelModelBase const* const __restrict Emissive_, voxelModelBase* const __restrict Owner_, tbb::atomic<uint32_t>& __restrict NumMatches_)
-			: Emissive(Emissive_), Owner(Owner_), NumMatches(NumMatches_)
-		{}
-
-		void operator()(const tbb::blocked_range<uint32_t>& r) const {
-			
-			for (uint32_t i = r.begin(); i != r.end(); ++i) {
-
-				voxelDescPacked const* __restrict pCurVoxel(&Emissive->_Voxels[i]);
-
-				uint32_t const x(pCurVoxel->x), y(pCurVoxel->y), z(pCurVoxel->z);
-
-				voxelDescPacked const* __restrict pOwnerVoxel(Owner->_Voxels);
-				uint32_t numVoxelsOwner(Owner->_numVoxels);
-				do { // slow ass search but were sitting in multiple threads
-					if (pOwnerVoxel->x == x && pOwnerVoxel->y == y && pOwnerVoxel->z == z) {
-
-						voxelDescPacked* const __restrict State(Owner->_Voxels + (pOwnerVoxel - Owner->_Voxels));
-						State->Emissive = true;
-						NumMatches.fetch_and_increment<tbb::relaxed>();
-						break;
-					}
-
-					++pOwnerVoxel;
-				} while (--numVoxelsOwner);
-				
-			}
-		}
-	};
-
-	{
-		uint32_t const numVoxels(pEmissive->_numVoxels);
-		tbb::atomic<uint32_t> numMatches = 0;
-		FuncMatch const findMatches(pEmissive, pOwner, numMatches);
-		// find matches and apply
-		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, numVoxels), findMatches);
-
-		pOwner->_numVoxelsEmissive = numMatches;
-	}
-}
-bool const AddEmissiveVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked)
-{
-	voxelModelBase emissivePart(*pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
-
-	std::wstring szEmissiveIntensityFilename(file_no_extension); szEmissiveIntensityFilename += FILE_WILD_EMISSIVE;
-
-	if (LoadVOX(szEmissiveIntensityFilename, &emissivePart, stacked) ) {
-
-		ApplyEmissive(&emissivePart, pOwner);
-
-		FMT_LOG_OK(VOX_LOG, " < {:s} > emissive parts loaded", stringconv::ws2s(file_no_extension));
-		return(true);
-	}
-
-	return(false);
-}
-
-
-static bool const ApplyVideoscreen(voxelModelBase const* const __restrict pVideoscreen, voxelModelBase* const __restrict pOwner)
-{
-	// A VecVoxels has a separate std::vector<T> per thread
-	typedef tbb::enumerable_thread_specific< vector<voxelDescPacked const*> > VecVoxels;
-
-	struct FuncMatch {
-		voxelModelBase const* const __restrict Videoscreen;
-		voxelModelBase* const __restrict	   Owner;
-		VecVoxels& __restrict				   tmpVectors;
-
-		__inline FuncMatch(voxelModelBase const* const __restrict Videoscreen_, voxelModelBase* const __restrict Owner_, VecVoxels& __restrict tmpVectors_)
-			: Videoscreen(Videoscreen_), Owner(Owner_), tmpVectors(tmpVectors_)
-		{}
-
-		void operator()(const tbb::blocked_range<uint32_t>& r) const {
-
-			VecVoxels::reference v = tmpVectors.local();
-			for (uint32_t i = r.begin(); i != r.end(); ++i) {
-
-				voxelDescPacked const* __restrict pCurVoxel(&Videoscreen->_Voxels[i]);
-
-				uint32_t const x(pCurVoxel->x), y(pCurVoxel->y), z(pCurVoxel->z);
-
-				voxelDescPacked const* __restrict pOwnerVoxel(Owner->_Voxels);
-				uint32_t numVoxelsOwner(Owner->_numVoxels);
-				do { // slow ass search but were sitting in multiple threads
-					if (pOwnerVoxel->x == x && pOwnerVoxel->y == y && pOwnerVoxel->z == z) {
-
-						voxelDescPacked* const __restrict State(Owner->_Voxels + (pOwnerVoxel - Owner->_Voxels));
-						State->Video = true;
-						v.emplace_back(pOwnerVoxel); // reference to voxel for flattened min/max op
-						break;
-					}
-
-					++pOwnerVoxel;
-				} while (--numVoxelsOwner);
-
-			}
-		}
-	};
-
-	{
-		uint32_t const numVoxels(pVideoscreen->_numVoxels);
-		VecVoxels tmpVectors;
-		FuncMatch const findMatches(pVideoscreen, pOwner, tmpVectors);
-		// find matches and apply
-		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, numVoxels), findMatches);
-
-		uvec4_v 
-			xmMin(99999),
-			xmMax(0);
-
-		tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
-		for (tbb::flattened2d<VecVoxels>::const_iterator
-			i = flat_view.begin(); i != flat_view.end(); ++i) {
-			voxelDescPacked const* const voxel(*i);
-
-			__m128i const xmPosition(voxel->getPosition());
-			xmMin.v = SFM::min(xmMin.v, xmPosition);
-			xmMax.v = SFM::max(xmMax.v, xmPosition);
-		}
-		uvec4_t cube;
-		uvec4_v(_mm_sub_epi32(xmMax.v, xmMin.v)).xyzw(cube);
-
-		uvec4_t minimum, maximum;
-		xmMin.xyzw(minimum);
-		xmMax.xyzw(maximum);
-
-		// only screens that are xz or zx orientation are acceptable, supports curved screen - if containing bbox dimensions symmetrical major axis defaults to X axis 
-		// find axis with lowest "thickness", flag major axis for screen
-		if (cube.x < cube.z) {
-			rect2D_t const screen_rect = rect2D_t(minimum.z, minimum.y, maximum.z + 1, maximum.y + 1);
-			pOwner->_Features.videoscreen = new voxelScreen(screen_rect, voxelScreen::MAJOR_AXIS_Z);
-		}
-		else {
-			rect2D_t const screen_rect = rect2D_t(minimum.x, minimum.y, maximum.x + 1, maximum.y + 1);
-			pOwner->_Features.videoscreen = new voxelScreen(screen_rect, voxelScreen::MAJOR_AXIS_X);
-		}
-	}
-
-	return(true);
-}
-bool const AddVideoscreenVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked)
-{
-	voxelModelBase videoscreenPart(*pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
-
-	std::wstring szVideoscreenFilename(file_no_extension); szVideoscreenFilename += FILE_WILD_VIDEO;
-
-	if (LoadVOX(szVideoscreenFilename, &videoscreenPart, stacked)) {
-
-		if (ApplyVideoscreen(&videoscreenPart, pOwner)) {
-
-			FMT_LOG_OK(VOX_LOG, " < {:s} > videoscreen part loaded", stringconv::ws2s(file_no_extension));
-			return(true);
-		}
-		else {
-			FMT_LOG_FAIL(VOX_LOG, "< {:s} > videoscreen is not one voxel thick or is top-down flat", stringconv::ws2s(file_no_extension));
-		}
-	}
-
-	return(false);
-}
-
 
 void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
 {
@@ -980,73 +799,6 @@ void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
 		// important to update this count!!!!
 		pModel->_numVoxelsTransparent = numVoxels;
 	}
-}
-
-static void ApplyTransparency(voxelModelBase const* const __restrict pTransparent, voxelModelBase* const __restrict pOwner)
-{
-	struct FuncMatch {
-		voxelModelBase const* const __restrict Transparent;
-		voxelModelBase* const __restrict	   Owner;
-		tbb::atomic<uint32_t>& __restrict	   NumMatches;
-
-		__inline FuncMatch(voxelModelBase const* const __restrict Transparent_, voxelModelBase* const __restrict Owner_, tbb::atomic<uint32_t>& __restrict NumMatches_)
-			: Transparent(Transparent_), Owner(Owner_), NumMatches(NumMatches_)
-		{}
-
-		void operator()(const tbb::blocked_range<uint32_t>& r) const {
-
-			for (uint32_t i = r.begin(); i != r.end(); ++i) {
-
-				voxelDescPacked const* __restrict pCurVoxel(&Transparent->_Voxels[i]);
-
-				uint32_t const x(pCurVoxel->x), y(pCurVoxel->y), z(pCurVoxel->z);
-
-				voxelDescPacked const* __restrict pOwnerVoxel(Owner->_Voxels);
-				uint32_t numVoxelsOwner(Owner->_numVoxels);
-				do { // slow ass search but were sitting in multiple threads
-					if (pOwnerVoxel->x == x && pOwnerVoxel->y == y && pOwnerVoxel->z == z) {
-
-						voxelDescPacked* const __restrict State(Owner->_Voxels + (pOwnerVoxel - Owner->_Voxels));
-						State->Transparent = true;
-						NumMatches.fetch_and_increment<tbb::relaxed>();
-						break;
-					}
-
-					++pOwnerVoxel;
-				} while (--numVoxelsOwner);
-
-			}
-		}
-	};
-
-	{
-		uint32_t const numVoxels(pTransparent->_numVoxels);
-		tbb::atomic<uint32_t> numMatches = 0;
-		FuncMatch const findMatches(pTransparent, pOwner, numMatches);
-		// find matches and apply
-		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, numVoxels), findMatches);
-
-		// // need actuasl matched count unlike emissives, transparents totsl count affects vertex buffer offset and has to be accurate
-		// can't simply use numVoxels, could be larger due to culling (removal of all interior hidden voxels) or other possibilities where
-		// the total count has changed - this is the current accurate count:
-		pOwner->_numVoxelsTransparent = numMatches;
-	}
-}
-bool const AddTransparentVOX(std::wstring_view const file_no_extension, voxelModelBase* const __restrict pOwner, bool const stacked)
-{
-	voxelModelBase transparentPart(*pOwner);  // only needs to be loaded and applied, all edata is contained in StateGroup of Owner Vox Model afterwards
-
-	std::wstring szTransparencyFilename(file_no_extension); szTransparencyFilename += FILE_WILD_TRANSPARENT;
-
-	if (LoadVOX(szTransparencyFilename, &transparentPart, stacked)) {
-
-		ApplyTransparency(&transparentPart, pOwner);
-
-		FMT_LOG_OK(VOX_LOG, " < {:s} > transparent parts loaded", stringconv::ws2s(file_no_extension));
-		return(true);
-	}
-
-	return(false);
 }
 
 void voxelModelBase::ComputeLocalAreaAndExtents()

@@ -9,12 +9,6 @@
 #include "eVoxelModels.h"
 #include "gui.h"
 
-// helper functions
-STATIC_INLINE_PURE bool const isVoxelWindow(Volumetric::voxB::voxelDescPacked const& __restrict voxel)
-{
-	return(voxel.Emissive && (Volumetric::Konstants::PALETTE_WINDOW_INDEX == voxel.getColor()));
-}
-
 // common between dynamic & static
 STATIC_INLINE VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxelProxy(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS, Volumetric::ImportProxy const& __restrict proxy)
 {
@@ -62,10 +56,7 @@ namespace world
 		// vertical part
 		XMVECTOR const xmExtents(XMVectorScale(XMLoadFloat3A(&_proxy.model->_Extents), 2.05f)); // 5% extra
 						
-		XMVECTOR xmCenter(XMLoadFloat3A(&_proxy.bounds.Center));
-		xmCenter = XMVectorZero();
-		//xmCenter = XMVectorSubtract(xmCenter, XMVectorMultiply(xmExtents, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f)));
-		//xmCenter = XMVectorNegate(xmCenter);
+		XMVECTOR const xmCenter(XMVectorZero());
 		
  		XMVECTOR const xmMin(XMVectorSubtract(xmCenter, xmExtents)),
 			           xmMax(XMVectorAdd(xmCenter, xmExtents));
@@ -319,10 +310,6 @@ namespace world
 			// if video color is pure black turn off emission
 			voxel.Emissive = !(0 == voxel.Color);
 		}
-		else if (isVoxelWindow(voxel)) { // Only for specific emissive voxels, with matching palette index for building windows
-
-			voxel.Emissive = true;
-		}
 
 		return(voxel);
 	}
@@ -347,14 +334,51 @@ namespace world
 			// if video color is pure black turn off emission
 			voxel.Emissive = !(0 == voxel.Color);
 		}
-		else if (isVoxelWindow(voxel)) { // Only for specific emissive voxels, with matching palette index for building windows
-
-			voxel.Emissive = true;
-		}
 
 		return(voxel);
 	}
 
+	void cImportGameObject_Dynamic::OnVideoScreen(bool const bEnable)
+	{
+		if (bEnable) {
+			if (nullptr != _videoscreen) {
+				ImageAnimation::remove(_videoscreen);
+				_videoscreen = nullptr;
+			}
+
+			Volumetric::voxB::voxelScreen const* const voxelscreen(getModelInstance()->getModel()._Features.videoscreen);
+			if (nullptr != voxelscreen) {
+				_videoscreen = &ImageAnimation::emplace_back(ImageAnimation(*voxelscreen, getModelInstance()->getHash()));
+			}
+		}
+		else {
+			if (nullptr != _videoscreen) {
+				ImageAnimation::remove(_videoscreen);
+				_videoscreen = nullptr;
+			}
+		}
+	}
+	void cImportGameObject_Static::OnVideoScreen(bool const bEnable)
+	{
+		if (bEnable) {
+			if (nullptr != _videoscreen) {
+				ImageAnimation::remove(_videoscreen);
+				_videoscreen = nullptr;
+			}
+
+			Volumetric::voxB::voxelScreen const* const voxelscreen(getModelInstance()->getModel()._Features.videoscreen);
+			if (nullptr != voxelscreen) {
+				_videoscreen = &ImageAnimation::emplace_back(ImageAnimation(*voxelscreen, getModelInstance()->getHash()));
+			}
+		}
+		else {
+			if (nullptr != _videoscreen) {
+				ImageAnimation::remove(_videoscreen);
+				_videoscreen = nullptr;
+			}
+		}
+	}
+	
 	cImportGameObject_Dynamic::~cImportGameObject_Dynamic()
 	{
 		if (nullptr != _videoscreen) {

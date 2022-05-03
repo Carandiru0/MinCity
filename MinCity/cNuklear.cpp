@@ -2458,9 +2458,17 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						nk_style_push_font(_ctx, &_fonts[eNK_FONTS::SMALL]->handle);
 
 						{
+							nk_bool checked(iter_color->material.Metallic);
+							if (nk_checkbox_label(_ctx, "METALLIC", &checked)) {
+								iter_color->material.Metallic = checked;
+								bApplyMaterial = true;
+							}
+						}
+						{
 							nk_bool checked(iter_color->material.Emissive);
 							if (nk_checkbox_label(_ctx, "EMISSIVE", &checked)) {
 								iter_color->material.Emissive = checked;
+								iter_color->material.Video = false; // clear video checkbox on any change to emissive
 								bApplyMaterial = true;
 							}
 						}
@@ -2472,20 +2480,24 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 							}
 						}
 						{
-							nk_bool checked(iter_color->material.Metallic);
-							if (nk_checkbox_label(_ctx, "METALLIC", &checked)) {
-								iter_color->material.Metallic = checked;
+							nk_bool checked(iter_color->material.Video);
+							if (nk_checkbox_label(_ctx, "VIDEO", &checked)) {
+								iter_color->material.Video = checked;
+								iter_color->material.Emissive = checked; // video is always emissive
 								bApplyMaterial = true;
 							}
 						}
+						
+						nk_layout_row_dynamic(_ctx, 40, 1);
+						
 						{
 							nk_size roughness(iter_color->material.Roughness);
-							if (nk_progress(_ctx, &roughness, 0xf, nk_true)) {
+							if (nk_progress(_ctx, &roughness, 0xf, nk_true, "ROUGHNESS")) {
 								iter_color->material.Roughness = roughness;
 								bApplyMaterial = true;
 							}
 						}
-
+						
 						if (bApplyMaterial) {
 
 							world::cImportGameObject::getProxy().apply_material(iter_color);

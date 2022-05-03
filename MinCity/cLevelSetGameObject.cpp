@@ -145,7 +145,7 @@ namespace world
 
 		private:
 			alignas(CACHE_LINE_BYTES) local_volume* const __restrict	bits;
-			tbb::atomic<uint32_t>& __restrict							active_voxel_count; // only valid after all parallel operations
+			tbb::atomic<uint32_t>& __restrict							active_voxel_count;
 			Volumetric::voxB::voxelDescPacked* const __restrict			linear_voxel_array;
 			float const													tStamp;
 			

@@ -26,13 +26,13 @@ namespace Volumetric
 	{
 		if (colors.end() != iter_current_color) {
 
-			ivec4_v mini(INT32_MAX, INT32_MAX, INT32_MAX),
-				    maxi(INT32_MIN, INT32_MIN, INT32_MIN);
+			uvec4_v mini(Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ),
+				    maxi(0, 0, 0);
 
 			uint32_t numEmissive(0), numTransparent(0); // must be updating the whole count
 
 			ImportMaterial const material(iter_current_color->material);
-
+			
 			uint32_t const numVoxels(model->_numVoxels);
 			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels);
 
@@ -57,14 +57,43 @@ namespace Volumetric
 			model->_numVoxelsEmissive = numEmissive;
 			model->_numVoxelsTransparent = numTransparent;
 
-			XMVECTOR const xmMin(mini.v4f()), xmMax(maxi.v4f());
-			
-			XMVECTOR const xmBounds(XMVectorSubtract(XMVectorScale(xmMax, Iso::MINI_VOX_STEP), XMVectorScale(xmMin, Iso::MINI_VOX_STEP)));
-			
-			XMVECTOR const xmExtent(XMVectorScale(XMVectorAbs(xmBounds), 0.5f));
-			XMStoreFloat3A(&bounds.Extents, xmExtent);
-			
-			XMStoreFloat3A(&bounds.Center, XMVectorAdd(XMVectorScale(xmMin, Iso::MINI_VOX_STEP), xmExtent));
+			if (material.Video) {
+				uvec4_t cube;
+				uvec4_v(_mm_sub_epi32(maxi.v, mini.v)).xyzw(cube);
+				
+				uvec4_t minimum, maximum;
+				mini.xyzw(minimum);
+				maxi.xyzw(maximum);
+
+				if (model->_Features.videoscreen) { // always reset
+					delete model->_Features.videoscreen;
+					model->_Features.videoscreen = nullptr;
+				}
+				// only screens that are xz or zx orientation are acceptable, supports curved screen - if containing bbox dimensions symmetrical major axis defaults to X axis 
+				// find axis with lowest "thickness", flag major axis for screen
+				if (cube.x < cube.z) {
+					rect2D_t const screen_rect = rect2D_t(minimum.z, minimum.y, maximum.z + 1, maximum.y + 1);
+					model->_Features.videoscreen = new Volumetric::voxB::voxelScreen(screen_rect, Volumetric::voxB::voxelScreen::MAJOR_AXIS_Z);
+				}
+				else {
+					rect2D_t const screen_rect = rect2D_t(minimum.x, minimum.y, maximum.x + 1, maximum.y + 1);
+					model->_Features.videoscreen = new Volumetric::voxB::voxelScreen(screen_rect, Volumetric::voxB::voxelScreen::MAJOR_AXIS_X);
+				}
+				
+				// now the game object itself must be notified of the change and enable the videoscreen.
+				game_object->OnVideoScreen(true);
+			}
+			else { // model previously had a video screen, but now the material doesn't
+				if (model->_Features.videoscreen) { // always reset
+					
+					// now the game object itself must be notified of the change and disable the videoscreen.
+					game_object->OnVideoScreen(false);
+
+					// *bugfix - do not remove from model, so v1x gets saved with the video screen
+					// delete model->_Features.videoscreen;
+					// model->_Features.videoscreen = nullptr;
+				}
+			}
 			
 			active_color = *iter_current_color;
 		}
@@ -117,26 +146,7 @@ namespace Volumetric
 	void ImportProxy::save(std::string_view const name) const
 	{
 		if (model) {
-
-			// reset counts, ensure accurate count b4 saving to file
-			model->_numVoxelsEmissive = 0;
-			model->_numVoxelsTransparent = 0;
-
-			uint32_t const numVoxels(model->_numVoxels);
-			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels); // stream above is still storing, use the cached read of the models' voxels ++
-			for (uint32_t i = 0; i < numVoxels; ++i) {
-				pVoxels->Hidden = false; // always false here on save, ensure hidden is not set on any voxel b4 saving file
-
-				if (pVoxels->Emissive) {
-					++model->_numVoxelsEmissive;
-				}
-				if (pVoxels->Transparent) {
-					++model->_numVoxelsTransparent;
-				}
-
-				++pVoxels;
-			}
-
+			
 			std::wstring szCachedPathFilename(VOX_CACHE_DIR);
 			szCachedPathFilename += fs::path(stringconv::toLower(name)).stem();
 			szCachedPathFilename += V1X_FILE_EXT;

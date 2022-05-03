@@ -90,16 +90,6 @@ namespace Volumetric
 				if (entry.exists() && !entry.is_directory()) {
 					if (stringconv::case_insensitive_compare(VOX_FILE_EXT, entry.path().extension().wstring())) // only vox files 
 					{
-						// @todo temporary - to be removed //
-						if (entry.path().wstring().contains(L"_emissive") ||
-							entry.path().wstring().contains(L"_trans") ||
-							entry.path().wstring().contains(L"_video"))
-						{
-							continue;
-						}
-
-						// @todo temporary - to be removed //
-
 						voxModel* __restrict pVox;
 
 						if constexpr (DYNAMIC) {

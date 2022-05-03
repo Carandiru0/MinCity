@@ -25,6 +25,7 @@ namespace world
 	public:
 		void __vectorcall OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
+		virtual void OnVideoScreen(bool const bEnable) = 0;
 	public:
 		static Volumetric::ImportProxy&		getProxy() { return(_proxy); }
 	protected:
@@ -43,6 +44,7 @@ namespace world
 		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
 		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 		
+		virtual void OnVideoScreen(bool const bEnable) final;
 	public:
 		cImportGameObject_Dynamic(cImportGameObject_Dynamic&& src) noexcept;
 		cImportGameObject_Dynamic& operator=(cImportGameObject_Dynamic&& src) noexcept;
@@ -73,6 +75,7 @@ namespace world
 		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
 		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 
+		virtual void OnVideoScreen(bool const bEnable) final;
 	public:
 		cImportGameObject_Static(cImportGameObject_Static&& src) noexcept;
 		cImportGameObject_Static& operator=(cImportGameObject_Static&& src) noexcept;
