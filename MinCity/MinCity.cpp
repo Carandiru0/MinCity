@@ -666,7 +666,7 @@ void cMinCity::UpdateWorld()
 		tLast{ zero_time_point },
 		tLastGUI{ zero_time_point };
 
-	duration tDeltaFixedStep(delta());
+	duration tDeltaFixedStep(critical_delta());
 	tTime tNow{ high_resolution_clock::now() };
 	tTime const
 		tCriticalNow(tNow),
@@ -710,19 +710,19 @@ void cMinCity::UpdateWorld()
 	}
 
 	// add to fixed timestamp n fixed steps, while also removing the fixed step from the 
-
-	while (tAccumulate >= delta()) {
+	m_tDelta = tDeltaFixedStep;
+	while (tAccumulate >= critical_delta()) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
-		m_tCriticalNow += delta();
+		m_tCriticalNow += critical_delta();
 
-		tAccumulate -= delta();
+		tAccumulate -= critical_delta();
 		// *bugfix - it's absoletly critical to keep this in the while loop, otherwise frame rate independent motion will be broken.
 		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
 	
 	// fractional amount for render path (uniform shader variables)
-	VoxelWorld->UpdateUniformState(time_to_float(fp_seconds(tAccumulate) / fp_seconds(delta()))); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
+	VoxelWorld->UpdateUniformState(time_to_float(fp_seconds(tAccumulate) / fp_seconds(critical_delta()))); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
 	// *fifth*
 	Audio->Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
@@ -754,7 +754,7 @@ void cMinCity::StageResources(uint32_t const resource_index)
 		// bring down cpu & power usage when standing by //
 		[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
 			_mm_pause();
-			Sleep(((DWORD const)duration_cast<milliseconds>(delta()).count()));
+			Sleep(((DWORD const)duration_cast<milliseconds>(critical_delta()).count()));
 		}
 		return;
 	}

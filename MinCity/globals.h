@@ -218,5 +218,8 @@ inline void SafeRelease(T& p)
 // global accessors for time, implemented in mincity.h
 extern __forceinline tTime const& start();
 extern __forceinline tTime const& now();
+extern __forceinline nanoseconds const& delta();
+
 extern __forceinline tTime const& critical_now();
+extern __forceinline constexpr nanoseconds const& critical_delta();
 extern __forceinline size_t const frame();

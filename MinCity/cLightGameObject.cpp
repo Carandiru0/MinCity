@@ -71,8 +71,7 @@ namespace world
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cLightGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		voxel.Emissive = _State; // the light can be turned off with just this bit
-		voxel.Light = false;
-		
+
 		voxel.Color = _Color;
 
 		return(voxel);

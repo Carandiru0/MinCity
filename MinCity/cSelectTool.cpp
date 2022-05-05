@@ -31,7 +31,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 			XMVECTOR const xmLoc(instance->getLocation());
 			float fElevation = instance->getElevation();
 
-			float const tDelta(time_to_float(fp_seconds(delta())));
+			float const tDelta(time_to_float(delta()));
 
 			switch (key)
 			{

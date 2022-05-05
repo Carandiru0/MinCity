@@ -72,7 +72,10 @@ public:
 
 	static __forceinline tTime const&					start() { return(m_tStart); }
 	static __forceinline tTime const&					now() { return(m_tNow); }
+	static __forceinline nanoseconds const&				delta() { return(m_tDelta); }
+
 	static __forceinline tTime const&					critical_now() { return(m_tCriticalNow); }	// time that continues even while paused
+	static __forceinline constexpr nanoseconds const&	critical_delta() { return(fixed_delta_duration); }
 
 	static point2D_t const __vectorcall	getFramebufferSize();
 	static float const					getFramebufferAspect();
@@ -146,6 +149,7 @@ private:
 	constinit static size_t				m_frameCount;
 	static tTime const					m_tStart;
 	static tTime						m_tNow, m_tCriticalNow, m_tLastPause;
+	constinit static nanoseconds		m_tDelta;
 	constinit static std::atomic_bool	m_bNewEventsAllowed;
 	constinit static bool				m_bRunning,
 										m_bPaused,
@@ -162,8 +166,11 @@ private:
 // global helper functions for time, used for includee's of globals.h they are defined, hrmmmm
 __forceinline tTime const& start() { return(cMinCity::start()); }
 __forceinline tTime const& now() { return(cMinCity::now()); }
-__forceinline tTime const& critical_now() { return(cMinCity::critical_now()); }	// time that continues even while paused
+__forceinline nanoseconds const& delta() { return(cMinCity::delta()); }
 __forceinline size_t const frame() { return(cMinCity::getFrameCount()); }
+
+__forceinline tTime const& critical_now() { return(cMinCity::critical_now()); }	// time that continues even while paused
+__forceinline constexpr nanoseconds const& critical_delta() { return(cMinCity::critical_delta()); }	// time that continues even while paused
 
 #ifdef MINCITY_IMPLEMENTATION
 
@@ -173,6 +180,7 @@ inline tTime const							cMinCity::m_tStart{ high_resolution_clock::now() }; // 
 inline tTime								cMinCity::m_tNow{ cMinCity::m_tStart }; // always valid time
 inline tTime								cMinCity::m_tCriticalNow{ cMinCity::m_tStart }; // always valid time that continues even while paused
 inline tTime								cMinCity::m_tLastPause{ zero_time_point };
+constinit inline nanoseconds				cMinCity::m_tDelta{};
 constinit inline std::atomic_bool			cMinCity::m_bNewEventsAllowed = false;
 constinit inline bool						cMinCity::m_bRunning = false;		// state is set in cMinCity::Initialize on Success
 constinit inline bool						cMinCity::m_bPaused = true;		// state refers to a "live pause" of the rendering and updates affected by the pause - initial state of program is paused

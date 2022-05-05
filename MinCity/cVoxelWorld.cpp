@@ -650,7 +650,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 	if ((MinCity::isPaused() | _bCameraTurntable) && MinCity::isFocused()) {
 
-		rotateCamera(time_to_float(fp_seconds(delta()))); // *** slow turntable rotation using delta directly is ok here
+		rotateCamera(time_to_float(fp_seconds(MinCity::critical_delta())));
 	}
 	return(xmOrigin);
 }
@@ -1124,14 +1124,48 @@ namespace world
 						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
 
 							Iso::setZoning(oVoxel, zoning);
-							Iso::setEmissive(oVoxel);	// the level of emission can be coontrolled thru the voxel color. A light is not added however so its just the half extra shade of the zoning for now @todo
-							Iso::setColor(oVoxel, (world::ZONING_COLOR[zoning] >> 1));
-
+							Iso::setColor(oVoxel, world::ZONING_COLOR[zoning]);
+							
 							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 						}
 					}
 				}
 			}
+			/*
+			// Highlighting Edges of Zones only (must be done after zoning is applied, for neighbours need to be set before they are checked)
+			for (voxelIterate.y = voxelArea.top; voxelIterate.y < voxelArea.bottom; ++voxelIterate.y) {
+
+				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
+
+					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAtLocal(voxelIterate)); // pre-transformed to [0,0 to X,Y]
+
+					if (pVoxel) {
+						Iso::Voxel oVoxel(*pVoxel);
+
+						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) { // only apply to ground area excluding the static & dynamic instances
+
+							uint32_t ground_count(0);
+							for (uint32_t adjacent = 0; adjacent < ADJACENT_NEIGHBOUR_COUNT; ++adjacent) {
+
+								Iso::Voxel const* const pNeighbour = world::getNeighbourLocal(voxelIterate, ADJACENT[adjacent]);
+								if (nullptr != pNeighbour) {
+									ground_count += ((Iso::getZoning(oVoxel) == zoning)); // count of adjacent ground voxels that are the same zoning type
+								}
+							}
+
+							if (!(ADJACENT_NEIGHBOUR_COUNT == ground_count)) { // only edge voxels (voxels that are not surrounded by ground voxels with the same zoning type)
+
+								Iso::setEmissive(oVoxel);	// the level of emission can be coontrolled thru the voxel color. A light is automatically added.
+							}
+							else {
+								Iso::clearEmissive(oVoxel); // compatibility w/overwrite
+							}
+
+							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
+						}
+					}
+				}
+			}*/
 		}
 
 		void dezoneArea(rect2D_t voxelArea) // area dezones if not built, bulldozing must be done first otherwise. automatic zoning type handling.
@@ -1157,7 +1191,8 @@ namespace world
 
 							Iso::clearZoning(oVoxel);
 							Iso::clearColor(oVoxel);
-
+							Iso::clearEmissive(oVoxel);
+							
 							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 						}
 					}
@@ -1544,7 +1579,26 @@ namespace world
 
 		return(nullptr);
 	}
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	Iso::Voxel const* const __restrict getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset)
+	{
+		point2D_t const voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
 
+		// this function will also return the owning voxel
+		// if zero,zero is passed in for the relative offset
+
+		// Check bounds
+		if ((voxelNeighbour.x | voxelNeighbour.y) >= 0) {
+
+			if (voxelNeighbour.x < Iso::WORLD_GRID_SIZE && voxelNeighbour.y < Iso::WORLD_GRID_SIZE) {
+
+				return((the::grid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
+			}
+		}
+
+		return(nullptr);
+	}
+	
 	static void smoothRow(point2D_t start, int32_t width)  // iterates from start.x to start.x + width (Left 2 Right)
 	{
 		int32_t const yMin(start.y - 1), yMax(start.y + 1);
@@ -2188,13 +2242,13 @@ namespace // private to this file (anonymous)
 			// required for voxels w/light, voxels w/o light & lights (hidden voxel)
 			XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-			uint32_t const valid_color(oVoxel.index.w);
+			uint32_t const alpha_color(oVoxel.index.w);
 
-			bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive));
+			bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive) & (bool)alpha_color); // if color is true black it's not emissive
 
 			if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
 
-				uint8_t const alpha((valid_color >> 24) & 0xFF);
+				uint8_t const alpha((alpha_color >> 24) & 0xFF);
 				bool const transparent(0xFF != alpha);
 
 				uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
@@ -2210,7 +2264,7 @@ namespace // private to this file (anonymous)
 				hash |= (uint32_t(alpha >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
 
 				XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
-				XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(valid_color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+				XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(alpha_color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 				if (transparent) {
 
@@ -2239,7 +2293,7 @@ namespace // private to this file (anonymous)
 			// if voxel is hidden then its just a light
 			if (emissive) {
 
-				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0x00FFFFFF & valid_color);
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, alpha_color & 0x00FFFFFF);
 
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -2283,23 +2337,26 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			XMVECTOR const xmIndex(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z));
-
+			//XMVECTOR const xmIndex(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z));
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+			
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 			{
 				// **** HASH FORMAT 32bits available //
-
+				uint32_t const color(0x00FFFFFF & Iso::getColor(oVoxel));
+				bool const emissive(Iso::isEmissive(oVoxel) & (bool)color); // if color is true black it's not emissive
+								
 				// Build hash //
 				uint32_t groundHash(0);
 				groundHash |= Iso::getAdjacency(oVoxel);			//				0001 1111
 																	//				RRRx xxxx
-				groundHash |= (Iso::isEmissive(oVoxel) << 8);		// 0000 0001	xxxx xxxx
+				groundHash |= (emissive << 8);						// 0000 0001	xxxx xxxx
 				groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
 
 				XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 				
-				xmUVs = XMVectorSetW(xmUVs, ((float)Iso::getColor(oVoxel)));
+				xmUVs = XMVectorSetW(xmUVs, ((float)color));
 
 				localGround.emplace_back(
 					voxelGround,
@@ -2308,6 +2365,12 @@ namespace // private to this file (anonymous)
 					xmUVs,
 					groundHash
 				);
+
+				if (emissive) {
+
+					// add light, offset to the height of this ground voxel
+					Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, Iso::getRealHeight(oVoxel) * 2.0f), color); // cheating on transform, so its on the top effectively applies proper height for light
+				}
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
 				++render_state.numTerrainVoxelsRendered;
@@ -2461,7 +2524,7 @@ namespace // private to this file (anonymous)
 			private:
 				point2D_t const 								voxelStart;
 				Iso::Voxel const* const __restrict				theGrid;
-				Iso::mini::Voxel const* const* const __restrict	theTemp;
+				Iso::mini::Voxel const** const __restrict		theTemp;
 
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoad;
@@ -2475,7 +2538,7 @@ namespace // private to this file (anonymous)
 				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
 					point2D_t const voxelStart_,
 					Iso::Voxel const* const __restrict theGrid_,
-					Iso::mini::Voxel const* const* const __restrict theTemp_,
+					Iso::mini::Voxel const** const __restrict theTemp_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
@@ -2512,7 +2575,7 @@ namespace // private to this file (anonymous)
 						Iso::Voxel const* __restrict pVoxel = theGrid + ((voxelIndex.y << WORLD_GRID_SIZE_BITS) + voxelIndex.x);
 						_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
 
-						Iso::mini::Voxel const* const* __restrict pMiniVoxels = theTemp + ((voxelIndex.y << WORLD_GRID_SIZE_BITS) + voxelIndex.x);
+						Iso::mini::Voxel const** __restrict pMiniVoxels = theTemp + ((voxelIndex.y << WORLD_GRID_SIZE_BITS) + voxelIndex.x);
 
 						for (; voxelIndex.x < x_end; ++voxelIndex.x)
 						{
@@ -2570,7 +2633,7 @@ namespace // private to this file (anonymous)
 							if (nullptr != pMiniVoxel) { // mini-voxels, if they exist for this grid cell, must be rendered. The minivoxels are dynamic and cleared / added every frame. The frustum check happens at a different location (addVoxel). All added mini voxels have already benn frustum checked.
 								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
 								// clear minivoxel after render is complete - saves clearing the whole grid - only clears what is used!
-								*const_cast<Iso::mini::Voxel const** __restrict>(pMiniVoxels) = nullptr; // safe cast - no tricks - clears a pointer to the data, no need to clear the actual data
+								*pMiniVoxels = nullptr; // clears a pointer to the data, no need to clear the actual data
 							}
 
 							++pMiniVoxels; // sequentially access for best cache prediction
@@ -3932,7 +3995,7 @@ namespace world
 			
 			for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader) {
 				
-				static constexpr fp_seconds const target_frametime(fp_seconds(delta()) * 4.0);
+				static constexpr fp_seconds const target_frametime(fp_seconds(critical_delta()) * 4.0);
 
 				uint32_t const has_frames(_textureShader[shader].input->extent().depth);
 

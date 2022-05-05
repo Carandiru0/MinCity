@@ -259,11 +259,9 @@ void main() {
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 
-	const float grid = max(0.0f, dot(N.xzy, vec3(0,-1,0))) * In._emission; // only top faces can be emissive
+	const vec3 grid_color = unpackColor(In._color) * In._emission; // only emissive can have color
 
-	const vec3 grid_color = unpackColor(In._color) * grid; // only emissive can have color
-
-	vec3 color = lit( terrainHeight + terrainHeight * grid_color, make_material(grid, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
+	vec3 color = lit( terrainHeight + grid_color, make_material(In._emission, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
 					  getOcclusion(In.uv.xyz), Ld.att,
 					  Ld.dir, N, V);
 	

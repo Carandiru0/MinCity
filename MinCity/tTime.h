@@ -35,8 +35,6 @@ static_assert(std::chrono::treat_as_floating_point<fp_seconds::rep>::value, "Rep
 static constexpr size_t const FRAME_UPDATE_INTERVAL_NS = 16666666ULL; // in nanoseconds (maximizes precision) *do not modify*
 static constexpr nanoseconds const fixed_delta_duration = nanoseconds(FRAME_UPDATE_INTERVAL_NS);
 static constexpr nanoseconds const fixed_delta_x2_duration = nanoseconds(FRAME_UPDATE_INTERVAL_NS<<1ULL);
-
-static inline constexpr nanoseconds const delta() { return(fixed_delta_duration); }
 #endif 
 
 

@@ -101,7 +101,7 @@ namespace Iso
 		GRID_OFFSET_X_Z{ -GRID_VOXELS_START_XZ_OFFSET, 0.0f, -GRID_VOXELS_START_XZ_OFFSET };
 
 	static constexpr uint32_t const
-		DEFAULT_GROUND_COLOR = 0x00FFFFFF;
+		DEFAULT_GROUND_COLOR = 0x00000000;
 
 	// ####### Desc bits:
 

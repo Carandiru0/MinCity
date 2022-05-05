@@ -59,10 +59,13 @@ protected:
 	void clearHistory();
 	void undoHistory();
 
+	float const getHighlightAmount();
+
+	bool const __vectorcall highlightVoxel(point2D_t const voxelIndex);
 	bool const __vectorcall highlightVoxel(point2D_t const voxelIndex, uint32_t const color);
 	void __vectorcall highlightCross(point2D_t const voxelIndex, uint32_t const color);
-	void __vectorcall highlightArea(rect2D_t const area, uint32_t const color);
-	void __vectorcall highlightPerimeter(rect2D_t const area, uint32_t const color);
+	void __vectorcall highlightArea(rect2D_t area, uint32_t const color);
+	void __vectorcall highlightPerimeter(rect2D_t area, uint32_t const color);
 
 private:
 	void clearHighlights(); // privste, use public method clearHistory / undoHistory - simplifies derived classea implementation.
@@ -70,7 +73,8 @@ private:
 
 private:
 	vector<sUndoVoxel>				_undoHistory, _undoHighlight;
-
+	tTime      						_tLastHighlight = {};
+	uint32_t						_highlightColor = {};
 
 public:
 	cAbstractToolMethods() = default;

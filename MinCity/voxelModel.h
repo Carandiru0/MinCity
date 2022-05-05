@@ -141,8 +141,8 @@ namespace voxB
 					Back : 1,
 					Above : 1,
 					Hidden : 1,						// bit 30, Visibility
-					Light : 1,						// bit 31, Visibility (Light Only)
-					Reserved : 1;					// bit 32, Unused
+					Reserved_0 : 1,					// bit 31, Unused
+					Reserved_1 : 1;					// bit 32, Unused
 			};
 			
 			uint32_t Data; // union "mask" of above
@@ -214,7 +214,7 @@ namespace voxB
 			: x(Coord.x), y(Coord.y), z(Coord.z),
 				Left(0 != (BIT_ADJ_LEFT & Adj)), Right(0 != (BIT_ADJ_RIGHT & Adj)), Front(0 != (BIT_ADJ_FRONT & Adj)),
 			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)),
-				Hidden(0), Light(0), Reserved(0),
+				Hidden(0), Reserved_0(0), Reserved_1(0),
 				Color(inColor), Video(0), Emissive(0), Transparent(0), Metallic(0), Roughness(0)
 		{}
 		voxelDescPacked() = default;
@@ -244,7 +244,7 @@ namespace voxB
 	
 	using model_volume = bit_volume<Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ>;
 
-	STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex, model_volume const* const __restrict bits)
+	STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex, model_volume const* const __restrict bits) // *note - good only for model max size dimensions
 	{
 		ivec4_t iIndex;
 		ivec4_v(xmIndex).xyzw(iIndex);
@@ -535,12 +535,12 @@ namespace voxB
 						if (voxel.Hidden)
 							continue;
 							
-						bool const Transparent(Faded | voxel.Transparent);
-						bool const Emissive((voxel.Emissive & !Faded) || (!voxel.Emissive & Iso::isEmissive(rootVoxel)));
-
-						uint32_t const valid_color(voxel.getColor() & 0x00FFFFFF); // remove alpha
+						uint32_t const color(voxel.getColor() & 0x00FFFFFF); // remove alpha
 						
-						if (!(EmissionOnly | voxel.Light))
+						bool const Transparent(Faded | voxel.Transparent);
+						bool const Emissive((voxel.Emissive & !Faded) & (bool)color); // if color is true black it's not emissive
+						
+						if (!EmissionOnly)
 						{	// xyz = visible relative UV,  w = detailed occlusion 
 							// UV coordinates are not swizzled at this point, however by the fragment shader they are xzy
 							// UV coordinate describe the "visible grid" relative position bound to 0...VOXEL_MINIGRID_VISIBLE_XYZ
@@ -556,7 +556,7 @@ namespace voxB
 							hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 Uxxx xxxx
 
 							// Make All voxels relative to voxel root origin // inversion neccessary //
-							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)valid_color)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)color)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 							if (!Transparent) {
 
@@ -613,9 +613,8 @@ namespace voxB
 							// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
 							// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
 							// and is in the fragment shaderrecieved swizzled in xzy form
-							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, valid_color);
+							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, color);
 							
-
 						}
 					}
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION

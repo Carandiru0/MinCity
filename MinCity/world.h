@@ -32,7 +32,9 @@ namespace world
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset);
-
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	Iso::Voxel const* const __restrict getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset);
+	
 	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*
 	XMVECTOR const __vectorcall getOrigin();
 	XMVECTOR const __vectorcall getOriginNoFractionalOffset(); // used only in rendering - use getOrigin() instead
