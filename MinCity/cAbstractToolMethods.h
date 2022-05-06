@@ -75,6 +75,7 @@ private:
 	vector<sUndoVoxel>				_undoHistory, _undoHighlight;
 	tTime      						_tLastHighlight = {};
 	uint32_t						_highlightColor = {};
+	bool							_blink = {};
 
 public:
 	cAbstractToolMethods() = default;

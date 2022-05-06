@@ -2311,14 +2311,22 @@ namespace // private to this file (anonymous)
 		{
 			RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(oVoxel), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
 
+			static constexpr uint32_t const MAX_COUNT(Iso::SCREEN_VOXELS_Y);
+			
+			uint32_t count(MAX_COUNT);
 			Iso::mini::Voxel const* next(oVoxel.next);
-			while (next) {
+			while (next && 0 != --count) {
 
 				RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*next), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
 
 				next = next->next;
 			}
 
+#ifndef NDEBUG
+			[[unlikely]] if (0 == count) {
+				FMT_LOG_WARN(VOX_LOG, "Performance issue. Too many minivoxels @ ( {:d} , {:d} )", voxelIndex.x, voxelIndex.y);
+			}
+#endif
 		}
 
 		// this construct significantly improves throughput of voxels, by batching the streaming stores //
@@ -2337,7 +2345,6 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			//XMVECTOR const xmIndex(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z));
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 			
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
@@ -2415,7 +2422,7 @@ namespace // private to this file (anonymous)
 
 
 		template<bool const Dynamic>
-		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint8_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
+		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint32_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
@@ -2628,11 +2635,12 @@ namespace // private to this file (anonymous)
 							// ***Ground always exists*** // *bugfix: frustum culling ground leaves empty space in an undefined state. for example, raymarched reflections disappear if camera is too close *do not change*
 							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
 
-							Iso::mini::Voxel const* const __restrict pMiniVoxel(*pMiniVoxels);
+							Iso::mini::Voxel const* const pMiniVoxel(*pMiniVoxels);
 							
 							if (nullptr != pMiniVoxel) { // mini-voxels, if they exist for this grid cell, must be rendered. The minivoxels are dynamic and cleared / added every frame. The frustum check happens at a different location (addVoxel). All added mini voxels have already benn frustum checked.
 								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
 								// clear minivoxel after render is complete - saves clearing the whole grid - only clears what is used!
+								const_cast<Iso::mini::Voxel* const>(pMiniVoxel)->next = nullptr; // *bugfix - required to reset linked list, the first next pointer from head of list is set to nullptr, which removes all child elements.
 								*pMiniVoxels = nullptr; // clears a pointer to the data, no need to clear the actual data
 							}
 
