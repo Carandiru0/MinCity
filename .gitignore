@@ -40,6 +40,7 @@ Rubbish
 vulkancapsviewer
 desktop.ini
 *.v1x
+*.vdb
 *.fsb
 *.bin
 *.TMP
