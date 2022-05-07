@@ -29,20 +29,34 @@ namespace Volumetric
 	// static models and dynamic models are loaded in separate tasks already
 	// checked, and removing the task per model results in noticably faster loading of all voxel models
 
+	enum eModelFileType
+	{
+		GROUP_VOX = 0,
+		SINGLE_VOX = 1,
+		SEQUENCE_VDB = 2
+	};
+	
 	// this function is re-entrant for a group, appending correctly if called in such a way (eg. named files)
-	template<bool const DYNAMIC, bool const SINGLE_FILE = false>
+	template<bool const DYNAMIC, uint32_t const FILE_TYPE = GROUP_VOX>
 	static void LoadModelGroup(std::string_view const folder_group, ModelGroup& __restrict groupInfo)
 	{
 		std::wstring folder_path(VOX_DIR);
 
-		if constexpr (SINGLE_FILE) { // file operation
+		if constexpr (SEQUENCE_VDB == FILE_TYPE) // sequence operation
+		{
+			folder_path += stringconv::s2ws(FOLDER_NAMED); // named files must be in the named vox dir. all sequences are named.
+			folder_path += L'/';
+			folder_path += stringconv::s2ws(folder_group);	// folder_group contains folder name	
+			folder_path += L'/';
+		}
+		else if constexpr (SINGLE_VOX == FILE_TYPE) { // file operation
 			folder_path += stringconv::s2ws(FOLDER_NAMED); // named files must be in the named vox dir.
 			folder_path += L'/';
-			folder_path += stringconv::s2ws(folder_group);	// contains file name, no extension.
+			folder_path += stringconv::s2ws(folder_group);	// folder_group contains file name, no extension.
 			folder_path += VOX_FILE_EXT;
 		}
-		else { // folder operation
-			folder_path += stringconv::s2ws(folder_group);
+		else { // folder operation (default)
+			folder_path += stringconv::s2ws(folder_group); // folder_group contains folder name
 			folder_path += L'/';
 		}
 
@@ -61,7 +75,25 @@ namespace Volumetric
 		using voxModel = Volumetric::voxB::voxelModel<DYNAMIC>;
 		using voxIdent = Volumetric::voxB::voxelModelIdent<DYNAMIC>;
 
-		if constexpr (SINGLE_FILE) { // file operation
+		if constexpr (SEQUENCE_VDB == FILE_TYPE)
+		{
+			voxModel* __restrict pVox;
+
+			if constexpr (DYNAMIC) {
+				pVox = &(*_dynamicModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
+			}
+			else {
+				pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
+			}
+
+			int const exists = voxB::LoadVDB(folder_path, pVox);
+			if (exists) {
+
+				// full sequence loaded into one model
+				++modelCount;
+			}
+		}
+		else if constexpr (SINGLE_VOX == FILE_TYPE) { // file operation
 
 			voxModel* __restrict pVox;
 
@@ -83,7 +115,7 @@ namespace Volumetric
 				++modelCount;
 			}
 		}
-		else { // folder operation
+		else { // folder operation (default)
 			
 			for (auto const& entry : fs::directory_iterator(folder_path)) {
 
@@ -123,15 +155,29 @@ namespace Volumetric
 
 		if constexpr (DYNAMIC) {
 
-			LoadModelGroup<DYNAMIC, true>(file_name_no_extension, isolated_group::DynamicNamed);
+			LoadModelGroup<DYNAMIC, SINGLE_VOX>(file_name_no_extension, isolated_group::DynamicNamed);
 
 		}
 		else { // STATIC
 
-			LoadModelGroup<DYNAMIC, true>(file_name_no_extension, isolated_group::StaticNamed);
+			LoadModelGroup<DYNAMIC, SINGLE_VOX>(file_name_no_extension, isolated_group::StaticNamed);
 		}
 	}
 
+	template<bool const DYNAMIC>
+	static void LoadModelSequenceNamed(std::string_view const file_name_no_extension) {
+
+		if constexpr (DYNAMIC) {
+
+			LoadModelGroup<DYNAMIC, SEQUENCE_VDB>(file_name_no_extension, isolated_group::DynamicNamed);
+
+		}
+		else { // STATIC
+
+			LoadModelGroup<DYNAMIC, SEQUENCE_VDB>(file_name_no_extension, isolated_group::StaticNamed);
+		}
+	}
+	
 	static bool LoadAllStaticVoxelModels() // #### Same Order #### //// STATIC
 	{
 		static constexpr bool const STATIC = false;
@@ -140,11 +186,12 @@ namespace Volumetric
 
 		_staticModels.reserve(999);
 
-		LoadModelGroup<STATIC, true>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
+		LoadModelGroup<STATIC, SINGLE_VOX>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
 		LoadModelGroup<STATIC>(FOLDER_BUILDING_RESIDENTIAL, isolated_group::Residential);
 		LoadModelGroup<STATIC>(FOLDER_BUILDING_COMMERCIAL, isolated_group::Commercial);
 		LoadModelGroup<STATIC>(FOLDER_BUILDING_INDUSTRIAL, isolated_group::Industrial);
 
+		LoadModelSequenceNamed<STATIC>("ground_explosion");
 #ifdef GIF_MODE
 		LoadModelNamed<STATIC>("rock_stage/rock_stage");
 #endif
@@ -162,7 +209,7 @@ namespace Volumetric
 
 		_dynamicModels.reserve(999);
 
-		LoadModelGroup<DYNAMIC, true>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
+		LoadModelGroup<DYNAMIC, SINGLE_VOX>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
 
 #ifdef GIF_MODE

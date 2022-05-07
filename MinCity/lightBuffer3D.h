@@ -11,7 +11,7 @@
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
 
-typedef tbb::enumerable_thread_specific< XMFLOAT3A > Bounds; // per thread instance
+typedef tbb::enumerable_thread_specific< XMFLOAT3A, tbb::cache_aligned_allocator<XMFLOAT3A>, tbb::ets_key_per_instance > Bounds; // per thread instance
 
 // 3D Version ################################################################################################ //
 template< typename XMFLOAT4A, uint32_t const LightWidth, uint32_t const LightHeight, uint32_t const LightDepth,  // non-uniform size ok for light volume

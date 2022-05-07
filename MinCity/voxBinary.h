@@ -22,6 +22,7 @@ The VOX File format is Copyright to their respectful owners.
 
 #define VOX_FILE_EXT L".vox"
 #define V1X_FILE_EXT L".v1x"
+#define VDB_FILE_EXT L".vdb"
 
 namespace Volumetric
 {
@@ -29,7 +30,10 @@ namespace voxB
 {
 	// see voxelModel.h
 
-// builds the voxel model, loading from magickavoxel .vox format, returning the model with the voxel traversal
+// builds the voxel model, loading from academysoftwarefoundation .vdb format, returning the model with the voxels loaded for a sequence folder.
+int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem);
+
+// builds the voxel model, loading from magickavoxel .vox format, returning the model with the voxel for a single file. no sequence support.
 // *** will save a cached version of culled model if it doesn't exist
 // *** will load cached "culled" version if newer than matching .vox to speedify loading voxel models
 int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem); // returns 0 on failure, -1 on a new .vox loaded and 1 on a .v1x loaded (cached)

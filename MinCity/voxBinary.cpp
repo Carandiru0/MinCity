@@ -25,6 +25,9 @@ The VOX File format is Copyright to their respectful owners.
 
 #include <Utility/stringconv.h>
 
+#include <openvdb/openvdb.h>
+#include <openvdb/io/Stream.h>
+
 /*
 1x4      | char       | chunk id
 4        | int        | num bytes of chunk content (N)
@@ -153,74 +156,75 @@ STATIC_INLINE bool const CompareTag( uint32_t const TagSz, uint8_t const * __res
 	return(true);
 }
 
-// simple (slow) linear search
-static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restrict source, VoxelData const* __restrict pVoxels, 
-								  uint8_t& __restrict Adjacency)
-{
-	static constexpr uint32_t const uiMaxOcclusion( 9 + 8 ); // 9 above, 8 sides
-	
-	uint8_t pendingAdjacency(0);
-	Adjacency = 0;
-	
-	uint32_t uiOcclusion(uiMaxOcclusion - 1);
-
-	// only remove voxels that are completely surrounded above and too the sides (don't care about below)
-	do
-	{
-		VoxelData const Compare( *pVoxels++ );
-		
-		int32_t const HeightDelta = ((int32_t)Compare.z - (int32_t)source.z);
-		
-		if ( (0 == HeightDelta) | (1 == HeightDelta) ) { // same height or 1 unit above only
-			
-			int32_t const SXDelta = (int32_t)Compare.x - (int32_t)source.x,
-						  SYDelta = (int32_t)Compare.y - (int32_t)source.y;
-			int32_t const XDelta = SFM::abs(SXDelta),
-						  YDelta = SFM::abs(SYDelta);
-			
-			if ( (XDelta | YDelta) <= 1 ) // within 1 unit or same on x,y axis'	
-			{
-				if ( 0 == (HeightDelta | XDelta | YDelta) ) // same voxel ?
-					continue;
-				
-					if ( 0 != HeightDelta ) { // 1 unit above...
-						
-						if ( 0 == (XDelta | YDelta) ) { // same x,y
-							pendingAdjacency |= BIT_ADJ_ABOVE;
-						}
-					}
-					
-					if ( 0 != YDelta ) {
-						if ( 0 == (HeightDelta | XDelta) ) { // same slice and x axis
-							if ( SYDelta < 0 ) { // 1 unit infront...
-								pendingAdjacency |= BIT_ADJ_FRONT; 
-							}
-							else /*if ( 1 == SYDelta )*/ { // 1 unit behind...
-								pendingAdjacency |= BIT_ADJ_BACK; 
-							}
-						}
-					}
-					
-					if ( 0 != XDelta ) {
-						if ( 0 == (HeightDelta | YDelta) ) { // same slice and y axis
-							if ( SXDelta < 0 ) { // 1 unit left...
-								pendingAdjacency |= BIT_ADJ_LEFT; 
-							}
-							else /*if ( 1 == SXDelta )*/ { // 1 unit right...
-								pendingAdjacency |= BIT_ADJ_RIGHT; 
-							}
-						}
-					}
-					--uiOcclusion; // Fully remove
-			}
-		}
-			
-	} while ( 0 != --numVoxels && 0 != uiOcclusion);
-	
-	Adjacency = pendingAdjacency;	// face culling used for voxels that are not removed
-
-	return(0 != uiOcclusion);
-}
+// [deprecated] simple (slow) linear search
+// ** replaced w/ fast parallel adjacency search, old code left as reference below
+//static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restrict source, VoxelData const* __restrict pVoxels, 
+//								  uint8_t& __restrict Adjacency)
+//{
+//	static constexpr uint32_t const uiMaxOcclusion( 9 + 8 ); // 9 above, 8 sides
+//	
+//	uint8_t pendingAdjacency(0);
+//	Adjacency = 0;
+//	
+//	uint32_t uiOcclusion(uiMaxOcclusion - 1);
+//
+//	// only remove voxels that are completely surrounded above and too the sides (don't care about below)
+//	do
+//	{
+//		VoxelData const Compare( *pVoxels++ );
+//		
+//		int32_t const HeightDelta = ((int32_t)Compare.z - (int32_t)source.z);
+//		
+//		if ( (0 == HeightDelta) | (1 == HeightDelta) ) { // same height or 1 unit above only
+//			
+//			int32_t const SXDelta = (int32_t)Compare.x - (int32_t)source.x,
+//						  SYDelta = (int32_t)Compare.y - (int32_t)source.y;
+//			int32_t const XDelta = SFM::abs(SXDelta),
+//						  YDelta = SFM::abs(SYDelta);
+//			
+//			if ( (XDelta | YDelta) <= 1 ) // within 1 unit or same on x,y axis'	
+//			{
+//				if ( 0 == (HeightDelta | XDelta | YDelta) ) // same voxel ?
+//					continue;
+//				
+//					if ( 0 != HeightDelta ) { // 1 unit above...
+//						
+//						if ( 0 == (XDelta | YDelta) ) { // same x,y
+//							pendingAdjacency |= BIT_ADJ_ABOVE;
+//						}
+//					}
+//					
+//					if ( 0 != YDelta ) {
+//						if ( 0 == (HeightDelta | XDelta) ) { // same slice and x axis
+//							if ( SYDelta < 0 ) { // 1 unit infront...
+//								pendingAdjacency |= BIT_ADJ_FRONT; 
+//							}
+//							else /*if ( 1 == SYDelta )*/ { // 1 unit behind...
+//								pendingAdjacency |= BIT_ADJ_BACK; 
+//							}
+//						}
+//					}
+//					
+//					if ( 0 != XDelta ) {
+//						if ( 0 == (HeightDelta | YDelta) ) { // same slice and y axis
+//							if ( SXDelta < 0 ) { // 1 unit left...
+//								pendingAdjacency |= BIT_ADJ_LEFT; 
+//							}
+//							else /*if ( 1 == SXDelta )*/ { // 1 unit right...
+//								pendingAdjacency |= BIT_ADJ_RIGHT; 
+//							}
+//						}
+//					}
+//					--uiOcclusion; // Fully remove
+//			}
+//		}
+//			
+//	} while ( 0 != --numVoxels && 0 != uiOcclusion);
+//	
+//	Adjacency = pendingAdjacency;	// face culling used for voxels that are not removed
+//
+//	return(0 != uiOcclusion);
+//}
 
 // builds the voxel model, loading from magicavoxel .vox format, returning the model with the voxel traversal
 // supporting 256x256x256 size voxel model.
@@ -478,11 +482,8 @@ typedef struct voxelModelDescHeader
 
 namespace fs = std::filesystem;
 
-bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem)
+static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxels, uint32_t numVoxels)
 {
-	Volumetric::voxB::voxelDescPacked* __restrict pVoxels(pDestMem->_Voxels);
-	uint32_t numVoxels(pDestMem->_numVoxels);
-
 	{ // redo adjacency, to take transparency into account
 
 		using model_volume = Volumetric::voxB::model_volume;
@@ -507,7 +508,7 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 				if (!p.pVoxels[i].Transparent) {
 					bits->set_bit(p.pVoxels[i].x, p.pVoxels[i].y, p.pVoxels[i].z);
 				}
-			});
+				});
 
 			// encode adjacency
 			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
@@ -516,7 +517,7 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 				if (!p.pVoxels[i].Transparent) { // want to keep existing adjacency for transparent voxels, as they are not considered for adjacency re-calculation.
 					p.pVoxels[i].setAdjacency(encode_adjacency(localIndex, bits)); // apply adjacency
 				}
-			});
+				});
 		}
 
 		// cleanup, volume no longer required - adjacency is encoded
@@ -529,11 +530,11 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 	{ // culling
 
 		// A VecVoxels has a separate std::vector<T> per thread
-		typedef tbb::enumerable_thread_specific< vector<voxelDescPacked> > VecVoxels;
+		typedef tbb::enumerable_thread_specific< vector<voxelDescPacked>, tbb::cache_aligned_allocator<vector<voxelDescPacked>>, tbb::ets_key_per_instance > VecVoxels;
 
 		// output linear access array
 		VecVoxels tmpVectors;
-		
+
 		struct { // avoid lambda heap
 
 			Volumetric::voxB::voxelDescPacked const* const __restrict pVoxels;
@@ -547,37 +548,57 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 			static constexpr uint32_t const all(BIT_ADJ_LEFT | BIT_ADJ_RIGHT | BIT_ADJ_FRONT | BIT_ADJ_BACK | BIT_ADJ_ABOVE);
 
 			if (all != p.pVoxels[i].getAdjacency()) { // cull all voxels that have been completely surrounded by other voxels, which implies this voxel is hidden regardless of transparency or other things.
-				
+
 				p.tmpVectors.local().emplace_back(p.pVoxels[i]);
 			}
-		});
+			});
 
 		// reset count and tally number of voxels
-		uint32_t numVoxelsEmissive(0),			
-				 numVoxelsTransparent(0);		
+		uint32_t numVoxelsEmissive(0),
+				 numVoxelsTransparent(0);
 
 		numVoxels = 0;
-
+		
+		Volumetric::voxB::voxelDescPacked* pVoxel(pVoxels);
+		
 		tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
 		for (tbb::flattened2d<VecVoxels>::const_iterator
 			i = flat_view.begin(); i != flat_view.end(); ++i) {
-			
-			numVoxelsEmissive += i->Emissive;			// only voxels that are not culled are included in the final counts.
+
+			numVoxelsEmissive += i->Emissive;			// will have the culled counts afterwards
 			numVoxelsTransparent += i->Transparent;
 
-			*pVoxels = *i;
-			++pVoxels;
-			++numVoxels;
+			*pVoxel = *i;
+			++pVoxel;
+			++numVoxels; // will have the culled count afterwards
 		}
 
-		tbb::parallel_sort(pDestMem->_Voxels, pVoxels);
+		tbb::parallel_sort(pVoxels, pVoxel);
 
 		// accurate counts - now only the culled set of voxels.
-		pDestMem->_numVoxels = numVoxels;
-		pDestMem->_numVoxelsEmissive = numVoxelsEmissive;
-		pDestMem->_numVoxelsTransparent = numVoxelsTransparent;
+		struct voxelCount {
+			uint32_t const numVoxels,
+						   numVoxelsEmissive,
+						   numVoxelsTransparent;
+
+			voxelCount(uint32_t const numVoxels_, uint32_t const numVoxelsEmissive_, uint32_t const numVoxelsTransparent_)
+				: numVoxels(numVoxels_), numVoxelsEmissive(numVoxelsEmissive_), numVoxelsTransparent(numVoxelsTransparent_)
+			{}
+		};
+
+		return( voxelCount{ numVoxels, numVoxelsEmissive, numVoxelsTransparent } ); // returns structured binding
 	}
-		
+}
+
+bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem)
+{
+	auto const [numVoxels, numVoxelsEmissive, numVoxelsTransparent] = OptimizeVoxels(pDestMem->_Voxels, pDestMem->_numVoxels); // optimizing entire model
+	
+	// update model voxel counts after optimization //
+	pDestMem->_numVoxels = numVoxels;
+	pDestMem->_numVoxelsEmissive = numVoxelsEmissive;
+	pDestMem->_numVoxelsTransparent = numVoxelsTransparent;
+
 	// save to file
 	FILE* __restrict stream(nullptr);
 	if ((0 == _wfopen_s(&stream, path.data(), L"wbS")) && stream) {
@@ -771,6 +792,139 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 	return(0); // fail
 }
 
+
+static bool const LoadVDBFrame(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem)
+{	
+	static constexpr float const INV_MODEL_MAX_DIMENSION_XYZ(1.0f / ((float)Volumetric::MODEL_MAX_DIMENSION_XYZ));
+	
+	uint32_t frameOffset(0),
+		     numVoxels(0);
+	
+	{ // convert vdb to linear array of voxels
+		
+		// output linear access array
+		vector<Volumetric::voxB::voxelDescPacked> allVoxels;
+		
+		{ // Stream in grids from a file.
+			std::ifstream ifile(path, std::ios_base::binary);
+
+			if (ifile.is_open() && ifile.good()) {
+
+				using GridType = openvdb::FloatGrid;
+				using TreeType = typename GridType::TreeType;
+
+				openvdb::GridPtrVecPtr grids = openvdb::io::Stream(ifile).getGrids();
+
+				GridType::Ptr grid = openvdb::GridBase::grid<GridType>((*grids)[0]);
+
+				using model_volume = Volumetric::voxB::model_volume;
+
+				alignas(CACHE_LINE_BYTES) model_volume* __restrict bits(nullptr);
+				bits = model_volume::create();
+				
+				for (GridType::ValueOnCIter iter = grid->cbeginValueOn(); iter; ++iter) {
+
+					if (iter.isVoxelValue()) {
+
+						openvdb::Coord const vdbCoord(iter.getCoord()); // signed 32bit integer components (vdb coord)
+
+						XMVECTOR xmCoord = XMVectorSet(vdbCoord.x(), vdbCoord.y(), vdbCoord.z(), 0.0f);
+						// normalize to the maximum allowable model volume size //
+						xmCoord = XMVectorScale(xmCoord, INV_MODEL_MAX_DIMENSION_XYZ);
+						// convert from [-1, 1] to [0,1] // *** seems vdb only uses unsigned numbers, so the origin is good.
+						//xmCoord = SFM::saturate(SFM::__fma(xmCoord, XMVectorReplicate(0.5f), XMVectorReplicate(0.5f)));
+						
+						// rescale to fit in unsigned 8bit byte components (vox coord)
+						xmCoord = XMVectorScale(xmCoord, 255.0f);
+
+						uvec4_t curVoxel;
+						SFM::saturate_to_u8(xmCoord, curVoxel);
+
+						// only add the voxel if it hasn't already been added
+						size_t const index(bits->get_index(curVoxel.x, curVoxel.z, curVoxel.y));  // *note -> swizzle of y and z here also required
+
+						if (!bits->read_bit(index)) {  // filter out, if already set, nothing get added *** important 
+
+							bits->set_bit(index);
+
+							allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), 0, 0); // *note -> swizzle of y and z here
+						}
+					}
+				}
+				
+				numVoxels = allVoxels.size();
+
+				// cleanup, volume no longer required
+				if (bits) {
+					model_volume::destroy(bits);
+					bits = nullptr;
+				}
+			}
+			else {
+
+				FMT_LOG_FAIL(VOX_LOG, "unable to open file(s): {:s}", path.filename().string());
+				return(false);
+			}
+		}
+
+		// now have count of all active voxels for this frame
+		frameOffset = pDestMem->_numVoxels; // existing count
+
+		uint32_t const new_count(pDestMem->_numVoxels + numVoxels); // always growing so reallocation doesn't bother existing data //
+
+		// new allocation of target size
+		voxelDescPacked* pVoxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * new_count + 1, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+
+		// copy over existing data
+		memcpy(pVoxels, pDestMem->_Voxels, sizeof(voxelDescPacked) * frameOffset); // frameOffset contains the total size b4 this vdb frame.
+		
+		// copy over new data
+		memcpy(pVoxels + frameOffset, allVoxels.data(), sizeof(voxelDescPacked) * numVoxels);
+		
+		// swap pointers
+		std::swap<voxelDescPacked*>(pDestMem->_Voxels, pVoxels);
+
+		// release the old allocation
+		if (pVoxels) {
+			scalable_aligned_free(pVoxels);
+			pVoxels = nullptr;
+		}
+	}
+	
+	auto const [numVoxelsFrame, numVoxelsEmissiveFrame, numVoxelsTransparentFrame] = OptimizeVoxels(pDestMem->_Voxels + frameOffset, numVoxels); // optimizing *only* voxels for this frame
+
+	// update model voxel counts after optimization - counts returned are isolated to include this frame only, must append to total voxel count for all frames //
+	pDestMem->_numVoxels += numVoxelsFrame;
+	pDestMem->_numVoxelsEmissive += numVoxelsEmissiveFrame;
+	pDestMem->_numVoxelsTransparent += numVoxelsTransparentFrame;
+
+	return(true);
+}
+
+// builds the voxel model, loading from academysoftwarefoundation .vdb format, returning the model with the voxels loaded for a sequence folder.
+int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem)
+{
+	constinit static bool bOpenVDBInitialized(false);
+	
+	if (!bOpenVDBInitialized) {
+		openvdb::initialize();
+		bOpenVDBInitialized = true;
+	}
+	
+	for (auto const& entry : fs::directory_iterator(path)) {	// path contains the sequence folder name in the named directory
+
+		if (entry.exists() && !entry.is_directory()) {
+			if (stringconv::case_insensitive_compare(VDB_FILE_EXT, entry.path().extension().wstring())) // only vdb files 
+			{
+				if (!LoadVDBFrame(entry.path(), pDestMem)) {
+					return(0);
+				}
+			}
+		}
+	}
+	return(1);
+}
+
 void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
 {
 	struct FuncTransparentAll {
@@ -844,7 +998,6 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 	xmExtents = XMVectorSetY(xmExtents, float(_maxDimensions.y + 1));
 	XMStoreFloat3A(&_Extents, XMVectorScale(xmExtents, 0.5f));
 }
-
 
 voxelModelBase::~voxelModelBase()
 {

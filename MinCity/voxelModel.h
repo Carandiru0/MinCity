@@ -60,7 +60,9 @@ namespace voxB
 		inline voxCoord(uint8_t const xx, uint8_t const yy, uint8_t const zz)
 			: x(xx), y(yy), z(zz)
 		{}
-			
+		
+		voxCoord() = default;
+		
 	} voxCoord;
 		
 	typedef struct voxelNormal
