@@ -17,6 +17,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "IsoVoxel.h"
 #include "Declarations.h"
 #include "voxelScreen.h"
+#include "voxelSequence.h"
 #include "voxLink.h"
 #include "adjacency.h"
 
@@ -127,8 +128,8 @@ namespace voxB
 
 	} voxelNormal;
 
-	typedef struct alignas(16) voxelDescPacked	// Final 256x256x256 Structure
-	{
+	typedef struct alignas(8) voxelDescPacked	// Final 256x256x256 Structure - *bugfix - alignment explicitly set to 8, the maximum size of structure. Aligning to 16 doubles the size of the structure. In the interest of bandwidth and file size (eg. .v1xa sequences) the alignment is set to 8. *do not increase*
+	{											// ***do not change alignment*** *breaks .v1x &  .v1xa data files if alignment is changed*
 		union
 		{
 			struct 
@@ -283,22 +284,29 @@ namespace voxB
 		static constexpr uint8_t const
 			RESERVED_0 = (1 << 0),
 			RESERVED_1 = (1 << 1),
-			RESERVED_2 = (1 << 2),
+			SEQUENCE = (1 << 2),
 			VIDEOSCREEN = (1 << 3);
 
-		voxelScreen const* videoscreen = nullptr;
-
+		voxelScreen const*		videoscreen = nullptr;
+		voxelSequence const*	sequence = nullptr;
+		
 		voxelModelFeatures() = default;
 
 		voxelModelFeatures(voxelModelFeatures const& src)
 		{
+			// otherwise pointers are set to nullptr by default initialization (above)
 			if (src.videoscreen) {
 
 				videoscreen = new voxelScreen(*src.videoscreen);
 			}
+			if (src.sequence) {
+
+				sequence = new voxelSequence(*src.sequence);
+			}
 		}
 		~voxelModelFeatures() {
 			SAFE_DELETE(videoscreen);
+			SAFE_DELETE(sequence);
 		}
 
 	} voxelModelFeatures;
@@ -324,14 +332,15 @@ namespace voxB
 		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels)
 		
 		voxelModelFeatures _Features;
-
+		bool			   _Mapped;						// "_Voxels" points to memory mapped file (virtual memory) containing contigous data
+		
 		inline voxelModelBase() 
-			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
 		{}
 
 		voxelModelBase(voxelModelBase const& src)
 			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
-			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr)
+			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(false)
 		{
 			if (nullptr != src._Voxels) {
 
@@ -341,7 +350,7 @@ namespace voxB
 		}
 
 		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
-			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
 		{
 			vec4_v const maxDimensions(width, height, depth);
 			
@@ -650,17 +659,19 @@ namespace voxB
 		[[maybe_unused]] tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutDynamic;
 		tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutTrans;
 
+		uint32_t const vxl_count(instance.getVoxelCount());
+		
 		if (!instance.isFaded()) {
 			if constexpr (Dynamic) {
-				pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+				pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(vxl_count - _numVoxelsTransparent);
 			}
 			else {
-				pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(_numVoxels - _numVoxelsTransparent);
+				pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(vxl_count - _numVoxelsTransparent);
 			}
 			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxelsTransparent);
 		}
 		else {
-			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxels + _numVoxelsTransparent);
+			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(vxl_count + _numVoxelsTransparent);
 		}
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -675,7 +686,9 @@ namespace voxB
 		)(tbb::blocked_range<uint32_t>(0, numTraverse));
 		*/
 
-		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, _numVoxels, eThreadBatchGrainSize::MODEL),
+		uint32_t const vxl_offset(instance.getVoxelOffset());
+		
+		tbb::parallel_for(tbb::blocked_range<uint32_t>(vxl_offset, vxl_offset + vxl_count, eThreadBatchGrainSize::MODEL),
 			RenderFuncBlockChunk(xmVoxelOrigin, 
 				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
 				_Voxels, 

@@ -418,7 +418,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 {
 	std::error_code error{};
 
-	mio::mmap_source mmap = mio::make_mmap_source(path, error);
+	mio::mmap_source mmap = mio::make_mmap_source(path, false, error);
 	if (!error) {
 
 		if (mmap.is_open() && mmap.is_mapped()) {

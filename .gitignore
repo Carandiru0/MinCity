@@ -1,4 +1,7 @@
 # Other project files
+*.v1xa
+*.mmp
+*.vdb
 *.d
 *.db
 *.pdb

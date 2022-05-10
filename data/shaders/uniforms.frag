@@ -312,12 +312,6 @@ void main() {
 					  1.0f, Ld.att,
 					  Ld.dir, N, V, reflection, fresnelTerm );
 
-	color = mix(color, unpackColor(In._ambient) + color * road_segment.g + color * decal_luminance * dot(reflection, LUMA) + reflection, fresnelTerm); 
-
-	const vec3 shineCol = 0.333333f * vec3(0.5f, 0.05f, 1.0f);
-
-	color += road_segment.b * shineCol * (1.0f - exp2(-1000.0f*road_segment.b*fresnelTerm));
-
 	outColor.rgb = color;
 	
 	//outColor.rgb = vec3(attenuation);

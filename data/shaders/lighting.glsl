@@ -111,15 +111,8 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 vec3 reflection(in const float lighting_luminance) 
 {
 	// no aliasing
-	vec4 ambient_reflection = subpassLoad(ambientLightMap); // pre-multiplied in
-	
-	// proper blending of reflections with light * do not change *
-	//const float reflection_luminance = dot(ambient_reflection.rgb, LUMA); // reflection luminance must be pre-multiplied with alpha to get correct ambient level
-	//ambient_reflection.rgb = ambient_reflection.rgb * lighting_luminance; // raw color * the current direct lighting luminance which is based on the raw light color faded out by distance from the light. this is what the reflection would be if it were a light.
-	//ambient_reflection.rgb = ambient_reflection.rgb * reflection_luminance / dot(ambient_reflection.rgb, LUMA); // bring it back to the original reflection luminance which is now weighed by
-	ambient_reflection.rgb = ambient_reflection.rgb * ambient_reflection.a; // further darkening (also fades out reflection based on distance to reflected object)
-
-	return(ambient_reflection.rgb);
+	// pre-multiplied in
+	return(subpassLoad(ambientLightMap).rgb * (1.0f - lighting_luminance)); // balanced reflection intensity, inverse relationship with current lighting luminance.
 }
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
@@ -204,7 +197,7 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 
-	const vec3 ambient_reflection_term = unpackColor(material.ambient) + ambient_reflection * mix(diffuse_reflection_term, specular_reflection_term, material.roughness) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
+	const vec3 ambient_reflection_term = unpackColor(material.ambient) + ambient_reflection * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
 			// ambient
 	return ( ambient_reflection_term +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					

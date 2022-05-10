@@ -23,6 +23,8 @@ The VOX File format is Copyright to their respectful owners.
 #define VOX_FILE_EXT L".vox"
 #define V1X_FILE_EXT L".v1x"
 #define VDB_FILE_EXT L".vdb"
+#define V1XA_FILE_EXT L".v1xa"
+#define MMP_FILE_EXT L".mmp"
 
 namespace Volumetric
 {

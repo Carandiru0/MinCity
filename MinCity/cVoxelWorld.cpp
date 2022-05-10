@@ -30,6 +30,7 @@
 #include "cLightGameObject.h"
 #include "cImportGameObject.h"
 #include "cLevelSetGameObject.h"
+#include "cExplosionGameObject.h"
 
 #ifdef GIF_MODE
 #include "cVideoScreenGameObject.h"
@@ -3423,10 +3424,14 @@ namespace world
 #endif
 		{ // test dynamics 
 			cTestGameObject* pTstGameObj(nullptr);
+			cExplosionGameObject* pExplosionGameObj(nullptr);
 			cLevelSetGameObject* pSphereGameObj(nullptr);
 
 			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
+			pExplosionGameObj = placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
+				Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION);
+			
 			/*
 			if (PsuedoRandom5050()) {
 				pGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::MISC>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)),
@@ -4680,6 +4685,15 @@ namespace world
 				}
 				// update all dynamic/updateable game objects //
 				{
+					{
+						auto it = cExplosionGameObject::begin();
+						while (cExplosionGameObject::end() != it) {
+
+							it->OnUpdate(tNow, tDelta);
+							++it;
+						}
+					}
+						
 					// import //
 					{
 						auto it = cImportGameObject_Dynamic::begin();

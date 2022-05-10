@@ -1,132 +1,64 @@
 #pragma once
 #include "tTime.h"
-#include "IsoVoxel.h"
-#include "voxelModel.h"
-#include "eStateGroups.h"
-#include <Random/superrandom.hpp>
+#include "voxelModelInstance.h"
 
 namespace Volumetric
 {
-	// not used anymore
-	/*
-	static constexpr milliseconds const UPDATE_ANIM_INTERVAL_DEFAULT( 33 );
-
-	class voxelAnimStateGroup
+	template< bool const Dynamic >
+	struct voxelAnim
 	{
-	public:
-		milliseconds& interval() { return(tUpdateInterval); }
+		static constexpr uint32_t const DEFAULT_FRAMERATE = 30;
 
-	public:
-		void update(tTime const& tNow) {
+		float			 accumulator;
 
-			if ((tNow - tLastUpdate) > tUpdateInterval) {
+		float			 frame_interval;
+		uint32_t		 frame;
 
-				updateState(tNow);
+		bool const update(voxelModelInstance<Dynamic>* const __restrict instance, fp_seconds const& __restrict tDelta)
+		{
+			if (instance)
+			{
+				voxB::voxelModel<Dynamic> const& __restrict model(instance->getModel());
 
-				tLastUpdate = tNow;
+				if (nullptr != model._Features.sequence) {
+
+					uint32_t const num_frames(model._Features.sequence->numFrames());
+
+					accumulator += time_to_float(tDelta);
+
+					if (accumulator >= frame_interval)
+					{
+						++frame;
+
+						if (frame >= num_frames) {
+							frame = 0; // loop
+						}
+
+						instance->setVoxelOffsetCount(model._Features.sequence->getOffset(frame), model._Features.sequence->numVoxels(frame)); // update the instance voxel offset and voxel count, which defines the frame used for rendering of this instance.
+
+						accumulator -= frame_interval;
+					}
+
+					return((num_frames - 1) == frame); // returning if last frame - indicating that animation is finished
+				}
 			}
-		}
-	protected:
-		virtual void updateState(tTime const&) = 0;
-
-	protected:
-		voxB::voxelStateGroup const&		 Group;
-		tTime								 tLastUpdate;
-		milliseconds						 tUpdateInterval;
-
-	public:
-		voxelAnimStateGroup(voxB::voxelStateGroup const& refGroup)
-			: Group(refGroup), tUpdateInterval(UPDATE_ANIM_INTERVAL_DEFAULT)
-		{}
-	};
-
-	class voxelAnimTheater : public voxelAnimStateGroup
-	{
-	protected:
-		virtual void updateState(tTime const& tNow) override final {
 			
-			uint32_t LastEmission(Iso::EMISSION_SHADING);
+			return(true); // returning true as in last frame is current so that the behaviour when the sequence does not exist is the animation is finished. eg.) gameobject destroys itself when animation is finished.
+		}
+		
+		voxelAnim(voxelModelInstance<Dynamic>*const __restrict instance, uint32_t const framerate_ = DEFAULT_FRAMERATE)
+			: accumulator(0.0f), frame_interval(1.0f / (float)framerate_), frame(0)
+		{
+			if (instance)
+			{
+				voxB::voxelModel<Dynamic> const& __restrict model(instance->getModel());
 
-			if (++Start >= Group.groupedstates.size()) {
-				Start = 0;
-			}
-
-			if (!bFlash && !bAll && PsuedoRandomNumber(0, 100) < 25) {
-
-				for (uint32_t iDx = 0; iDx < Group.groupedstates.size(); ++iDx) {
-
-					Group.groupedstates[iDx]->Emissive = Iso::EMISSION_SHADING;
+				if (nullptr != model._Features.sequence) {
+					instance->setVoxelOffsetCount(model._Features.sequence->getOffset(0), model._Features.sequence->numVoxels(0)); // update the instance voxel offset and voxel count, which defines the frame used for rendering of this instance.
 				}
-				bAll = true;
-				return;
-			}
-			else if (bAll) {
-				for (uint32_t iDx = Start; iDx < Group.groupedstates.size(); ++iDx) {
-
-					Group.groupedstates[iDx]->Emissive = Iso::EMISSION_SHADING_NONE;
-				}
-				bAll = false;
-				bFlash = true;
-				return;
-			}
-
-			bFlash = false;
-
-			for (uint32_t iDx = Start; iDx < Group.groupedstates.size(); ++iDx) {
-
-				Group.groupedstates[iDx]->Emissive = EmissionState ? Iso::EMISSION_SHADING : Iso::EMISSION_SHADING_NONE;
-
-				EmissionState = !EmissionState;
-			}
-
-			for (uint32_t iDx = 0; iDx < Start; ++iDx) {
-
-				Group.groupedstates[iDx]->Emissive = Group.groupedstates[iDx]->Emissive | LastEmission;
-
-				if (EmissionState)
-					LastEmission = 0;
 			}
 		}
-	public:
-		voxelAnimTheater(voxB::voxelStateGroup const& refGroup)
-			: voxelAnimStateGroup(refGroup), Start(0),
-			EmissionState(false), bAll(false), bFlash(false)
-		{}
-	private:
-		uint32_t Start;
-		bool EmissionState, bAll, bFlash;
+		
 	};
-
-	void UpdateAllVoxelAnimations(tTime const& tNow);
-	void CleanUpAllVoxelAnimations();
-
-	*/
 } // end ns;
 
-/*
-#ifdef VOXEL_ANIM_IMPLEMENTATION
-static vector< Volumetric::voxelAnimStateGroup* > _animations;
-
-namespace Volumetric
-{
-	template<typename... Args>
-	static Volumetric::voxelAnimStateGroup* const& AddAnimation(Args&&... args) {
-		return( _animations.emplace_back(std::forward<Args>(args)...) );
-	}
-
-	void UpdateAllVoxelAnimations(tTime const& tNow)
-	{
-		for (auto const i : _animations) {
-			i->update(tNow);
-		}
-	}
-	void CleanUpAllVoxelAnimations()
-	{
-		for (auto& i : _animations) {
-			SAFE_DELETE(i);
-		}
-		_animations.clear(); _animations.shrink_to_fit();
-	}
-} // end ns
-#endif
-*/

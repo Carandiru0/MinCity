@@ -122,6 +122,10 @@ namespace Volumetric
 		void														  setTransparency(uint32_t const transparency_) { transparency = transparency_; } // use eVoxelTransparency enum
 		void														  setVoxelEventFunction(voxel_event_function const eventHandler) { eOnVoxel = eventHandler; }
 
+		uint32_t const												  getVoxelOffset() const { return(vxl_offset); }
+		uint32_t const												  getVoxelCount() const { return(vxl_count); }
+		void														  setVoxelOffsetCount(uint32_t const vxl_offset_, uint32_t const vxl_count_) { vxl_offset = vxl_offset_; vxl_count = vxl_count_; } // for sequence animation control
+		
 	public:
 		__inline bool const Validate() const;
 	public:
@@ -136,9 +140,11 @@ namespace Volumetric
 		voxel_event_function								eOnVoxel;
 		bool												faded, emission_only;
 		uint32_t											transparency;	// 4 distinct levels of transparency supported - see eVoxelTransparency enum - however all values between 0 - 255 will be correctly converted to transparency level that is closest
+		uint32_t											vxl_offset, vxl_count; // current voxel offset and number of voxels to render
 	public:
 		inline explicit voxelModelInstance(voxB::voxelModel<Dynamic> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
-			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), faded(false), emission_only(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr)
+			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), faded(false), emission_only(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr),
+			vxl_offset(0), vxl_count(refModel._numVoxels) // defaults to single "frame" mode
 		{}
 	};
 

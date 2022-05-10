@@ -73,7 +73,7 @@ namespace Volumetric
 		MISC = -4 // last
 	);
 
-	// #### No particular Order #### //// DYNAMIC or STATIC  -- saved indices for models index that are "special", index must match as loaded for the *group* it belongs to.
+	// #### Ordered by order of loading for each category #### //// DYNAMIC or STATIC  -- saved indices for models index that are "special", index must match as loaded for the *group* it belongs to.
 	struct eVoxelModel
 	{
 		struct STATIC
@@ -121,7 +121,7 @@ namespace Volumetric
 			{
 				static inline uint32_t
 
-					RESERVED = 0;
+					GROUND_EXPLOSION = 0;
 			};
 		};
 	};

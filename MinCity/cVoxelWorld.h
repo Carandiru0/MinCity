@@ -638,7 +638,7 @@ auto const cVoxelWorld::placeProceduralVoxelModelInstanceAt(point2D_t const voxe
 {
 	Volumetric::voxB::voxelModel<Dynamic>* model(nullptr);
 
-	model = new Volumetric::voxB::voxelModel<Dynamic>(Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ); // create copy for unique usage by owner game object, owner must release model.
+	model = new Volumetric::voxB::voxelModel<Dynamic>(Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ); // create copy for unique usage by owner game object, owner must release model.
 
 	auto const [hash, instance] = placeVoxelModelInstanceAt<Dynamic>(voxelIndex, model, flags);
 

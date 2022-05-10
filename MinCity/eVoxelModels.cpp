@@ -191,7 +191,6 @@ namespace Volumetric
 		LoadModelGroup<STATIC>(FOLDER_BUILDING_COMMERCIAL, isolated_group::Commercial);
 		LoadModelGroup<STATIC>(FOLDER_BUILDING_INDUSTRIAL, isolated_group::Industrial);
 
-		LoadModelSequenceNamed<STATIC>("ground_explosion");
 #ifdef GIF_MODE
 		LoadModelNamed<STATIC>("rock_stage/rock_stage");
 #endif
@@ -212,6 +211,7 @@ namespace Volumetric
 		LoadModelGroup<DYNAMIC, SINGLE_VOX>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
 
+		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
 #ifdef GIF_MODE
 		LoadModelNamed<DYNAMIC>("rock_stage/guitar");
 		LoadModelNamed<DYNAMIC>("rock_stage/singer");

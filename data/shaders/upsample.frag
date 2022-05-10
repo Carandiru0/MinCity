@@ -216,8 +216,6 @@ layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumet
 layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
 
-// (no longer required due to denoising filter in previous stage)
-/*
 const float POISSON_RADIUS = 9.0f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
 
@@ -242,7 +240,7 @@ vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2
 
 	return color;
 }
-*/
+
 /*
 // non-bilateral blur:
 vec4 poissonBlur( in const restrict sampler2D samp, in vec4 color, in const vec2 center_uv, in const float radius ) // pass in center sample 
@@ -309,7 +307,7 @@ void main() {
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
 		vec3 volume_color = supersample(volumetricMap, In.uv, vdFd);
 
-		expandAA(volumetricMap, volume_color.rgb, In.uv);  // softening of bilateral edges
+		//expandAA(volumetricMap, volume_color.rgb, In.uv);  // softening of bilateral edges
 
 		volume_color *= alphaSumV; // pre-multiply w/ bilateral alpha
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
@@ -320,10 +318,10 @@ void main() {
 		vec3 bounce_color = supersample(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
-		// bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f (no longer required due to denoising filter in previous stage)
+		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
 	
 		// no aliasing
-		expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges
+		//expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges
 
 		bounce_color.rgb *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha
 		outReflection = vec4(bounce_color, alphaSumR_Fade);
