@@ -76,7 +76,7 @@ namespace world
 		uint32_t const uflames((voxel.Color >> 8) & 0xff);
 		
 		voxel.Color = 0; // default color is always initialized to "background" (pure black)
-
+		
 		if (uflames) { // flames present?
 			float const density((float)udensity * NORMALIZE);
 			float const temperature((float)uflames * NORMALIZE);
@@ -97,6 +97,7 @@ namespace world
 			
 			voxel.Color = 0x00ffffff & SFM::pack_rgba(udensity); // this looks best for smoke, voxel.Color must be initialized to zero.
 		}
+		
 		
 		return(voxel);
 	}

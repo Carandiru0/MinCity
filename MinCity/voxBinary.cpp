@@ -1,4 +1,4 @@
-/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+﻿/* Copyright (C) 20xx Jason Tully - All Rights Reserved
  * You may use, distribute and modify this code under the
  * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
  * http://www.supersinfulsilicon.com/
@@ -29,6 +29,11 @@ The VOX File format is Copyright to their respectful owners.
 
 #include <openvdb/openvdb.h>
 #include <openvdb/io/Stream.h>
+
+#ifdef VOX_DEBUG_ENABLED
+#include <Utility/console_indicators/cursor_control.hpp> // https://github.com/p-ranav/indicators - Indicators for console applications. Progress bars! MIT license.
+#include <Utility/console_indicators/progress_bar.hpp>
+#endif
 
 namespace { // anonymous, local to this file - automatically released at program close.
 	static vector<mio::mmap_source>	_persistant_mmp;
@@ -804,13 +809,15 @@ typedef struct vdbFrameData
 {
 	static constexpr uint32_t const MAX_CHANNELS = 3;
 	
+	uint32_t				order;
+
 	std::ifstream			file;
 	openvdb::io::Stream		stream;
 	openvdb::GridPtrVecPtr  grids;
 	uint32_t				max_voxel_count[3];
-
-	vdbFrameData(std::filesystem::path const path)
-		: file(path.string(), std::ios_base::binary), stream(file), grids(stream.getGrids()), max_voxel_count{}
+	
+	vdbFrameData(std::string_view const path, uint32_t const index)
+		: order(index), file(path.data(), std::ios_base::binary), stream(file), grids(stream.getGrids()), max_voxel_count{}
 	{
 		file.close();
 	}
@@ -818,6 +825,10 @@ typedef struct vdbFrameData
 	vdbFrameData(vdbFrameData&&) = default;
 	vdbFrameData& operator=(vdbFrameData&&) = default;
 
+	bool const operator<(vdbFrameData const& rhs) const
+	{
+		return(order < rhs.order);
+	}
 private:
 	vdbFrameData(vdbFrameData const&) = delete;
 	vdbFrameData& operator=(vdbFrameData const&) = delete;
@@ -1195,14 +1206,14 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem)
 {
 	constinit static bool bOpenVDBInitialized(false);
-	
+
 	// original vdb file not required if shipped only with the .v1xa (cached version) (does not support modifications)
 
 	// determine if cached version exists
 	std::wstring szCachedPathFilename(VOX_CACHE_DIR);
 	std::wstring szFolderName;
 	{ // string handling
-		
+
 		szFolderName = path.wstring().substr(0, path.wstring().find_last_of(L'/')); // isolate path to just the folder name
 		size_t const start(szFolderName.find_last_of(L'/') + 1);
 		szFolderName = szFolderName.substr(start, szFolderName.length() - start); // isolate path to just the folder name
@@ -1260,7 +1271,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 				else {
 					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) loaded", stringconv::ws2s(szCachedPathFilename));
 				}
-				
+
 				return(1); // indicating existing (cached) sequence loaded
 			}
 			else {
@@ -1272,88 +1283,167 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 
 		// otherwise fallthrough and reload vdb file
 	}
-	
+
 	// stop going any further if vdb folder does not exist, thus never loading/initializing the openvdb library in normal application usage. openvdb .vdb files are only required once (importing). after conversion to .v1xa, the .v1xa file is the only one required.
 	if (!fs::exists(path)) {
 		FMT_LOG_FAIL(VOX_LOG, "unable to open vdb file: {:s} does not exist", path.string());
 		return(0);
 	}
-	
+
 #ifdef VOX_DEBUG_ENABLED
 	FMT_LOG(VOX_LOG, "{:s} [sequence] loading...\n", path.string());
 #endif
-	
+
 	if (!bOpenVDBInitialized) {
 		openvdb::initialize();
 		bOpenVDBInitialized = true;
 	}
-	
-	// get sequence file/frame count
-	uint32_t sequence_frame_count(0);
-	for (auto const& entry : fs::directory_iterator(path)) {	// path contains the sequence folder name in the named directory
 
-		if (entry.exists() && !entry.is_directory()) {
-			if (stringconv::case_insensitive_compare(VDB_FILE_EXT, entry.path().extension().wstring())) // only vdb files 
-			{
-				++sequence_frame_count;
-			}
-		}
-	}
-	
-	vector<vdbFrameData> frame_data;
-	frame_data.reserve(sequence_frame_count);
-
-	float min_value[3]{  9999999.9f,  9999999.9f,  9999999.9f },	// for all frames the min/max value per grid
+	vector<vdbFrameData> ordered_frame_data;
+	float min_value[3]{ 9999999.9f,  9999999.9f,  9999999.9f },		// for all frames the min/max value per grid
 		  max_value[3]{ -9999999.9f, -9999999.9f, -9999999.9f };	// normalization of values considers all frames for each grid now
-	
-#ifdef VOX_DEBUG_ENABLED
-	FMT_LOG(VOX_LOG, "{:s} preparing... ", path.string());
-	uint32_t frame_counter(0);
-	bool channels_output_to_log(false);
-#endif
 
-	// prepare streams
-	for (auto const& entry : fs::directory_iterator(path)) {	// path contains the sequence folder name in the named directory
+	{ // scope memory control
 
-		if (entry.exists() && !entry.is_directory()) {
-			if (stringconv::case_insensitive_compare(VDB_FILE_EXT, entry.path().extension().wstring())) // only vdb files 
-			{
-#ifdef VOX_DEBUG_ENABLED
-				if (!channels_output_to_log) { // output channels info to log
-					openvdb::io::File file(entry.path().string());
-					// Open the file.  This reads the file header, but not any grids.
-					file.open();
+		// get sequence file/frame count & all file names
+		vector<std::string> sequence_filenames;
+		for (auto const& entry : fs::directory_iterator(path)) {	// path contains the sequence folder name in the named directory
 
-					if (file.isOpen()) {
-
-						std::string channel_names[vdbFrameData::MAX_CHANNELS];
-						uint32_t numChannels(0);
-
-						for (openvdb::io::File::NameIterator nameIter = file.beginName(); nameIter != file.endName(); ++nameIter)
-						{
-							channel_names[numChannels] = nameIter.gridName();
-							++numChannels;
-						}
-
-						FMT_LOG(VOX_LOG, "{:d} channels " " [{:s}]  [{:s}]  [{:s}]\n", numChannels, channel_names[0], channel_names[1], channel_names[2]);
-						channels_output_to_log = true;
-					}
-					file.close();
+			if (entry.exists() && !entry.is_directory()) {
+				if (stringconv::case_insensitive_compare(VDB_FILE_EXT, entry.path().extension().wstring())) // only vdb files 
+				{
+					sequence_filenames.push_back(entry.path().string());
 				}
-#endif
-#ifdef VOX_DEBUG_ENABLED
-				FMT_LOG(VOX_LOG, "{:d} / {:d}   preparing...", ++frame_counter, sequence_frame_count);
-#endif
-				frame_data.emplace_back(entry.path()); // creates stream
-				
-				PrepareVDBFrame(frame_data.back(), min_value, max_value);
 			}
 		}
-	}
+		tbb::parallel_sort(sequence_filenames.begin(), sequence_filenames.end());  // directory_iterator does not guarantee order, so sort the filenames
 
 #ifdef VOX_DEBUG_ENABLED
-	FMT_LOG_OK(VOX_LOG, "{:s} prepared\n", path.string());
-	frame_counter = 0;
+		FMT_LOG(VOX_LOG, "{:s} preparing... ", path.string());
+#endif
+#ifdef VOX_DEBUG_ENABLED
+		{ // output channels info to log
+			openvdb::io::File file(sequence_filenames[0]);
+			// Open the file.  This reads the file header, but not any grids.
+			file.open();
+
+			if (file.isOpen()) {
+
+				std::string channel_names[vdbFrameData::MAX_CHANNELS];
+				uint32_t numChannels(0);
+
+				for (openvdb::io::File::NameIterator nameIter = file.beginName(); nameIter != file.endName(); ++nameIter)
+				{
+					channel_names[numChannels] = nameIter.gridName();
+					++numChannels;
+				}
+
+				FMT_LOG(VOX_LOG, "{:d} channels " " [{:s}]  [{:s}]  [{:s}]\n", numChannels, channel_names[0], channel_names[1], channel_names[2]);
+			}
+			file.close();
+		}
+
+		using namespace indicators;
+
+		// Hide cursor
+		show_console_cursor(false);
+
+		indicators::ProgressBar bar{
+		  option::BarWidth{50},
+		  option::Start{" |"},
+		  option::Fill{"-"},
+		  option::Lead{"-"},
+		  option::Remainder{"_"},
+		  option::End{"|"},
+		  option::PrefixText{"Preparing"},
+		  option::ForegroundColor{Color::yellow},
+		  option::ShowElapsedTime{true},
+		  option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+		  option::MaxProgress{sequence_filenames.size()}
+		};
+#endif
+
+		typedef tbb::enumerable_thread_specific< vector<vdbFrameData>, tbb::cache_aligned_allocator<vector<vdbFrameData>>, tbb::ets_key_per_instance > vec_vdbFrameData;
+
+		vec_vdbFrameData frame_data;
+
+		typedef struct minmax_value {
+
+			float min_value[vdbFrameData::MAX_CHANNELS],
+				max_value[vdbFrameData::MAX_CHANNELS];
+
+			minmax_value()
+				: min_value{ 9999999.9f,  9999999.9f,  9999999.9f }, max_value{ -9999999.9f, -9999999.9f, -9999999.9f }
+			{}
+		} minmax_value;
+
+		typedef tbb::enumerable_thread_specific< vector<minmax_value>, tbb::cache_aligned_allocator<vector<minmax_value>>, tbb::ets_key_per_instance > minmax_value_thread_specific;
+
+		minmax_value_thread_specific minmax_values;
+
+		// prepare streams
+		tbb::parallel_for(uint32_t(0), uint32_t(sequence_filenames.size()), [&](uint32_t const i) {
+
+			vector<vdbFrameData>& frame_data_local(frame_data.local());
+
+			frame_data_local.emplace_back(sequence_filenames[i], i); // ctor creates stream (opens file, streams grids in one shot, closes file)
+
+			vector<minmax_value>& value_local(minmax_values.local());
+
+			value_local.emplace_back();
+
+			PrepareVDBFrame(frame_data_local.back(), value_local.back().min_value, value_local.back().max_value);
+
+#ifdef VOX_DEBUG_ENABLED
+			bar.tick();
+#endif
+		});
+
+		{ // flatten min/max values
+			tbb::flattened2d<minmax_value_thread_specific> flat_view = tbb::flatten2d(minmax_values);
+			for (tbb::flattened2d<minmax_value_thread_specific>::const_iterator
+				i = flat_view.begin(); i != flat_view.end(); ++i) {
+
+				for (uint32_t j = 0; j < vdbFrameData::MAX_CHANNELS; ++j) {
+
+					min_value[j] = SFM::min(min_value[j], i->min_value[j]);
+					max_value[j] = SFM::max(max_value[j], i->max_value[j]);
+				}
+			}
+		}
+
+		{ // flatten and sort frame data
+
+			tbb::flattened2d<vec_vdbFrameData> flat_view = tbb::flatten2d(frame_data);
+			for (tbb::flattened2d<vec_vdbFrameData>::iterator
+				i = flat_view.begin(); i != flat_view.end(); ++i)
+			{
+				ordered_frame_data.emplace_back(std::forward<vdbFrameData&&>(*i));
+			}
+
+			tbb::parallel_sort(ordered_frame_data.begin(), ordered_frame_data.end());
+		}
+#ifdef VOX_DEBUG_ENABLED
+		bar.mark_as_completed();
+#endif
+	} // scope memory control
+
+#ifdef VOX_DEBUG_ENABLED
+	using namespace indicators;
+
+	indicators::ProgressBar bar2{
+	  option::BarWidth{50},
+	  option::Start{" |"},
+	  option::Fill{"-"},
+	  option::Lead{"-"},
+	  option::Remainder{"_"},
+	  option::End{"|"},
+	  option::PrefixText{"Loading"},
+	  option::ForegroundColor{Color::yellow},
+	  option::ShowElapsedTime{true},
+	  option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+	  option::MaxProgress{ordered_frame_data.size()}
+	};
 #endif
 
 	// min/max bounds for every voxel in all frames and all grids. the absolute limits for the entire sequence.
@@ -1361,15 +1451,23 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 			maxi(0, 0, 0);
 	
 	voxelSequence sequence;
-	for (auto const& frame : frame_data) {	
-
+	
+	for(auto const& frame : ordered_frame_data) 
+	{
 		if (frame.max_voxel_count[0] || frame.max_voxel_count[1] || frame.max_voxel_count[2]) {  // ensure frame is valid / prepared
-#ifdef VOX_DEBUG_ENABLED
-			FMT_LOG(VOX_LOG, "{:d} / {:d}   loading...", ++frame_counter, frame_data.size());
-#endif
+
 			LoadVDBFrame(frame, pDestMem, sequence, min_value, max_value, mini.v, maxi.v);
 		}
+#ifdef VOX_DEBUG_ENABLED
+		bar2.tick();
+#endif
 	}
+	
+#ifdef VOX_DEBUG_ENABLED
+	bar2.mark_as_completed();
+	// restore/show cursor
+	show_console_cursor(true);
+#endif
 	
 	// finalize and store sequence metadata
 	pDestMem->_Features.sequence = new voxelSequence(sequence);
