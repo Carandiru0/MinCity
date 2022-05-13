@@ -62,7 +62,7 @@ __declspec(noinline) void RedirectIOToConsole()
 __declspec(noinline) void RedirectIOToFile()
 {
 	std::filesystem::path savePath(MinCity::getUserFolder());
-	savePath += _LOG_FILE_NAME;
+	savePath += USER_DIR _LOG_FILE_NAME;
 
 	if (0 == _wfreopen_s(&_streamFile, savePath.c_str(), L"w", stdout)) {
 

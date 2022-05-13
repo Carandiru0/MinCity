@@ -13,6 +13,7 @@ The VOX File format is Copyright to their respectful owners.
 
 #include "pch.h"
 #include "globals.h"
+#include "MinCity.h"
 #define VOX_IMPL
 #include "VoxBinary.h"
 #include "IsoVoxel.h"
@@ -810,17 +811,13 @@ typedef struct vdbFrameData
 	static constexpr uint32_t const MAX_CHANNELS = 3;
 	
 	uint32_t				order;
-
-	std::ifstream			file;
-	openvdb::io::Stream		stream;
-	openvdb::GridPtrVecPtr  grids;
-	uint32_t				max_voxel_count[3];
+	std::string				path;
 	
-	vdbFrameData(std::string_view const path, uint32_t const index)
-		: order(index), file(path.data(), std::ios_base::binary), stream(file), grids(stream.getGrids()), max_voxel_count{}
-	{
-		file.close();
-	}
+	uint32_t				max_voxel_count[MAX_CHANNELS];
+	
+	vdbFrameData(std::string_view const path_, uint32_t const index_)
+		: order(index_), path(path_), max_voxel_count{}
+	{}
 	
 	vdbFrameData(vdbFrameData&&) = default;
 	vdbFrameData& operator=(vdbFrameData&&) = default;
@@ -840,13 +837,19 @@ static void PrepareVDBFrame(vdbFrameData& __restrict frame_data, float(&__restri
 {	
 	using GridType = openvdb::FloatGrid;
 	using TreeType = typename GridType::TreeType;
-
+	
+	std::ifstream					file(frame_data.path, std::ios_base::in | std::ios_base::binary);
+	openvdb::io::Stream	const		stream(file, false); // *bugfix - parameter false, disables "delayed" loading of voxel data. If delayed-loading is on, the performance tanks! speedup++
+	openvdb::GridPtrVecPtr const	grids(stream.getGrids());
+	
+	file.close();
+	
 	uint32_t max_count[vdbFrameData::MAX_CHANNELS]{};
 	
-	uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, frame_data.grids->size()));
+	uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, grids->size()));
 	for (uint32_t grid_index = 0; grid_index < grid_count; ++grid_index) {
 
-		GridType::Ptr grid = openvdb::GridBase::grid<GridType>((*frame_data.grids)[grid_index]);
+		GridType::Ptr const grid(openvdb::GridBase::grid<GridType>((*grids)[grid_index]));
 
 		// pre-processing required to determine range of data values to normalize .vdb values
 		for (GridType::ValueOnCIter iter = grid->cbeginValueOn(); iter; ++iter) {
@@ -886,18 +889,25 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 			bits = model_volume::create();
 				
 			vector<uint32_t> allIndices; // 3d lookup volume (temporary)
-			allIndices.reserve(Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ);
-			allIndices.resize(Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ);
-
+			allIndices.reserve(model_volume::width() * model_volume::height() * model_volume::depth());
+			allIndices.resize(model_volume::width() * model_volume::height() * model_volume::depth());
+			memset(&allIndices[0], 0, sizeof(uint32_t) * model_volume::width() * model_volume::height() * model_volume::depth()); // ensure memory is zeroed
+			
 			// speedup ++ reserve maximum count of voxels possible
 			allVoxels.reserve(frame_data.max_voxel_count[0] + frame_data.max_voxel_count[1] + frame_data.max_voxel_count[2]);
 
+			std::ifstream					file(frame_data.path, std::ios_base::in | std::ios_base::binary);
+			openvdb::io::Stream	const		stream(file, false); // *bugfix - parameter false, disables "delayed" loading of voxel data. If delayed-loading is on, the performance tanks! speedup++
+			openvdb::GridPtrVecPtr const	grids(stream.getGrids());
+			
+			file.close();
+			
 			uint32_t active_channel_offset(0);
 				
-			uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, frame_data.grids->size()));
+			uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, grids->size()));
 			for (uint32_t grid_index = 0; grid_index < grid_count; ++grid_index) { // file compatability of .vdb's exported from embergen. want to access "flames" first, then "density" and there packing into rgba channels instead.
 
-				GridType::Ptr grid = openvdb::GridBase::grid<GridType>((*frame_data.grids)[grid_index]);
+				GridType::Ptr const grid(openvdb::GridBase::grid<GridType>((*grids)[grid_index]));
 
 				float const grid_min_value(min_value[grid_index]),
 							grid_max_value(max_value[grid_index]);
@@ -917,7 +927,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 						// only add the voxel if it hasn't already been added
 						size_t const index(bits->get_index(curVoxel.x, curVoxel.z, curVoxel.y));  // *note -> swizzle of y and z here required
 
-						if (bits->read_bit(index)) {  // existing?
+						if (bits->read_bit(index)) {  // existing
 
 							// slices ordered by Y: <---- USING Y
 							// (y * xMax * zMax) + (z * xMax) + x;
@@ -1230,7 +1240,8 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 			if (LoadV1XACachedFile(szCachedPathFilename, pDestMem)) {
 
 				// save uncompressed (loaded) voxel data (raw data) to temporary file in cached folder
-				std::wstring szMemoryMappedPathFilename(VOX_CACHE_DIR);
+				std::wstring szMemoryMappedPathFilename(cMinCity::getUserFolder());
+				szMemoryMappedPathFilename += VIRTUAL_DIR;
 				szMemoryMappedPathFilename += szFolderName;
 				szMemoryMappedPathFilename += MMP_FILE_EXT;
 
@@ -1291,7 +1302,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	}
 
 #ifdef VOX_DEBUG_ENABLED
-	FMT_LOG(VOX_LOG, "{:s} [sequence] loading...\n", path.string());
+	FMT_LOG(VOX_LOG, "{:s} [sequence] importing...", path.string());
 #endif
 
 	if (!bOpenVDBInitialized) {
@@ -1319,9 +1330,6 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 		tbb::parallel_sort(sequence_filenames.begin(), sequence_filenames.end());  // directory_iterator does not guarantee order, so sort the filenames
 
 #ifdef VOX_DEBUG_ENABLED
-		FMT_LOG(VOX_LOG, "{:s} preparing... ", path.string());
-#endif
-#ifdef VOX_DEBUG_ENABLED
 		{ // output channels info to log
 			openvdb::io::File file(sequence_filenames[0]);
 			// Open the file.  This reads the file header, but not any grids.
@@ -1338,7 +1346,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 					++numChannels;
 				}
 
-				FMT_LOG(VOX_LOG, "{:d} channels " " [{:s}]  [{:s}]  [{:s}]\n", numChannels, channel_names[0], channel_names[1], channel_names[2]);
+				FMT_LOG_WARN(VOX_LOG, "{:d} channels " " [{:s}]  [{:s}]  [{:s}]", numChannels, channel_names[0], channel_names[1], channel_names[2]);
 			}
 			file.close();
 		}
@@ -1370,7 +1378,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 		typedef struct minmax_value {
 
 			float min_value[vdbFrameData::MAX_CHANNELS],
-				max_value[vdbFrameData::MAX_CHANNELS];
+				  max_value[vdbFrameData::MAX_CHANNELS];
 
 			minmax_value()
 				: min_value{ 9999999.9f,  9999999.9f,  9999999.9f }, max_value{ -9999999.9f, -9999999.9f, -9999999.9f }
@@ -1489,7 +1497,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	pDestMem->ComputeLocalAreaAndExtents();
 	
 #ifdef VOX_DEBUG_ENABLED
-	FMT_LOG_OK(VOX_LOG, "{:s} [sequence] loaded\n", path.string());
+	FMT_LOG_OK(VOX_LOG, "{:s} [sequence] imported", path.string());
 #endif
 	
 	// cache sequence to .v1xa file always

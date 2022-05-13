@@ -140,7 +140,7 @@ namespace Volumetric
 		// Mutators //
 		__inline void __vectorcall pushViewMatrix(FXMMATRIX xmView) {
 			// only need mat3 for purposes of compute shader transforming light direction vector
-			XMStoreFloat4x4A(&ViewMatrix, xmView);
+			XMStoreFloat4x4(&PushConstants.view, xmView);
 		}
 
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -423,7 +423,6 @@ namespace Volumetric
 															InvVolumeLength = (1.0f / VolumeLength);
 
 		int32_t												ClearStage;
-		XMFLOAT4X4A											ViewMatrix;
 
 		UniformDecl::ComputeLightPushConstants				PushConstants;
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -451,7 +450,6 @@ namespace Volumetric
 			PushConstants.index_filter = 0;  // independent
 			
 			XMStoreFloat4x4(&PushConstants.view, XMMatrixIdentity());
-			XMStoreFloat4x4A(&ViewMatrix, XMMatrixIdentity());
 		}
 		~volumetricOpacity()
 		{
@@ -612,7 +610,6 @@ namespace Volumetric
 			uint32_t const resource_index(c.resource_index);
 
 			// Update Memory for Push Constants
-			XMStoreFloat4x4(&PushConstants.view, XMLoadFloat4x4A(&ViewMatrix));  // grabs latest view matrix 
 			PushConstants.index_filter = !PushConstants.index_filter;			// alternate the index for the very last stage
 
 			// Record Compute Command buffer if not flagged as already recorded. 

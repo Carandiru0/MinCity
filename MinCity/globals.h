@@ -143,6 +143,7 @@ namespace Globals
 	static constexpr char const 
 		_S TITLE = "minCity";
 
+// folders in mincity main application folder //
 #define DATA_DIR L"data/"
 #define BIN_DIR L"\\data\\bin\\" // bugfix, needs to be \\ for this one (secure dll loading)
 #define FONT_DIR DATA_DIR L"fonts/"
@@ -154,6 +155,13 @@ namespace Globals
 #define VOX_CACHE_DIR VOX_DIR L"cached/"
 #define AUDIO_DIR DATA_DIR L"audio/"
 
+// folders in .mincity user folder //
+#define USER_DIR L".mincity/"
+#define VIRTUAL_DIR USER_DIR L"virtual/"
+#define SAVE_DIR USER_DIR L"saves/"
+
+
+	
 #ifndef NDEBUG
 #define DEBUG_DIR DATA_DIR L"debug/"
 #endif

@@ -33,11 +33,6 @@ namespace world
 		fs::path path_to_saves{ MinCity::getUserFolder() };
 		path_to_saves += SAVE_DIR;
 
-		// make sure SAVE_DIR directory exists //
-		if (!std::filesystem::exists(path_to_saves)) {
-			std::filesystem::create_directory(path_to_saves);
-		}
-
 		_loadList.cityname.clear();
 		_loadList.cityfile.clear();
 
@@ -49,7 +44,7 @@ namespace world
 
 				std::wstring const& szCityFile(_loadList.cityfile.back());
 				
-				std::wstring szIsolateName(szCityFile.substr(szCityFile.find_last_of('\\') + 1)); // remove path
+				std::wstring szIsolateName(szCityFile.substr(szCityFile.find_last_of('/') + 1)); // remove path
 				szIsolateName = szIsolateName.substr(0, szIsolateName.length() - 5); // remove extension .c1ty
 
 				// done isolating name from path and now converting to *ascii*

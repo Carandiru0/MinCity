@@ -384,7 +384,6 @@ DEFINE_GUID(FOLDERID_RoamingAppData, 0x3EB685DB, 0x65F9, 0x4CF6, 0xA0, 0x3A, 0xE
 
 NO_INLINE std::filesystem::path const cMinCity::getUserFolder()
 {
-	static constexpr wchar_t const* const USER_DIR(L"\\.mincity");
 	static std::filesystem::path path;
 
 	if (path.empty()) { // only query once, use cached path therafter
@@ -423,14 +422,25 @@ NO_INLINE std::filesystem::path const cMinCity::getUserFolder()
 		}
 
 		if (!path.empty()) {
-			path += USER_DIR;
+			path += L"/"; // required!
 
-			// make sure directory exists //
-			if (!std::filesystem::exists(path)) {
-				std::filesystem::create_directory(path);
+			std::wstring folder;			
+			
+			// make sure user folder .mincity exists //
+			folder = path.wstring(); folder += USER_DIR;
+			if (!std::filesystem::exists(folder)) {
+				std::filesystem::create_directory(folder);
 			}
 
-			path += L"\\"; // required!
+			// make sure subfolders in user folder exist //
+			folder = path.wstring(); folder += VIRTUAL_DIR;
+			if (!std::filesystem::exists(folder)) {
+				std::filesystem::create_directory(folder);
+			}
+			folder = path.wstring(); folder += SAVE_DIR;
+			if (!std::filesystem::exists(folder)) {
+				std::filesystem::create_directory(folder);
+			}
 		}
 		else {
 

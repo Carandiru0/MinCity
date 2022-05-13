@@ -13,7 +13,7 @@ namespace world
 
 	cExplosionGameObject::cExplosionGameObject(cExplosionGameObject&& src) noexcept
 		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src)), _animation(std::move(src._animation)),
-		_brightness(std::move(src._brightness))
+		_brightness(std::move(src._brightness)), _emission_threshold(std::move(src._emission_threshold))
 	{
 		src.free_ownership();
 
@@ -47,12 +47,13 @@ namespace world
 
 		_animation = std::move(src._animation);
 		_brightness = std::move(src._brightness);
-
+		_emission_threshold = std::move(src._emission_threshold);
+		
 		return(*this);
 	}
 
 	cExplosionGameObject::cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _animation(instance_), _brightness(DEFAULT_BRIGHTNESS)
+		: tUpdateableGameObject(instance_), _animation(instance_), _brightness(DEFAULT_BRIGHTNESS), _emission_threshold(DEFAULT_EMISSION_THRESHOLD)
 	{
 		instance_->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
@@ -75,29 +76,35 @@ namespace world
 		uint32_t const udensity(voxel.Color & 0xff);
 		uint32_t const uflames((voxel.Color >> 8) & 0xff);
 		
-		voxel.Color = 0; // default color is always initialized to "background" (pure black)
+		XMVECTOR xmColor(XMVectorZero()); // default color is always initialized to "background" (pure black)
 		
 		if (uflames) { // flames present?
-			float const density((float)udensity * NORMALIZE);
+			
 			float const temperature((float)uflames * NORMALIZE);
 
 			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature + _brightness)); // convert temperature to color
 
-			XMVECTOR xmColor(XMVectorScale(black_body.v4f(), NORMALIZE));
-			// area's that are less dense are brighter than denser areas - creates dark "spots" where density is high
-			xmColor = XMVectorScale(xmColor, (1.0f - density)); // darken
-
-			voxel.Emissive = SFM::XMColorRGBToLuminance(xmColor) > 0.25f; // some light does not need to be added (optimization)
-
-			uvec4_t rgba;
-			SFM::saturate_to_u8(XMVectorScale(xmColor, DENORMALIZE), rgba);
-			voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
-		}
-		else if (udensity) { // smoke present?
-			
-			voxel.Color = 0x00ffffff & SFM::pack_rgba(udensity); // this looks best for smoke, voxel.Color must be initialized to zero.
+			xmColor = XMVectorAdd(xmColor, XMVectorScale(black_body.v4f(), NORMALIZE));
 		}
 		
+		float density(0.0f);
+		if (udensity) {
+			density = (float)udensity * NORMALIZE;
+
+			// area's that are less dense are brighter than denser areas - creates dark "spots" where density is high
+			xmColor = XMVectorScale(xmColor, (1.0f - density)); // darken
+		}
+		
+		voxel.Emissive = SFM::XMColorRGBToLuminance(xmColor) > _emission_threshold; // some light does not need to be added (optimization)
+
+		if (!voxel.Emissive && !uflames) {
+
+			xmColor = XMVectorReplicate(density); // no flame and no emission? add to diffuse color in less dense areas - lighter area's with smoke.
+		}
+		
+		uvec4_t rgba;
+		SFM::saturate_to_u8(XMVectorScale(xmColor, DENORMALIZE), rgba);
+		voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
 		
 		return(voxel);
 	}

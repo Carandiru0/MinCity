@@ -2855,7 +2855,7 @@ namespace world
 		MinCity::TextureBoy->LoadKTXTexture<true>(_roadTexture, TEXTURE_DIR L"road_array.ktx");  // remeber for loading straight from ktx, colorspace is defined by file. In this case the file should have been saved srgb.
 		MinCity::TextureBoy->AddTextureToTextureArray(_roadTexture, TEX_ROAD);
 
-		Imaging const blackbodyImage(ImagingLoadRawBGRA(TEXTURE_DIR "blackbody_real.data", BLACKBODY_IMAGE_WIDTH, 1));
+		Imaging const blackbodyImage(ImagingLoadRawBGRA(TEXTURE_DIR "blackbody.data", BLACKBODY_IMAGE_WIDTH, 1));
 		MinCity::TextureBoy->ImagingToTexture<false>(blackbodyImage, _blackbodyTexture);
 		MinCity::TextureBoy->AddTextureToTextureArray(_blackbodyTexture, TEX_BLACKBODY);
 

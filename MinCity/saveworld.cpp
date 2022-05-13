@@ -156,12 +156,6 @@ namespace world
 
 		fs::path savePath(MinCity::getUserFolder());
 		savePath += SAVE_DIR;
-
-		// make sure SAVE_DIR directory exists //
-		if (!std::filesystem::exists(savePath)) {
-			std::filesystem::create_directory(savePath);
-		}
-
 		savePath += szCityName;
 		savePath += CITY_EXT;
 
@@ -182,7 +176,7 @@ namespace world
 
 			uint8_t* __restrict outCompressed((uint8_t * __restrict)scalable_malloc(compress_safe_size));
 
-			density_processing_result const result = density_compress((uint8_t* const __restrict)&snapshot[0], gridSz, outCompressed, compress_safe_size, DENSITY_ALGORITHM_CHAMELEON);
+			density_processing_result const result = density_compress((uint8_t* const __restrict)&snapshot[0], gridSz, outCompressed, compress_safe_size, DENSITY_ALGORITHM_CHEETAH);
 
 			if (!result.state) {
 

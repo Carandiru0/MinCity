@@ -10,7 +10,8 @@ namespace world
 	class cExplosionGameObject : public tUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic>, public type_colony<cExplosionGameObject>
 	{
 	public:
-		static constexpr float const DEFAULT_BRIGHTNESS = 0.5f;
+		static constexpr float const DEFAULT_BRIGHTNESS = 0.5f,
+									 DEFAULT_EMISSION_THRESHOLD = 0.25f;
 		
 	public:
 		constexpr virtual types::game_object_t const to_type() const override final {
@@ -24,6 +25,10 @@ namespace world
 		
 		void				setBrightness(float const brightness) { _brightness = brightness; }
 		
+		float const			getEmissionThreshold() const { return(_emission_threshold); }
+
+		void				setEmissionThreshold(float const luminance) { _emission_threshold = luminance; }
+		
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 	public:
@@ -31,7 +36,8 @@ namespace world
 		cExplosionGameObject& operator=(cExplosionGameObject&& src) noexcept;
 	private:
 		Volumetric::voxelAnim<true>	_animation;
-		float					    _brightness;
+		float					    _brightness,
+									_emission_threshold;
 	public:
 		cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
 	};

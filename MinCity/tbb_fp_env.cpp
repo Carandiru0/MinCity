@@ -5,6 +5,10 @@
 // CALL from any thread other than main thread
 __declspec(noinline) void local_init_tbb_floating_point_env()
 {
+	// important optimization 
+	_configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+	_wsetlocale(LC_ALL, L"en-US");
+	
 	// Set Desired Behaviour of Denormals //
 	uint_fast32_t control_word;
 	_controlfp_s(&control_word, _DN_FLUSH, _MCW_DN);

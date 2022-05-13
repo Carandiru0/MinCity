@@ -212,6 +212,7 @@ namespace Volumetric
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
 
 		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
+		// no blosc support =( LoadModelSequenceNamed<DYNAMIC>("midair_explosion");
 #ifdef GIF_MODE
 		LoadModelNamed<DYNAMIC>("rock_stage/guitar");
 		LoadModelNamed<DYNAMIC>("rock_stage/singer");

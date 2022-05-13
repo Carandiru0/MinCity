@@ -2,7 +2,6 @@
 
 // This file is common to saveworld.cpp & loadworld.cpp only
 // describes the raw structures that apply to the file format used for saving and loading
-#define SAVE_DIR L"saves\\"
 #define CITY_EXT L".city"
 
 // ** absolutely no specially aligned types (eg.) XMFLOAT3A) allowed in any of these data structures ** //

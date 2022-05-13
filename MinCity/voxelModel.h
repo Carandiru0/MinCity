@@ -338,15 +338,12 @@ namespace voxB
 			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
 		{}
 
-		voxelModelBase(voxelModelBase const& src)
+		voxelModelBase(voxelModelBase&& src)
 			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
-			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(false)
+			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(src._Mapped)
 		{
-			if (nullptr != src._Voxels) {
-
-				_Voxels = (voxelDescPacked* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * _numVoxels, alignof(voxelDescPacked)); // matches voxBinary usage (alignment)
-				memcpy((void* __restrict)_Voxels, src._Voxels, _numVoxels * sizeof(voxelDescPacked));
-			}
+			_Voxels = src._Voxels;
+			src._Voxels = nullptr;
 		}
 
 		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
@@ -368,6 +365,10 @@ namespace voxB
 
 		~voxelModelBase(); // defined at end of voxBinary.cpp
 
+	private:
+		voxelModelBase(voxelModelBase const&) = delete;
+		voxelModelBase& operator=(voxelModelBase const&) = delete;
+		
 	} voxelModelBase; // voxelModelBase
 
 	template< bool const Dynamic >
@@ -385,8 +386,8 @@ namespace voxB
 		: _identity(std::forward<voxelModelIdent<Dynamic>&&>(identity))
 		{}
 
-		voxelModel(voxelModel<Dynamic> const& src)
-			: voxelModelBase(src), _identity(src._identity)
+		voxelModel(voxelModel<Dynamic>&& src)
+			: voxelModelBase(std::forward<voxelModel<Dynamic>&&>(src)), _identity(src._identity)
 		{}
 
 		voxelModel(uint32_t const width, uint32_t const height, uint32_t const depth)
@@ -396,6 +397,10 @@ namespace voxB
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
+
+	private:
+		voxelModel(voxelModel<Dynamic> const&) = delete;
+		voxelModel<Dynamic>& operator=(voxelModel<Dynamic> const&) = delete;
 	};
 		
 	read_only inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 1.0f, 0.5f, 0.5f }; // **** note Y is not centered on origin of model, instead its at the bottom of model
