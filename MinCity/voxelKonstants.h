@@ -30,6 +30,7 @@ namespace Volumetric
 		DESTROY_EXISTING_STATIC = (1 << 4),
 		DESTROY_EXISTING_DYNAMIC = (1 << 5),
 		IGNORE_EXISTING = (1 << 6),
+		NOT_FADEABLE = (1 << 7),
 
 		//
 		CHILD_ONLY = (1 << 30),
@@ -44,12 +45,12 @@ namespace Volumetric
 
 		static constexpr uint32_t const PALETTE_WINDOW_INDEX = 0x00FFFFFF;  // (pure white)
 
-		static constexpr uint32_t const DESTRUCTION_SEQUENCE_LENGTH(42 >> 1);										// base sequence length, will be used as: # of slices (height) * DESTRUCTION_SEQUENCE_LENGTH
-		static constexpr uint32_t const CREATION_SEQUENCE_LENGTH((DESTRUCTION_SEQUENCE_LENGTH + (DESTRUCTION_SEQUENCE_LENGTH << 1)) << 1);			// ""				""	""					""
+		static constexpr uint32_t const DESTRUCTION_SEQUENCE_LENGTH(4442 << 2);										// base sequence length, will be used as: # of slices (height) * DESTRUCTION_SEQUENCE_LENGTH
+		static constexpr uint32_t const CREATION_SEQUENCE_LENGTH(4 << 1);			// ""				""	""					""
 		
 		static constexpr float const VOXEL_RAIN_SCALE = 0.5f;
 
-		static constexpr fp_seconds const OCCLUSION_DELAY = fp_seconds(milliseconds(500));
+		static constexpr fp_seconds const OCCLUSION_DELAY = fp_seconds(milliseconds(618));
 	
 	} // end ns
 } // end ns

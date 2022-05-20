@@ -135,6 +135,7 @@ public: // constinit requirement
 	constinit static class cTextureBoy* const			TextureBoy;
 	constinit static class cPostProcess* const			PostProcess;
 	constinit static class cNuklear* const				Nuklear;
+	constinit static class cPhysics* const				Physics;
 	constinit static class world::cVoxelWorld* const	VoxelWorld;
 	constinit static class world::cProcedural* const	Procedural;
 	constinit static class cUserInterface* const		UserInterface;

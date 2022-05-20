@@ -3,6 +3,9 @@
 #include "voxelModelInstance.h"
 #include "voxelKonstants.h"
 #include "voxelModel.h"
+#include "cPhysics.h"
+#include "MinCity.h"
+#include "cExplosionGameObject.h"
 
 namespace world
 {
@@ -112,6 +115,28 @@ namespace world
 		// destruction sequence ?
 		if (zero_time_point != instance->getDestructionTime()) {
 
+			float const t(fp_seconds(tNow - instance->getDestructionTime()).count());
+			
+			XMVECTOR xmForce = XMVectorScale(MinCity::Physics->get_force(xmIndex), 2.0f);
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -9.81f, 0.0f, 0.0f));
+			xmForce = XMVectorScale(xmForce, t*t);
+			xmIndex = XMVectorAdd(xmIndex, xmForce);
+				
+			//xmForce = XMVector3Normalize(xmForce);
+			XMVECTOR xmGround(XMVectorSet(0.0f, instance->getElevation(), 0.0f, 0.0f));
+			
+			xmIndex = SFM::clamp(xmIndex, xmGround, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ_MINUS_ONE);
+						
+			//xmForce = SFM::__fma(xmForce, XMVectorReplicate(0.5), XMVectorReplicate(0.5));
+			
+			//uvec4_t rgba{};
+
+			//SFM::floor_to_u32(XMVectorScale(xmForce, 255.0f)).rgba(rgba);
+			//voxel.Color = SFM::pack_rgba(rgba);
+			voxel.Emissive = true;
+			
+			return(voxel);
+			/*
 			uint32_t const maxHeight(instance->getModel()._maxDimensions.y);
 			uint32_t heightLimit(maxHeight);
 
@@ -150,6 +175,7 @@ namespace world
 				}
 				return(voxel); // early exit
 			}
+			*/
 		}
 		// creation sequence ?
 		else if (!(Volumetric::eVoxelModelInstanceFlags::INSTANT_CREATION & instance->getFlags()))

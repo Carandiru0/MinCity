@@ -35,6 +35,8 @@ namespace Volumetric
 		void														  setCreationSequenceLength(milliseconds const length) { tSequenceLengthCreation = length; }
 		void														  setDestructionSequenceLength(milliseconds const length) { tSequenceLengthDestruction = length; }
 
+		bool const												      isFadeable() const { return(!(eVoxelModelInstanceFlags::NOT_FADEABLE == (eVoxelModelInstanceFlags::NOT_FADEABLE & flags))); }
+		
 		voxelModelInstanceBase* const __restrict& __restrict getChild() const {	return(child); }
 		void setChild(voxelModelInstanceBase* const child_) { child = child_; }	// to simplify state - only *once* can a child be set, and that child then remains a child of this instance until this instance is destroyed, where it is destroyed aswell.
 		
@@ -99,8 +101,8 @@ namespace Volumetric
 	};
 
 	// all parameters are passed by value in registers (__vectorcall) - fastest - no pointers or references to the data that matters "voxel" (optimization)
-#define VOXEL_EVENT_FUNCTION_PARAMETERS FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked voxel, void const* const __restrict _this, uint32_t const vxl_index
-#define VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS FXMVECTOR xmIndex, Volumetric::voxB::voxelDescPacked voxel, uint32_t const vxl_index
+#define VOXEL_EVENT_FUNCTION_PARAMETERS XMVECTOR& __restrict xmIndex, Volumetric::voxB::voxelDescPacked voxel, void const* const __restrict _this, uint32_t const vxl_index
+#define VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS XMVECTOR& __restrict xmIndex, Volumetric::voxB::voxelDescPacked voxel, uint32_t const vxl_index
 #define VOXEL_EVENT_FUNCTION_RETURN Volumetric::voxB::voxelDescPacked const
 
 	typedef VOXEL_EVENT_FUNCTION_RETURN(__vectorcall* voxel_event_function)(VOXEL_EVENT_FUNCTION_PARAMETERS);
@@ -115,7 +117,7 @@ namespace Volumetric
 		bool const													  isEmissionOnly() const { return(emission_only); }
 
 		uint32_t const												  getTransparency() const { return(transparency); } // use eVoxelTransparency enum
-		void														  setFaded(bool const faded_) { faded = faded_; } // makes instance transparent
+		void														  setFaded(bool const faded_) { if (isFadeable()) faded = faded_; } // makes instance transparent
 		void														  setEmissionOnly(bool const emission_only_) { emission_only = emission_only_; } // makes instance hidden except for lights still added to lightbuffer
 
 		/// Transparency only has affect if loaded model has state groups defining the voxels that are transparent at load model time
@@ -124,8 +126,10 @@ namespace Volumetric
 
 		uint32_t const												  getVoxelOffset() const { return(vxl_offset); }
 		uint32_t const												  getVoxelCount() const { return(vxl_count); }
+		uint32_t const												  getVoxelTransparentCount() const { return(vxl_transparent_count); }
 		void														  setVoxelOffsetCount(uint32_t const vxl_offset_, uint32_t const vxl_count_) { vxl_offset = vxl_offset_; vxl_count = vxl_count_; } // for sequence animation control
-		
+		void														  setVoxelTransparentCount(uint32_t const vxl_transparent_count_) { vxl_transparent_count = vxl_transparent_count_; } // *** this count must be accurate otherwise "flicker" of any transparent voxels will occur, don't mess around.
+
 	public:
 		__inline bool const Validate() const;
 	public:
@@ -133,18 +137,19 @@ namespace Volumetric
 			Iso::Voxel const&__restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+			tbb::affinity_partitioner& __restrict partitioner) const;
 		__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
 		bool												faded, emission_only;
 		uint32_t											transparency;	// 4 distinct levels of transparency supported - see eVoxelTransparency enum - however all values between 0 - 255 will be correctly converted to transparency level that is closest
-		uint32_t											vxl_offset, vxl_count; // current voxel offset and number of voxels to render
+		uint32_t											vxl_offset, vxl_count, vxl_transparent_count; // current voxel offset and number of voxels to render
 	public:
 		inline explicit voxelModelInstance(voxB::voxelModel<Dynamic> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
 			: voxelModelInstanceBase(hash, voxelIndex, flags_), model(refModel), faded(false), emission_only(false), transparency(Volumetric::Konstants::DEFAULT_TRANSPARENCY), eOnVoxel(nullptr),
-			vxl_offset(0), vxl_count(refModel._numVoxels) // defaults to single "frame" mode
+			vxl_offset(0), vxl_count(refModel._numVoxels), vxl_transparent_count(refModel._numVoxelsTransparent) // defaults to single "frame" mode
 		{}
 	};
 
@@ -169,12 +174,13 @@ namespace Volumetric
 		Iso::Voxel const&__restrict oVoxel,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+		tbb::affinity_partitioner& __restrict partitioner) const
 	{
-		model.Render(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		model.Render(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
 		if (child) {
 			// safe down cast
-			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
+			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans, partitioner);
 		}
 	}
 	template<bool const Dynamic>

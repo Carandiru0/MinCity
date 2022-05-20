@@ -791,6 +791,9 @@ void cVoxelWorld::OnMouseRightClick()
 {
 	if (eInputEnabledBits::MOUSE_BUTTON_RIGHT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_RIGHT))
 		return; // input disabled!
+
+	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION2, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
@@ -877,9 +880,14 @@ void cVoxelWorld::setOcclusionInstances()
 }
 void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 {
+	static constexpr uint32_t const
+		STATIC = 0,
+		DYNAMIC = 1;
+	
 	//FMT_NUKLEAR_DEBUG(true, "{:d} , {:d}   {:d} , {:d}  {:s}", _occlusion.groundVoxelIndex.x, _occlusion.groundVoxelIndex.y, _occlusion.occlusionVoxelIndex.x, _occlusion.occlusionVoxelIndex.y, (_lastOcclusionQueryValid ? "true" : "false"));
 	[[unlikely]] if (bPaused || _bIsEdgeScrolling) { // *bugfix - add exception to not hide buildings / etc while scrolling the view (gives the appearance of "pop-in" depending on what is under the mouse *undesired).
 		clearOcclusionInstances();
+		_occlusion.tToOcclude = Volumetric::Konstants::OCCLUSION_DELAY; //*bugfix - reset countdown timer
 		return;
 	}
 
@@ -928,21 +936,38 @@ void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 								if (0 != hash) {
 
 									// Check hash against bottom (exclusion)
-									bool excluded(true);
+									bool excluded(false);
 
 									for (uint32_t j = Iso::STATIC_HASH; j < Iso::HASH_COUNT; ++j) {
 
 										if (Iso::getHash(oHoveredVoxel, j) == hash) {
-											excluded = false;
+											excluded = true;
 											break;
 										}
 									}
 
-									if (excluded) {
+									if (!excluded) {
 
 										// add to set of unique instance hashes
-										uint32_t const set = (uint32_t const)(Iso::STATIC_HASH != i);
-										_occlusion.fadedInstances[set].emplace(hash);
+										uint32_t const set = (uint32_t const)(Iso::STATIC_HASH != i); // DYNAMIC or STATIC
+
+										// only add if fadeable
+										if (set) {
+											auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<DYNAMIC>(hash);
+											if (instance) {
+												excluded = !instance->isFadeable();
+											}
+										}
+										else {
+											auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<STATIC>(hash);
+											if (instance) {
+												excluded = !instance->isFadeable();
+											}
+										}
+										
+										if (!excluded) {
+											_occlusion.fadedInstances[set].emplace(hash);
+										}
 									}
 								}
 							}
@@ -2427,7 +2452,8 @@ namespace // private to this file (anonymous)
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+			tbb::affinity_partitioner& __restrict partitioner)
 		{
 			bool bVisible(true);
 
@@ -2443,7 +2469,7 @@ namespace // private to this file (anonymous)
 					bVisible = false; // voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
-				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
+				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans, partitioner);
 
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 
@@ -2541,6 +2567,8 @@ namespace // private to this file (anonymous)
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
 
+				tbb::affinity_partitioner& __restrict partitioner;
+				
 				sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 			public:
 				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
@@ -2552,9 +2580,10 @@ namespace // private to this file (anonymous)
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
-					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
+					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_,
+					tbb::affinity_partitioner& __restrict partitioner_)
 					: voxelStart(voxelStart_), theGrid(theGrid_), theTemp(theTemp_),
-					voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
+					voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_), partitioner(partitioner_)
 				{}
 
 				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
@@ -2600,7 +2629,7 @@ namespace // private to this file (anonymous)
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans, partitioner);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -2608,7 +2637,7 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans, partitioner);
 									}
 								}
 							}
@@ -2662,10 +2691,10 @@ namespace // private to this file (anonymous)
 			{
 				tbb::queuing_rw_mutex::scoped_lock lock(the::lock, false); // read-only grid access
 
-				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+				tbb::affinity_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-					RenderFuncBlockChunk(voxelStart, the::grid, the::temp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
+					RenderFuncBlockChunk(voxelStart, the::grid, the::temp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans, part), part
 				);
 			}
 			// ####################################################################################################################
@@ -3429,8 +3458,8 @@ namespace world
 
 			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
-			pExplosionGameObj = placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
-				Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION);
+			//pExplosionGameObj = placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
+			//	Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 			
 			/*
 			if (PsuedoRandom5050()) {

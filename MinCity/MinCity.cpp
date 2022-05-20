@@ -29,6 +29,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "cTextureBoy.h"
 #include "cPostProcess.h"
 #include "cNuklear.h"
+#include "cPhysics.h"
 #include "cVoxelWorld.h"
 #include "cProcedural.h"
 #include "cUserInterface.h"
@@ -321,6 +322,8 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 
 	Vulkan->CreateResources();
 
+	Physics->Initialize();
+	
 	m_bNewEventsAllowed = true; // important for this to be enabled right here //
 	VoxelWorld->Initialize();
 
@@ -771,6 +774,7 @@ void cMinCity::StageResources(uint32_t const resource_index)
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld->Render(resource_index);
+	Physics->Update(); // regular interval of (every frame)
 	Vulkan->checkStaticCommandsDirty(resource_index);
 }
 
@@ -1173,6 +1177,7 @@ namespace { // anonymous namespace private to this file only
 		cTextureBoy				TextureBoy;
 		cPostProcess			PostProcess;
 		cNuklear				Nuklear;
+		cPhysics				Physics;
 		world::cVoxelWorld		VoxelWorld;
 		world::cProcedural		Procedural;
 		cUserInterface			UserInterface;
@@ -1191,6 +1196,7 @@ constinit inline cVulkan* const					cMinCity::Vulkan{ &_.Vulkan };
 constinit inline cTextureBoy* const				cMinCity::TextureBoy{ &_.TextureBoy };
 constinit inline cPostProcess* const			cMinCity::PostProcess{ &_.PostProcess };
 constinit inline cNuklear* const				cMinCity::Nuklear{ &_.Nuklear };
+constinit inline cPhysics* const				cMinCity::Physics{ &_.Physics };
 constinit inline world::cVoxelWorld* const		cMinCity::VoxelWorld{ &_.VoxelWorld };
 constinit inline world::cProcedural* const		cMinCity::Procedural{ &_.Procedural };
 constinit inline cUserInterface* const			cMinCity::UserInterface{ &_.UserInterface };
@@ -1289,6 +1295,7 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	_.Nuklear.CleanUp();
 	_.PostProcess.CleanUp();
 	_.VoxelWorld.CleanUp();
+	_.Physics.CleanUp();
 	_.TextureBoy.CleanUp();
 
 	_.Vulkan.Cleanup(glfwwindow);  /// should be LAST //

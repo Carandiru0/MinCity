@@ -39,6 +39,7 @@ namespace world {
 			Updateable = 3,	   // basic
 			Procedural = 4,    // advanced
 			// add game objects as needed here : //
+			ExplosionGameObject,
 			BuildingGameObject,
 			CarGameObject,
 			PoliceCarGameObject,

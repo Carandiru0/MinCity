@@ -24,6 +24,7 @@
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>MinCity</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
+    <ProjectName>MinCity</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -80,8 +81,7 @@
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LinkIncremental>
-    </LinkIncremental>
+    <LinkIncremental>true</LinkIncremental>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
     <IncludePath>X:\tbb\include;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
@@ -149,13 +149,16 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
       <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;libopenvdb.lib</AdditionalDependencies>
-      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>
+      </LinkTimeCodeGeneration>
       <OptimizeReferences>false</OptimizeReferences>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <EnableCOMDATFolding>false</EnableCOMDATFolding>
-      <StackReserveSize>262144</StackReserveSize>
-      <StackCommitSize>4096</StackCommitSize>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
       <LargeAddressAware>true</LargeAddressAware>
       <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
@@ -245,8 +248,10 @@
       <PreventDllBinding>false</PreventDllBinding>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
-      <StackReserveSize>262144</StackReserveSize>
-      <StackCommitSize>4096</StackCommitSize>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
       <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
@@ -254,6 +259,7 @@
       <MergeSections>/merge:_RDATA=.rdata</MergeSections>
       <SupportNobindOfDelayLoadedDLL>true</SupportNobindOfDelayLoadedDLL>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <SupportUnloadOfDelayLoadedDLL>true</SupportUnloadOfDelayLoadedDLL>
     </Link>
     <Manifest>
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
@@ -289,6 +295,7 @@
     <ClInclude Include="cNonUpdateableGameObject.h" />
     <ClInclude Include="cNuklear.h" />
     <ClInclude Include="ComputeLightConstants.h" />
+    <ClInclude Include="cPhysics.h" />
     <ClInclude Include="cPoliceCarGameObject.h" />
     <ClInclude Include="cPostProcess.h" />
     <ClInclude Include="cProcedural.h" />
@@ -383,6 +390,7 @@
     <ClCompile Include="cLightGameObject.cpp" />
     <ClCompile Include="cImportGameObject.cpp" />
     <ClCompile Include="cNuklear.cpp" />
+    <ClCompile Include="cPhysics.cpp" />
     <ClCompile Include="cPoliceCarGameObject.cpp" />
     <ClCompile Include="cPostProcess.cpp" />
     <ClCompile Include="cProcedural.cpp" />

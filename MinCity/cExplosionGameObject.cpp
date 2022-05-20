@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "cExplosionGameObject.h"
 #include "voxelModelInstance.h"
+#include "MinCity.h"
+#include "cPhysics.h"
 
 namespace world
 {
@@ -13,7 +15,7 @@ namespace world
 
 	cExplosionGameObject::cExplosionGameObject(cExplosionGameObject&& src) noexcept
 		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src)), _animation(std::move(src._animation)),
-		_brightness(std::move(src._brightness)), _emission_threshold(std::move(src._emission_threshold))
+		_temperatureBoost(std::move(src._temperatureBoost)), _flameBoost(std::move(src._flameBoost)), _emission_threshold{ std::move(src._emission_threshold[0]), std::move(src._emission_threshold[1]) }, _emission_samples(src._emission_samples)
 	{
 		src.free_ownership();
 
@@ -46,20 +48,26 @@ namespace world
 		}
 
 		_animation = std::move(src._animation);
-		_brightness = std::move(src._brightness);
-		_emission_threshold = std::move(src._emission_threshold);
+		_temperatureBoost = std::move(src._temperatureBoost);
+		_flameBoost = std::move(src._flameBoost);
+		_emission_threshold[0] = std::move(src._emission_threshold[0]);
+		_emission_threshold[1] = std::move(src._emission_threshold[1]);
+		_emission_samples = std::move(src._emission_samples);
 		
 		return(*this);
 	}
 
 	cExplosionGameObject::cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _animation(instance_), _brightness(DEFAULT_BRIGHTNESS), _emission_threshold(DEFAULT_EMISSION_THRESHOLD)
+		: tUpdateableGameObject(instance_), _animation(instance_), _temperatureBoost(DEFAULT_TEMPERATURE_BOOST), _flameBoost(DEFAULT_FLAME_BOOST), _emission_threshold{ DEFAULT_EMISSION_THRESHOLD, 0.0f }, _emission_samples(1)
 	{
 		instance_->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
 
 		// random start angle
 		instance_->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
+#ifdef DEBUG_EXPLOSION_WINDOW
+		debug_explosion_game_object = this;
+#endif
 	}
 
 	// If currently visible event:
@@ -73,38 +81,53 @@ namespace world
 		static constexpr float const NORMALIZE = 1.0f / float(UINT8_MAX);
 		static constexpr float const DENORMALIZE = float(UINT8_MAX);
 		
+		// density - temperature - flames 
 		uint32_t const udensity(voxel.Color & 0xff);
-		uint32_t const uflames((voxel.Color >> 8) & 0xff);
+		uint32_t const utemperature((voxel.Color >> 8) & 0xff);
+		uint32_t const uflames((voxel.Color >> 16) & 0xff);
 		
 		XMVECTOR xmColor(XMVectorZero()); // default color is always initialized to "background" (pure black)
+		
+		float density(0.0f);
+		if (udensity) {
+			density = (float)udensity * NORMALIZE;
+			xmColor = XMVectorReplicate(density);
+		}
 		
 		if (uflames) { // flames present?
 			
 			float const temperature((float)uflames * NORMALIZE);
 
-			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature + _brightness)); // convert temperature to color
+			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature * (1.0f + _flameBoost))); // convert temperature to color
 
 			xmColor = XMVectorAdd(xmColor, XMVectorScale(black_body.v4f(), NORMALIZE));
 		}
 		
-		float density(0.0f);
-		if (udensity) {
-			density = (float)udensity * NORMALIZE;
+		if (utemperature) { // temperature present?
 
-			// area's that are less dense are brighter than denser areas - creates dark "spots" where density is high
-			xmColor = XMVectorScale(xmColor, (1.0f - density)); // darken
+			float const temperature((float)utemperature * NORMALIZE);
+
+			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature + _temperatureBoost * (1.0f - density))); // convert temperature to color
+
+			xmColor = XMVectorAdd(xmColor, XMVectorScale(black_body.v4f(), NORMALIZE));
 		}
+
+		// area's that are less dense are brighter than denser areas - creates dark "spots" where density is high
+		xmColor = XMVectorScale(xmColor, (1.0f - density)); // darken
 		
-		voxel.Emissive = SFM::XMColorRGBToLuminance(xmColor) > _emission_threshold; // some light does not need to be added (optimization)
+		float const luma(SFM::XMColorRGBToLuminance(xmColor));
 
-		if (!voxel.Emissive && !uflames) {
-
-			xmColor = XMVectorReplicate(density); // no flame and no emission? add to diffuse color in less dense areas - lighter area's with smoke.
+		voxel.Emissive = luma > _emission_threshold[1]; // some light does not need to be added (optimization)
+		if (voxel.Emissive) {
+			const_cast<cExplosionGameObject* const>(this)->_emission_threshold[0] += luma;
+			++const_cast<cExplosionGameObject* const>(this)->_emission_samples;
 		}
 		
 		uvec4_t rgba;
 		SFM::saturate_to_u8(XMVectorScale(xmColor, DENORMALIZE), rgba);
 		voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
+		
+		MinCity::Physics->add_force(xmIndex);
 		
 		return(voxel);
 	}
@@ -115,7 +138,19 @@ namespace world
 
 			// random start angle
 			getModelInstance()->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
+			//getModelInstance()->destroy(milliseconds(0));
 		}
+		
+		//getModelInstance()->setVoxelTransparentCount(getModelInstance()->getVoxelCount());
+		//getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_100);
+		
+		// ** stable feedback auto regulating emission threshold. Dependent on both the temperature + flames boost levels/inputs.
+		// ** do not change ** provides some dynamic range to the emission/lighting. also optimizes out dark lights that have ~nil emission.
+		float const new_emission_threshold = _emission_threshold[0] / ((float)_emission_samples);
+		_emission_threshold[0] = SFM::abs(new_emission_threshold - _emission_threshold[1]); // the "step" to the new emission threshold
+		_emission_threshold[1] = SFM::lerp(_emission_threshold[1], SFM::lerp(DEFAULT_EMISSION_THRESHOLD * (1.0f + _emission_threshold[0] * new_emission_threshold * 3.0f), new_emission_threshold, SFM::saturate(SFM::__pow(_emission_threshold[0], 3.0f))), _emission_threshold[0]);
+		
+		_emission_samples = 1;
 	}
 
 

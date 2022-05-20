@@ -22,7 +22,6 @@
 #include "importproxy.h"
 
 
-
 #define NK_IMPLEMENTATION  // the only place this is defined
 #include "nk_include.h"
 #include "nk_style.h"
@@ -2884,7 +2883,82 @@ void  cNuklear::UpdateGUI()
 
 
 	/// debugging windows ///
+#ifdef DEBUG_EXPLOSION_WINDOW
+	do_debug_explosion_window(tLocal);
+#endif
+	
 #ifdef DEBUG_FPS_WINDOW
+	do_debug_fps_window(tLocal);
+#endif	
+
+	tLocalLast = tLocal;
+}
+
+#ifndef NDEBUG	
+void cNuklear::debug_out_nuklear(std::string const& message)
+{
+	tbb::spin_mutex::scoped_lock lock(lock_debug_message);
+	_szDebugMessage = message;
+}
+void debug_out_nuklear(std::string const message)
+{
+	MinCity::Nuklear->debug_out_nuklear(message);
+}
+void debug_out_nuklear_off()
+{
+	std::string const szEmpty;
+	MinCity::Nuklear->debug_out_nuklear(szEmpty);
+}
+#endif
+
+/// ******* all debug windows belong here
+#ifdef DEBUG_EXPLOSION_WINDOW
+#include "cExplosionGameObject.h"
+void cNuklear::do_debug_explosion_window(tTime const tLocal)
+{
+	struct nk_rect debug_window_rect(make_centered_window_rect(512, 300, getFramebufferSize()));
+	debug_window_rect.y += 512;
+	
+	if (nk_begin(_ctx, "debug_explosion",
+		debug_window_rect,
+		NK_TEMP_WINDOW_BORDER | NK_WINDOW_SCROLL_AUTO_HIDE))
+	{
+		struct nk_rect const windowBounds(nk_window_get_bounds(_ctx));
+
+		AddActiveWindowRect(r2D_set_by_width_height(windowBounds.x, windowBounds.y, windowBounds.w, windowBounds.h));	// must register any active window;
+
+		world::cExplosionGameObject* pExplosionGObj(nullptr);
+		pExplosionGObj = world::cExplosionGameObject::debug_explosion_game_object;
+		
+		if (pExplosionGObj) {
+			nk_layout_row_dynamic(_ctx, 40, 1);
+
+			{
+				nk_size temperature_boost(SFM::saturate_to_u8(pExplosionGObj->getTemperatureBoost() * 255.0f));
+				if (nk_progress(_ctx, &temperature_boost, 0xff, nk_true, "TEMPERATURE")) {
+					pExplosionGObj->setTemperatureBoost(((float)temperature_boost) / 255.0f);
+				}
+			}
+			{
+				nk_size flame_boost(SFM::saturate_to_u8(pExplosionGObj->getFlameBoost() * 255.0f));
+				if (nk_progress(_ctx, &flame_boost, 0xff, nk_true, "FLAMES")) {
+					pExplosionGObj->setFlameBoost(((float)flame_boost) / 255.0f);
+				}
+			}
+			{
+				nk_size emissive_threshold(SFM::saturate_to_u8(pExplosionGObj->getEmissionThreshold() * 255.0f));
+				nk_progress(_ctx, &emissive_threshold, 0xff, nk_false, "EMISSION");
+			}
+		}
+	}
+	nk_end(_ctx);
+
+}
+#endif
+
+#ifdef DEBUG_FPS_WINDOW
+void cNuklear::do_debug_fps_window(tTime const tLocal)
+{
 	static bool bMainWindowStartOpen(false), bCameraOpen(false), bInstancesOpen(false), bVoxelsOpen(false), bPerformanceOpen(false), bLightmapOpen(false);
 
 	int32_t windowHeight = 240;
@@ -2894,7 +2968,7 @@ void  cNuklear::UpdateGUI()
 
 	constexpr eWindowName const windowName(eWindowName::WINDOW_MINCITY);
 
-	if (nk_begin_titled(_ctx, windowName._to_string(), 
+	if (nk_begin_titled(_ctx, windowName._to_string(),
 		fmt::format(FMT_STRING("MINCITY     {:.2f}S  {:.1f}MS"), fp_seconds(tLocal - start()).count(), fp_seconds(MinCity::Vulkan->frameTimeAverage()).count() * 1000.0f).c_str(),
 		nk_recti(450, 50, 700, windowHeight),
 		(!bMainWindowStartOpen ? NK_WINDOW_MINIMIZED : NK_WINDOW_BORDER) |
@@ -2948,7 +3022,7 @@ void  cNuklear::UpdateGUI()
 			static constexpr milliseconds refresh(100);
 			static tTime tLast(zero_time_point);
 			static std::string szText[2];
-			
+
 			nk_layout_row_static(_ctx, _debugLightImage->h, _debugLightImage->w, 1);
 			nk_draw_image(_ctx, _debugLightImage);
 
@@ -2982,7 +3056,7 @@ void  cNuklear::UpdateGUI()
 		else
 			bLightmapOpen = false;
 #endif			
-		
+
 #ifdef DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
 		if (nk_tree_push(_ctx, NK_TREE_TAB, "Performance", NK_MAXIMIZED))
 		{
@@ -3014,7 +3088,7 @@ void  cNuklear::UpdateGUI()
 		else
 			bPerformanceOpen = false;
 #endif
-										  // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! //
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! //
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION // *** chart causes flickering mouse and other anomolies when updated, good nuff for debugging just don't mistake it for something new....
 		static constexpr milliseconds DISPLAY_INTERVAL = milliseconds(8);
 		static constexpr size_t const GRAPH_LENGTH = 64;
@@ -3022,12 +3096,12 @@ void  cNuklear::UpdateGUI()
 		static std::queue<PerformanceResult> queuePerf;
 
 		static PerformanceResult intervalResult,
-							     resolvedResult;
+			resolvedResult;
 
 		{
 			PerformanceResult& reference(getDebugVariableReference(PerformanceResult, DebugLabel::PERFORMANCE_VOXEL_SUBMISSION));
-			PerformanceResult result(reference); 
-			
+			PerformanceResult result(reference);
+
 			if (high_resolution_clock::now() - tLastInterval > (DISPLAY_INTERVAL)) {
 				reference.reset();
 			}
@@ -3049,7 +3123,7 @@ void  cNuklear::UpdateGUI()
 
 			tLastInterval = high_resolution_clock::now();
 		}
-		
+
 		if (nk_tree_push(_ctx, NK_TREE_TAB, "PERFORMANCE", NK_MAXIMIZED))
 		{
 			nk_layout_row_begin(_ctx, NK_STATIC, 200, 1);
@@ -3057,7 +3131,7 @@ void  cNuklear::UpdateGUI()
 
 			size_t queueLength(queuePerf.size());
 
-			static float 
+			static float
 				y_max = 1.0f,
 				y_max_avg = y_max;
 			float
@@ -3084,7 +3158,7 @@ void  cNuklear::UpdateGUI()
 
 					float const parallel_time = (float)duration_cast<microseconds>(recorded_result.grid_duration).count();
 					nk_chart_push_slot(_ctx, (parallel_time > last_y_max_avg ? 0.0f : parallel_time), 1); // actual time to proess in parallel all operations plus the ground which is not included in the linear time
-				
+
 					float y_cur_max = y_max;
 					y_cur_max = SFM::max(y_cur_max, linear_time);
 					y_cur_max = SFM::max(y_cur_max, parallel_time);
@@ -3192,7 +3266,7 @@ void  cNuklear::UpdateGUI()
 			bPerformanceOpen = true;
 			nk_tree_pop(_ctx);
 		}
-		else 
+		else
 			bPerformanceOpen = false;
 
 #endif
@@ -3431,7 +3505,7 @@ void  cNuklear::UpdateGUI()
 			}
 			nk_tree_pop(_ctx);
 			bInstancesOpen = true;
-		}
+}
 		else {
 			bInstancesOpen = false;
 		}
@@ -3470,7 +3544,7 @@ void  cNuklear::UpdateGUI()
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
-			}
+		}
 			nk_tree_pop(_ctx);
 			bVoxelsOpen = true;
 		}
@@ -3495,7 +3569,7 @@ void  cNuklear::UpdateGUI()
 		static nk_color signal_color(nk_rgb(255, 0, 0));
 
 		milliseconds const tDelta(duration_cast<milliseconds>(tNow - tLast));
-		
+
 		signal_color.r -= (nk_byte)tDelta.count(); // rolls over on a byte
 
 		nk_style_push_float(_ctx, &_ctx->style.window.header.minimize_button.border, 40.0f);
@@ -3505,7 +3579,7 @@ void  cNuklear::UpdateGUI()
 		constexpr eWindowName const windowName(eWindowName::WINDOW_TOP_DEBUG);
 		if (nk_begin_titled(_ctx, windowName._to_string(), stringconv::toUpper(szDebugMessage).c_str(), nk_rect(0, 0, Globals::DEFAULT_SCREEN_WIDTH, 24),
 			NK_WINDOW_NO_INPUT | NK_WINDOW_BACKGROUND |
-			NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE ))
+			NK_WINDOW_TITLE | NK_WINDOW_MINIMIZABLE))
 		{
 
 		}
@@ -3517,11 +3591,10 @@ void  cNuklear::UpdateGUI()
 		tLast = tNow;
 	}
 #endif
+}
 #endif /*DEBUG_FPS_WINDOW*/
 
-	tLocalLast = tLocal;
-}
-
+// last: dtor
 void  cNuklear::CleanUp()
 {
 	// release nk images
@@ -3576,20 +3649,3 @@ void  cNuklear::CleanUp()
 	}
 	SAFE_DELETE(_fontTexture);
 }
-
-#ifndef NDEBUG	
-void cNuklear::debug_out_nuklear(std::string const& message)
-{
-	tbb::spin_mutex::scoped_lock lock(lock_debug_message);
-	_szDebugMessage = message;
-}
-void debug_out_nuklear(std::string const message)
-{
-	MinCity::Nuklear->debug_out_nuklear(message);
-}
-void debug_out_nuklear_off()
-{
-	std::string const szEmpty;
-	MinCity::Nuklear->debug_out_nuklear(szEmpty);
-}
-#endif

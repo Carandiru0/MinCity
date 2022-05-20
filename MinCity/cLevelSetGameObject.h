@@ -38,7 +38,7 @@ namespace world
 		__inline __declspec(noalias) uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex) const;
 
 	private:
-		alignas(CACHE_LINE_BYTES) local_volume* __restrict _bits{ nullptr };
+		local_volume* __restrict _bits{ nullptr };
 		
 	public:
 		cLevelSetGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_, Volumetric::voxelModel_Dynamic* const& model_);

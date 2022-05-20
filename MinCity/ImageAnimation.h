@@ -1,5 +1,5 @@
 #pragma once
-#include <tbb/atomic.h>
+#include <tbb/tbb.h>
 #include <atomic>
 
 #include <Imaging/Imaging/Imaging.h>

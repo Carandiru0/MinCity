@@ -7,7 +7,7 @@ namespace Volumetric
 	template< bool const Dynamic >
 	struct voxelAnim
 	{
-		static constexpr uint32_t const DEFAULT_FRAMERATE = 30;
+		static constexpr uint32_t const DEFAULT_FRAMERATE = 60;
 
 		float			 accumulator;
 

@@ -264,16 +264,16 @@ namespace voxB
 		if (iIndex.x - 1 >= 0) {
 			adjacent |= bits->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
 		}
-		if (iIndex.x + 1 < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+		if (iIndex.x + 1 < model_volume::width()) {
 			adjacent |= bits->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
 		}
 		if (iIndex.z - 1 >= 0) {
 			adjacent |= bits->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
 		}
-		if (iIndex.z + 1 < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+		if (iIndex.z + 1 < model_volume::depth()) {
 			adjacent |= bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
 		}
-		if (iIndex.y + 1 < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+		if (iIndex.y + 1 < model_volume::height()) {
 			adjacent |= bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
 		}
 		return(adjacent);
@@ -396,7 +396,8 @@ namespace voxB
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+			tbb::affinity_partitioner& __restrict partitioner) const;
 
 	private:
 		voxelModel(voxelModel<Dynamic> const&) = delete;
@@ -435,7 +436,8 @@ namespace voxB
 		voxelModelInstance<Dynamic> const& instance,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
+		tbb::affinity_partitioner& __restrict partitioner) const
 	{
 		typedef struct no_vtable sRenderFuncBlockChunk {
 
@@ -445,7 +447,6 @@ namespace voxB
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict		voxels_static;
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_dynamic;
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_trans;
-			Iso::Voxel const& __restrict							rootVoxel;
 			voxelModelInstance<Dynamic> const& __restrict			instance;
 
 			XMVECTOR const  maxDimensionsInv, maxDimensions;
@@ -465,7 +466,6 @@ namespace voxB
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans_,
-				Iso::Voxel const& __restrict rootVoxel_,
 				voxelModelInstance<Dynamic> const& __restrict instance_
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceType& PerformanceCounters_
@@ -475,7 +475,6 @@ namespace voxB
 				xmVoxelOrigin(XMVectorSubtract(xmVoxelOrigin_, XMVectorSet(0.0f, instance_.getElevation(), 0.0f, 0.0f))),
 				xmUV(xmUV_),
 				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
-				rootVoxel(rootVoxel_),
 				instance(instance_),
 
 				maxDimensionsInv(XMLoadFloat3A(&instance_.getModel()._maxDimensionsInv)), 
@@ -539,9 +538,9 @@ namespace voxB
 						xmMiniVox = v3_rotate_azimuth(v3_rotate_pitch(xmMiniVox, xmPitch), xmAzimuth);
 					}
 
-					XMVECTOR const xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, -YDimension - XMVectorGetY(xmMiniVox)), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin
+					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, -YDimension - XMVectorGetY(xmMiniVox)), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin
 
-					XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
@@ -550,7 +549,10 @@ namespace voxB
 
 						if (voxel.Hidden)
 							continue;
-							
+
+						// update xmStreamOut if xmIndex is modified in instance.OnVoxel
+						xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
+						
 						uint32_t const color(voxel.getColor() & 0x00FFFFFF); // remove alpha
 						
 						bool const Transparent(Faded | voxel.Transparent);
@@ -629,7 +631,7 @@ namespace voxB
 							// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
 							// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
 							// and is in the fragment shaderrecieved swizzled in xzy form
-							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, color);
+							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, color);						
 							
 						}
 					}
@@ -665,18 +667,19 @@ namespace voxB
 		tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutTrans;
 
 		uint32_t const vxl_count(instance.getVoxelCount());
-		
+		uint32_t const vxl_transparent_count(instance.getVoxelTransparentCount());
+
 		if (!instance.isFaded()) {
 			if constexpr (Dynamic) {
-				pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(vxl_count - _numVoxelsTransparent);
+				pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(vxl_count - vxl_transparent_count);
 			}
 			else {
-				pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(vxl_count - _numVoxelsTransparent);
+				pVoxelsOutStatic = voxels_static.fetch_and_add<tbb::release>(vxl_count - vxl_transparent_count);
 			}
-			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(_numVoxelsTransparent);
+			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(vxl_transparent_count);
 		}
-		else {
-			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(vxl_count + _numVoxelsTransparent);
+		else { // faded (all transparent)
+			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(vxl_count);
 		}
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -698,12 +701,11 @@ namespace voxB
 				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
 				_Voxels, 
 				pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
-				oVoxel,
 				instance
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceCounters
 #endif
-			)
+			), partitioner
 		);
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION

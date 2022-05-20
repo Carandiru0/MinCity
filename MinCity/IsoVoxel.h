@@ -422,7 +422,7 @@ namespace Iso
 		return(((MASK_EMISSION_BITS & oVoxel.MaterialDesc) >> 5));
 	}
 	STATIC_INLINE void clearEmissive(Voxel& oVoxel) {
-		// Clear occlusion bits
+		// Clear bit
 		oVoxel.MaterialDesc &= (~MASK_EMISSION_BITS);
 	}
 	template<bool const emissive = true>
@@ -445,7 +445,8 @@ namespace Iso
 		oVoxel.MaterialDesc &= (~MASK_ADJACENCY_BITS);
 	}
 	STATIC_INLINE void setAdjacency(Voxel& oVoxel, uint8_t const adjacency) {
-		clearAdjacency(oVoxel);
+		// Clear adjacency bits
+		oVoxel.MaterialDesc &= (~MASK_ADJACENCY_BITS);
 		// Set new adjacency bits
 		oVoxel.MaterialDesc |= (MASK_ADJACENCY_BITS & adjacency);
 	}

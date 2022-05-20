@@ -17,8 +17,6 @@
 #define NK_SQRT SFM::__sqrt
 #define NK_SIN SFM::__sin
 #define NK_COS SFM::__cos
-#define NK_MAX SFM::max
-#define NK_MIN SFM::min
 #define NK_VSNPRINTF vsnprintf
 #include <Nuklear.h>     
 #include <DirectXPackedVector.h>

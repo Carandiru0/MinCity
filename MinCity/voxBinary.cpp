@@ -368,7 +368,7 @@ static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t con
 		using model_volume = Volumetric::voxB::model_volume;
 
 		// Here: accurate counts, cull voxels & encode adjacency w/ consideration of transparency, optimize model.
-		alignas(CACHE_LINE_BYTES) model_volume* __restrict bits(nullptr);
+		model_volume* __restrict bits(nullptr);
 		bits = model_volume::create();
 
 		{ // adjacency
@@ -469,7 +469,7 @@ static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t con
 	pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
 	
 #ifdef VOX_DEBUG_ENABLED	
-	FMT_LOG(VOX_LOG, "vox loaded ({:d}, {:d}, {:d}) ", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.z, pDestMem->_maxDimensions.y);
+	FMT_LOG(VOX_LOG, "vox loaded ({:d}, {:d}, {:d}) ", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
 #endif	
 	
 	return(true);
@@ -501,7 +501,7 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 		using model_volume = Volumetric::voxB::model_volume;
 
 		// Here: accurate counts, cull voxels & encode adjacency w/ consideration of transparency, optimize model.
-		alignas(CACHE_LINE_BYTES) model_volume* __restrict bits(nullptr);
+		model_volume* __restrict bits(nullptr);
 		bits = model_volume::create();
 
 		{ // adjacency
@@ -638,7 +638,7 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 		_fclose_nolock(stream);
 
 #ifdef VOX_DEBUG_ENABLED	
-		FMT_LOG_OK(VOX_LOG, "v1x saved ({:d}, {:d}, {:d}) " " mem usage {:d} bytes", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.z, pDestMem->_maxDimensions.y, (pDestMem->_numVoxels * sizeof(voxelDescPacked)));
+		FMT_LOG_OK(VOX_LOG, "v1x saved ({:d}, {:d}, {:d}) " " mem usage {:d} bytes", pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z, (pDestMem->_numVoxels * sizeof(voxelDescPacked)));
 #endif
 		return(true);
 	}
@@ -885,7 +885,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 
 			using model_volume = Volumetric::voxB::model_volume;
 
-			alignas(CACHE_LINE_BYTES) model_volume* __restrict bits(nullptr);
+			model_volume* __restrict bits(nullptr);
 			bits = model_volume::create();
 				
 			vector<uint32_t> allIndices; // 3d lookup volume (temporary)
@@ -903,12 +903,14 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 			file.close();
 			
 			uint32_t active_channel_offset(0);
-				
+			
 			uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, grids->size()));
 			for (uint32_t grid_index = 0; grid_index < grid_count; ++grid_index) { // file compatability of .vdb's exported from embergen. want to access "flames" first, then "density" and there packing into rgba channels instead.
 
 				GridType::Ptr const grid(openvdb::GridBase::grid<GridType>((*grids)[grid_index]));
-
+				
+				sequence.addChannel(grid_index, grid->getName());
+				
 				float const grid_min_value(min_value[grid_index]),
 							grid_max_value(max_value[grid_index]);
 
@@ -917,7 +919,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 					if (iter.isVoxelValue()) {
 
 						float const value(SFM::saturate((iter.getValue() - grid_min_value) / (grid_max_value - grid_min_value))); // data value is *now* normalized to [0, 1]
-						uint32_t const channel(SFM::saturate_to_u8(value * 255.0f)); // re-scale value to [0, 255]
+						uint32_t const channel_value(SFM::saturate_to_u8(value * 255.0f)); // re-scale value to [0, 255]
 							
 						openvdb::Coord const vdbCoord(iter.getCoord()); // signed 32bit integer components (vdb coord)
 
@@ -933,14 +935,17 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 							// (y * xMax * zMax) + (z * xMax) + x;
 								
 							// add channel to existing voxel
-							allVoxels[allIndices[index]].Color |= (channel << active_channel_offset) & 0x00ffffff;
+							voxB::voxelDescPacked& __restrict voxel(allVoxels[allIndices[index]]);
+							
+							voxel.Color &= ~(0xff << active_channel_offset) & 0x00ffffff; // clear channel and clamp total possible value for the 24bits that Color can contain.
+							voxel.Color |= (channel_value << active_channel_offset) & 0x00ffffff; // set channel,    ""  ""    ""     ""       ""             ""        ""         ""
 						}
 						else { // new ?
 							bits->set_bit(index);
 
 							// each color channel contains a value from [0, 255] representing a volume temperature, density, etc. voxel color is instead packed data.
 							allIndices[index] = allVoxels.size(); // potential lookup
-							allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), 0, (channel << active_channel_offset) & 0x00ffffff); // *note -> swizzle of y and z here required
+							allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), 0, (channel_value << active_channel_offset) & 0x00ffffff); // *note -> swizzle of y and z here required
 
 							// bounding box calculation //
 							__m128i const xmPosition(allVoxels.back().getPosition());
@@ -1037,6 +1042,17 @@ static bool const SaveV1XACachedFile(std::wstring_view const path, voxelModelBas
 					_fwrite_nolock(&offset, sizeof(offset), 1, stream);
 					_fwrite_nolock(&numVoxels, sizeof(numVoxels), 1, stream);
 				}
+				
+				// write channel names
+				uint32_t numChannels(sequence->numChannels());
+				_fwrite_nolock(&numChannels, sizeof(numChannels), 1, stream);
+				
+				for (uint32_t channel = 0; channel < numChannels; ++channel) {
+
+					uint32_t const name_length(sequence->getChannelName(channel).length());
+					_fwrite_nolock(&name_length, sizeof(name_length), 1, stream);
+					_fwrite_nolock(sequence->getChannelName(channel).data(), sizeof(char), name_length, stream);
+				}
 			}
 
 		}
@@ -1073,7 +1089,7 @@ static bool const SaveV1XACachedFile(std::wstring_view const path, voxelModelBas
 
 #ifdef VOX_DEBUG_ENABLED
 		if (bReturn) {
-			FMT_LOG_OK(VOX_LOG, "{:s} saved ({:d}, {:d}, {:d}) " " mem usage {:d} bytes", stringconv::ws2s(path), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.z, pDestMem->_maxDimensions.y, (pDestMem->_numVoxels * sizeof(voxelDescPacked)));
+			FMT_LOG_OK(VOX_LOG, "{:s} saved ({:d}, {:d}, {:d}) " " mem usage {:d} bytes", stringconv::ws2s(path), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z, (pDestMem->_numVoxels * sizeof(voxelDescPacked)));
 		}
 #endif
 		return(bReturn);
@@ -1130,22 +1146,57 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 						if (nullptr == pDestMem->_Features.sequence) {
 
 							uint32_t numFrames;
-							ReadData((void* const __restrict)&numFrames, pReadPointer, sizeof(numFrames));
+							ReadData((void* const __restrict) & numFrames, pReadPointer, sizeof(numFrames));
 							pReadPointer += sizeof(numFrames);
-							
+
 							voxelSequence sequence;
-							
+
 							for (uint32_t frame = 0; frame < numFrames; ++frame) {
 
 								uint32_t offset, numVoxels;
 
-								ReadData((void* const __restrict) &offset, pReadPointer, sizeof(offset)); 
+								ReadData((void* const __restrict) & offset, pReadPointer, sizeof(offset));
 								pReadPointer += sizeof(offset);
-								
-								ReadData((void* const __restrict) &numVoxels, pReadPointer, sizeof(numVoxels));
+
+								ReadData((void* const __restrict) & numVoxels, pReadPointer, sizeof(numVoxels));
 								pReadPointer += sizeof(numVoxels);
 
 								sequence.addFrame(offset, numVoxels);
+							}
+
+							// read channel names
+							static constexpr uint32_t const MAX_BUFFER_SZ = 64;
+							char szBuffer[MAX_BUFFER_SZ]{};
+							uint32_t numChannels(0);
+
+							ReadData((void* const __restrict) & numChannels, pReadPointer, sizeof(numChannels));
+							pReadPointer += sizeof(numChannels);
+
+							// validate 
+							if (numChannels <= voxelSequence::MAX_CHANNELS) {
+								
+								for (uint32_t channel = 0; channel < numChannels; ++channel) {
+
+									uint32_t channel_name_length(0);
+									ReadData((void* const __restrict) & channel_name_length, pReadPointer, sizeof(channel_name_length));
+									pReadPointer += sizeof(channel_name_length);
+
+									if (channel_name_length <= MAX_BUFFER_SZ) { // validate
+										ReadData((void* const __restrict) & szBuffer, pReadPointer, sizeof(char) * channel_name_length);
+										pReadPointer += sizeof(char) * channel_name_length;
+									}
+									else {
+										FMT_LOG_FAIL(VOX_LOG, "not a valid vox sequence cache file: {:s}", stringconv::ws2s(path));
+										return(false);
+									}
+									
+									sequence.addChannel(channel, szBuffer);
+									memset(szBuffer, 0, sizeof(szBuffer)); // reset (provides null termination for each channel string automatically)
+								}
+							}
+							else {
+								FMT_LOG_FAIL(VOX_LOG, "not a valid vox sequence cache file: {:s}", stringconv::ws2s(path));
+								return(false);
 							}
 							pDestMem->_Features.sequence = new voxelSequence(sequence);
 							
@@ -1189,11 +1240,6 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 						outDecompressed = nullptr;
 					}
 					
-#ifdef VOX_DEBUG_ENABLED	
-					if (bReturn) {
-						FMT_LOG(VOX_LOG, "vox sequence loaded ({:d}, {:d}, {:d}) " " mem usage {:d} bytes, {:d} voxels total (entire sequence)", (headerChunk.dimensionX), (headerChunk.dimensionY), (headerChunk.dimensionZ), (pDestMem->_numVoxels * sizeof(voxelDescPacked)), pDestMem->_numVoxels);
-					}
-#endif		
 					return(bReturn);
 				}
 
@@ -1255,7 +1301,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 					// memory map the temporary file, using the global vector that keeps track of the memory mapped files
 					std::error_code error{};
 
-					_persistant_mmp.emplace_back(std::forward<mio::mmap_source&&>(mio::make_mmap_source(szMemoryMappedPathFilename, true, error))); // temporary hidden file is automatically deleted on destruction of memory mapped object in persistant map @ program close.
+					_persistant_mmp.emplace_back(std::forward<mio::mmap_source&&>(mio::make_mmap_source(szMemoryMappedPathFilename, true, error))); // temporary hidden readonly file is automatically deleted on destruction of memory mapped object in persistant map @ program close.
 
 					if (!error) {
 
@@ -1276,11 +1322,15 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 					}
 				}
 
+#ifdef VOX_DEBUG_ENABLED
+				FMT_LOG(VOX_LOG, " < {:s} > [sequence] {:d} channels " " [{:s}]  [{:s}]  [{:s}]", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_Features.sequence->numChannels(), pDestMem->_Features.sequence->getChannelName(0), pDestMem->_Features.sequence->getChannelName(1), pDestMem->_Features.sequence->getChannelName(2));
+#endif
+				
 				if (pDestMem->_Mapped) {
-					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) (virtual) loaded", stringconv::ws2s(szMemoryMappedPathFilename));
+					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) (virtual) loaded ({:d}, {:d}, {:d})", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
 				}
 				else {
-					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) loaded", stringconv::ws2s(szCachedPathFilename));
+					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) loaded ({:d}, {:d}, {:d})", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
 				}
 
 				return(1); // indicating existing (cached) sequence loaded
@@ -1329,28 +1379,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 		}
 		tbb::parallel_sort(sequence_filenames.begin(), sequence_filenames.end());  // directory_iterator does not guarantee order, so sort the filenames
 
-#ifdef VOX_DEBUG_ENABLED
-		{ // output channels info to log
-			openvdb::io::File file(sequence_filenames[0]);
-			// Open the file.  This reads the file header, but not any grids.
-			file.open();
-
-			if (file.isOpen()) {
-
-				std::string channel_names[vdbFrameData::MAX_CHANNELS];
-				uint32_t numChannels(0);
-
-				for (openvdb::io::File::NameIterator nameIter = file.beginName(); nameIter != file.endName(); ++nameIter)
-				{
-					channel_names[numChannels] = nameIter.gridName();
-					++numChannels;
-				}
-
-				FMT_LOG_WARN(VOX_LOG, "{:d} channels " " [{:s}]  [{:s}]  [{:s}]", numChannels, channel_names[0], channel_names[1], channel_names[2]);
-			}
-			file.close();
-		}
-
+#ifdef VOX_DEBUG_ENABLED		
 		using namespace indicators;
 
 		// Hide cursor
@@ -1480,6 +1509,9 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	// finalize and store sequence metadata
 	pDestMem->_Features.sequence = new voxelSequence(sequence);
 	
+#ifdef VOX_DEBUG_ENABLED
+	FMT_LOG(VOX_LOG, "{:d} channels " " [{:s}]  [{:s}]  [{:s}]", pDestMem->_Features.sequence->numChannels(), pDestMem->_Features.sequence->getChannelName(0), pDestMem->_Features.sequence->getChannelName(1), pDestMem->_Features.sequence->getChannelName(2));
+#endif
 	// final maximum dimensions calculation - always equals the maximum extents of the frame with the largest extents.
 	
 	// Actual dimensiuons of model saved, bugfix for "empty space around true model extents"
@@ -1497,7 +1529,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	pDestMem->ComputeLocalAreaAndExtents();
 	
 #ifdef VOX_DEBUG_ENABLED
-	FMT_LOG_OK(VOX_LOG, "{:s} [sequence] imported", path.string());
+	FMT_LOG_OK(VOX_LOG, "{:s} [sequence] imported ({:d}, {:d}, {:d})", path.string(), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
 #endif
 	
 	// cache sequence to .v1xa file always

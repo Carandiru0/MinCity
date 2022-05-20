@@ -60,6 +60,7 @@
 //#define DEBUG_LUT_WINDOW
 //#define VOLUMETRIC_RAYMARCHING_DISABLED
 #define VOX_DEBUG_ENABLED
+#define DEBUG_EXPLOSION_WINDOW
 //#define DEBUG_DISALLOW_RENDER_DISABLING	// note that this causes any swapchain recreation to fail, this is not normally on in release
 #define FULLSCREEN_EXCLUSIVE
 
@@ -84,6 +85,7 @@ extern void debug_out_nuklear_off();
 #define DEBUG_DISABLE_MUSIC
 #define DEBUG_CONSOLE
 #define VOX_DEBUG_ENABLED
+#define DEBUG_EXPLOSION_WINDOW
 //#define DEBUG_DEPTH_CUBE
 //#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
 //#define DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP

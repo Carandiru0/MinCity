@@ -388,6 +388,15 @@ public:
 	std::string _szDebugMessage;
 	tbb::spin_mutex lock_debug_message; // thread safe 
 #endif
+
+private:
+	/// ******* all debug windows belong here
+#ifdef DEBUG_EXPLOSION_WINDOW
+	void do_debug_explosion_window(tTime const tLocal);
+#endif
+#ifdef DEBUG_FPS_WINDOW
+	void do_debug_fps_window(tTime const tLocal);
+#endif
 };
 
 #ifndef NDEBUG	
