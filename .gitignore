@@ -66,3 +66,5 @@ MinCity/x64/Debug/MinCity.exe.recipe
 *.vtuneproj
 VTune Profiler Results
 *.ilk
+*.ilk
+MinCity/x64/Debug/MinCity.ilk
