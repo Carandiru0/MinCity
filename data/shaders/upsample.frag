@@ -141,8 +141,8 @@ const float kernel[25] = float[25](
 // temporal path tracing denoiser (gaussian) algorithm - https://www.shadertoy.com/view/ldKBRV
 vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_current_frame, in const vec2 uv, in const float scaled_bluenoise) // awesome function
 {
-	vec4 f0 = textureLod(map_last_frame, uv, 0.0f);
-	vec4 f1 = reconstruct(map_current_frame, uv, scaled_bluenoise);
+	vec4 f0 = textureLod(map_last_frame, uv, 0.0f); // last frame, full resolution
+	vec4 f1 = reconstruct(map_current_frame, uv, scaled_bluenoise); // current frame, quarter resolution, reconstruction of alternating checkerboarded frames
 
 	vec4 sf0 = vec4(0), sf1 = vec4(0);
 	float wf = 0.0f;
@@ -154,7 +154,7 @@ vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_cu
 
 		guv = (uv * ScreenResDimensions + offset[i]) * InvScreenResDimensions;
 		// current frame
-		const vec4 s1 = reconstruct(map_current_frame, guv, scaled_bluenoise);
+		const vec4 s1 = reconstruct(map_current_frame, guv, scaled_bluenoise); // better sampling for reconstruction
 		{
 			const vec4 t = f1 - s1;
 			const float d = dot(t,t);
@@ -162,7 +162,6 @@ vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_cu
 		}
 
 		// screen resolution needs to be doubled for previous frame sample, as it is a full resolution textures
-		
 		guv = (uv * ScreenResDimensions * 2.0f + offset[i]) * InvScreenResDimensions * 0.5f;
 		// previous frame
 		const vec4 s0 = textureLod(map_last_frame, guv, 0.0f);
@@ -194,6 +193,7 @@ void main() {
 	// resolve 3 = unset start
 	const float scaled_bluenoise = fetch_bluenoise_scaled(In.uv, In.slice);
 	
+	// final verdict - denoise_sample wayy better than just a single reconstruct() - also leverages temporal supersampling of last frames full resolution output! superb reconstruction quality!
 	outVolumetric = denoise_sample(fullMap[VOLUME], checkeredMap[VOLUME], In.uv, scaled_bluenoise);
 	outReflection = denoise_sample(fullMap[REFLECT], checkeredMap[REFLECT], In.uv, scaled_bluenoise);
 }

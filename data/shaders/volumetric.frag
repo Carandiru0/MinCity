@@ -282,7 +282,7 @@ void vol_lit(out vec3 light_color, out float emission, out float attenuation, ou
 
 	// setup: 0 = not emissive
 	//        1 = emissive
-	emission = extract_emission(opacity_emission) * dt; // * dt very important, must be integrated
+	emission = extract_emission(opacity_emission);
 
 	// setup: 0 = not opaque
 	//        1 = opaque
@@ -310,13 +310,13 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = (sigmaS + attenuation + emission) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+    const vec3 Li = (sigmaS + attenuation + emission * (10.0f)) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
 	const float sigma_dt = exp2(-sigmaE * attenuation * interval_length); // *bugfix - "interval_length" normalizes the contribution of this iteration. Fixes where bottom of screen(near) had higher light density than top of screen(far).
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran *= sigma_dt + emission;				// decay or grows with emission
+	voxel.tran *= sigma_dt + emission * dt;				// decay or grows with emission
 }
 
 
@@ -346,7 +346,7 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const vec3 n
 	
 	// NdotV clamped at 1.0f so that shading with NdotV doesn't disobey laws of conservation
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = light_color * attenuation * (1.0f - voxel.tran);//mix(vec3(0), voxel.light * voxel.tran + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
+	voxel.light = mix(vec3(0), voxel.light * voxel.tran + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
 	voxel.a = bounce_scatter;
 }
 
