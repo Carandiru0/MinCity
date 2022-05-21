@@ -23,7 +23,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // FRAGMENT - - - - In = xzy space (matching 3D textures width,depth,height)
 //			--------Out = In
 
-// *********************************************** private usage : //                 
+// *********************************************** private usage : //     
+#ifdef FAST_LIGHTMAP
 void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -42,7 +43,6 @@ void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_colo
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
 }
-#ifdef FAST_LIGHTMAP
 void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -150,24 +150,9 @@ void lightmap_internal_sampleNaturalNeighbour(out float light_distance, inout ve
 	light_color = light_color * w;		
 }
 
-// for sampling specifically direction and distance only.
-void lightmap_fetch_direction_distance( out vec4 light_direction_distance, in const vec3 uvw) {
-	
-	light_direction_distance = textureLod(volumeMap[DD], uvw, 0);
-	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
-}
-// for sampling specifically distance only.
-void lightmap_fetch_distance( out float light_distance, in const vec3 uvw) {
-	
-	light_distance = textureLod(volumeMap[DD], uvw, 0).a;
-	light_distance = light_distance * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
-}
-
 // ********************************************* public usage : //
 
-// iq's awesome smoothstep based sampling (rndC)
-// https://www.shadertoy.com/view/MlS3Dc - ultrasmooth subpixel sampling
-
+#ifdef FAST_LIGHTMAP
 void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
@@ -178,7 +163,6 @@ void getLightMapFast( out float light_distance, out vec3 light_color, in const v
 	// linear sampling
 	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
-#ifdef FAST_LIGHTMAP
 void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
@@ -208,36 +192,11 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 // final inverse square law equation used:
 // a = 1.0f / ( (d + 1.0) * (d + 1.0 )
 // see : https://www.desmos.com/calculator/hqksaay8ax
-float getAttenuation(in float normalized_light_distance, in const float volume_length) // this is half of the equation, when light volume is generated, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
+float getAttenuation(in const float normalized_light_distance, in const float volume_length) // this is half of the equation, when light volume is generated, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
 {
 	// denormalization and scaling to world coordinates (actual world distance) + 1.0
 	return( 1.0f / fma(normalized_light_distance, volume_length, 1.0f) );
 }
-
-#ifdef FAST_LIGHTMAP // only used in volumetric raymarch - replaced with newer functions below.
-vec3 getLightFast(out vec3 light_color, out float attenuation, in const vec3 uvw, in const float volume_length) 
-{
-	vec4 light_direction_distance; 
-
-	getLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	    
-	attenuation = getAttenuation(light_direction_distance.a, volume_length); 
-
-	// light direction is stored in view space natively in xzy format
-	return(normalize(light_direction_distance.xyz));
-}
-vec3 getReflectionLightFast(out vec3 light_color, out float attenuation, in const vec3 uvw, in const float volume_length) 
-{
-	vec4 light_direction_distance; 
-
-	getReflectionLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	
-	attenuation = getAttenuation(light_direction_distance.a, volume_length); 
-
-	// light direction is stored in view space natively in xzy format
-	return(normalize(light_direction_distance.xyz));
-}
-#endif
 
 #define att a
 #define dist a
@@ -257,7 +216,8 @@ void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw)
 }
 // getAttenuation(normalized_distance, volume_length); to get attenuation from normalized distance returned from getLight
 
-// less preferred, but when required (fast hw-trilinear sampling w/rndC)
+#ifdef FAST_LIGHTMAP
+// less preferred, but when required (fast hw-trilinear sampling)
 void getLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
 	getLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
@@ -271,4 +231,13 @@ void getLightFast(out vec3 light_color, out float light_distance, in const vec3 
 	
 	// light_direction_distance.a = normalized [0...1] distance
 }
+void getReflectionLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
+{
+	getReflectionLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	
+	light_direction_distance.xyz = normalize(light_direction_distance.xyz); // light direction is stored in view space natively in xzy form
+	// light_direction_distance.a = normalized [0...1] distance
+}
+#endif
+
 #endif // _LIGHTMAP_GLSL

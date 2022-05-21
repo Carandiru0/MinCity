@@ -115,25 +115,44 @@ namespace world
 		// destruction sequence ?
 		if (zero_time_point != instance->getDestructionTime()) {
 
+			voxel.Emissive = false; // default all emission off
+			
 			float const t(fp_seconds(tNow - instance->getDestructionTime()).count());
 			
-			XMVECTOR xmForce = XMVectorScale(MinCity::Physics->get_force(xmIndex), 2.0f);
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -9.81f, 0.0f, 0.0f));
-			xmForce = XMVectorScale(xmForce, t*t);
-			xmIndex = XMVectorAdd(xmIndex, xmForce);
-				
-			//xmForce = XMVector3Normalize(xmForce);
-			XMVECTOR xmGround(XMVectorSet(0.0f, instance->getElevation(), 0.0f, 0.0f));
+			XMVECTOR xmForce = XMVectorScale(MinCity::Physics->get_force(xmIndex), 9.81f);
+					
+			// crappy pancake collapse
+			float const maxHeight((float)instance->getModel()._maxDimensions.y);
+			fp_seconds const tDelta = tNow - instance->getDestructionTime();
+			fp_seconds const tSequenceLength = instance->getDestructionSequenceLength() * maxHeight;
 			
+			float const expected_floor(SFM::lerp(maxHeight, 0.0f, time_to_float(tDelta / tSequenceLength)));
+			float const top_floor(XMVectorGetY(xmIndex));
+			
+			if (expected_floor - top_floor >= 0.0f) {
+
+				xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 9.81f * 0.5f, 0.0f, 0.0f));
+				
+			}
+			else {
+				voxel.Emissive = true;
+			}
+			
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -9.81f, 0.0f, 0.0f)); // gravity
+			xmForce = XMVectorScale(xmForce, t * t);
+			xmIndex = XMVectorAdd(xmIndex, xmForce);
+			
+			//xmForce = XMVector3Normalize(xmForce);
+			XMVECTOR const xmGround(XMVectorSet(0.0f, instance->getElevation(), 0.0f, 0.0f));
 			xmIndex = SFM::clamp(xmIndex, xmGround, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ_MINUS_ONE);
-						
+			
 			//xmForce = SFM::__fma(xmForce, XMVectorReplicate(0.5), XMVectorReplicate(0.5));
 			
 			//uvec4_t rgba{};
 
 			//SFM::floor_to_u32(XMVectorScale(xmForce, 255.0f)).rgba(rgba);
 			//voxel.Color = SFM::pack_rgba(rgba);
-			voxel.Emissive = true;
+			
 			
 			return(voxel);
 			/*

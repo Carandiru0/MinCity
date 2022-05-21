@@ -403,7 +403,7 @@ void main() {
 	vec3 refract_color;  
 	const float weight = refraction_color(refract_color, colorMap, density);                                                    
          
-	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency);
+	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency + In._transparency * In.material.emission);
 
 	outColor = applyTransparency( color, In._transparency + In._transparency*density*density, weight );
 

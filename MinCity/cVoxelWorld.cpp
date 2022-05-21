@@ -793,7 +793,7 @@ void cVoxelWorld::OnMouseRightClick()
 		return; // input disabled!
 
 	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION2, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {

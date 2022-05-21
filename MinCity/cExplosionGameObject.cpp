@@ -126,7 +126,7 @@ namespace world
 		uvec4_t rgba;
 		SFM::saturate_to_u8(XMVectorScale(xmColor, DENORMALIZE), rgba);
 		voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
-		
+		//voxel.Color = 0;
 		MinCity::Physics->add_force(xmIndex);
 		
 		return(voxel);
@@ -142,7 +142,7 @@ namespace world
 		}
 		
 		//getModelInstance()->setVoxelTransparentCount(getModelInstance()->getVoxelCount());
-		//getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_100);
+		//getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
 		
 		// ** stable feedback auto regulating emission threshold. Dependent on both the temperature + flames boost levels/inputs.
 		// ** do not change ** provides some dynamic range to the emission/lighting. also optimizes out dark lights that have ~nil emission.

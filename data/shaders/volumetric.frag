@@ -30,7 +30,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define BOUNCE_EPSILON 0.5f
 
 const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
-const float PHASE_FUNCTION = 1.0 / (4.0 * PI); // Isotropic
+const float PHASE_FUNCTION = 1.0 / (GOLDEN_RATIO * PI); // Isotropic
 
 #define EPSILON 0.000000001f
 // -----------------------------------------------------------------------------------------------------------------------------------------------//
@@ -183,30 +183,32 @@ vec3 computeNormal(in const vec3 uvw)
 // (intended for reflected light) - returns attenuation and reflection light color
 float fetch_light_reflected( out vec3 light_color, in const vec3 bounce_normal, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 										 
-	float attenuation;
-	const vec3 light_direction = getReflectionLightFast(light_color, attenuation, offset(uvw), VolumeLength);
-
+	vec4 Ld;
+	getReflectionLightFast(light_color, Ld, offset(uvw));
+	Ld.att = getAttenuation(Ld.dist, VolumeLength);
+	
 	// directional derivative - equivalent to dot(N,L) operation
-	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
+	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
 	
 	// real directional 
-	attenuation *= max(0.0f, dot(light_direction, -bounce_normal));
+	Ld.att *= max(0.0f, dot(Ld.dir, -bounce_normal));
 	
-	return(attenuation);  
+	return(Ld.att);  
 }
 
 // (intended for volumetric light) - returns attenuation and light color, uses directional derivatiuves to further shade lighting 
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
-float fetch_light_volumetric( out vec3 light_color, out float scattering, in const vec3 uvw, in const float opacity, in const float dt, in const float bn) { // interpolates light normal/direction & normalized distance
+float fetch_light_volumetric( out vec3 light_color, out float scattering, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
 		
-	float attenuation;
-	const vec3 light_direction = getLightFast(light_color, attenuation, offset(uvw), VolumeLength);
+	vec4 Ld;
+	getLightFast(light_color, Ld, offset(uvw));
+	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
-	const float nDotL = max(0.0f, dot(light_direction, vec3(0,0,-1))); // **bugfix for correct lighting. 
-	attenuation *= nDotL;
+	const float nDotL = max(0.0f, dot(Ld.dir, vec3(0,0,-1))); // **bugfix for correct lighting. 
+	Ld.att *= nDotL;
 
 	// directional derivative - equivalent to dot(N,L) operation
-	attenuation *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + light_direction.xyz * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
+	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
 	
 	// *bugfix - emission removed due to severe aliasing. resolution also improved after this change!
 	// fog                         
@@ -214,15 +216,15 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	const float fog_height = max(0.0f, uvw.z);//max(0.0f, -uvw.z); // fog is for entire volume so no limit on maximum height
 											   // this also is the correct resolution matchup.
 	// scattering lit fog
-	scattering = fog_height + mix(1.0f + bn * (17.0f/255.0f), PI, attenuation);				// *do not modify*
-	scattering = exp2(-scattering * 6.0f * (1.0f - opacity));			// *do not modify*
+	scattering = fog_height + mix(1.0f, PI, Ld.att);				// *do not modify*
+	scattering = exp2(-scattering * PI * (1.0f - opacity));			// *do not modify*
 
-	return(attenuation); // returns lightAmount  
+	return(Ld.att); // returns lightAmount  
 }
 
-vec2 fetch_bluenoise(in const vec2 pixel)
-{												// @todo **** is this 2x because raymarch is half resolution?
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).rg ); // *bluenoise RED & GREEN channel used* // *bugfix - temporal blue noise now working with no visible noisyness!
+float fetch_bluenoise(in const vec2 pixel)
+{										
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).r ); // *bluenoise RED channel used* // *bugfix - temporal blue noise now working with no visible noisyness!
 }
 float fetch_depth()
 {
@@ -274,7 +276,7 @@ void integrate_opacity(inout float opacity, in const float new_opacity, in const
 
 // volumetric light
 void vol_lit(out vec3 light_color, out float emission, out float attenuation, out float fogAmount, inout float opacity,
-		     in const vec3 p, in const float dt, in const float bn)
+		     in const vec3 p, in const float dt)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
 
@@ -287,16 +289,16 @@ void vol_lit(out vec3 light_color, out float emission, out float attenuation, ou
 	integrate_opacity(opacity, extract_opacity(opacity_emission), dt);
 
 	// lightAmount = attenuation
-	attenuation = fetch_light_volumetric(light_color, fogAmount, p, opacity, dt, bn);
+	attenuation = fetch_light_volumetric(light_color, fogAmount, p, opacity, dt);
 }
 
-void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt, in const float interval_length, in const float bn)
+void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt, in const float interval_length)
 {
 	//#########################
 	vec3 light_color;
 	float emission, attenuation, fogAmount;
 	
-	vol_lit(light_color, emission, attenuation, fogAmount, opacity, p, dt, bn);  // shadow march tried, kills framerate
+	vol_lit(light_color, emission, attenuation, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -308,7 +310,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = (sigmaS + attenuation) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+    const vec3 Li = (sigmaS + attenuation + emission) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
 	const float sigma_dt = exp2(-sigmaE * attenuation * interval_length); // *bugfix - "interval_length" normalizes the contribution of this iteration. Fixes where bottom of screen(near) had higher light density than top of screen(far).
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
@@ -344,7 +346,7 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const vec3 n
 	
 	// NdotV clamped at 1.0f so that shading with NdotV doesn't disobey laws of conservation
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = mix(vec3(0), voxel.light * voxel.tran + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
+	voxel.light = light_color * attenuation * (1.0f - voxel.tran);//mix(vec3(0), voxel.light * voxel.tran + light_color * attenuation, min(1.0f, opacity + emission)) * voxel.tran;
 	voxel.a = bounce_scatter;
 }
 
@@ -425,7 +427,7 @@ void main() {
 	float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
 	pre_dt = max(pre_dt, interval_length*INV_MAX_STEPS);
 	// ----------------------------------- //
-	const float dt = max(pre_dt, MIN_STEP) * 0.5f; // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
+	const float dt = max(pre_dt, MIN_STEP); // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth
@@ -441,8 +443,7 @@ void main() {
 	// without modifying interval variables start position
 	
 	// adjust start position by "bluenoise step"	
-	const vec2 bn = fetch_bluenoise(gl_FragCoord.xy);
-	const float jittered_interval = dt * 0.25f * bn.x * GOLDEN_RATIO_ZERO; // jittered offset should be scaled by golden ratio zero (hides some noise)
+	const float jittered_interval = 0.5f * dt * fetch_bluenoise(gl_FragCoord.xy); // jittered offset should be scaled by golden ratio zero (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -468,7 +469,7 @@ void main() {
 		
 			// -------------------------------- part lighting ----------------------------------------------------
 			// ## evaluate light
-			evaluateVolumetric(voxel, opacity, p, dt * 2.0f, interval_length, bn.y); // evaluated at 2x dt because of skipped light evaluation (only every second step)
+			evaluateVolumetric(voxel, opacity, p, dt, interval_length); // evaluated at 2x dt because of skipped light evaluation (only every second step)
 
 			// ## test hit voxel
 			[[branch]] if( bounced(opacity) ) {	
@@ -510,7 +511,7 @@ void main() {
 			vec4 refine_voxel = voxel;
 			float refine_opacity = opacity;
 
-			evaluateVolumetric(refine_voxel, refine_opacity, p, dt, interval_length, bn.y);
+			evaluateVolumetric(refine_voxel, refine_opacity, p, dt, interval_length);
 
 			[[branch]] if (refine_opacity > opacity) { // is next opacity closer?
 				// take refinement
@@ -529,7 +530,7 @@ void main() {
 			interval_remaining += dt;
 			p += interval_remaining * rd;  // this is the last "partial" step!
 
-			evaluateVolumetric(voxel, opacity, p, interval_remaining, interval_length, bn.y);
+			evaluateVolumetric(voxel, opacity, p, interval_remaining, interval_length);
 		}
 	} // end volumetric scope
 

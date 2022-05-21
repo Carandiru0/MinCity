@@ -53,6 +53,7 @@ namespace world
 			tbb::atomic<int64_t>		_tCurrentInterval;
 			tbb::atomic<uint32_t>		_changedWindowIndex;
 			Window						_changedWindows[CACHE_SZ];
+			
 		}*								_MutableState;
 	public:
 		cBuildingGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_);

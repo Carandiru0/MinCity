@@ -1292,18 +1292,18 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 				szMemoryMappedPathFilename += MMP_FILE_EXT;
 
 				FILE* __restrict stream(nullptr);
-				if ((0 == _wfopen_s(&stream, szMemoryMappedPathFilename.c_str(), L"wbS")) && stream) {
+				if ((0 == _wfopen_s(&stream, szMemoryMappedPathFilename.c_str(), L"wbST")) && stream) {
 
 					_fwrite_nolock(&pDestMem->_Voxels[0], sizeof(voxelDescPacked), pDestMem->_numVoxels, stream);
-
 					_fclose_nolock(stream);
-
+					stream = nullptr;
+					
 					// memory map the temporary file, using the global vector that keeps track of the memory mapped files
 					std::error_code error{};
 
 					_persistant_mmp.emplace_back(std::forward<mio::mmap_source&&>(mio::make_mmap_source(szMemoryMappedPathFilename, true, error))); // temporary hidden readonly file is automatically deleted on destruction of memory mapped object in persistant map @ program close.
 
-					if (!error) {
+					if (!error) { // ideally everything still lives in the windows file cache. And it knows that the data does not actually need to be written to disk. Leveraging that and deletion of the virtual file is transferred to the memory mapped file handle ownership now.
 
 						if (_persistant_mmp.back().is_open() && _persistant_mmp.back().is_mapped()) {
 
@@ -1318,6 +1318,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 							pDestMem->_Mapped = true;
 
 							// model voxel data is now read-only and is "virtual memory", so it saves physical memory by only keeping whats active from virtual memory.
+							// all management of this memory is handled by the OS, and the memory mapped file handle is automatically deleted on program close.
 						}
 					}
 				}
