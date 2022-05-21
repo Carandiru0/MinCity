@@ -32,6 +32,7 @@ namespace world
 		cBuildingGameObject(cBuildingGameObject&& src) noexcept;
 		cBuildingGameObject& operator=(cBuildingGameObject&& src) noexcept;
 	private:
+		Volumetric::voxB::model_volume*							_destroyed;  // ~2MB per building, ouch
 		milliseconds											_tLightChangeInterval;
 		ImageAnimation*											_videoscreen;
 

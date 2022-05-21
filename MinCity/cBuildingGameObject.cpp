@@ -18,7 +18,7 @@ namespace world
 
 	cBuildingGameObject::cBuildingGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_)
 		: tNonUpdateableGameObject(instance_), _tLightChangeInterval(0),
-		_videoscreen(nullptr), _MutableState(nullptr)
+		_destroyed(nullptr), _videoscreen(nullptr), _MutableState(nullptr)
 	{
 		instance_->setOwnerGameObject<cBuildingGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cBuildingGameObject::OnVoxel);
@@ -28,6 +28,8 @@ namespace world
 			_videoscreen = &ImageAnimation::emplace_back( ImageAnimation(*voxelscreen, instance_->getHash()) );
 		}
 
+		_destroyed = Volumetric::voxB::model_volume::create();
+		
 		_MutableState = new sMutableState{};
 		_MutableState->_tCurrentInterval = 0;
 		_MutableState->_changedWindowIndex = 0;
@@ -62,6 +64,8 @@ namespace world
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
 
+		_destroyed = std::move(src._destroyed); src._destroyed = nullptr;
+		
 		_tLightChangeInterval = src._tLightChangeInterval;
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -85,6 +89,8 @@ namespace world
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
 
+		_destroyed = std::move(src._destroyed); src._destroyed = nullptr;
+		
 		_tLightChangeInterval = src._tLightChangeInterval;
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -108,93 +114,80 @@ namespace world
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cBuildingGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
+		if (_destroyed->read_bit(voxel.x, voxel.y, voxel.z)) {
+
+			voxel.Hidden = true;
+			return(voxel);
+		}
+		
 		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
 
+		XMVECTOR xmForce = MinCity::Physics->get_force(xmIndex);
+
+		{ // destroy voxel if force is present
+			uint32_t Comp(0);
+			XMVectorGreaterR(&Comp, SFM::abs(xmForce), XMVectorZero());
+
+			if (XMComparisonAnyTrue(Comp)) {
+				
+				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)));
+				
+				uvec4_t rgba;
+				MinCity::VoxelWorld->blackbody(SFM::saturate(scalar_force * 0.5f)).rgba(rgba);
+				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
+				voxel.Emissive = (0 != voxel.Color);
+
+				_destroyed->set_bit(voxel.x, voxel.y, voxel.z); // next time voxel will be "destroyed"
+				size_t const destroyed_count(_destroyed->bits_set_count());
+				if (destroyed_count > (instance->getVoxelCount() >> 2)) { // if destroyed voxel count is greater than quarter the number of voxels that the model contains, destroy the building game object instance.
+					const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
+				}
+				return(voxel);
+			}
+		}
+		
 		tTime const tNow(now());
 
 		// destruction sequence ?
 		if (zero_time_point != instance->getDestructionTime()) {
 
-			voxel.Emissive = false; // default all emission off
-			
-			float const t(fp_seconds(tNow - instance->getDestructionTime()).count());
-			
-			XMVECTOR xmForce = XMVectorScale(MinCity::Physics->get_force(xmIndex), 9.81f);
-					
-			// crappy pancake collapse
 			float const maxHeight((float)instance->getModel()._maxDimensions.y);
 			fp_seconds const tDelta = tNow - instance->getDestructionTime();
 			fp_seconds const tSequenceLength = instance->getDestructionSequenceLength() * maxHeight;
 			
-			float const expected_floor(SFM::lerp(maxHeight, 0.0f, time_to_float(tDelta / tSequenceLength)));
+			float const t = time_to_float(tDelta / tSequenceLength);
+			
+			if (isVoxelWindow(voxel)) {
+				uvec4_t rgba;
+				MinCity::VoxelWorld->blackbody(1.0f - t).rgba(rgba);
+				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
+				voxel.Emissive |= (0 != voxel.Color);
+			}
+			else {
+				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)));
+
+				uvec4_t rgba;
+				MinCity::VoxelWorld->blackbody(SFM::saturate(scalar_force * 0.5f)).rgba(rgba);
+				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
+				voxel.Emissive |= (0 != voxel.Color);
+			}
+			
+			// crappy pancake collapse
+			float const expected_floor(SFM::lerp(maxHeight, 0.0f, t));
 			float const top_floor(XMVectorGetY(xmIndex));
 			
 			if (expected_floor - top_floor >= 0.0f) {
 
 				xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 9.81f * 0.5f, 0.0f, 0.0f));
-				
-			}
-			else {
-				voxel.Emissive = true;
 			}
 			
 			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -9.81f, 0.0f, 0.0f)); // gravity
-			xmForce = XMVectorScale(xmForce, t * t);
+			xmForce = XMVectorScale(xmForce, time_to_float(tDelta) * time_to_float(tDelta));
 			xmIndex = XMVectorAdd(xmIndex, xmForce);
 			
 			//xmForce = XMVector3Normalize(xmForce);
 			XMVECTOR const xmGround(XMVectorSet(0.0f, instance->getElevation(), 0.0f, 0.0f));
 			xmIndex = SFM::clamp(xmIndex, xmGround, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ_MINUS_ONE);
-			
-			//xmForce = SFM::__fma(xmForce, XMVectorReplicate(0.5), XMVectorReplicate(0.5));
-			
-			//uvec4_t rgba{};
-
-			//SFM::floor_to_u32(XMVectorScale(xmForce, 255.0f)).rgba(rgba);
-			//voxel.Color = SFM::pack_rgba(rgba);
-			
-			
-			return(voxel);
-			/*
-			uint32_t const maxHeight(instance->getModel()._maxDimensions.y);
-			uint32_t heightLimit(maxHeight);
-
-			// check if still within "creation" sequence window
-			{
-				fp_seconds const tDelta = tNow - instance->getCreationTime();
-				fp_seconds const tSequenceLength = instance->getCreationSequenceLength() * maxHeight;
-
-				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp(0.0f, (float)maxHeight, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
-
-				// new "maximum" for destruction to limit to (height of current creation)
-				heightLimit = SFM::min(newHeight, heightLimit);
-			}
-			fp_seconds const tDelta = tNow - instance->getDestructionTime();
-			fp_seconds const tSequenceLength = instance->getDestructionSequenceLength() * maxHeight;
-			if (tDelta < tSequenceLength)
-			{
-				uint32_t const newHeight = SFM::floor_to_u32(SFM::lerp((float)maxHeight, 0.0f, SFM::saturate(time_to_float(tDelta / tSequenceLength))));
-
-				heightLimit = SFM::min(newHeight, heightLimit);
-
-				if (voxel.y > heightLimit) {
-					voxel.Hidden = true;
-				}
-				else if (voxel.y == heightLimit) {
-					voxel.Emissive = true;
-				}
-				else if (isVoxelWindow(voxel)) { // window lights eratic during destruction
-					voxel.Emissive = PsuedoRandom5050();
-				}
-				else if (voxel.Video) {
-					if (!PsuedoRandom5050()) {
-						voxel.Color = 0; // screen random during destruction //
-						voxel.Emissive = false;
-					}
-				}
-				return(voxel); // early exit
-			}
-			*/
 		}
 		// creation sequence ?
 		else if (!(Volumetric::eVoxelModelInstanceFlags::INSTANT_CREATION & instance->getFlags()))
@@ -238,7 +231,7 @@ namespace world
 			// if video color is pure black turn off emission
 			voxel.Emissive = !(0 == voxel.Color);
 		}
-		else if (isVoxelWindow(voxel) ) { // Only for specific emissive voxels, with matching palette index for building windows
+		else if (isVoxelWindow(voxel)) { // Only for specific emissive voxels, with matching palette index for building windows
 
 			int32_t found_index(-1);
 
@@ -283,6 +276,11 @@ namespace world
 
 	cBuildingGameObject::~cBuildingGameObject()
 	{
+		if (nullptr != _destroyed) {
+
+			Volumetric::voxB::model_volume::destroy(_destroyed);
+			_destroyed = nullptr;
+		}
 		if (nullptr != _videoscreen) {
 			ImageAnimation::remove(_videoscreen);
 			_videoscreen = nullptr;

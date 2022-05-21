@@ -507,8 +507,8 @@ void cVulkan::CreateVolumetricResources()
 	pm.depthClampEnable(VK_FALSE);											// * * * * * superior speed and quality (blue noise temporal checkerboard is flawless reconstruction), additionally bilateraly upscale to full resolution framebuffer used in final blending.
 	pm.depthTestEnable(VK_FALSE);											// for volume rendering, for *best* results:
 	pm.depthWriteEnable(VK_FALSE);											//  - depth testing and writing disabled.
-	pm.cullMode(vk::CullModeFlagBits::eFront);								//  - culling front faces and counter clockwise must be used
-	pm.frontFace(vk::FrontFace::eCounterClockwise);							//    (chosen based on whether the volume intersects the near plane or far plane. volume closest to near plane. 
+	pm.cullMode(vk::CullModeFlagBits::eBack);								//  - back & clockwise works, and is common to the engine usage for all pipelines. -c-u-l-l-i-n-g- -f-r-o-n-t- -f-a-c-e-s- -a-n-d- -c-o-u-n-t-e-r- -c--lo-c-k--wi--se- -m-u-s--t -b-e-- u-s-e--d
+	pm.frontFace(vk::FrontFace::eClockwise);								//    (chosen based on whether the volume intersects the near plane or far plane. volume closest to near plane. 
 																			//  - in the volumetric shader:
 																			//     - top of file: layout(early_fragment_tests) in;
 																			//		 (working optimization, and if not enabled flickering of transparent surfaces witnessed)
@@ -597,8 +597,8 @@ void cVulkan::CreateUpsampleResources()
 			pm.depthClampEnable(VK_FALSE);
 			pm.depthTestEnable(VK_FALSE);
 			pm.depthWriteEnable(VK_FALSE);
-			pm.cullMode(vk::CullModeFlagBits::eFront);
-			pm.frontFace(vk::FrontFace::eCounterClockwise);
+			pm.cullMode(vk::CullModeFlagBits::eBack);
+			pm.frontFace(vk::FrontFace::eClockwise);
 
 			// 2 color attachments (out) requires 2 blend states to be emplaced
 			pm.blendBegin(VK_FALSE);
@@ -658,8 +658,8 @@ void cVulkan::CreateUpsampleResources()
 			pm.depthClampEnable(VK_FALSE);
 			pm.depthTestEnable(VK_FALSE);
 			pm.depthWriteEnable(VK_FALSE);
-			pm.cullMode(vk::CullModeFlagBits::eFront);
-			pm.frontFace(vk::FrontFace::eCounterClockwise);
+			pm.cullMode(vk::CullModeFlagBits::eBack);
+			pm.frontFace(vk::FrontFace::eClockwise);
 
 			// 2 color attachments (out) requires 2 blend states to be emplaced
 			pm.blendBegin(VK_FALSE);
@@ -711,8 +711,8 @@ void cVulkan::CreateUpsampleResources()
 		pm.depthClampEnable(VK_FALSE);
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 
 		pm.blendBegin(VK_TRUE);
 		pm.blendSrcColorBlendFactor(vk::BlendFactor::eOne); // this is pre-multiplied alpha *specific* to handle transmission properly. *do not change* https://patapom.com/topics/Revision2013/Revision%202013%20-%20Real-time%20Volumetric%20Rendering%20Course%20Notes.pdf
@@ -770,8 +770,8 @@ void cVulkan::CreateDepthResolveResources()
 	pm.depthClampEnable(VK_FALSE); 
 	pm.depthTestEnable(VK_FALSE);
 	pm.depthWriteEnable(VK_FALSE);
-	pm.cullMode(vk::CullModeFlagBits::eFront);
-	pm.frontFace(vk::FrontFace::eCounterClockwise);
+	pm.cullMode(vk::CullModeFlagBits::eBack);
+	pm.frontFace(vk::FrontFace::eClockwise);
 
 	// Create a pipeline using a renderPass
 	// leveraging z render pass, subpass index 1
@@ -843,8 +843,8 @@ void cVulkan::CreatePostAAResources()
 		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
 		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaatmp.frag.bin", constants };
@@ -862,8 +862,8 @@ void cVulkan::CreatePostAAResources()
 		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
 		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp0.frag.bin", constants };
@@ -881,8 +881,8 @@ void cVulkan::CreatePostAAResources()
 		pm.depthClampEnable(VK_FALSE);
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
 		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp1.frag.bin", constants };
@@ -908,8 +908,8 @@ void cVulkan::CreatePostAAResources()
 		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
 		std::wstring szFragShader;
@@ -935,8 +935,8 @@ void cVulkan::CreatePostAAResources()
 		pm.depthClampEnable(VK_FALSE); 
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eFront);
-		pm.frontFace(vk::FrontFace::eCounterClockwise);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
 		
 		std::wstring szFragShader;
 		if (isHDR()) { // select shader

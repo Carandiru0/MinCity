@@ -45,8 +45,8 @@ namespace Volumetric
 
 		static constexpr uint32_t const PALETTE_WINDOW_INDEX = 0x00FFFFFF;  // (pure white)
 
-		static constexpr uint32_t const DESTRUCTION_SEQUENCE_LENGTH(4442 << 2);										// base sequence length, will be used as: # of slices (height) * DESTRUCTION_SEQUENCE_LENGTH
-		static constexpr uint32_t const CREATION_SEQUENCE_LENGTH(4 << 1);			// ""				""	""					""
+		static constexpr milliseconds const DESTRUCTION_SEQUENCE_LENGTH(125);		// ms
+		static constexpr milliseconds const CREATION_SEQUENCE_LENGTH(90);			// ""
 		
 		static constexpr float const VOXEL_RAIN_SCALE = 0.5f;
 

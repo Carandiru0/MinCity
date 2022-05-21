@@ -138,7 +138,7 @@ namespace world
 
 			// random start angle
 			getModelInstance()->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
-			//getModelInstance()->destroy(milliseconds(0));
+			getModelInstance()->destroy(milliseconds(0));
 		}
 		
 		//getModelInstance()->setVoxelTransparentCount(getModelInstance()->getVoxelCount());

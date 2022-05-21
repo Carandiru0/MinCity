@@ -21,7 +21,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #define GROUP_SIZE_XY 8
 #define GROUP_SIZE_Z 4 // must match ComputeLightConstants.h
 
-layout (local_size_x = GROUP_SIZE_XY, local_size_y = GROUP_SIZE_XY, local_size_z = GROUP_SIZE_Z) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,4=256 tested optimal warp size at height 128 and 256 visible voxels
+layout (local_size_x = GROUP_SIZE_XY, local_size_y = GROUP_SIZE_XY, local_size_z = GROUP_SIZE_Z) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,8=256 tested optimal warp size at height 128 and 256 visible voxels
 
 // SEED uses PING output, hardcoded, however SEED input requires pc.index_input
 layout (push_constant) restrict readonly uniform PushConstant {
