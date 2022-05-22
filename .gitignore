@@ -69,3 +69,4 @@ VTune Profiler Results
 *.ilk
 MinCity/x64/Debug/MinCity.ilk
 MinCity/x64/Debug/MinCity.ilk
+*.ilk
