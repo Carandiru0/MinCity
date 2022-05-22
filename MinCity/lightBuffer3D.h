@@ -41,11 +41,11 @@ public:
 		tbb::parallel_invoke(
 			[&] {
 				// clear internal memory
-				__memclr_stream<64>(_internal, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
+				memset(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t));
 			},
 			[&] {
 				// clear internal cache
-				__memclr_stream<64>(_cache, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
+				memset(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A));
 			});
 	}
 

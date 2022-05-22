@@ -63,9 +63,6 @@ namespace Volumetric {
 
 class no_vtable cMinCity : no_copy
 {
-	static constexpr size_t const // for optimizing physical memory usage of this app
-		PROCESS_MIN_WORKING_SET = (1ULL << 30ULL),  // 1GB
-		PROCESS_MAX_WORKING_SET = (1ULL << 33ULL);  // 8GB
 public:
 	// Common Accessors // 
 	static size_t const					getFrameCount() { return(m_frameCount); }

@@ -10,10 +10,10 @@ class no_vtable cPhysics : no_copy
 	
 	using force_volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 public:
-	void							add_force(size_t const x, size_t const y, size_t const z) { _force_field[STAGING]->set_bit(x, y, z); }
-	void __vectorcall				add_force(FXMVECTOR xmIndex) { uvec4_t coord; SFM::round_to_u32(xmIndex).xyzw(coord); _force_field[STAGING]->set_bit(coord.x, coord.y, coord.z); }
-	XMVECTOR const __vectorcall		get_force(size_t const x, size_t const y, size_t const z) const;
-	XMVECTOR const __vectorcall		get_force(FXMVECTOR xmIndex) const { uvec4_t coord; SFM::round_to_u32(xmIndex).xyzw(coord); return(get_force(coord.x, coord.y, coord.z)); }
+	void							add_force(uvec4_v const xmIndex) { uvec4_t xyzw; xmIndex.xyzw(xyzw); _force_field[STAGING]->set_bit(xyzw.x, xyzw.y, xyzw.z); }
+	void __vectorcall				add_force(FXMVECTOR xmIndex) { add_force(SFM::floor_to_u32(xmIndex)); }
+	XMVECTOR const __vectorcall		get_force(uvec4_v const xmIndex) const;
+	XMVECTOR const __vectorcall		get_force(FXMVECTOR xmIndex) const { return(get_force(SFM::floor_to_u32(xmIndex))); }
 
 public:
 	bool const Initialize();

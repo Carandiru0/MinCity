@@ -223,8 +223,8 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 }
 
 float fetch_bluenoise(in const vec2 pixel)
-{										
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).r ); // *bluenoise RED channel used* // *bugfix - temporal blue noise now working with no visible noisyness!
+{																// *bugfix - animated blue noise in raymarch step offset randomization does not look good. too noisy, have to scale it well below dt (a step) - animated blue noise suitable more for dithering and reconstruction - can't see any noisy movement)
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, 0), 0).r ); // *bluenoise RED channel used* // *bugfix - single frame/slice is better for raymarch.
 }
 float fetch_depth()
 {
@@ -443,7 +443,7 @@ void main() {
 	// without modifying interval variables start position
 	
 	// adjust start position by "bluenoise step"	
-	const float jittered_interval = 0.5f * dt * fetch_bluenoise(gl_FragCoord.xy); // jittered offset should be scaled by golden ratio zero (hides some noise)
+	const float jittered_interval = dt * fetch_bluenoise(gl_FragCoord.xy); // jittered offset should be scaled by golden ratio zero (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset

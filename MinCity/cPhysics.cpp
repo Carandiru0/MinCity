@@ -27,10 +27,12 @@ void cPhysics::Update()
 	_force_field[STAGING]->clear(); // reset for next stage!
 }
 	
-XMVECTOR const __vectorcall	cPhysics::get_force(size_t const x, size_t const y, size_t const z) const
+XMVECTOR const __vectorcall	cPhysics::get_force(uvec4_v const xmIndex) const
 {
 	XMVECTOR xmForce(XMVectorZero());
 	
+	ivec4_t iIndex;
+	ivec4_v(xmIndex).xyzw(iIndex);
 	//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
 	//	left = voxB::BIT_ADJ_LEFT,
 	//	right = voxB::BIT_ADJ_RIGHT,
@@ -40,29 +42,29 @@ XMVECTOR const __vectorcall	cPhysics::get_force(size_t const x, size_t const y, 
 
 	uint32_t adjacent(0);
 
-	if (x - 1 >= 0) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(x - 1, y, z) << Volumetric::adjacency::left;
+	if (iIndex.x - 1 >= 0) {
+		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
 		if (direction) {
 			xmForce = XMVectorAdd(xmForce, XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f)); // adjacent to force on the left, outgoing force is left to right.
 			adjacent |= direction;
 		}
 	}
-	if (x + 1 < force_volume::width()) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(x + 1, y, z) << Volumetric::adjacency::right;
+	if (iIndex.x + 1 < force_volume::width()) {
+		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
 		if (direction) {
 			xmForce = XMVectorAdd(xmForce, XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f)); // adjacent to force on the right, outgoing force is right to left.
 			adjacent |= direction;
 		}
 	}
-	if (z - 1 >= 0) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(x, y, z - 1) << Volumetric::adjacency::front;
+	if (iIndex.z - 1 >= 0) {
+		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
 		if (direction) {
 			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)); // adjacent to force in front, outgoing force is front to back.
 			adjacent |= direction;
 		}
 	}
-	if (z + 1 < force_volume::depth()) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(x, y, z + 1) << Volumetric::adjacency::back;
+	if (iIndex.z + 1 < force_volume::depth()) {
+		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
 		if (direction) {
 			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f)); // adjacent to force in back, outgoing force is back to front.
 			adjacent |= direction;
@@ -71,8 +73,8 @@ XMVECTOR const __vectorcall	cPhysics::get_force(size_t const x, size_t const y, 
 	if ((Volumetric::adjacency::left | Volumetric::adjacency::right | Volumetric::adjacency::front | Volumetric::adjacency::back) == (adjacent & (Volumetric::adjacency::left | Volumetric::adjacency::right | Volumetric::adjacency::front | Volumetric::adjacency::back))) { // if all surrounding, introduce an upwards force
 		xmForce = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // adjacent to force above, outgoing force is below to above.
 	}
-	if (y + 1 < force_volume::height()) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(x, y + 1, z) << Volumetric::adjacency::above;
+	if (iIndex.y + 1 < force_volume::height()) {
+		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
 		if (direction) {
 			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f)); // adjacent to force above, outgoing force is above to below.
 			adjacent |= direction;

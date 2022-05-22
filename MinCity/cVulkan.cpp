@@ -1581,8 +1581,8 @@ void cVulkan::CreateIndirectActiveCountBuffer() // required critical buffer need
 	using buf = vk::BufferUsageFlagBits;
 	using pfb = vk::MemoryPropertyFlagBits;
 
-	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_ONLY, true, true); // persistantly mapped
-	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_ONLY, true, true); // persistantly mapped
+	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_TO_GPU, true, true); // persistantly mapped
+	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_TO_GPU, true, true); // persistantly mapped
 	_indirectActiveCount[0] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
 	_indirectActiveCount[1] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
 }

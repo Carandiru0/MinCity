@@ -972,7 +972,6 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 		if (OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
 		{
 			SetProcessPrivilege(hToken, SE_INC_BASE_PRIORITY_NAME, true);
-			SetProcessPrivilege(hToken, SE_INC_WORKING_SET_NAME, true);
 			SetProcessPrivilege(hToken, SE_LOCK_MEMORY_NAME, true);
 		}
 	}
@@ -1109,25 +1108,6 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 			ProcessPowerThrottling,
 			&PowerThrottling,
 			sizeof(PowerThrottling));
-	}
-
-	SYSTEM_INFO sysInfo;
-	GetSystemInfo(&sysInfo);
-
-	// optimize usage of virtual memory of process
-	{
-		size_t szMin(0), szMax(0);
-		DWORD flags(0);
-
-		if (GetProcessWorkingSetSizeEx(hProcess, &szMin, &szMax, &flags)) {
-
-			flags |= (QUOTA_LIMITS_HARDWS_MIN_ENABLE | QUOTA_LIMITS_HARDWS_MAX_DISABLE);
-			// defined private in cMinCity.h
-			szMin += PROCESS_MIN_WORKING_SET / sysInfo.dwPageSize;
-			szMax += PROCESS_MAX_WORKING_SET / sysInfo.dwPageSize;
-			SetProcessWorkingSetSizeEx(hProcess, szMin, szMax, flags);
-
-		}
 	}
 
 	// enable low-fragmentation heap for entire process

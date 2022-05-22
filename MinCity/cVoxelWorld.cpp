@@ -57,6 +57,8 @@
 #include "../Data/Shaders/texturearray.glsl"
 
 #pragma intrinsic(_InterlockedExchangePointer)
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
 
 using namespace world;
 
@@ -3728,22 +3730,22 @@ namespace world
 				_OpacityMap.clear();
 			},
 			[&] {
-				__memclr_stream<32>(MappedVoxels_Terrain_Start, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
+				memset(MappedVoxels_Terrain_Start, 0, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
+				memset(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
+				memset(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				__memclr_stream<32>(MappedVoxels_Static_Start, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
+				memset(MappedVoxels_Static_Start, 0, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
+				memset(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
+				memset(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
 			});
 		
 		__streaming_store_fence(); // ensure "streaming" clears are coherent

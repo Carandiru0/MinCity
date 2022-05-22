@@ -130,16 +130,19 @@ namespace world
 
 			if (XMComparisonAnyTrue(Comp)) {
 				
-				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)));
+				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)) * 0.5f);
 				
 				uvec4_t rgba;
-				MinCity::VoxelWorld->blackbody(SFM::saturate(scalar_force * 0.5f)).rgba(rgba);
+				MinCity::VoxelWorld->blackbody(SFM::saturate(scalar_force)).rgba(rgba);
 				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
 				voxel.Emissive = (0 != voxel.Color);
 
-				_destroyed->set_bit(voxel.x, voxel.y, voxel.z); // next time voxel will be "destroyed"
+				if (scalar_force > 0.5f) { // IF FORCE ISN'T HIGH ENOUGH, DON'T DESTROY, BURN!
+					_destroyed->set_bit(voxel.x, voxel.y, voxel.z); // next time voxel will be "destroyed"
+				}
+				
 				size_t const destroyed_count(_destroyed->bits_set_count());
-				if (destroyed_count > (instance->getVoxelCount() >> 2)) { // if destroyed voxel count is greater than quarter the number of voxels that the model contains, destroy the building game object instance.
+				if (destroyed_count > (instance->getVoxelCount() >> 1)) { // if destroyed voxel count is greater than half the number of voxels that the model contains, destroy the building game object instance.
 					const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
 				}
 				return(voxel);
