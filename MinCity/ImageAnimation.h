@@ -6,6 +6,9 @@
 #include "tTime.h"
 #include "voxelScreen.h"
 #include <Utility/type_colony.h>
+#include <vector>
+
+#define GIF_FILE_EXT L".gif"
 
 class ImageAnimation : public type_colony<ImageAnimation>, private no_copy
 {
@@ -23,6 +26,7 @@ public: // main methods
 	uint32_t const __vectorcall getPixelColor(__m128i const xmPosition) const;
 	void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 private:
+	void buildUniquePlaylist(std::filesystem::path const path_to_gifs);
 	void loadNextImage(uint32_t desired_width, uint32_t const desired_height, uint32_t const unique_hash_seed);
 	void async_loadNextImage(uint32_t const desired_width, uint32_t const desired_height, uint32_t const unique_hash_seed);
 
@@ -38,6 +42,8 @@ private:
 	bool									obtain_allowed;
 	tbb::atomic<int32_t>					status;
 	tbb::atomic<ImagingSequence*>			next_sequence;
+	
+	vector<std::wstring>					unique_playlist;
 public:
 	bool const operator==(ImageAnimation const& src) const
 	{

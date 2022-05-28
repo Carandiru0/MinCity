@@ -245,7 +245,7 @@ namespace voxB
 		
 	} voxelDescPacked;
 	
-	using model_volume = bit_volume<Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ>;
+	using model_volume = bit_volume<Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ>; // 2 MB
 
 	STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex, model_volume const* const __restrict bits) // *note - good only for model max size dimensions
 	{
@@ -393,6 +393,7 @@ namespace voxB
 		voxelModel(uint32_t const width, uint32_t const height, uint32_t const depth)
 			: voxelModelBase(width, height, depth), _identity{ 0, 0 }
 		{}
+		template<bool const EmissionOnly, bool const Faded>
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
@@ -431,6 +432,7 @@ namespace voxB
 	} // end ns
 
 	template<bool const Dynamic>
+	template<bool const EmissionOnly, bool const Faded>
 	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
 		Iso::Voxel const& __restrict oVoxel,
 		voxelModelInstance<Dynamic> const& instance,
@@ -452,8 +454,6 @@ namespace voxB
 			XMVECTOR const  maxDimensionsInv, maxDimensions;
 			float const		YDimension;
 			uint32_t const	Transparency;
-			bool const		Faded,
-							EmissionOnly;
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 			PerformanceType& PerformanceCounters;
@@ -480,9 +480,7 @@ namespace voxB
 				maxDimensionsInv(XMLoadFloat3A(&instance_.getModel()._maxDimensionsInv)), 
 				maxDimensions(uvec4_v(instance_.getModel()._maxDimensions).v4f()),
 				YDimension(XMVectorGetY(maxDimensions)),
-				Transparency(instance_.getTransparency()),
-				Faded(instance_.isFaded()),
-				EmissionOnly(instance_.isEmissionOnly())
+				Transparency(instance_.getTransparency())
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceCounters(PerformanceCounters_)
 #endif
@@ -558,7 +556,7 @@ namespace voxB
 						bool const Transparent(Faded | voxel.Transparent);
 						bool const Emissive((voxel.Emissive & !Faded) & (bool)color); // if color is true black it's not emissive
 						
-						if (!EmissionOnly)
+						if constexpr (!EmissionOnly)
 						{	// xyz = visible relative UV,  w = detailed occlusion 
 							// UV coordinates are not swizzled at this point, however by the fragment shader they are xzy
 							// UV coordinate describe the "visible grid" relative position bound to 0...VOXEL_MINIGRID_VISIBLE_XYZ

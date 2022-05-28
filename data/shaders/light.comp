@@ -74,9 +74,9 @@ bool isLit( in const float sampled_packed_color )
 }
 
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location ) // best jfa result with texelFetch
+vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location )
 {
-	return( textureLod(map, read_location * InvVolumeDimensions, 0) );
+	return( textureLod(map, (read_location + 0.5f) * InvVolumeDimensions, 0) );
 }
 #ifdef SEED
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -110,7 +110,7 @@ vec4 group_load( in const ivec3 local_location ) {
 	const bool bZero = all(greaterThanEqual(local_location, ivec3(0)));
 	const bool bGroup = bZero && all(lessThan(local_location, ivec3(GROUP_SIZE_XY, GROUP_SIZE_XY, GROUP_SIZE_Z)));
 
-	if (subgroupAll( bGroup ) || bGroup) { // fast subgroup & group paths
+	[[branch]] if (subgroupAll( bGroup ) || bGroup) { // fast subgroup & group paths
 
 		return( warp_lds[local_location.x][local_location.y][local_location.z] );
 	}
@@ -131,11 +131,11 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	[[flatten]] if ( isLit(read_warp.packed_color) ) {	// new
+	[[branch]] if ( isLit(read_warp.packed_color) ) {	// new
 			
 		const float read_distance = distance(read_warp.emitter_location, current_location);
 
-		[[flatten]] if ( read_distance < current_distance ) {
+		[[branch]] if ( read_distance < current_distance ) {
 			
 			current_distance = read_distance;
 			warp = read_warp;

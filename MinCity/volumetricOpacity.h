@@ -236,7 +236,7 @@ namespace Volumetric
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 
-				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), true);
+				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), true, true);
 
 				LightProbeMap.imageGPUIn[resource_index] = new vku::TextureImage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,
 					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);

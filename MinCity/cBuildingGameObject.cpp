@@ -122,7 +122,7 @@ namespace world
 		
 		Volumetric::voxelModelInstance_Static const* const __restrict instance(getModelInstance());
 
-		XMVECTOR xmForce = MinCity::Physics->get_force(xmIndex);
+		XMVECTOR xmForce = MinCity::Physics->get_force(xmIndex); // (mass of voxel is 1.0) f = ma   So FORCE = ACCELERATION
 
 		{ // destroy voxel if force is present
 			uint32_t Comp(0);
@@ -130,14 +130,14 @@ namespace world
 
 			if (XMComparisonAnyTrue(Comp)) {
 				
-				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)) * 0.5f);
+				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)));
 				
-				uvec4_t rgba;
-				MinCity::VoxelWorld->blackbody(SFM::saturate(scalar_force)).rgba(rgba);
+				uvec4_t rgba;													 // scaled by a factor to put the values in a suitable position for applied forces.
+				MinCity::VoxelWorld->blackbody(scalar_force * 0.5f).rgba(rgba);  // burning effect, "extra flames"
 				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
 				voxel.Emissive = (0 != voxel.Color);
 
-				if (scalar_force > 0.5f) { // IF FORCE ISN'T HIGH ENOUGH, DON'T DESTROY, BURN!
+				if (scalar_force > cPhysics::MIN_FORCE) { // IF FORCE ISN'T HIGH ENOUGH, DON'T DESTROY, BURN!
 					_destroyed->set_bit(voxel.x, voxel.y, voxel.z); // next time voxel will be "destroyed"
 				}
 				
@@ -149,28 +149,22 @@ namespace world
 			}
 		}
 		
+		xmForce = XMVectorScale(xmForce, cPhysics::GRAVITY);
+		
 		tTime const tNow(now());
-
+		float const tDelta = time_to_float(tNow - instance->getDestructionTime());
+		
 		// destruction sequence ?
 		if (zero_time_point != instance->getDestructionTime()) {
 
 			float const maxHeight((float)instance->getModel()._maxDimensions.y);
-			fp_seconds const tDelta = tNow - instance->getDestructionTime();
-			fp_seconds const tSequenceLength = instance->getDestructionSequenceLength() * maxHeight;
+			float const tSequenceLength = time_to_float(instance->getDestructionSequenceLength()) * maxHeight;
+			float const t = (tDelta / tSequenceLength);
 			
-			float const t = time_to_float(tDelta / tSequenceLength);
-			
-			if (isVoxelWindow(voxel)) {
+			if (isVoxelWindow(voxel)) { // burning windows
+				
 				uvec4_t rgba;
 				MinCity::VoxelWorld->blackbody(1.0f - t).rgba(rgba);
-				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
-				voxel.Emissive |= (0 != voxel.Color);
-			}
-			else {
-				float const scalar_force(XMVectorGetX(XMVector3Length(xmForce)));
-
-				uvec4_t rgba;
-				MinCity::VoxelWorld->blackbody(SFM::saturate(scalar_force * 0.5f)).rgba(rgba);
 				voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
 				voxel.Emissive |= (0 != voxel.Color);
 			}
@@ -181,19 +175,20 @@ namespace world
 			
 			if (expected_floor - top_floor >= 0.0f) {
 
-				xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 9.81f * 0.5f, 0.0f, 0.0f));
+				xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -0.5f * SFM::min(cPhysics::GRAVITY, (t + 0.5f) * cPhysics::GRAVITY), 0.0f, 0.0f)); // stall floor collapse
 			}
 			
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -9.81f, 0.0f, 0.0f)); // gravity
-			xmForce = XMVectorScale(xmForce, time_to_float(tDelta) * time_to_float(tDelta));
-			xmIndex = XMVectorAdd(xmIndex, xmForce);
-			
-			//xmForce = XMVector3Normalize(xmForce);
-			XMVECTOR const xmGround(XMVectorSet(0.0f, instance->getElevation(), 0.0f, 0.0f));
-			xmIndex = SFM::clamp(xmIndex, xmGround, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ_MINUS_ONE);
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, cPhysics::GRAVITY, 0.0f, 0.0f)); // gravity 
 		}
+
+		xmForce = XMVectorScale(xmForce, tDelta * tDelta); // acceleration -> force (current value in xmForce is acceleration, to make it acceleration we multiply by time squared. Since the mass of a voxel is 1.0, we get force) f = ma So FORCE = ACCELERATION
+		xmIndex = XMVectorAdd(xmIndex, xmForce); // displace current position by the instaneous acceleration/force being applied [simplification]
+
+		XMVECTOR const xmGround(XMVectorSet(0.0f, instance->getElevation(), 0.0f, 0.0f));
+		xmIndex = SFM::clamp(xmIndex, xmGround, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ_MINUS_ONE);
+		
 		// creation sequence ?
-		else if (!(Volumetric::eVoxelModelInstanceFlags::INSTANT_CREATION & instance->getFlags()))
+		if (!(Volumetric::eVoxelModelInstanceFlags::INSTANT_CREATION & instance->getFlags()))
 		{
 			uint32_t const maxHeight(instance->getModel()._maxDimensions.y);
 

@@ -704,6 +704,8 @@ void cMinCity::UpdateWorld()
 		bWasPaused = false;
 	}
 
+	Audio->Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
+	
 	// *first*
 	VoxelWorld->clearMiniVoxels(bPaused | !MinCity::Vulkan->isRenderingEnabled()); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface) *bugfix - DEBUG_DISALLOW_PAUSE_FOCUS_LOST causes major issue. To still allow debugging of normal (unpaused) state, isRenderingEnabled is added here to solve the problem with clearing minivoxels properly while window is "inactive" or focus is lost.
 
@@ -724,22 +726,28 @@ void cMinCity::UpdateWorld()
 
 	// add to fixed timestamp n fixed steps, while also removing the fixed step from the 
 	m_tDelta = tDeltaFixedStep;
+	bool bTick(false);
 	while (tAccumulate >= critical_delta()) {
 
 		m_tNow += tDeltaFixedStep;  // pause-able time step
 		m_tCriticalNow += critical_delta();
 
 		tAccumulate -= critical_delta();
+		
+		if (!bTick) {
+			Physics->Update(); // limited to the fixed timestep of one iteration per frame
+		}
 		// *bugfix - it's absoletly critical to keep this in the while loop, otherwise frame rate independent motion will be broken.
 		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
+		bTick = true;
 	}
 	
 	// fractional amount for render path (uniform shader variables)
 	VoxelWorld->UpdateUniformState(time_to_float(fp_seconds(tAccumulate) / fp_seconds(critical_delta()))); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
 	// *fifth*
-	Audio->Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
-	
+	// reserved spot
+		
 	// *sixth*
 	if (bInputDelta) {  
 		Nuklear->UpdateGUI(); // gui requires critical timing (always on, never pause gui)
@@ -774,7 +782,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld->Render(resource_index);
-	Physics->Update(); // regular interval of (every frame)
 	Vulkan->checkStaticCommandsDirty(resource_index);
 }
 
@@ -1274,8 +1281,8 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	_.Audio.CleanUp();
 	_.Nuklear.CleanUp();
 	_.PostProcess.CleanUp();
-	_.VoxelWorld.CleanUp();
 	_.Physics.CleanUp();
+	_.VoxelWorld.CleanUp();
 	_.TextureBoy.CleanUp();
 
 	_.Vulkan.Cleanup(glfwwindow);  /// should be LAST //

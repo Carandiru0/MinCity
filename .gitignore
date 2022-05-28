@@ -70,3 +70,10 @@ VTune Profiler Results
 MinCity/x64/Debug/MinCity.ilk
 MinCity/x64/Debug/MinCity.ilk
 *.ilk
+GPUCache/data_0
+GPUCache/data_1
+GPUCache/data_2
+GPUCache/data_3
+GPUCache/index
+*.ember
+MinCity/x64/Debug/MinCity.ilk

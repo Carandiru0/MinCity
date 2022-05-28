@@ -7,7 +7,7 @@ namespace Volumetric
 		static constexpr uint32_t const		// constants to determine index x,y,z of light in light probe map
 			LIGHT_MOD_WIDTH_BITS = 2U,
 			LIGHT_MOD_WIDTH = (1 << LIGHT_MOD_WIDTH_BITS),
-			LIGHT_MOD_HEIGHT_BITS = 3U,
+			LIGHT_MOD_HEIGHT_BITS = 2U,
 			LIGHT_MOD_HEIGHT = (1 << LIGHT_MOD_HEIGHT_BITS),
 			LIGHT_MOD_DEPTH_BITS = LIGHT_MOD_WIDTH_BITS,
 			LIGHT_MOD_DEPTH = (1 << LIGHT_MOD_DEPTH_BITS);

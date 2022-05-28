@@ -55,7 +55,7 @@ layout(location = 0) in streamIn
 	readonly noperspective vec3	rd;
 	readonly noperspective vec3	eyePos;
 	readonly flat vec3			eyeDir;
-	readonly flat float			slice;
+	//readonly flat float			slice;
 } In;
 
 #define OUT_REFLECT 0
@@ -310,13 +310,13 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = (sigmaS + attenuation + emission * (10.0f)) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+    const vec3 Li = (sigmaS + attenuation) * light_color * PHASE_FUNCTION; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
 	const float sigma_dt = exp2(-sigmaE * attenuation * interval_length); // *bugfix - "interval_length" normalizes the contribution of this iteration. Fixes where bottom of screen(near) had higher light density than top of screen(far).
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran *= sigma_dt + emission * dt;				// decay or grows with emission
+	voxel.tran *= sigma_dt + emission * emission;		// *bugfix - dot not multiply emission by dt, square it and add to transmission. emission finaly works right. ***do not change***		// decay or grows with emission
 }
 
 

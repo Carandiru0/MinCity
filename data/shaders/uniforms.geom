@@ -16,7 +16,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
 
-layout(points) in;
+layout(points) in;					// maximum 3 faces/quads visible of any cube/voxel
 layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far slower - don't use
 
 #define FRAGMENT_OUT

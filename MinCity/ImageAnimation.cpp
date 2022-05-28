@@ -4,7 +4,7 @@
 #include <Random/superrandom.hpp>
 #include <filesystem>
 #include <Utility/async_long_task.h>
-
+#include <Utility/stringconv.h>
 #include "ImageAnimation.h"
 
 static constexpr uint32_t const MICRO_PIXEL_HEIGHT_MAX = 16;
@@ -155,67 +155,52 @@ void ImageAnimation::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __
 	obtain_allowed = false; // always reset every frame
 }
 
-static uint32_t const count_gifs_in_directory( fs::path const path_to_textures )
+void ImageAnimation::buildUniquePlaylist(fs::path const path_to_gifs)
 {
-	uint32_t gif_count(0);
+	// guarded
+	if (unique_playlist.empty()) {
+		for (auto const& entry : fs::directory_iterator(path_to_gifs)) {
 
-	fs::path const gif_extension(L".gif");
-
-	for (auto const& entry : fs::directory_iterator(path_to_textures)) {
-
-		if (entry.path().extension() == gif_extension) {
-			++gif_count;
+			if (entry.exists() && !entry.is_directory()) {
+				if (stringconv::case_insensitive_compare(GIF_FILE_EXT, entry.path().extension().wstring())) // only vdb files 
+				{
+					unique_playlist.push_back(entry.path().wstring());
+				}
+			}
 		}
-
+		
+		random_shuffle(unique_playlist.begin(), unique_playlist.end());
 	}
-
-	return(gif_count);
 }
 
 void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desired_height, uint32_t const unique_hash_seed)
 {
-	constinit static uint32_t gif_count[2]{};
-
 	uint32_t const micro((uint32_t const)(desired_height <= MICRO_PIXEL_HEIGHT_MAX));
 
-	if (0 == gif_count[micro]) { // acquire gif count on first request of either regular gif dir or alternatively micro gif sub dir
-
+	if (unique_playlist.empty()) {
+		
+		fs::path gifDirectory(GIF_DIR);
 		if (micro) {
-			gif_count[micro] = count_gifs_in_directory(GIF_DIR L"micro/");
+			gifDirectory += L"micro/";
 		}
-		else {
-			gif_count[micro] = count_gifs_in_directory(GIF_DIR);
-		}
+		buildUniquePlaylist(gifDirectory);
 	}
-
-	uint32_t limit(gif_count[micro]);
+	
 	bool exists(false);
 
-	do
+	while (!exists && !unique_playlist.empty()); // *bugfix - loading gif consistent now.
 	{
-		int32_t const random_index((forced_sequence >= 0 ? forced_sequence : PsuedoRandomNumber(0, gif_count[micro])));
+		std::wstring const wszFile(unique_playlist.back());
+		unique_playlist.pop_back();
 
-		std::string const szFile(fmt::format(FMT_STRING("anim_{:03d}.gif"), random_index));
-
-		std::wstring wszFile(szFile.begin(), szFile.end());
-
-		if (micro) {
-			wszFile = (GIF_DIR L"micro/") + wszFile;
-			desired_width = 0; // for micro default to native gif width (which imaging does on zeros paased in for either width or height
-		}
-		else {
-			wszFile = GIF_DIR + wszFile;
-		}
-
-		exists = fs::exists(wszFile);
+		exists = fs::exists(wszFile); // double check
 
 		if (exists) {
 
 			next_sequence = ImagingLoadGIFSequence(wszFile, desired_width, desired_height);
 			return;
 		}
-
-	} while (!exists && 0 != --limit); // *bugfix - loading gif consistent now.
+	}
 
 	next_sequence = nullptr;
 }

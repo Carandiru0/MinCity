@@ -2,29 +2,62 @@
 #include "globals.h"
 #include "cPhysics.h"
 #include "adjacency.h"
+#include <Utility/async_long_task.h>
+
+#define PAST STAGING // use with care
 
 cPhysics::cPhysics()
-	: _force_field{ nullptr, nullptr }
+	: _force_field_direction{ nullptr, nullptr }, _task_id_physics(0)
 {
 
 }
 
 bool const cPhysics::Initialize()
 {
-	_force_field[STAGING] = force_volume::create();
-	_force_field[COHERENT] = force_volume::create();
+	_force_field_direction[STAGING] = force_volume::create();
+	_force_field_direction[COHERENT] = force_volume::create();
 	
 	return(true);
 }
 
 void cPhysics::Update()
 {
-	// this update ensures at ivery game loop tick() that the latest COHERENT forcefield is used, and the STAGING forcefield is cleared for next frame.
-	auto const pOLD(_force_field[COHERENT]);
-	// all staging must be complete by the time this update method is called //
-	_force_field[COHERENT] = std::move(_force_field[STAGING]);
-	_force_field[STAGING] = std::move(pOLD);
-	_force_field[STAGING]->clear(); // reset for next stage!
+	// CURRENT MAIN THREAD //
+	
+	// this update ensures at every game loop tick() that the latest COHERENT forcefield is used, and the STAGING forcefield is cleared for next frame.
+	
+	{ // direction
+		// all staging must be complete by the time this update method is called //
+		auto const old_ptr = _force_field_direction[COHERENT];
+		_force_field_direction[COHERENT] = _force_field_direction[STAGING];
+		_force_field_direction[STAGING] = old_ptr;
+	}
+	
+	{ // magnitude
+		// all staging must be complete by the time this update method is called //
+		//auto const old_ptr = _force_field_magnitude[COHERENT];
+		//_force_field_magnitude[COHERENT] = _force_field_magnitude[STAGING];
+		//_force_field_magnitude[STAGING] = old_ptr;
+	}
+
+	// - NOW WERE COHERENT - //
+	
+	// PREPARE / CLEAR STAGING FOR NEXT RENDER STAGING ASYNCHRONOUSLY, ALLOW MAIN THREAD TO CONTINUE //
+	//async_long_task::wait<background>(_task_id_physics, "physics");
+	//_task_id_physics = async_long_task::enqueue<background>([&] {
+
+		// direction
+		_force_field_direction[STAGING]->clear(); // reset for next stage!
+		
+		{ // magnitude
+			// @todo ******performance of this memset is laughable 500MB / frame haha or 16 GB of BW per second. DDR4 RAM can handle.... ~40GB/s 4 channel i believe. My system is gimped at 3 channel, one DIMM destroyed so 30 GB/s - this uses half of the available BW if it were ideal - multithreaded memset maybe needed?
+			//__memset_threaded<64>(_force_field_magnitude[STAGING], 0, force_volume::total_bit_count * sizeof(float)); // reset for next stage!
+		}
+
+		// NEW STAGING CAN BEGIN //
+	//});
+
+	// CONTINUE, NO DATA DEPENDENCY ON CLEARING THE OLD DATA THAT WILL BE USED FOR STAGING THE NEXT FRAME //
 }
 	
 XMVECTOR const __vectorcall	cPhysics::get_force(uvec4_v const xmIndex) const
@@ -42,55 +75,78 @@ XMVECTOR const __vectorcall	cPhysics::get_force(uvec4_v const xmIndex) const
 
 	uint32_t adjacent(0);
 
+	// force right
 	if (iIndex.x - 1 >= 0) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
+		size_t const index(force_volume::get_index(iIndex.x - 1, iIndex.y, iIndex.z));
+		
+		uint32_t const direction = _force_field_direction[COHERENT]->read_bit(index) << Volumetric::adjacency::left;
 		if (direction) {
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f)); // adjacent to force on the left, outgoing force is left to right.
+			float const magnitude = 1.0f + float(_force_field_direction[PAST]->read_bit(index));
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(magnitude, 0.0f, 0.0f, 0.0f)); // adjacent to force on the left, outgoing force is left to right.
 			adjacent |= direction;
 		}
 	}
+	// force left
 	if (iIndex.x + 1 < force_volume::width()) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
+		size_t const index(force_volume::get_index(iIndex.x + 1, iIndex.y, iIndex.z));
+		
+		uint32_t const direction = _force_field_direction[COHERENT]->read_bit(index) << Volumetric::adjacency::right;
 		if (direction) {
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f)); // adjacent to force on the right, outgoing force is right to left.
+			float const magnitude = 1.0f + float(_force_field_direction[PAST]->read_bit(index));
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(-magnitude, 0.0f, 0.0f, 0.0f)); // adjacent to force on the right, outgoing force is right to left.
 			adjacent |= direction;
 		}
 	}
+	// force forward
 	if (iIndex.z - 1 >= 0) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
+		size_t const index(force_volume::get_index(iIndex.x, iIndex.y, iIndex.z - 1));
+		
+		uint32_t const direction = _force_field_direction[COHERENT]->read_bit(index) << Volumetric::adjacency::front;
 		if (direction) {
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)); // adjacent to force in front, outgoing force is front to back.
+			float const magnitude = 1.0f + float(_force_field_direction[PAST]->read_bit(index));
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 0.0f, magnitude, 0.0f)); // adjacent to force in front, outgoing force is front to back.
 			adjacent |= direction;
 		}
 	}
+	// force backward
 	if (iIndex.z + 1 < force_volume::depth()) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+		size_t const index(force_volume::get_index(iIndex.x, iIndex.y, iIndex.z + 1));
+		
+		uint32_t const direction = _force_field_direction[COHERENT]->read_bit(index) << Volumetric::adjacency::back;
 		if (direction) {
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f)); // adjacent to force in back, outgoing force is back to front.
-			adjacent |= direction;
-		}
-	}
-	if ((Volumetric::adjacency::left | Volumetric::adjacency::right | Volumetric::adjacency::front | Volumetric::adjacency::back) == (adjacent & (Volumetric::adjacency::left | Volumetric::adjacency::right | Volumetric::adjacency::front | Volumetric::adjacency::back))) { // if all surrounding, introduce an upwards force
-		xmForce = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // adjacent to force above, outgoing force is below to above.
-	}
-	if (iIndex.y + 1 < force_volume::height()) {
-		uint32_t const direction = _force_field[COHERENT]->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
-		if (direction) {
-			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f)); // adjacent to force above, outgoing force is above to below.
+			float const magnitude = 1.0f + float(_force_field_direction[PAST]->read_bit(index));
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, 0.0f, -magnitude, 0.0f)); // adjacent to force in back, outgoing force is back to front.
 			adjacent |= direction;
 		}
 	}
 	
+	// force upwards
+	if ((Volumetric::adjacency::left | Volumetric::adjacency::right | Volumetric::adjacency::front | Volumetric::adjacency::back) == (adjacent & (Volumetric::adjacency::left | Volumetric::adjacency::right | Volumetric::adjacency::front | Volumetric::adjacency::back))) { // if all surrounding, introduce an upwards force
+		xmForce = XMVectorSet(0.0f, XMVectorGetX(XMVector3Length(xmForce)), 0.0f, 0.0f); // adjacent to force above, outgoing force is below to above.
+	}
+
+	// force downwards
+	if (iIndex.y + 1 < force_volume::height()) {
+		size_t const index(force_volume::get_index(iIndex.x, iIndex.y + 1, iIndex.z));
+		
+		uint32_t const direction = _force_field_direction[COHERENT]->read_bit(index) << Volumetric::adjacency::above;
+		if (direction) {
+			float const magnitude = 1.0f + float(_force_field_direction[PAST]->read_bit(index));
+			xmForce = XMVectorAdd(xmForce, XMVectorSet(0.0f, -magnitude, 0.0f, 0.0f)); // adjacent to force above, outgoing force is above to below.
+			adjacent |= direction;
+		}
+	}
+	
+	// returns a NON-normalized force vector, it has a magnitude that can be obtained from the vectors length.
 	return(xmForce);	
 }
 
 void cPhysics::CleanUp()
 {
-	if (_force_field[STAGING]) {
-		force_volume::destroy(_force_field[STAGING]); _force_field[STAGING] = nullptr;
+	for (uint32_t i = 0; i < 2; ++i) {
+		if (_force_field_direction[i]) {
+			force_volume::destroy(_force_field_direction[i]);
+			_force_field_direction[i] = nullptr;
+		}
 	}
-
-	if (_force_field[COHERENT]) {
-		force_volume::destroy(_force_field[COHERENT]); _force_field[COHERENT] = nullptr;
-	}	
 }

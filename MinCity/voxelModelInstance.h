@@ -177,7 +177,16 @@ namespace Volumetric
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
 		tbb::affinity_partitioner& __restrict partitioner) const
 	{
-		model.Render(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+		//* bugfix - hoisted out of parallel loop, don't change.
+		if (isEmissionOnly()) {
+			model.Render<true, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+		}
+		else if (isFaded()) {
+			model.Render<false, true>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+		}
+		else {
+			model.Render<false, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+		}
 		if (child) {
 			// safe down cast
 			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans, partitioner);

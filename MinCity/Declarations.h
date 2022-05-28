@@ -159,7 +159,7 @@ INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* __restrict dest, Vert
 {
 	dest = std::assume_aligned<16>(dest);
 
-	_mm_stream_ps((float* const __restrict)dest, src.worldPos);
+	_mm_stream_ps((float* const __restrict)dest, src.worldPos);				// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h
 	_mm_stream_ps(((float* const __restrict)dest) + 4, src.uv_vr);
 	_mm_stream_ps(((float* const __restrict)dest) + 8, src.orient_reserved);
 

@@ -559,9 +559,36 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 
 			static constexpr uint32_t const all(BIT_ADJ_LEFT | BIT_ADJ_RIGHT | BIT_ADJ_FRONT | BIT_ADJ_BACK | BIT_ADJ_ABOVE);
 
-			if (all != p.pVoxels[i].getAdjacency()) { // cull all voxels that have been completely surrounded by other voxels, which implies this voxel is hidden regardless of transparency or other things.
+			uint32_t const adjacency(p.pVoxels[i].getAdjacency());
+			if (0 != adjacency && all != adjacency) {	// 0 - cull all voxels that are "alone" with nothing adjacent.
+														// all - cull all voxels that have been completely surrounded by other voxels, which implies this voxel is hidden regardless of transparency or other things.
 
-				p.tmpVectors.local().emplace_back(p.pVoxels[i]);
+				// finally "interior faces" removal
+				voxelDescPacked voxel(p.pVoxels[i]);
+				XMVECTOR const xmVoxel(uvec4_v(voxel.getPosition()).v4f());
+				XMVECTOR const xmOrigin(XMVectorZero()); // origin placed at bottom of model
+				
+				XMVECTOR const xmDir(XMVector3Normalize(XMVectorSubtract(xmOrigin, xmVoxel)));
+				
+				if (!(BIT_ADJ_BACK & adjacency)) {
+
+					voxel.Back = XMVectorGetX(XMVector3Dot(XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f), -xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
+				}
+				if (!(BIT_ADJ_FRONT & adjacency)) {
+
+					voxel.Front = XMVectorGetX(XMVector3Dot(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
+				}
+				
+				if (!(BIT_ADJ_RIGHT & adjacency)) {
+
+					voxel.Right = XMVectorGetX(XMVector3Dot(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
+				}
+				if (!(BIT_ADJ_LEFT & adjacency)) {
+
+					voxel.Left = XMVectorGetX(XMVector3Dot(XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f), -xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
+				}
+				
+				p.tmpVectors.local().emplace_back(voxel);
 			}
 			});
 
@@ -927,7 +954,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 						SFM::saturate_to_u8(_mm_setr_epi32(vdbCoord.x(), vdbCoord.y(), vdbCoord.z(), 0), curVoxel); // makes sure that all coordinates are clamped to [0, 255], within the limits for model dimensions.
 
 						// only add the voxel if it hasn't already been added
-						size_t const index(bits->get_index(curVoxel.x, curVoxel.z, curVoxel.y));  // *note -> swizzle of y and z here required
+						size_t const index(model_volume::get_index(curVoxel.x, curVoxel.z, curVoxel.y));  // *note -> swizzle of y and z here required
 
 						if (bits->read_bit(index)) {  // existing
 
@@ -1291,13 +1318,14 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 				szMemoryMappedPathFilename += szFolderName;
 				szMemoryMappedPathFilename += MMP_FILE_EXT;
 
-				FILE* __restrict stream(nullptr);
-				if ((0 == _wfopen_s(&stream, szMemoryMappedPathFilename.c_str(), L"wbST")) && stream) {
+				FILE * __restrict stream(nullptr);
+				if ((stream = _wfsopen(szMemoryMappedPathFilename.c_str(), L"wbST", _SH_DENYWR))) {
 
 					_fwrite_nolock(&pDestMem->_Voxels[0], sizeof(voxelDescPacked), pDestMem->_numVoxels, stream);
-					_fclose_nolock(stream);
+					_fflush_nolock(stream);
+					_fclose_nolock(stream); // handover to mmio
 					stream = nullptr;
-					
+
 					// memory map the temporary file, using the global vector that keeps track of the memory mapped files
 					std::error_code error{};
 

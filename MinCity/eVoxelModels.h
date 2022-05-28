@@ -122,7 +122,9 @@ namespace Volumetric
 				static inline uint32_t
 
 					GROUND_EXPLOSION = 0,
-					GROUND_EXPLOSION2 = 1;
+					SPIKE_EXPLOSION = 1,
+					TINY_EXPLOSION = 2,
+					MEDIUM_FIRE = 3;
 			};
 		};
 	};

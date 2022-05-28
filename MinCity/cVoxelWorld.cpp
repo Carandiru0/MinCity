@@ -795,7 +795,7 @@ void cVoxelWorld::OnMouseRightClick()
 		return; // input disabled!
 
 	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::TINY_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
@@ -1085,7 +1085,7 @@ namespace world
 			uvec4_t uiIndex;
 			uvIndex.xyzw(uiIndex);
 
-			size_t const index(mini::bits->get_index(uiIndex.x, uiIndex.y, uiIndex.z));
+			size_t const index(mini::volume::get_index(uiIndex.x, uiIndex.y, uiIndex.z));
 
 			if (!mini::bits->read_bit(index)) {  // filter out, if already set, nothing get added
 
@@ -2930,8 +2930,8 @@ namespace world
 			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			the::temp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			 
-			memset(the::grid._protected, 0, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			memset(the::temp._protected, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			__memclr_stream<CACHE_LINE_BYTES>(the::grid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			__memclr_stream<CACHE_LINE_BYTES>(the::temp._protected, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			
 			mini::voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
@@ -3624,27 +3624,27 @@ namespace world
 		// *** these staging buffers are dynamic, the active size is reset to zero for a reason here.
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
 			voxels.visibleDynamic.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), true);
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), true, true);
 			voxels.visibleDynamic.opaque.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleDynamic.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), true);
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), true, true);
 			voxels.visibleDynamic.trans.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleStatic.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), true);
+				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), true, true);
 			voxels.visibleStatic.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleTerrain.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), true, true);
 			voxels.visibleTerrain.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleRoad.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.opaque.type), true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.opaque.type), true, true);
 			voxels.visibleRoad.opaque.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleRoad.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.trans.type), true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.trans.type), true, true);
 			voxels.visibleRoad.trans.stagingBuffer[i].setActiveSizeBytes(0);
 		}
 
@@ -3730,22 +3730,22 @@ namespace world
 				_OpacityMap.clear();
 			},
 			[&] {
-				memset(MappedVoxels_Terrain_Start, 0, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
+				__memclr_stream<32>(MappedVoxels_Terrain_Start, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				memset(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
+				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				memset(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
+				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				memset(MappedVoxels_Static_Start, 0, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
+				__memclr_stream<32>(MappedVoxels_Static_Start, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				memset(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
+				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
 			},
 				[&] {
-				memset(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
+				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
 			});
 		
 		__streaming_store_fence(); // ensure "streaming" clears are coherent
@@ -4915,7 +4915,7 @@ namespace world
 			// **bugfix - because nothing is rendered while the window is not active (user alt-tabbed, etc) the "reset" that each minivoxel does for it self after being rendered never happens.
 			// this results in an evergrowing linked list, resulting in undefined behaviour. So while paused this works around that by clearing the pointers to the vector of minivoxels.
 			// so there is no separate clear while not paused - which is the normal path.
-			memset(the::temp, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE); // set all pointers to nullptr
+			__memclr_stream<CACHE_LINE_BYTES>(the::temp, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE); // set all pointers to nullptr
 			// clearing the vector must follow
 		}
 

@@ -14,9 +14,9 @@ namespace world
 		static inline cExplosionGameObject* debug_explosion_game_object = nullptr;
 #endif
 	public:
-		static constexpr float const DEFAULT_TEMPERATURE_BOOST = 0.333f,
-									 DEFAULT_FLAME_BOOST = 0.666f,			
-									 DEFAULT_EMISSION_THRESHOLD = 0.15f; // higher = more darkness optimized out (doesn't emit light for area's with color that is dark enough to have ~nil luminance) (tuned - if too high regulation of emission threshold blows up (becomes to sensitive))
+		static constexpr float const DEFAULT_TEMPERATURE_BOOST = 0.25f,
+									 DEFAULT_FLAME_BOOST = 0.5f,			
+									 DEFAULT_EMISSION_THRESHOLD = 0.2f; // higher = more darkness optimized out (doesn't emit light for area's with color that is dark enough to have ~nil luminance) (tuned - if too high regulation of emission threshold blows up (becomes to sensitive))
 		
 	public:
 		constexpr virtual types::game_object_t const to_type() const override final {

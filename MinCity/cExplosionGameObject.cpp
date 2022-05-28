@@ -92,24 +92,28 @@ namespace world
 		if (udensity) {
 			density = (float)udensity * NORMALIZE;
 			xmColor = XMVectorReplicate(density);
+			// smoke voxels are "checkerboarded"
+			voxel.Hidden = (voxel.x & 1) | (voxel.y & 1) | (voxel.z & 1);
 		}
 		
 		if (uflames) { // flames present?
 			
 			float const temperature((float)uflames * NORMALIZE);
 
-			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature * (1.0f + _flameBoost))); // convert temperature to color
+			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature + _flameBoost)); // convert temperature to color
 
 			xmColor = XMVectorAdd(xmColor, XMVectorScale(black_body.v4f(), NORMALIZE));
+			voxel.Hidden = false;
 		}
 		
 		if (utemperature) { // temperature present?
 
 			float const temperature((float)utemperature * NORMALIZE);
 
-			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature + _temperatureBoost * (1.0f - density))); // convert temperature to color
+			uvec4_v const black_body(MinCity::VoxelWorld->blackbody(temperature + _temperatureBoost)); // convert temperature to color
 
 			xmColor = XMVectorAdd(xmColor, XMVectorScale(black_body.v4f(), NORMALIZE));
+			voxel.Hidden = false;
 		}
 
 		// area's that are less dense are brighter than denser areas - creates dark "spots" where density is high
@@ -126,7 +130,10 @@ namespace world
 		uvec4_t rgba;
 		SFM::saturate_to_u8(XMVectorScale(xmColor, DENORMALIZE), rgba);
 		voxel.Color = 0x00ffffff & SFM::pack_rgba(rgba);
-		//voxel.Color = 0;
+
+		// (mass of voxel is 1.0) f = ma   So FORCE = ACCELERATION
+		// therefore this is setup to be in voxels/second squared [acceleration]
+		// obey cPhysics:MIN_FORCE and cPhysics:MAX_FORCE limits or else the explosion will explode (as suggested by github pilot)
 		MinCity::Physics->add_force(xmIndex);
 		
 		return(voxel);
@@ -137,12 +144,11 @@ namespace world
 		if (_animation.update(getModelInstance(), tDelta)) {
 
 			// random start angle
-			getModelInstance()->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
-			getModelInstance()->destroy(milliseconds(0));
+			//getModelInstance()->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
+			//getModelInstance()->destroy(milliseconds(0));
 		}
-		
-		//getModelInstance()->setVoxelTransparentCount(getModelInstance()->getVoxelCount());
-		//getModelInstance()->setTransparency(Volumetric::eVoxelTransparency::ALPHA_25);
+			
+		getModelInstance()->setAzimuth(getModelInstance()->getAzimuth() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
 		
 		// ** stable feedback auto regulating emission threshold. Dependent on both the temperature + flames boost levels/inputs.
 		// ** do not change ** provides some dynamic range to the emission/lighting. also optimizes out dark lights that have ~nil emission.
