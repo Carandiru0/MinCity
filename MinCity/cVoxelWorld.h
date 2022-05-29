@@ -126,8 +126,8 @@ namespace world
 		bool const renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 		
 		void Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo);
-		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer* const* const& __restrict vbo);
-		void AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
+		void Transfer(uint32_t resource_index, vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer* const* const& __restrict vbo);
+		void AcquireTransferQueueOwnership(uint32_t resource_index, vk::CommandBuffer& __restrict cb);
 
 		
 		void PreUpdate(bool const bPaused);																																		 //         0.) Order of operations, *each operation is dependent on previous operation*

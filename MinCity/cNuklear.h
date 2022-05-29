@@ -197,7 +197,7 @@ public:
 
 	bool const enableMinimapRendering(bool const bEnable) { return(_InterlockedCompareExchange(reinterpret_cast<uint32_t* const __restrict>(&_bMinimapRenderingEnabled), bEnable, !bEnable)); }
 
-	void Upload(uint32_t const resource_index, vk::CommandBuffer& __restrict cb_transfer,
+	void Upload(uint32_t resource_index, vk::CommandBuffer& __restrict cb_transfer,
 				vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo);
 	void AcquireTransferQueueOwnership(vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo);
 	void Render(vk::CommandBuffer& __restrict cb_render,

@@ -810,7 +810,9 @@ void cVulkan::CreatePostAAResources()
 	dslm.image(11U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, samplers);					// 3d lut
 	dslm.image(12U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui 0
 	dslm.image(13U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui 1
-
+	dslm.image(14U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 0
+	dslm.image(15U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 1
+	
 	_aaData.descLayout = dslm.createUnique(_device);	// *same descriptor set used across all post - process shaders *
 	// We need to create a descriptor set to tell the shader where
 	// our buffers are.
@@ -827,6 +829,7 @@ void cVulkan::CreatePostAAResources()
 	// 
 	vku::PipelineLayoutMaker		plm;
 	plm.descriptorSetLayout(*_aaData.descLayout);			// *same pipeline layout used across all post - process shaders *
+	plm.pushConstantRange(vk::ShaderStageFlagBits::eFragment, 0, sizeof(UniformDecl::PostPushConstants));
 	_aaData.pipelineLayout = plm.createUnique(_device);
 
 	std::vector< vku::SpecializationConstant > constants;
@@ -968,6 +971,27 @@ void cVulkan::CreatePostAAResources()
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[4] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
+	
+	{ // presentation
+		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
+		pm.depthCompareOp(vk::CompareOp::eAlways);
+		pm.depthClampEnable(VK_FALSE);
+		pm.depthTestEnable(VK_FALSE);
+		pm.depthWriteEnable(VK_FALSE);
+		pm.cullMode(vk::CullModeFlagBits::eBack);
+		pm.frontFace(vk::FrontFace::eClockwise);
+		
+		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp3.frag.bin", constants };
+		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
+		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
+
+		// Create a pipeline using a renderPass
+		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
+		pm.subPass(2U);
+		
+		auto& cache = _fw.pipelineCache();
+		_aaData.pipeline[5] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
+	}
 }
 
 void cVulkan::CreateVoxelResources()
@@ -1024,7 +1048,7 @@ void cVulkan::CreateVoxelResources()
 
 			CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR],
 				_window->finalPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_basic_clear_terrain_, geom_null_, frag_null_, 1U);
+				vert_basic_clear_terrain_, geom_null_, frag_null_, 2U);
 		}
 	}
 
@@ -1152,7 +1176,7 @@ void cVulkan::CreateVoxelResources()
 
 				CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR],
 					_window->finalPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_clear_, geom_null_, frag_null_, 1U);
+					vert_basic_clear_, geom_null_, frag_null_, 2U);
 			}
 		}
 		{ // dynamic //
@@ -1199,7 +1223,7 @@ void cVulkan::CreateVoxelResources()
 
 				CreateVoxelResource<true, true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR],
 					_window->finalPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_dynamic_basic_clear_, geom_null_, frag_null_, 1U);
+					vert_dynamic_basic_clear_, geom_null_, frag_null_, 2U);
 			}
 
 			// child custom pipeline "shader voxels"
@@ -1545,13 +1569,13 @@ void cVulkan::CreateResources()
 
 	// mouse gpu readback buffers
 	_mouseBuffer[0] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, false); // persistant mapping is NOT supported for gpu readback buffers
+		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, true); 
 	_mouseBuffer[1] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, false); // persistant mapping is NOT supported for gpu readback buffers
+		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, true); 
 
 	// offscreen gpu readback buffer
 	_offscreenBuffer = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, false); // persistant mapping is NOT supported for gpu readback buffers
+		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, true);
 
 	CreateComputeResources();
 
@@ -1973,28 +1997,33 @@ void cVulkan::barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_
 	);
 }
 
-NO_INLINE point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index) const
+NO_INLINE point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index)
 {
-	point2D_t const mouse_coord = v2_to_p2D_rounded(xmMouse);
+	if (resource_index == _current_free_resource_index) {
+		
+		point2D_t const mouse_coord = v2_to_p2D_rounded(xmMouse);
 
-	point2D_t const framebufferSz(MinCity::getFramebufferSize());
+		point2D_t const framebufferSz(MinCity::getFramebufferSize());
 
-	point2D_t const sample_coord = p2D_clamp(mouse_coord, point2D_t(0), p2D_subs(framebufferSz, 1));
+		point2D_t const sample_coord = p2D_clamp(mouse_coord, point2D_t(0), p2D_subs(framebufferSz, 1));
 
-	size_t const offset(size_t(sample_coord.y) * size_t(framebufferSz.x) + size_t(sample_coord.x));
+		size_t const offset(size_t(sample_coord.y) * size_t(framebufferSz.x) + size_t(sample_coord.x));
 
-	uint32_t aR16G16(0);
-	{
-		uint32_t const* const __restrict gpu_read_back = reinterpret_cast<uint32_t const* const __restrict>(_mouseBuffer[resource_index].map());
+		uint32_t aR16G16(0);
+		{
+			uint32_t const* const __restrict gpu_read_back = reinterpret_cast<uint32_t const* const __restrict>(_mouseBuffer[resource_index].map());
 
-		// capture and return mouse hovered voxel index (no need to copy out the entire mouseBuffer image buffer - isolated to current pixel instead that mouse pointer hovers)
-		aR16G16 = *(gpu_read_back + offset);		// correct 2D to 1D coordinates
+			// capture and return mouse hovered voxel index (no need to copy out the entire mouseBuffer image buffer - isolated to current pixel instead that mouse pointer hovers)
+			aR16G16 = *(gpu_read_back + offset);		// correct 2D to 1D coordinates
 
-		_mouseBuffer[resource_index].unmap();
+			_mouseBuffer[resource_index].unmap();
+		}
+
+		// converted: return mouse hovered voxel index
+		_mouse_query_cache[resource_index].v = point2D_t((aR16G16 & 0x0000FFFF), ((aR16G16 & 0xFFFF0000) >> 16)).v;
 	}
-
-	// converted: return mouse hovered voxel index
-	return(point2D_t((aR16G16 & 0x0000FFFF), ((aR16G16 & 0xFFFF0000) >> 16))); // correct order
+	
+	return(_mouse_query_cache[resource_index]); // correct order
 }
 
 
@@ -2184,16 +2213,26 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	s.cb.endRenderPass();
 
+	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
+	auto& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
+
+	volume_set.OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
+		vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
+
 	{ // required at this point, light:
+		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral); // *bugfix for tricky validation error
+		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eGeneral);
+		volume_set.LightMap->Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
+
 		static constexpr size_t const image_count(3ULL); // batched
-		std::array<vku::GenericImage* const, image_count> const images{ MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().LightMap->DistanceDirection, MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().LightMap->Color, MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().LightMap->Reflection };
+		std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color, volume_set.LightMap->Reflection };
 
 		vku::GenericImage::setLayout<image_count>(images, s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
-	}
 
-	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
-	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
-																					 vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
+		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // *bugfix for tricky validation error
+		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+		volume_set.LightMap->Reflection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+	}
 
 	UpdateIndirectActiveCountBuffer(s.cb, resource_index); // indirect draw active counts are transferred here, they are then only used by the clear opacity map operation in the final pass / present.
 
@@ -2393,6 +2432,10 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 		// ############# TRANSPARENCY END PASS ################################################ //
 		o.cb_render->endRenderPass();
 
+		// prepare for usage in vertex shader (general layout) - clearing opacity map 
+		MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // required to update internal image state - present command buffer is reused and only recorded once at init.
+		MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(*o.cb_render, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
+		
 		// The offscreen copy if enabled has to happen here, where there is no further usage by rendering of it in an imageView (like in the Nuklear GUI above)
 		[[unlikely]] if ( _bOffscreenCopy ) { // single frame capture is a rare operation
 			copyOffscreenBuffer(*o.cb_render);		// copy & barrier done here to simplify - overlay cb is dynamic (built every frame) unlike the static or present cb's
@@ -2403,14 +2446,20 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 	}
 }
 
+// global for vku
+void setPresentationBlendWeight(uint32_t const imageIndex) // workaround to get current blend weight for current imageIndex
+{
+	MinCity::Vulkan->setPresentationBlendWeight(imageIndex);
+}
+void cVulkan::setPresentationBlendWeight(uint32_t const imageIndex)
+{
+	MinCity::PostProcess->setPresentationBlendWeight(imageIndex);
+}
+
 inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp) // fully static set once command buffer at app startup
 {
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
-
-	// prepare for usage in vertex shader (general layout) - clearing opacity map 
-	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // required to update internal image state - present command buffer is reused and only recorded once at init.
-	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(pp.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
 	
 	_indirectActiveCount[pp.resource_index]->barrier( // required b4 usage //
 		pp.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
@@ -2422,7 +2471,9 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	pp.cb.beginRenderPass(pp.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
 
 	MinCity::PostProcess->Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
-
+	// must be back to back //
+	MinCity::PostProcess->Present(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
+	
 	{
 		// all voxels share the same descriptor set
 		bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(pp.resource_index, pp.cb);
@@ -2430,7 +2481,6 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 		clearAllVoxels(std::forward<vku::present_renderpass&&>(pp));
 		// *** no reads or writes occur until next frame after this point from the opacity map *** //
 	}
-
 	// *** Command buffer ends
 	pp.cb.endRenderPass();
 	pp.cb.end();
@@ -2527,7 +2577,7 @@ void cVulkan::Render()
 #endif
 
 	// ####### //
-	_window->draw(
+	_current_free_resource_index = _window->draw(
 		_device, cVulkan::renderCompute, cVulkan::renderDynamicCommandBuffer, cVulkan::renderOverlayCommandBuffer
 	);
 	// ####### //
@@ -2665,10 +2715,6 @@ void cVulkan::OnLost(struct GLFWwindow* const glfwwindow)
 	glfwRequestWindowAttention(glfwwindow);
 }
 
-void cVulkan::WaitPresentIdle()
-{
-	_window->WaitPresentIdle();
-}
 void cVulkan::WaitDeviceIdle()
 {
 	_device.waitIdle();

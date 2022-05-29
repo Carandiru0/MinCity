@@ -20,6 +20,8 @@
 #include "betterenums.h"
 #include <optional>
 
+extern void setPresentationBlendWeight(uint32_t const); // workaround to get current blend weight for current imageIndex
+
 namespace eSamplerSampling {
 	enum : uint32_t const {
 		NEAREST = 0,
@@ -186,6 +188,7 @@ public:
 	vk::CommandPool const& __restrict							computePool(uint32_t const index) const { if (0u == index) return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_PRIMARY)); return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_SECONDARY)); }
 	vk::CommandPool const& __restrict							dmaTransferPool(vku::eCommandPools const dma_transfer_pool_id) const { return(_window->commandPool(dma_transfer_pool_id)); }
 
+	vk::ImageView const											frameView(uint32_t const index) const { return(_window->frameView(index)); }
 	vk::ImageView const&										offscreenImageView2D() const { return(_window->offscreenImageView()); }
 	vk::ImageView const&										offscreenImageView2DArray() const { return(*_offscreenImageView2DArray); } // for compatbility with Nuklear GUI shader pipeline
 
@@ -202,6 +205,9 @@ public:
 	bool const													isHDR() const;
 	uint32_t const												getMaximumNits() const;
 	bool const													isRenderingEnabled() const { return(_bRenderingEnabled); }
+	
+
+	void setPresentationBlendWeight(uint32_t const imageIndex);
 	
 	// Common Samplers //
 	
@@ -252,7 +258,6 @@ public:
 	void CreateResources();
 	void UpdateDescriptorSetsAndStaticCommandBuffer();
 
-	void WaitPresentIdle();
 	void WaitDeviceIdle();
 	void Cleanup(struct GLFWwindow* const glfwwindow);
 
@@ -271,7 +276,7 @@ public:
 	NO_INLINE void queryOffscreenBuffer(uint32_t* const __restrict mem_out) const;	// *** only safe to call after the atomic flag returned from enableOffscreenCopy is cleared ***
 
 	// pixel perfect mouse picking - should only be called at most once/frame
-	NO_INLINE point2D_t const __vectorcall queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index) const;
+	NO_INLINE point2D_t const __vectorcall queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index);
 	
 	void Render();
 
@@ -340,15 +345,15 @@ private:
 	inline void _renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	inline void _renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
 	inline void _renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp);
-	inline void _gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
+	inline void _gpuReadback(vk::CommandBuffer& cb, uint32_t resource_index);
 
 	void renderComplete(); // triggered internally on Render Completion (after final queue submission / present by vku framework
 
 	void renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (&__restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount);
 	void clearAllVoxels(vku::present_renderpass&& __restrict s);  // <-- this one clears the opacitymap
 
-	void copyMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const;
-	void barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_index) const;
+	void copyMouseBuffer(vk::CommandBuffer& cb, uint32_t resource_index) const;
+	void barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t resource_index) const;
 
 	void copyOffscreenBuffer(vk::CommandBuffer& cb) const;
 	void barrierOffscreenBuffer(vk::CommandBuffer& cb) const;
@@ -372,6 +377,9 @@ private:
 
 	microseconds					_frameTimingAverage;
 
+	point2D_t						_mouse_query_cache[2];
+	uint32_t						_current_free_resource_index = 0;
+	
 	bool							_bFullScreenExclusiveAcquired = false,
 									_bRenderingEnabled = false,
 									_bRestoreAsPaused = true, // initial value is true
@@ -385,7 +393,7 @@ public:	// ### public skeleton
 	typedef struct sPOSTAADATA
 	{
 		vk::UniquePipelineLayout		pipelineLayout;
-		vk::Pipeline					pipeline[5];
+		vk::Pipeline					pipeline[6];
 		vk::UniqueDescriptorSetLayout	descLayout;
 		std::vector<vk::DescriptorSet>	sets;
 
@@ -855,7 +863,7 @@ STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(uint32_t const resource_index
 template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks>
 STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass const& s, [[maybe_unused]] sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks)
 {
-	uint32_t const resource_index(s.resource_index);
+	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
 
 	[[maybe_unused]]
 	uint32_t ActiveMaskCount(0);
@@ -920,7 +928,7 @@ STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 {
-	uint32_t const resource_index(s.resource_index);
+	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
 
 	// static voxels
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC + voxel_pipeline_index;
@@ -937,7 +945,7 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
 {
-	uint32_t const resource_index(s.resource_index);
+	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
 
 	// roads
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_BASIC + voxel_pipeline_index;
@@ -961,7 +969,7 @@ STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 {
-	uint32_t const resource_index(s.resource_index);
+	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
 
 	// terrain
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC + voxel_pipeline_index;

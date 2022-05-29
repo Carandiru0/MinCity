@@ -678,14 +678,14 @@ namespace Volumetric
 
 				bRecorded[resource_index] = true;
 			}
-			else {
-				// Just update layouts that will be current after this compute cb is done.
-				LightProbeMap.imageGPUIn[0]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
-				LightProbeMap.imageGPUIn[1]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
-				LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
-				LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
-				LightMap.Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
-			}
+			
+			// Just update layouts that will be current after this compute cb is done.
+			LightProbeMap.imageGPUIn[0]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
+			LightProbeMap.imageGPUIn[1]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
+			LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
+			LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
+			LightMap.Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
+			
 		}
 
 		return(false); // returns no longer dirty by default, resetting dirty state after compute cb is "scheduled"

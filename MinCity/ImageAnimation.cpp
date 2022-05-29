@@ -159,17 +159,26 @@ void ImageAnimation::buildUniquePlaylist(fs::path const path_to_gifs)
 {
 	// guarded
 	if (unique_playlist.empty()) {
+
+		vector<std::wstring> tmpList;
+		
 		for (auto const& entry : fs::directory_iterator(path_to_gifs)) {
 
 			if (entry.exists() && !entry.is_directory()) {
 				if (stringconv::case_insensitive_compare(GIF_FILE_EXT, entry.path().extension().wstring())) // only vdb files 
 				{
-					unique_playlist.push_back(entry.path().wstring());
+					tmpList.emplace_back(entry.path().wstring());
 				}
 			}
 		}
 		
-		random_shuffle(unique_playlist.begin(), unique_playlist.end());
+		random_shuffle(tmpList.begin(), tmpList.end());
+		
+		while (!tmpList.empty()) {
+
+			unique_playlist.emplace(std::move(tmpList.back()));   // put into concurrent queue
+			tmpList.pop_back();
+		}
 	}
 }
 
@@ -186,20 +195,24 @@ void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desire
 		buildUniquePlaylist(gifDirectory);
 	}
 	
-	bool exists(false);
-
-	while (!exists && !unique_playlist.empty()); // *bugfix - loading gif consistent now.
+	if (!unique_playlist.empty()) // *bugfix - loading gif consistent now.
 	{
-		std::wstring const wszFile(unique_playlist.back());
-		unique_playlist.pop_back();
-
-		exists = fs::exists(wszFile); // double check
-
-		if (exists) {
-
-			next_sequence = ImagingLoadGIFSequence(wszFile, desired_width, desired_height);
-			return;
-		}
+		std::wstring filepath(L"");
+		
+		bool bGet(false);
+		
+		do {
+			
+			bGet = unique_playlist.try_pop(filepath);
+			
+			if (bGet) {
+				next_sequence = ImagingLoadGIFSequence(filepath, desired_width, desired_height);
+				return;
+			}
+			
+			_mm_pause();
+			
+		} while (!bGet);
 	}
 
 	next_sequence = nullptr;
@@ -214,7 +227,7 @@ void ImageAnimation::async_loadNextImage(uint32_t const desired_width, uint32_t 
 
 ImageAnimation::~ImageAnimation()
 {
-	async_long_task::wait<background>(_background_task_id, "gif sequence"); // bug-fix prevent deletion/destruction while potentially pending
+	//async_long_task::wait<background>(_background_task_id, "gif sequence"); // bug-fix prevent deletion/destruction while potentially pending
 
 	ImagingSequence* del_image = next_sequence.compare_and_swap(nullptr, next_sequence);		// threadsafe deletion!
 	if (nullptr != del_image) {

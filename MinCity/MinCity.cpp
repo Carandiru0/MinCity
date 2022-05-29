@@ -1271,7 +1271,6 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	// safe to bypass singleton pointers in CleanUp & CriticalCleanup *only* //
 
 	// huge memory leak bugfix
-	_.Vulkan.WaitPresentIdle();
 	_.Vulkan.WaitDeviceIdle();
 
 	async_long_task::wait_for_all(); // *bugfix for safe cleanup, all background tasks must complete

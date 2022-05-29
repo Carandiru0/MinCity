@@ -14,13 +14,16 @@ namespace vku
 class no_vtable cPostProcess : no_copy
 {
 public:
-
+	void setPresentationBlendWeight(uint32_t const imageIndex);
 public:
 	void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize);
 	void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView0, vk::ImageView const& __restrict guiImageView1, vk::Sampler const& __restrict samplerLinearClamp);
 
 	__inline void Render(vku::present_renderpass&& __restrict pp,
 						 struct cVulkan::sPOSTAADATA const& __restrict render_data) const;
+
+	__inline void Present(vku::present_renderpass&& __restrict pp,
+						  struct cVulkan::sPOSTAADATA const& __restrict render_data) const;
 
 private:
 	bool const LoadLUT(std::wstring_view const filenamepath); // full filename and path wide string
@@ -41,6 +44,8 @@ private:
 
 	vku::TextureImage3D*		_lutTex;
 
+	UniformDecl::PostPushConstants  _pushConstants;
+	
 #ifdef DEBUG_LUT_WINDOW
 	ImagingLUT*				_lut;
 	int64_t					_task_id_mix_luts;
@@ -59,6 +64,9 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	uint32_t const resource_index(pp.resource_index);
 
 	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout, 0, render_data.sets[resource_index], nullptr);
+	
+	pp.cb.pushConstants(*render_data.pipelineLayout, vk::ShaderStageFlagBits::eFragment,
+		(uint32_t)0U, (uint32_t)sizeof(UniformDecl::PostPushConstants), reinterpret_cast<void const* const>(&_pushConstants));
 	
 	// ----- temporal resolve "psuedo-pass"
 	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[0]);
@@ -95,6 +103,23 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 
 	// -------- final overlay gui blend subpass
 	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[4]);
+	// Post-process quad simple generation - fullscreen triangle optimized!
+	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
+	pp.cb.draw(3, 1, 0, 0);
+}
+
+__inline void cPostProcess::Present(vku::present_renderpass&& __restrict pp,
+	                                struct cVulkan::sPOSTAADATA const& __restrict render_data) const
+{
+	uint32_t const resource_index(pp.resource_index);
+
+	// descriptor sets are aLREADY set by Render()
+
+	// presentation (blendiung) pass
+	pp.cb.nextSubpass(vk::SubpassContents::eInline); // actual subpass
+
+	// -------- final overlay gui blend subpass
+	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[5]);
 	// Post-process quad simple generation - fullscreen triangle optimized!
 	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
 	pp.cb.draw(3, 1, 0, 0);

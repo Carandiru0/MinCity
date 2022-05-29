@@ -116,6 +116,10 @@ namespace UniformDecl
 				 type;
 	} NuklearPushConstants;
 
+	typedef struct no_vtable alignas(4) PostPushConstants { // 4 = 4 bytes
+		float blend_weight;
+	} PostPushConstants;
+	
 	// overlapping ranges defined per struct (inherited)
 
 	// ###pipeline### pushes their own specific range with size of the struct, offset is manually defined at compile time in order defined for the pipelinelayout below

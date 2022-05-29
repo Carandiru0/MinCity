@@ -43,7 +43,7 @@ private:
 	tbb::atomic<int32_t>					status;
 	tbb::atomic<ImagingSequence*>			next_sequence;
 	
-	vector<std::wstring>					unique_playlist;
+	tbb::concurrent_queue<std::wstring>	    unique_playlist;
 public:
 	bool const operator==(ImageAnimation const& src) const
 	{

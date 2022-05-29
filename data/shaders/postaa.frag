@@ -25,6 +25,10 @@ layout(location = 0) in streamIn
 } In;
 #define texcoord uv // alias
 
+layout (push_constant) restrict readonly uniform PushConstant {
+	layout(offset=0) float		blend_weight;
+} pc;
+
 layout (binding = 1) uniform sampler2D colorMap;
 layout (binding = 2) uniform sampler2DArray noiseMap;	// bluenoise RG channels, 64 slices.
 
@@ -44,6 +48,9 @@ layout (binding = 11) uniform sampler3D lutMap;
 
 layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI0;
 layout (input_attachment_index = 1, set = 0, binding = 13) uniform subpassInput inputGUI1;
+
+layout (input_attachment_index = 0, set = 0, binding = 14) uniform subpassInput frameViewZero;
+layout (input_attachment_index = 1, set = 0, binding = 15) uniform subpassInput frameViewOne;
 
 #if defined(TMP_PASS)
 // Shadertoy - https://www.shadertoy.com/view/lt3SWj
@@ -344,6 +351,14 @@ void main() {
 
 	outColor = clamp(color, 0.0f, 1.0f);
 
+#elif defined(PRESENT)
+
+	const vec4 color0 = subpassLoad(frameViewZero);
+
+	const vec4 color1 = subpassLoad(frameViewOne);
+
+	outColor = mix(color0,color1,pc.blend_weight);
+	
 #endif
 }
 

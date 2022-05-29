@@ -659,7 +659,7 @@ void cNuklear::LoadGUITextures()
 	});
 }
 
-void  cNuklear::Upload(uint32_t const resource_index, vk::CommandBuffer& __restrict cb_transfer,
+void  cNuklear::Upload(uint32_t resource_index, vk::CommandBuffer& __restrict cb_transfer,
 					   vku::DynamicVertexBuffer& __restrict vbo, vku::DynamicIndexBuffer& __restrict ibo, vku::UniformBuffer& __restrict ubo)
 {	
 	static constexpr size_t const VERTICES_SZ = sizeof(VertexDecl::nk_vertex) * NK_MAX_VERTEX_COUNT;

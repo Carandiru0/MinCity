@@ -4132,9 +4132,9 @@ namespace world
 		);
 	}
 
-	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
+	void cVoxelWorld::Transfer(uint32_t resource_index, vk::CommandBuffer& __restrict cb,
 		vku::DynamicVertexBuffer* const* const& __restrict vbo)
-	{
+	{		
 		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
 		cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::DYNAMIC);
 
@@ -4181,8 +4181,10 @@ namespace world
 
 		// do not believe this is neccessary __streaming_store_fence(); // ensure writes are coherent before queue submission
 	}
-	void cVoxelWorld::AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb)
+	void cVoxelWorld::AcquireTransferQueueOwnership(uint32_t resource_index, vk::CommandBuffer& __restrict cb)
 	{
+		resource_index = resource_index > 1 ? 0 : resource_index;
+		
 		// transfer queue ownership of buffers *required* see voxelworld.cpp Transfer() function
 		{ // ## ACQUIRE ## //
 			static constexpr size_t const buffer_count(2ULL);
