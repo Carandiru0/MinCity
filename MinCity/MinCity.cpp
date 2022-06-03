@@ -120,9 +120,6 @@ void cMinCity::LoadINI()
 	uint32_t const uiHDRNits = (uint32_t)GetPrivateProfileInt(L"RENDER_SETTINGS", L"HDR_NITS", TRUE, szINIFile);
 	Vulkan->setHDREnabled(0 != uiHDRNits, uiHDRNits);
 
-	bool const bVsyncEnabled = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"VSYNC", TRUE, szINIFile);
-	Vulkan->setVsyncDisabled(!bVsyncEnabled);
-
 	bool const bDPIAware = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"DPI_AWARE", TRUE, szINIFile);
 	Nuklear->setFrameBufferDPIAware(bDPIAware);
 }

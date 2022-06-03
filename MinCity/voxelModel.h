@@ -24,6 +24,9 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "sBatched.h"
 #include <Utility/bit_volume.h>
 
+#pragma intrinsic(memcpy)
+#pragma intrinsic(memset)
+
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 #include "performance.h"
 #endif
@@ -222,23 +225,22 @@ namespace voxB
 		{}
 		voxelDescPacked() = default;
 
-		voxelDescPacked(voxelDescPacked const& rhs) noexcept
-			: Data(rhs.Data), RGBM(rhs.RGBM)
-		{}
-		voxelDescPacked(voxelDescPacked&& rhs) noexcept
-			: Data(rhs.Data), RGBM(rhs.RGBM)
-		{}
-		voxelDescPacked const& operator=(voxelDescPacked const& rhs) noexcept
+		voxelDescPacked(voxelDescPacked const& __restrict rhs) = default;
+		voxelDescPacked(voxelDescPacked&& __restrict rhs) = default;
+
+		voxelDescPacked const& operator=(voxelDescPacked const& __restrict rhs) noexcept
 		{
-			Data = rhs.Data;
-			RGBM = rhs.RGBM;
+			memcpy(&(*this), &rhs, sizeof(voxelDescPacked));
+			//Data = rhs.Data;
+			//RGBM = rhs.RGBM;
 
 			return(*this);
 		}
-		voxelDescPacked const& operator=(voxelDescPacked&& rhs) noexcept
+		voxelDescPacked const& operator=(voxelDescPacked&& __restrict rhs) noexcept
 		{
-			Data = rhs.Data;
-			RGBM = rhs.RGBM;
+			memcpy(&(*this), &rhs, sizeof(voxelDescPacked));
+			//Data = rhs.Data;
+			//RGBM = rhs.RGBM;
 			 
 			return(*this);
 		}
@@ -342,8 +344,7 @@ namespace voxB
 			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
 			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(src._Mapped)
 		{
-			_Voxels = src._Voxels;
-			src._Voxels = nullptr;
+			std::swap<voxelDescPacked* __restrict>(_Voxels, src._Voxels);
 		}
 
 		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
@@ -548,12 +549,7 @@ namespace voxB
 						if (voxel.Hidden)
 							continue;
 
-						// update xmStreamOut if xmIndex is modified in instance.OnVoxel
-						xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
-						
 						uint32_t const color(voxel.getColor() & 0x00FFFFFF); // remove alpha
-						
-						bool const Transparent(Faded | voxel.Transparent);
 						bool const Emissive((voxel.Emissive & !Faded) & (bool)color); // if color is true black it's not emissive
 						
 						if constexpr (!EmissionOnly)
@@ -561,6 +557,11 @@ namespace voxB
 							// UV coordinates are not swizzled at this point, however by the fragment shader they are xzy
 							// UV coordinate describe the "visible grid" relative position bound to 0...VOXEL_MINIGRID_VISIBLE_XYZ
 							// these are not world coordinates! good for sampling view locked/aligned volumes such as the lightmap
+
+							bool const Transparent(Faded | voxel.Transparent);
+							
+							// update xmStreamOut if xmIndex is modified in instance.OnVoxel
+							xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
 
 							// Build hash //
 							uint32_t hash(0);

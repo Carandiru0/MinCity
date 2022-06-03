@@ -31,7 +31,7 @@ namespace Volumetric
 		ZoomFactor = ZoomFactor * BASE_ZOOM_LEVEL;
 
 		XMVECTOR xmJitter = XMVectorDivide(XMVectorReplicate(jitter), xmFrameBufferSz); 
-		xmJitter = XMVectorScale(xmJitter, ZoomFactor); // simplify & pre-scale
+		xmJitter = XMVectorScale(xmJitter, ZoomFactor); // simplify & pre-scale //*bugfix - keep it at half pixel
 
 		XMFLOAT2A vJitterSz;
 		XMStoreFloat2A(&vJitterSz, xmJitter);

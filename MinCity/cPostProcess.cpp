@@ -215,7 +215,7 @@ void cPostProcess::setPresentationBlendWeight(uint32_t const imageIndex)
 	_pushConstants.blend_weight = blend_weight;
 }
 
-void cPostProcess::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView0, vk::ImageView const& __restrict guiImageView1, vk::Sampler const& __restrict samplerLinearClamp)
+void cPostProcess::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp)
 {
 	// 1 - colorview (backbuffer) (prior function set)
 	// 2 - bluenoise (prior function set)
@@ -263,16 +263,14 @@ void cPostProcess::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restr
 	dsu.beginImages(11U, 0, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _lutTex->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-	// 12,13 - gui
+	// 12 - gui
 	dsu.beginImages(12U, 0, vk::DescriptorType::eInputAttachment);
-	dsu.image(nullptr, guiImageView0, vk::ImageLayout::eShaderReadOnlyOptimal);
-	dsu.beginImages(13U, 0, vk::DescriptorType::eInputAttachment);
-	dsu.image(nullptr, guiImageView1, vk::ImageLayout::eShaderReadOnlyOptimal);
+	dsu.image(nullptr, guiImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
-	// 14,15 - presentation
-	dsu.beginImages(14U, 0, vk::DescriptorType::eInputAttachment);
+	// 13,14- presentation
+	dsu.beginImages(13U, 0, vk::DescriptorType::eInputAttachment);
 	dsu.image(nullptr, MinCity::Vulkan->frameView(0), vk::ImageLayout::eShaderReadOnlyOptimal);
-	dsu.beginImages(15U, 0, vk::DescriptorType::eInputAttachment);
+	dsu.beginImages(14U, 0, vk::DescriptorType::eInputAttachment);
 	dsu.image(nullptr, MinCity::Vulkan->frameView(1), vk::ImageLayout::eShaderReadOnlyOptimal);
 }
 

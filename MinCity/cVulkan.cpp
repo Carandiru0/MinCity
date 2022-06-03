@@ -41,9 +41,6 @@ inline cVulkan::sRTDATA cVulkan::_rtData[eVoxelPipeline::_size()]{};
 inline cVulkan::sRTDATA_CHILD cVulkan::_rtDataChild[eVoxelPipelineCustomized::_size()]{ 
 
 	// shaders //
-	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], true, false), // // VOXEL_SHADER_EXPLOSION 
-	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], true, false), // // VOXEL_SHADER_TORNADO 
-	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], true, false), // // VOXEL_SHADER_SHOCKWAVE 
 	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], true, false), // // VOXEL_SHADER_RAIN 
 
 	// ### main transparent - must be last shader do not move from here //
@@ -52,9 +49,6 @@ inline cVulkan::sRTDATA_CHILD cVulkan::_rtDataChild[eVoxelPipelineCustomized::_s
 	//------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 
 	// clears (mask clearing, all grouped together) //
-	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], false, true), // VOXEL_CLEAR_EXPLOSION
-	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], false, true), // VOXEL_CLEAR_TORNADO
-	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], false, true), // VOXEL_CLEAR_SHOCKWAVE
 	cVulkan::sRTDATA_CHILD(cVulkan::_rtData[eVoxelPipeline::VOXEL_DYNAMIC], false, true), // VOXEL_CLEAR_RAIN
 
 	// ### main transparent - must be last shader do not move from here //
@@ -94,10 +88,6 @@ bool const cVulkan::LoadVulkanFramework()
 	return(false);
 }
 
-void cVulkan::setVsyncDisabled(bool const bDisabled)
-{
-	_bVsyncDisabled = bDisabled;
-}
 bool const cVulkan::isFullScreenExclusiveExtensionSupported() const // needed to query support during window creation
 {
 	return(_fw.isFullScreenExclusiveExtensionSupported());
@@ -126,7 +116,7 @@ void cVulkan::setHDREnabled(bool const bEnabled, uint32_t const max_nits)
 bool const cVulkan::LoadVulkanWindow(GLFWwindow* const glfwwindow)
 {
 	// Create a window to draw into
-	_window = new vku::Window( _fw, _device, _fw.physicalDevice(), _fw.graphicsQueueFamilyIndex(), _fw.computeQueueFamilyIndex(), _fw.transferQueueFamilyIndex(), glfwwindow, _bVsyncDisabled);
+	_window = new vku::Window( _fw, _device, _fw.physicalDevice(), _fw.graphicsQueueFamilyIndex(), _fw.computeQueueFamilyIndex(), _fw.transferQueueFamilyIndex(), glfwwindow);
 	
 	if (!_window->ok()) {
 		return(false);
@@ -808,10 +798,9 @@ void cVulkan::CreatePostAAResources()
 	dslm.image(9U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);							// anamorphic flare array source
 	dslm.image(10U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// anamorphic flare array out
 	dslm.image(11U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, samplers);					// 3d lut
-	dslm.image(12U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui 0
-	dslm.image(13U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui 1
-	dslm.image(14U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 0
-	dslm.image(15U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 1
+	dslm.image(12U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui
+	dslm.image(13U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 0
+	dslm.image(14U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 1
 	
 	_aaData.descLayout = dslm.createUnique(_device);	// *same descriptor set used across all post - process shaders *
 	// We need to create a descriptor set to tell the shader where
@@ -1246,39 +1235,6 @@ void cVulkan::CreateVoxelResources()
 			}
 			
 			// special effects voxel shaders :
-
-			// VOXEL_SHADER_EXPLOSION
-			{																						  // ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule const frag_voxelexplosion_{ _device, SHADER_BINARY_DIR "voxel_explosion.frag.bin", constants_voxel_fs };
-				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_EXPLOSION>(
-					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
-					vert_dynamic_trans_, geom_, frag_voxelexplosion_, 0U);
-				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_EXPLOSION>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
-					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_EXPLOSION].vbo_partition_info));
-
-			}
-
-			// VOXEL_SHADER_TORNADO
-			{																						  // ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule const frag_voxeltornado_{ _device, SHADER_BINARY_DIR "voxel_tornado.frag.bin", constants_voxel_fs };
-				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_TORNADO>(
-					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
-					vert_dynamic_trans_, geom_, frag_voxeltornado_, 0U);
-				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_TORNADO>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
-					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_TORNADO].vbo_partition_info));
-
-			}
-
-			// VOXEL_SHADER_SHOCKWAVE
-			{																						  // ***inherits the same constants as base voxel fragment shader //
-				vku::ShaderModule const frag_voxelshockwave_{ _device, SHADER_BINARY_DIR "voxel_shockwave.frag.bin", constants_voxel_fs };
-				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_SHOCKWAVE>(
-					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
-					vert_dynamic_trans_, geom_, frag_voxelshockwave_, 0U);
-				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_SHOCKWAVE>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
-					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_SHOCKWAVE].vbo_partition_info));
-
-			}
 
 			// VOXEL_SHADER_RAIN
 			{	
@@ -1798,7 +1754,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA(_dsu, _window->lastColorImageView(), _window->guiImageView(0), _window->guiImageView(1), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA(_dsu, _window->lastColorImageView(), _window->guiImageView(), SAMPLER_SET_STANDARD_POINT);
 
 			// update descriptor set
 			_dsu.update(_device);

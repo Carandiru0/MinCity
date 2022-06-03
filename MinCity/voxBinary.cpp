@@ -28,6 +28,9 @@ The VOX File format is Copyright to their respectful owners.
 
 #include <density.h>	// https://github.com/centaurean/density - Density, fastest compression/decompression library out there with simple interface. must reproduce license file. attribution.
 
+#define OPENVDB_USE_SSE42
+#define OPENVDB_USE_AVX
+#define OPENVDB_STATICLIB
 #include <openvdb/openvdb.h>
 #include <openvdb/io/Stream.h>
 
@@ -463,7 +466,7 @@ static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t con
 		
 	pDestMem->_numVoxels = (uint32_t)allVoxels.size();
 
-	pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+	pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked));
 	memcpy((void* __restrict)pDestMem->_Voxels, allVoxels.data(), pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 	pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
@@ -734,7 +737,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 						}
 					}
 
-					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked));
 					memcpy_s((void* __restrict)pDestMem->_Voxels, pDestMem->_numVoxels * sizeof(voxelDescPacked const), pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 					pDestMem->ComputeLocalAreaAndExtents();
@@ -1252,7 +1255,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 					
 					if (!result.state) {
 
-						pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+						pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked));
 						memcpy((void* __restrict)pDestMem->_Voxels, outDecompressed, decompressed_size);
 					}
 					else {

@@ -204,8 +204,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	getLightFast(light_color, Ld, offset(uvw));
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
-	const float nDotL = max(0.0f, dot(Ld.dir, vec3(0,0,-1))); // **bugfix for correct lighting. 
-	Ld.att *= nDotL;
+	Ld.att *= max(0.0f, dot(Ld.dir, vec3(0,0,-1))); // **bugfix for correct lighting. 
 
 	// directional derivative - equivalent to dot(N,L) operation
 	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -537,7 +536,7 @@ void main() {
 	// output volumetric light
 	voxel.a = clamp(voxel.tran, 0.0f, 1.0f); // in the blend stage, the blend operation is set to properly handle alpha (cVulkan.cpp)
 	voxel.rgb *= voxel.a; // *bugfix -pre-multiply alpha (required for near-perfect edges)
-
+	
 #ifdef DEBUG_VOLUMETRIC
 	debug_out(voxel);
 	// check normals:

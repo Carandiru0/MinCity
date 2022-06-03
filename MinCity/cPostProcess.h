@@ -17,7 +17,7 @@ public:
 	void setPresentationBlendWeight(uint32_t const imageIndex);
 public:
 	void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize);
-	void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView0, vk::ImageView const& __restrict guiImageView1, vk::Sampler const& __restrict samplerLinearClamp);
+	void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp);
 
 	__inline void Render(vku::present_renderpass&& __restrict pp,
 						 struct cVulkan::sPOSTAADATA const& __restrict render_data) const;
@@ -101,7 +101,7 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	// gui overlay pass
 	pp.cb.nextSubpass(vk::SubpassContents::eInline); // actual subpass
 
-	// -------- final overlay gui blend subpass
+	// -------- overlay gui blend subpass
 	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[4]);
 	// Post-process quad simple generation - fullscreen triangle optimized!
 	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
@@ -118,7 +118,7 @@ __inline void cPostProcess::Present(vku::present_renderpass&& __restrict pp,
 	// presentation (blendiung) pass
 	pp.cb.nextSubpass(vk::SubpassContents::eInline); // actual subpass
 
-	// -------- final overlay gui blend subpass
+	// -------- final presentation blend subpass
 	pp.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, render_data.pipeline[5]);
 	// Post-process quad simple generation - fullscreen triangle optimized!
 	// https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/

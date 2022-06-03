@@ -68,7 +68,7 @@ protected:
 	void __vectorcall highlightPerimeter(rect2D_t area, uint32_t const color);
 
 private:
-	void clearHighlights(); // privste, use public method clearHistory / undoHistory - simplifies derived classea implementation.
+	// private, use public method clearHistory / undoHistory - simplifies derived classea implementation.
 	void undoHighlights();
 
 private:

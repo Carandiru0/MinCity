@@ -12,24 +12,33 @@ void cAbstractToolMethods::pushHistory(vector<sUndoVoxel>&& undoHistory)
 	std::move(undoHistory.begin(), undoHistory.end(), std::back_inserter(_undoHistory));
 }
 
-void cAbstractToolMethods::clearHighlights()
-{
-	_undoHighlight.clear();
-}
 void cAbstractToolMethods::undoHighlights()
 {
 	// undoing
 	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
 	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHighlight.crbegin(); undoVoxel != _undoHighlight.crend(); ++undoVoxel)
 	{
-		world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(undoVoxel->undoVoxel));
+		Iso::Voxel const* const pVoxel(world::getVoxelAt(undoVoxel->voxelIndex));
+
+		if (pVoxel) {
+			Iso::Voxel oVoxel(*pVoxel);
+
+			if (Iso::isGroundOnly(oVoxel)) { // undo for highlights is specific, only if still ground
+
+				Iso::clearPending(oVoxel);
+				Iso::clearEmissive(oVoxel);
+				Iso::clearColor(oVoxel);
+
+				world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+			}
+		}
 	}
 
-	clearHighlights();
+	_undoHighlight.clear();
 }
 void cAbstractToolMethods::clearHistory()
 {
-	clearHighlights();
+	undoHighlights();
 
 	_undoHistory.clear();
 }

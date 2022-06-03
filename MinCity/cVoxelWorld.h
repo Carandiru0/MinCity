@@ -21,9 +21,6 @@
 
 // forward decls:
 struct ImagingMemoryInstance;
-struct sExplosionInstance;
-struct sTornadoInstance;
-struct sShockwaveInstance;
 struct sRainInstance;
 struct CityInfo;
 
@@ -207,7 +204,7 @@ namespace world
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, vk::ImageView const& __restrict fullvolumetricImageView, vk::ImageView const& __restrict fullreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		
-		void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView0, vk::ImageView const& __restrict guiImageView1, SAMPLER_SET_STANDARD_POINT);
+		void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView, SAMPLER_SET_STANDARD_POINT);
 		
 		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO);
 		void UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict ds);
@@ -370,9 +367,6 @@ namespace world
 		bool						_bCameraTurntable = false;
 		bool						_onLoadedRequired;
 
-		sExplosionInstance*			_activeExplosion;
-		sTornadoInstance*			_activeTornado;
-		sShockwaveInstance*			_activeShockwave;
 		sRainInstance*				_activeRain;
 
 		std::array<float, 30> const	_sequence;

@@ -42,6 +42,8 @@ namespace world
 			(*src.Instance)->setOwnerGameObject<cLevelSetGameObject>(nullptr, nullptr);
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
+
+		std::swap<local_volume*>(_bits, src._bits);
 	}
 	cLevelSetGameObject& cLevelSetGameObject::operator=(cLevelSetGameObject&& src) noexcept
 	{
@@ -59,6 +61,8 @@ namespace world
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
 
+		std::swap<local_volume*>(_bits, src._bits);
+		
 		return(*this);
 	}
 
@@ -85,11 +89,11 @@ namespace world
 		uvec4_t rgba;
 		SFM::saturate_to_u8(XMVectorScale(XMVector3Length(xmUVW), 255.0f), rgba);
 		
-		bool const odd(((voxel.x & 1) & (voxel.y & 1) & (voxel.z & 1)));
-		//voxel.Color = SFM::pack_rgba(rgba);
+		//bool const odd(((voxel.x & 1) & (voxel.y & 1) & (voxel.z & 1)));
+		voxel.Color = SFM::pack_rgba(rgba);
 		//voxel.setMetallic(true);
 		//voxel.setRoughness(0.5f);
-		voxel.Emissive = odd;
+		voxel.Emissive = true;
 		//voxel.Transparent = true;
 		//voxel.Hidden = !odd;
 		
@@ -105,7 +109,7 @@ namespace world
 		xmUVW = SFM::__fms(xmUVW, XMVectorReplicate(2.0f), XMVectorReplicate(1.0f));
 		
 		// explosion scaling
-		xmUVW = XMVectorScale(xmUVW, 2.0f);
+		//xmUVW = XMVectorScale(xmUVW, 2.0f);
 		
 		XMFLOAT3A vUVW;
 		XMStoreFloat3A(&vUVW, xmUVW);
@@ -117,7 +121,7 @@ namespace world
 		//sdf += supernoise::getSpiralNoise3D(vUVW.x, vUVW.y, vUVW.z, SFM::abs(SFM::__sin(t)) ) * 2.4f;
 		
 		// 1 - explosion scaling
-		sdf *= 0.5f;
+		//sdf *= 0.5f;
 		
 		//XMFLOAT3A vSDF;
 		//XMStoreFloat3A(&vSDF, xmSDF);

@@ -41,7 +41,6 @@ void main() {
 
 #if (defined(ROAD) && !defined(TRANS))
 #define INOUT_FRESNEL
-#define OUT_REFLECTION
 #endif
 
 #ifdef TRANS 
@@ -121,7 +120,7 @@ float opacity( in const float sampling ) {
 // https://www.iquilezles.org/www/articles/voxellines/voxellines.htm
 float getOcclusion(in vec3 uvw) 
 {
-#if defined(T2D)
+#if defined(T2D) || defined(ROAD) 
 	uvw = uvw + InvVolumeDimensions; // *bugfix - to align the ao properly, the half texel offset is required
 #else									 // since terrain voxels are double the size of a minivoxel, terrain requires 2x the half texel offset to align properly on the same grid, which is defined in minivoxels. 512x512x512
 	uvw = uvw + 0.5f * InvVolumeDimensions; // this was a difficult bug *do not change*
@@ -261,11 +260,9 @@ void main() {
 
 	const vec3 grid_color = unpackColor(In._color) * In._emission; // only emissive can have color
 
-	vec3 color = lit( terrainHeight + grid_color, make_material(In._emission, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
-					  getOcclusion(In.uv.xyz), Ld.att,
-					  Ld.dir, N, V);
-	
-	outColor.rgb = color;
+	outColor.rgb = lit( terrainHeight + grid_color, make_material(In._emission, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
+					    getOcclusion(In.uv.xyz), Ld.att,
+					    Ld.dir, N, V);
 	
 	//outColor = vec3(attenuation);
 	//outColor.rgb = vec3(visibility);
@@ -298,22 +295,21 @@ void main() {
 	fresnelTerm = smoothstep(0.0f, 1.0f, min(1.0f, bump /* (1.0f - terrainHeight)*/ + pow(bump, 5.0f)));
 
 	// smoother
-	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
-	road_segment.rgb *= road_segment.a; // important
+	//vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
+	
 	// or ** more sharp pixelated but without any aliasing hmmm...
-	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)),In.uv_local.z), dFdx(In.uv_local.xy), dFdy(In.uv_local.xy)); 
+	vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.road_uv.xy, vec2(64.0f, 16.0f)),In.road_uv.z), dFdx(In.road_uv.xy), dFdy(In.road_uv.xy)); 
+	
+	road_segment.rgb *= road_segment.a; // important
 	
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz); 
 
 	const float decal_luminance = min(1.0f, road_segment.g * Ld.att * Ld.att * 2.0f);
-	vec3 reflection;
-	vec3 color = lit( road_segment.rgb, make_material(decal_luminance, 0.0f, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g))), light_color,
-					  1.0f, Ld.att,
-					  Ld.dir, N, V, reflection, fresnelTerm );
 
-	outColor.rgb = color;
-	
+	outColor.rgb = lit( road_segment.rgb, make_material(decal_luminance, 0.0f, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g))), light_color,
+					    getOcclusion(In.uv.xyz), Ld.att,
+					    Ld.dir, N, V, fresnelTerm );	
 	//outColor.rgb = vec3(attenuation);
 
 #else  // roads, "transparent selection"
@@ -392,7 +388,7 @@ void main() {
 
 	float fresnelTerm;  // feedback from lit      
 	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
-						    1.0f, getAttenuation(Ld.dist, VolumeLength),
+						    getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
 						    Ld.dir, N, V, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //

@@ -9,11 +9,14 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
 #pragma once
+#pragma warning( disable : 4804 )	// unsafe "-" on type bool
+
 #ifndef ISOVOXEL_H
 #define ISOVOXEL_H
 #include <Math/point2D_t.h>
 #include <Utility/unroll.h>
 #include "Declarations.h"
+
 
 namespace Iso
 {
@@ -157,13 +160,13 @@ namespace Iso
 	static constexpr float const	ROAD_SEGMENT_RADIUS = float(ROAD_SEGMENT_WIDTH) * 0.5f;
 	static constexpr int32_t const  SEGMENT_SIDE_WIDTH(ROAD_SEGMENT_WIDTH >> 1),
 									SEGMENT_SNAP_WIDTH(ROAD_SEGMENT_WIDTH + 1);
-	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_BEGIN = 0x0F;		//	                1111
-	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_END = 0xF0;		//             1111 xxxx
-	static constexpr uint32_t const MASK_ROAD_DIRECTION = 0x300;			//        0011 xxxx xxxx
-	static constexpr uint32_t const MASK_ROAD_TILE = 0xFC00;				//   1111 11xx xxxx xxxx
-	static constexpr uint32_t const MASK_ROAD_NODE_TYPE = 0xF0000;	 //     1111 xxxx xxxx xxxx xxxx
-	static constexpr uint32_t const MASK_ROAD_NODE_CENTER = 0x100000;//0001 xxxx xxxx xxxx xxxx xxxx   
-
+	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_BEGIN = 0x0F;													//	                1111
+	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_END = 0xF0;													//             1111 xxxx
+	static constexpr uint32_t const MASK_ROAD_DIRECTION = 0x300;														//        0011 xxxx xxxx
+	static constexpr uint32_t const MASK_ROAD_TILE = 0xFC00;															//   1111 11xx xxxx xxxx
+	static constexpr uint32_t const MASK_ROAD_NODE_TYPE = 0xF0000;												 //     1111 xxxx xxxx xxxx xxxx
+	static constexpr uint32_t const MASK_ROAD_NODE_CENTER = 0x100000;											 //0001 xxxx xxxx xxxx xxxx xxxx   
+																
 	// road specific //
 	namespace ROAD_DIRECTION { // 2 bits - 0 = 0b00 = N,   1 = 0b01 = S,   2 = 0b10 = E,   3 = 0b11 = W
 		static constexpr uint32_t const
@@ -244,7 +247,13 @@ namespace Iso
 		// Set bit
 		oVoxel.Desc |= MASK_PENDING_BIT;
 	}
+	STATIC_INLINE void writePending(Voxel& oVoxel, bool const bPending) {
 
+		// Conditionally set or clear bits without branching
+		// https://graphics.stanford.edu/~seander/bithacks.html#ConditionalSetOrClearBitsWithoutBranching
+		oVoxel.Desc = (oVoxel.Desc & ~MASK_PENDING_BIT) | (-bPending & MASK_PENDING_BIT);
+	}
+	
 	// only for search algorithms
 	STATIC_INLINE_PURE bool const isDiscovered(Voxel const& oVoxel) { return(MASK_DISCOVERED_BIT & oVoxel.Desc); }
 	STATIC_INLINE void clearDiscovered(Voxel& oVoxel) {

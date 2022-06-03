@@ -183,22 +183,12 @@ void ImageAnimation::buildUniquePlaylist(fs::path const path_to_gifs)
 }
 
 void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desired_height, uint32_t const unique_hash_seed)
-{
-	uint32_t const micro((uint32_t const)(desired_height <= MICRO_PIXEL_HEIGHT_MAX));
-
-	if (unique_playlist.empty()) {
-		
-		fs::path gifDirectory(GIF_DIR);
-		if (micro) {
-			gifDirectory += L"micro/";
-		}
-		buildUniquePlaylist(gifDirectory);
-	}
-	
+{	
 	if (!unique_playlist.empty()) // *bugfix - loading gif consistent now.
 	{
 		std::wstring filepath(L"");
 		
+		uint32_t max_tries(10);
 		bool bGet(false);
 		
 		do {
@@ -212,7 +202,7 @@ void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desire
 			
 			_mm_pause();
 			
-		} while (!bGet);
+		} while (!bGet && --max_tries);
 	}
 
 	next_sequence = nullptr;
@@ -222,6 +212,17 @@ void ImageAnimation::async_loadNextImage(uint32_t const desired_width, uint32_t 
 	// this gif is ready to load
 	status = PENDING;
 
+	bool const micro(desired_height <= MICRO_PIXEL_HEIGHT_MAX);
+
+	if (unique_playlist.empty()) {
+
+		fs::path gifDirectory(GIF_DIR);
+		if (micro) {
+			gifDirectory += L"micro/";
+		}
+		buildUniquePlaylist(gifDirectory);
+	}
+	
 	_background_task_id = async_long_task::enqueue<background>([=] { return(loadNextImage(desired_width, desired_height, unique_hash_seed)); });
 }
 

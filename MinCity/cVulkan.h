@@ -99,10 +99,7 @@ BETTER_ENUM(eVoxelPipeline, int32_t const,
 BETTER_ENUM(eVoxelPipelineCustomized, uint32_t const,  // ***** shaders first, then clears (clears must be last)
 
 	// ## shaders //
-	VOXEL_SHADER_EXPLOSION = 0,
-	VOXEL_SHADER_TORNADO,
-	VOXEL_SHADER_SHOCKWAVE,
-	VOXEL_SHADER_RAIN,
+	VOXEL_SHADER_RAIN = 0,
 
 	// main transparent only (must be last shader) //
 	VOXEL_SHADER_TRANS, // #### MUST BE LAST ####
@@ -110,9 +107,6 @@ BETTER_ENUM(eVoxelPipelineCustomized, uint32_t const,  // ***** shaders first, t
 	//-----------------------------------------------------------------------------------------------------------//
 
 	// ## clears (mask clearing, all grouped together)  //
-	VOXEL_CLEAR_EXPLOSION,
-	VOXEL_CLEAR_TORNADO,
-	VOXEL_CLEAR_SHOCKWAVE, // shared for any transparent voxels
 	VOXEL_CLEAR_RAIN,
 
 	// main transparent only clear (must be last clear)
@@ -124,9 +118,6 @@ BETTER_ENUM(eVoxelDynamicVertexBufferPartition, uint32_t const,	// ***** this ha
 	PARENT_MAIN = 0,
 
 	// ## shaders //
-	VOXEL_SHADER_EXPLOSION,
-	VOXEL_SHADER_TORNADO,
-	VOXEL_SHADER_SHOCKWAVE,
 	VOXEL_SHADER_RAIN,
 
 	// main transparent only //
@@ -249,7 +240,6 @@ public:
 	__inline vku::VertexBufferPartition* const __restrict& __restrict    getRoadPartitionInfo(uint32_t const resource_index) const;
 
 	// Main Methods //
-	void setVsyncDisabled(bool const bDisabled);
 	void setFullScreenExclusiveEnabled(bool const bEnabled);
 	void setHDREnabled(bool const bEnabled, uint32_t const max_nits = 0);
 
@@ -383,7 +373,6 @@ private:
 	bool							_bFullScreenExclusiveAcquired = false,
 									_bRenderingEnabled = false,
 									_bRestoreAsPaused = true, // initial value is true
-									_bVsyncDisabled = false,
 									_bOffscreenRender = false,
 									_bOffscreenCopy = false;
 

@@ -23,9 +23,6 @@
 #include "cUserInterface.h"
 #include "cCity.h"
 
-#include "explosion.h"
-#include "tornado.h"
-#include "shockwave.h"
 #include "rain.h"
 #include "cLightGameObject.h"
 #include "cImportGameObject.h"
@@ -2420,7 +2417,7 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
 			VoxelLocalBatch& __restrict localRoad)
 		{
-			XMVECTOR const xmIndex(XMVectorSubtract(xmVoxelOrigin, Iso::GRID_OFFSET_X_Z));
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
@@ -2792,7 +2789,7 @@ namespace world
 		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
-		_activeExplosion(nullptr), _activeTornado(nullptr), _activeShockwave(nullptr), _activeRain(nullptr)
+		_activeRain(nullptr)
 #ifdef DEBUG_STORAGE_BUFFER
 		, DebugStorageBuffer(nullptr)
 #endif
@@ -3778,79 +3775,6 @@ namespace world
 			// Update Dynamic VertexBuffer Offsets for "Custom Voxel Shader Children"
 			// ########### only use [Volumetric::eVoxelType::opaque] even if the child is a transparent pipeline
 			// ########### the [Volumetric::eVoxelType::trans] is reserved for voxels belong to model instances on the grid and is soley for PARENT_TRANS usage
-
-			// voxel explosion //
-			if (_activeExplosion) {
-				if (isExplosionVisible(_activeExplosion)) {
-					RenderExplosion(_activeExplosion, MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque]);
-				}
-			}
-			{ // EXPLOSION
-				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
-				size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - running_offset_start;
-				// set the parent / main partition info
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_EXPLOSION].active_vertex_count = (uint32_t const)current_dynamic_size;
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_EXPLOSION].vertex_start_offset = (uint32_t const)running_offset_size;
-				running_offset_size += current_dynamic_size;
-				running_offset_start = MappedVoxels_Dynamic_Current;
-#ifdef DEBUG_EXPLOSION_COUNT
-				if (dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_EXPLOSION].active_vertex_count) {
-					FMT_NUKLEAR_DEBUG(false, "Explosion {:d} voxels being rendered", dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_EXPLOSION].active_vertex_count);
-				}
-				else {
-					FMT_NUKLEAR_DEBUG_OFF();
-				}
-#endif
-			}
-
-			// voxel tornado //
-			if (_activeTornado) {
-				if (isTornadoVisible(_activeTornado)) {
-					RenderTornado(_activeTornado, MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque]);
-				}
-			}
-			{ // TORNADO
-				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
-				size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - running_offset_start;
-				// set the parent / main partition info
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_TORNADO].active_vertex_count = (uint32_t const)current_dynamic_size;
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_TORNADO].vertex_start_offset = (uint32_t const)running_offset_size;
-				running_offset_size += current_dynamic_size;
-				running_offset_start = MappedVoxels_Dynamic_Current;
-#ifdef DEBUG_TORNADO_COUNT
-				if (dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_TORNADO].active_vertex_count) {
-					FMT_NUKLEAR_DEBUG(false, "Tornado {:d} voxels being rendered", dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_TORNADO].active_vertex_count);
-				}
-				else {
-					FMT_NUKLEAR_DEBUG_OFF();
-				}
-#endif
-			}
-
-			// voxel shockwave //
-			if (_activeShockwave) {
-				if (isShockwaveVisible(_activeShockwave)) {
-					RenderShockwave(_activeShockwave, MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque]);
-				}
-			}
-			{ // SHOCKWAVE
-				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
-				size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - running_offset_start;
-				// set the parent / main partition info
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_SHOCKWAVE].active_vertex_count = (uint32_t const)current_dynamic_size;
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_SHOCKWAVE].vertex_start_offset = (uint32_t const)running_offset_size;
-				running_offset_size += current_dynamic_size;
-				running_offset_start = MappedVoxels_Dynamic_Current;
-#ifdef DEBUG_SHOCKWAVE_COUNT
-				if (dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_SHOCKWAVE].active_vertex_count) {
-					FMT_NUKLEAR_DEBUG(false, "Shockwave {:d} voxels being rendered", dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_SHOCKWAVE].active_vertex_count);
-				}
-				else {
-					FMT_NUKLEAR_DEBUG_OFF();
-				}
-#endif
-			}
-
 
 			if (_activeRain) {
 
@@ -4867,20 +4791,6 @@ namespace world
 					}
 				}
 
-				if (_activeShockwave) {
-
-					if (!UpdateShockwave(tNow, _activeShockwave)) {
-						SAFE_DELETE(_activeShockwave);
-					}
-				}
-				else // (nullptr == _activeShockwave) { // ** testing ** //
-				{
-#ifndef GIF_MODE
-					_activeShockwave = new sShockwaveInstance(XMVectorZero(), 100.0f);	// maximum radius is also limited by length of animation time, set radius as low as possible to get best perf while still covering the desired maxium area for the etire aimation
-#endif
-				}
-
-
 				// City Update //
 				// bugged todo : 
 				/*
@@ -5317,7 +5227,7 @@ namespace world
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
 	}
 	void cVoxelWorld::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu,
-		vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView0, vk::ImageView const& __restrict guiImageView1,
+		vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView,
 		SAMPLER_SET_STANDARD_POINT)
 	{
 		// 1 - colorview (backbuffer)
@@ -5327,7 +5237,7 @@ namespace world
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // presentation uses single channel, all slices of blue noise
 
-		MinCity::PostProcess->UpdateDescriptorSet_PostAA(dsu, guiImageView0, guiImageView1, samplerLinearClamp);
+		MinCity::PostProcess->UpdateDescriptorSet_PostAA(dsu, guiImageView, samplerLinearClamp);
 	}
 
 	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO)
@@ -5742,10 +5652,7 @@ namespace world
 		SAFE_DELETE(_sim);
 
 		// cleanup special instances
-		SAFE_DELETE(_activeExplosion);
-		SAFE_DELETE(_activeTornado);
 		SAFE_DELETE(_activeRain);
-		SAFE_DELETE(_activeShockwave);
 		
 
 		// _currentVoxelIndexPixMap is released auto-magically - virtual memory

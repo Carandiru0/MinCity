@@ -46,11 +46,10 @@ layout (binding = 10, r8) writeonly restrict uniform image2D outAnamorphic[2];
 
 layout (binding = 11) uniform sampler3D lutMap;
 
-layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI0;
-layout (input_attachment_index = 1, set = 0, binding = 13) uniform subpassInput inputGUI1;
+layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI;
 
-layout (input_attachment_index = 0, set = 0, binding = 14) uniform subpassInput frameViewZero;
-layout (input_attachment_index = 1, set = 0, binding = 15) uniform subpassInput frameViewOne;
+layout (input_attachment_index = 0, set = 0, binding = 13) uniform subpassInput frameViewZero;
+layout (input_attachment_index = 1, set = 0, binding = 14) uniform subpassInput frameViewOne;
 
 #if defined(TMP_PASS)
 // Shadertoy - https://www.shadertoy.com/view/lt3SWj
@@ -310,7 +309,16 @@ void main() {
 		// BLOOM // // *BEST APPLIED ONLY HERE* bloom after the 3D lut is applied (expanding output range) and before any HDR transforms.
 		const vec3 bloom = textureLod(blurMap[0], In.uv, 0).rgb;
 		const float inv_luma = 1.0f - luminance;
-		color = color + dot(bloom, vec3(inv_luma, inv_luma * 0.5f, inv_luma * 0.25f));
+		color = color + dot(bloom, vec3(inv_luma * 0.5f, inv_luma * 0.25f, inv_luma * 0.125f));
+	}
+
+	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
+	const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
+	{ // ANAMORPHIC FLARE
+	
+		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
+		const vec3 flare = anamorphicFlare(In.uv);
+		color += color * clamp( flare + flare * noise_dither, 0.0f, 1.0f);
 	}
 #ifdef HDR
 	{ // 2.) HDR
@@ -324,17 +332,9 @@ void main() {
 #endif
 	{ // 3.) *** DITHERING - do not change, validated fft and with highpass to be of extreme quality  (Isolated from temporal AA frames to not introduce any noise into temporal AA process. Only presentation sees the final frame dithered by blue noise)
 
-		// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
-		const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
-
 		// makes colors take advantage of high contrast. darker darks and brighter brights only offset by the bluenoise. This dithers the color and removes banding. Also the
 		// perceptual difference is that of seeing more color than there really is.
-		const float luma = dot(color, LUMA);
-		color = max(vec3(0), mix(color - noise_dither, color + noise_dither, luma)); // shade dithering by luminance (only clamping negative values)
-		
-		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
-		const vec3 flare = anamorphicFlare(In.uv);
-		color += color * clamp( flare + flare * noise_dither, 0.0f, 1.0f);
+		color = max(vec3(0), mix(color - noise_dither, color + noise_dither, luminance)); // shade dithering by luminance (only clamping negative values)
 	}
 	
 	outColor = vec4(color, 1.0f);
@@ -343,13 +343,7 @@ void main() {
 	//*** GUI Overlay ***//
 #elif defined (OVERLAY)	// overlay final (actual) subpass (gui overlay)
 
-	const vec4 color0 = subpassLoad(inputGUI0);
-
-	const vec4 color1 = subpassLoad(inputGUI1);
-
-	const vec4 color = mix(color0,color1,0.5f);
-
-	outColor = clamp(color, 0.0f, 1.0f);
+	outColor = subpassLoad(inputGUI);
 
 #elif defined(PRESENT)
 

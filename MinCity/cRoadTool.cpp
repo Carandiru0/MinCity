@@ -840,7 +840,6 @@ void __vectorcall cRoadTool::MouseMoveAction(FXMVECTOR const xmMousePos)
 		}
 
 		highlightPerimeter(rect2D_t(p2D_subs(origin, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(origin, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
-
 	}
 }
 
@@ -855,7 +854,7 @@ typedef struct ROAD_SEGMENT {
 static vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(vector<ROAD_SEGMENT>::const_iterator const start, vector<ROAD_SEGMENT>::const_iterator const end,
 												                        int32_t const currentHeightStep, int32_t& __restrict targetHeightStep)
 {
-	static constexpr int32_t const SAMPLE_COUNT(Iso::ROAD_SEGMENT_WIDTH * 3);
+	static constexpr int32_t const SAMPLE_COUNT(Iso::ROAD_SEGMENT_WIDTH * 2);
 
 	vector<ROAD_SEGMENT>::const_iterator target(end);
 
@@ -890,32 +889,6 @@ static vector<ROAD_SEGMENT>::const_iterator const findTargetRoadSegment(vector<R
 	} // for
 
 	return(target);
-}
-
-static uint32_t const __vectorcall getSmoothHeightStep(point2D_t const currentPoint, uint32_t const currentDirection)
-{
-	point2D_t sidePoint[2]{};
-	Iso::Voxel const* pSideVoxel[2]{ nullptr };
-
-	// inline
-	getAdjacentSides<false>(currentPoint, currentDirection, 1, sidePoint, pSideVoxel);
-
-	uint32_t uiHeightSum(0);
-	float fNumSamples(0.0f);
-
-	for (uint32_t side = 0; side < 2; ++side) {
-		if (nullptr != pSideVoxel[side]) {
-			uiHeightSum += Iso::getHeightStep(*pSideVoxel[side]); ++fNumSamples;
-		}
-	}
-
-	// add in current voxel
-	Iso::Voxel const* const __restrict pVoxel(world::getVoxelAt(currentPoint));
-	if (nullptr != pVoxel) {
-		uiHeightSum += Iso::getHeightStep(*pVoxel); ++fNumSamples;
-	}
-
-	return(SFM::round_to_u32(((float)uiHeightSum) / fNumSamples));
 }
 
 void __vectorcall cRoadTool::ConditionRoadGround(
@@ -1009,7 +982,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 		if (nullptr == pVoxel)
 			return(false);
 
-		currentSegment.h0 = getSmoothHeightStep(currentPoint, encoded_direction);
+		currentSegment.h0 = Iso::getHeightStep(*pVoxel);
 		currentSegment.origin.v = currentPoint.v;
 	}
 
@@ -1035,7 +1008,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 				FMT_LOG_DEBUG("Edge Segment");
 #endif
 				currentSegment.node = false;
-				currentSegment.h1 = getSmoothHeightStep(currentPoint, encoded_direction);
+				currentSegment.h1 = Iso::getHeightStep(oVoxel);
 				
 			}
 			else {
@@ -1163,7 +1136,7 @@ bool const __vectorcall cRoadTool::CreateRoadSegments(point2D_t currentPoint, po
 				pushHistory(UndoVoxel(currentPoint, oVoxel));
 
 				currentSegment.node = true;
-				currentSegment.h1 = getSmoothHeightStep(currentPoint, encoded_direction);
+				currentSegment.h1 = Iso::getHeightStep(oVoxel);
 
 				intersection_index = int32_t(segments.size()); // push_back is pending below, this is the index for *this segment
 				intersection_remaining = Iso::SEGMENT_SIDE_WIDTH;
@@ -2032,8 +2005,6 @@ void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR co
 													// and the axis max will still be the same
 			}
 
-			highlightPerimeter(rect2D_t(p2D_subs(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
-
 			{
 				point2D_t const abs_difference = p2D_abs(p2D_sub(clampedEndPoint, _segmentVoxelIndex[0]));
 
@@ -2096,6 +2067,8 @@ void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR co
 				decorateRoadHistory();
 
 				_segmentVoxelIndex[_activePoint].v = clampedEndPoint.v;
+
+				highlightPerimeter(rect2D_t(p2D_subs(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH), p2D_adds(clampedEndPoint, Iso::SEGMENT_SIDE_WIDTH + 1)), color);
 			}
 			else {
 				undoRoadHistory();

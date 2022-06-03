@@ -246,16 +246,7 @@
     <ClInclude Include="..\..\Documents\Visual Studio 2017\Projects\Utility\async_long_task.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shockwave.h">
-      <Filter>Header Files\voxel effects</Filter>
-    </ClInclude>
-    <ClInclude Include="tornado.h">
-      <Filter>Header Files\voxel effects</Filter>
-    </ClInclude>
     <ClInclude Include="rain.h">
-      <Filter>Header Files\voxel effects</Filter>
-    </ClInclude>
-    <ClInclude Include="explosion.h">
       <Filter>Header Files\voxel effects</Filter>
     </ClInclude>
     <ClInclude Include="cCopterBodyGameObject.h">
@@ -455,16 +446,7 @@
     <ClCompile Include="cCity.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="shockwave.cpp">
-      <Filter>Source Files\voxel effects</Filter>
-    </ClCompile>
     <ClCompile Include="rain.cpp">
-      <Filter>Source Files\voxel effects</Filter>
-    </ClCompile>
-    <ClCompile Include="tornado.cpp">
-      <Filter>Source Files\voxel effects</Filter>
-    </ClCompile>
-    <ClCompile Include="explosion.cpp">
       <Filter>Source Files\voxel effects</Filter>
     </ClCompile>
     <ClCompile Include="cCopterBodyGameObject.cpp">
