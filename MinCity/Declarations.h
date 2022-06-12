@@ -157,12 +157,10 @@ namespace UniformDecl
 INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const& __restrict src)
 {
 	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
-	_mm256_stream_ps((float* const __restrict)std::assume_aligned<32>(dest), _mm256_set_m128(src.uv_vr, src.worldPos));
+	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_vr, src.worldPos));
 }
-INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* __restrict dest, VertexDecl::VoxelDynamic const& __restrict src)
+INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* const __restrict dest, VertexDecl::VoxelDynamic const& __restrict src)
 {
-	dest = std::assume_aligned<16>(dest);
-
 	_mm_stream_ps((float* const __restrict)dest, src.worldPos);				// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h
 	_mm_stream_ps(((float* const __restrict)dest) + 4, src.uv_vr);
 	_mm_stream_ps(((float* const __restrict)dest) + 8, src.orient_reserved);

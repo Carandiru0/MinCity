@@ -51,11 +51,12 @@ namespace world
 
 			static constexpr uint32_t const CACHE_SZ = 16;
 
-			tbb::atomic<int64_t>		_tCurrentInterval;
-			tbb::atomic<uint32_t>		_changedWindowIndex;
+			tbb::atomic<uint32_t>		_destroyed_count = 0;
+			tbb::atomic<int64_t>		_tCurrentInterval = 0;
+			tbb::atomic<uint32_t>		_changedWindowIndex = 0;
 			Window						_changedWindows[CACHE_SZ];
 			
-		}*								_MutableState;
+		}* _MutableState;
 	public:
 		cBuildingGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_);
 		~cBuildingGameObject();

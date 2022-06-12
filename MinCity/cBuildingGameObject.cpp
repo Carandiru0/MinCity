@@ -31,8 +31,6 @@ namespace world
 		_destroyed = Volumetric::voxB::model_volume::create();
 		
 		_MutableState = new sMutableState{};
-		_MutableState->_tCurrentInterval = 0;
-		_MutableState->_changedWindowIndex = 0;
 
 		static constexpr int32_t const
 			CITY_LIGHTS_RANGE_BEGIN = 400, // milliseconds
@@ -115,7 +113,6 @@ namespace world
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cBuildingGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		if (_destroyed->read_bit(voxel.x, voxel.y, voxel.z)) {
-
 			voxel.Hidden = true;
 			return(voxel);
 		}
@@ -139,12 +136,13 @@ namespace world
 
 				if (scalar_force > cPhysics::MIN_FORCE) { // IF FORCE ISN'T HIGH ENOUGH, DON'T DESTROY, BURN!
 					_destroyed->set_bit(voxel.x, voxel.y, voxel.z); // next time voxel will be "destroyed"
+					
+					if (++_MutableState->_destroyed_count > (instance->getVoxelCount() >> 1)) { // if destroyed voxel count is greater than half the number of voxels that the model contains, destroy the building game object instance.
+						const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
+					}
 				}
 				
-				size_t const destroyed_count(_destroyed->bits_set_count());
-				if (destroyed_count > (instance->getVoxelCount() >> 1)) { // if destroyed voxel count is greater than half the number of voxels that the model contains, destroy the building game object instance.
-					const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
-				}
+				
 				return(voxel);
 			}
 		}

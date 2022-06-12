@@ -65,7 +65,7 @@ typedef struct nk_image_extended : nk_image
 
 } nk_image_extended;
 
-typedef struct alignas(16) sMouseState
+typedef struct sMouseState
 {
 	static constexpr milliseconds const CLICK_DELTA = milliseconds(550);
 
@@ -82,7 +82,7 @@ typedef struct alignas(16) sMouseState
 	bool    handled;
 
 	sMouseState()
-		: button_state(eMouseButtonState::INACTIVE), tStamp(high_resolution_clock::now()),
+		: button_state(eMouseButtonState::INACTIVE), tStamp(critical_now()),
 		left_clicked(false), right_clicked(false), left_released(false), right_released(false),
 		handled(false)
 	{
@@ -414,7 +414,7 @@ GLFWwindow* const& cNuklear::getGLFWWindow() const
 
 void cNuklear::Initialize(GLFWwindow* const& __restrict win)
 {
-	alignas(16) static struct {
+	static struct {
 		struct nk_allocator			allocator;
 		struct nk_context			ctx;
 		struct nk_buffer			cmds;
@@ -834,7 +834,7 @@ void  cNuklear::Render(vk::CommandBuffer& __restrict cb_render,
 // ********************************************************************************************
 static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindow* const __restrict win, vector<rect2D_t> const& __restrict activeWindowRects, bool& __restrict bModalPrompted)
 {
-	tTime const tLocal(high_resolution_clock::now());
+	tTime const tLocal(critical_now());
 	static tTime tLocalLast(tLocal);
 
 	/* Input */
@@ -2648,7 +2648,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 void  cNuklear::UpdateGUI()
 {
-	tTime const tLocal(high_resolution_clock::now());
+	tTime const tLocal(critical_now());
 	static tTime tLocalLast(tLocal);
 
 	[[unlikely]] if (!MinCity::Vulkan->isRenderingEnabled()) // bugfix - crash when out of focus

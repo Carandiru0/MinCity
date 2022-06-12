@@ -22,8 +22,8 @@ namespace // private to this file (anonymous)
 			MINIMUM_PLOT_SIZE = 4,
 			MAXIMUM_PLOT_SIZE = Volumetric::MODEL_MAX_DIMENSION_XYZ / MINIVOXEL_FACTOR;
 
-		constinit static inline alignas(CACHE_LINE_BYTES) bit_row<Iso::WORLD_GRID_SIZE>* theZone[3]{ nullptr, nullptr, nullptr };
-		constinit static inline alignas(CACHE_LINE_BYTES) bit_row<Iso::WORLD_GRID_SIZE>* theRoad{ nullptr };
+		constinit static inline bit_row<Iso::WORLD_GRID_SIZE>* theZone[3]{ nullptr, nullptr, nullptr };
+		constinit static inline bit_row<Iso::WORLD_GRID_SIZE>* theRoad{ nullptr };
 
 	} // end ns
 } // end ns
@@ -878,33 +878,11 @@ void cSimulation::run(tTime const& __restrict tNow, fp_seconds const& __restrict
 			// clamp to local/minmax coords
  			simArea = r2D_clamp(simArea, 0, Iso::WORLD_GRID_SIZE);
 
-			static constexpr uint32_t const num_samples(16);
-
-			constinit static microseconds sum{}, avg{}, maxi{}, mini{9999999999999999};
-			constinit static uint32_t samples(0);
-
-			tTime const tStart(high_resolution_clock::now());
-
 			tbb::affinity_partitioner partitioner;
 
 			if (generate_zoning(simArea, theGrid, partitioner)) {
 
 				process_zoning(simArea, tDelta, partitioner);
-			}
-
-			microseconds const tElapsed(duration_cast<microseconds>(high_resolution_clock::now() - tStart));
-			if (tElapsed.count() > 0) {
-				sum += tElapsed;
-				maxi = std::max(maxi, tElapsed);
-				mini = std::min(mini, tElapsed);
-
-				if (num_samples == ++samples) {
-					avg = sum / num_samples;
-					sum = microseconds(0);
-					samples = 0;
-				}
-
-				//FMT_NUKLEAR_DEBUG(true, "packing: avg({:d}us)  max({:d}us)  min({:d}us)  frame({:d}us)", avg.count(), maxi.count(), mini.count(), tElapsed.count());
 			}
 		}
 

@@ -85,7 +85,7 @@ extern void debug_out_nuklear_off();
 #define DEBUG_DISABLE_MUSIC
 #define DEBUG_CONSOLE
 #define VOX_DEBUG_ENABLED
-#define DEBUG_EXPLOSION_WINDOW
+//#define DEBUG_EXPLOSION_WINDOW
 //#define DEBUG_DEPTH_CUBE
 //#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
 //#define DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP

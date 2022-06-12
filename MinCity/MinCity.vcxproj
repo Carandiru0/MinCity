@@ -133,7 +133,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <CallingConvention>Cdecl</CallingConvention>
       <AdditionalOptions>/D_WIN32_WINNT=0x0A00 %(AdditionalOptions)</AdditionalOptions>

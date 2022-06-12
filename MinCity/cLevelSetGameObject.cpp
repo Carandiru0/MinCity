@@ -145,7 +145,7 @@ namespace world
 	}
 	void cLevelSetGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		typedef struct alignas(16) no_vtable sRenderFuncBlockChunk {
+		typedef struct no_vtable sRenderFuncBlockChunk {
 
 		private:
 			local_volume* const __restrict								bits;
@@ -211,7 +211,7 @@ namespace world
 			0, Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, 8,	// row
 			0, Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ, 8	// col
 			),
-			RenderFuncBlockChunk(_bits, numVoxels, getModel()->_Voxels, duration_cast<fp_seconds>(now() - start()).count()), part
+			RenderFuncBlockChunk(_bits, numVoxels, const_cast<Volumetric::voxB::voxelDescPacked* const>(getModel()->_Voxels), duration_cast<fp_seconds>(now() - start()).count()), part
 		);
 	
 		getModel()->_numVoxels = numVoxels;

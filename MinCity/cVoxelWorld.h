@@ -128,7 +128,8 @@ namespace world
 
 		
 		void PreUpdate(bool const bPaused);																																		 //         0.) Order of operations, *each operation is dependent on previous operation*
-		void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateProgram = false);//			1.)
+		bool const UpdateOnce(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused);															 //			1a.)
+		void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bJustLoaded);												 //			1b.)
 		void __vectorcall UpdateUniformState(float const tRemainder);																											 //			2.)
 		void Render(uint32_t const resource_index) const;																														 //			3.)
 

@@ -137,8 +137,7 @@ namespace Volumetric
 			Iso::Voxel const&__restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-			tbb::affinity_partitioner& __restrict partitioner) const;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 		__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
@@ -174,22 +173,21 @@ namespace Volumetric
 		Iso::Voxel const&__restrict oVoxel,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-		tbb::affinity_partitioner& __restrict partitioner) const
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
 	{
 		//* bugfix - hoisted out of parallel loop, don't change.
 		if (isEmissionOnly()) {
-			model.Render<true, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+			model.Render<true, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
 		}
 		else if (isFaded()) {
-			model.Render<false, true>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+			model.Render<false, true>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
 		}
 		else {
-			model.Render<false, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+			model.Render<false, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
 		}
 		if (child) {
 			// safe down cast
-			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 		}
 	}
 	template<bool const Dynamic>

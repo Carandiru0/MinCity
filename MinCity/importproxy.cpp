@@ -34,7 +34,7 @@ namespace Volumetric
 			ImportMaterial const material(iter_current_color->material);
 			
 			uint32_t const numVoxels(model->_numVoxels);
-			Volumetric::voxB::voxelDescPacked* pVoxels(model->_Voxels);
+			Volumetric::voxB::voxelDescPacked* pVoxels(const_cast<Volumetric::voxB::voxelDescPacked*>(model->_Voxels)); // special write access
 
 			for (uint32_t i = 0; i < numVoxels; ++i) {
 

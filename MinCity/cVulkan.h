@@ -288,7 +288,7 @@ private:
 	void CreateIndirectActiveCountBuffer();
 	void UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t const resource_index);
 
-	template<bool const isDynamic = false, bool const isBasic = false, bool const isClear = false, bool const isTransparent = false>
+	template<bool const isDynamic = false, bool const isBasic = false, bool const isClear = false, bool const isTransparent = false, bool const isSampleShading = false>
 	void CreateVoxelResource(	cVulkan::sRTDATA& rtData, vk::RenderPass const& renderPass, uint32_t const width, uint32_t const height,
 								vku::ShaderModule const& __restrict vert,
 								vku::ShaderModule const& __restrict geom,
@@ -337,7 +337,7 @@ private:
 	inline void _renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp);
 	inline void _gpuReadback(vk::CommandBuffer& cb, uint32_t resource_index);
 
-	void renderComplete(); // triggered internally on Render Completion (after final queue submission / present by vku framework
+	void renderComplete(uint32_t const resource_index); // triggered internally on Render Completion (after final queue submission / present by vku framework
 
 	void renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (&__restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount);
 	void clearAllVoxels(vku::present_renderpass&& __restrict s);  // <-- this one clears the opacitymap
@@ -653,7 +653,7 @@ private:
 	static void renderOffscreenVoxels(vku::static_renderpass const& s);
 };
 
-template<bool const isDynamic, bool const isBasic, bool const isClear, bool const isTransparent>
+template<bool const isDynamic, bool const isBasic, bool const isClear, bool const isTransparent, bool const isSampleShading>
 void cVulkan::CreateVoxelResource(
 	cVulkan::sRTDATA& rtData, vk::RenderPass const& renderPass, uint32_t const width, uint32_t const height,
 	vku::ShaderModule const& __restrict vert,
@@ -751,7 +751,11 @@ void cVulkan::CreateVoxelResource(
 
 	pm.subPass(subPassIndex);
 	pm.rasterizationSamples(vku::DefaultSampleCount);
-
+	if constexpr (isSampleShading) {
+		pm.sampleShadingEnable(VK_TRUE);
+		pm.minSampleShading(0.25f);
+	}
+	
 	// Create a pipeline using a renderPass built for our window.
 	auto& cache = _fw.pipelineCache();
 	if constexpr (isClear | isBasic) {

@@ -466,7 +466,7 @@ static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t con
 		
 	pDestMem->_numVoxels = (uint32_t)allVoxels.size();
 
-	pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked));
+	pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, CACHE_LINE_BYTES);
 	memcpy((void* __restrict)pDestMem->_Voxels, allVoxels.data(), pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 	pDestMem->ComputeLocalAreaAndExtents(); // local area is xz dimensions only (no height), extents are based off local area calculation inside function - along with the spherical radius
@@ -634,7 +634,7 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 
 bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem)
 {
-	auto const [numVoxels, numVoxelsEmissive, numVoxelsTransparent] = OptimizeVoxels(pDestMem->_Voxels, pDestMem->_numVoxels); // optimizing entire model
+	auto const [numVoxels, numVoxelsEmissive, numVoxelsTransparent] = OptimizeVoxels(const_cast<Volumetric::voxB::voxelDescPacked* const>(pDestMem->_Voxels), pDestMem->_numVoxels); // optimizing entire model
 	
 	// update model voxel counts after optimization //
 	pDestMem->_numVoxels = numVoxels;
@@ -684,7 +684,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 	if (!error) {
 
 		if (mmap.is_open() && mmap.is_mapped()) {
-			__prefetch_vmem(mmap.data(), mmap.size());
+			___prefetch_vmem(mmap.data(), mmap.size());
 
 			uint8_t const * pReadPointer((uint8_t*)mmap.data());
 
@@ -737,7 +737,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 						}
 					}
 
-					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked));
+					pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, CACHE_LINE_BYTES);
 					memcpy_s((void* __restrict)pDestMem->_Voxels, pDestMem->_numVoxels * sizeof(voxelDescPacked const), pReadPointer, pDestMem->_numVoxels * sizeof(voxelDescPacked const));
 
 					pDestMem->ComputeLocalAreaAndExtents();
@@ -811,7 +811,7 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 	if (!error) {
 
 		if (mmap.is_open() && mmap.is_mapped()) {
-			__prefetch_vmem(mmap.data(), mmap.size());
+			___prefetch_vmem(mmap.data(), mmap.size());
 
 			uint8_t const* __restrict mmap_data( (uint8_t const*)mmap.data() );
 
@@ -876,7 +876,7 @@ static void PrepareVDBFrame(vdbFrameData& __restrict frame_data, float(&__restri
 	
 	uint32_t max_count[vdbFrameData::MAX_CHANNELS]{};
 	
-	uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, grids->size()));
+	uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, (uint32_t)grids->size()));
 	for (uint32_t grid_index = 0; grid_index < grid_count; ++grid_index) {
 
 		GridType::Ptr const grid(openvdb::GridBase::grid<GridType>((*grids)[grid_index]));
@@ -934,7 +934,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 			
 			uint32_t active_channel_offset(0);
 			
-			uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, grids->size()));
+			uint32_t const grid_count(SFM::min(vdbFrameData::MAX_CHANNELS, (uint32_t)grids->size()));
 			for (uint32_t grid_index = 0; grid_index < grid_count; ++grid_index) { // file compatability of .vdb's exported from embergen. want to access "flames" first, then "density" and there packing into rgba channels instead.
 
 				GridType::Ptr const grid(openvdb::GridBase::grid<GridType>((*grids)[grid_index]));
@@ -974,7 +974,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 							bits->set_bit(index);
 
 							// each color channel contains a value from [0, 255] representing a volume temperature, density, etc. voxel color is instead packed data.
-							allIndices[index] = allVoxels.size(); // potential lookup
+							allIndices[index] = (uint32_t)allVoxels.size(); // potential lookup
 							allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.z, curVoxel.y), 0, (channel_value << active_channel_offset) & 0x00ffffff); // *note -> swizzle of y and z here required
 
 							// bounding box calculation //
@@ -988,7 +988,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 				active_channel_offset += 8; // next channel (rgba)
 			}
 
-			numVoxels = allVoxels.size(); // actual voxel count
+			numVoxels = (uint32_t)allVoxels.size(); // actual voxel count
 
 			// cleanup, volume no longer required
 			if (bits) {
@@ -1004,7 +1004,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 			uint32_t const new_count(pDestMem->_numVoxels + numVoxels); // always growing so reallocation doesn't bother existing data //
 
 			// new allocation of target size
-			voxelDescPacked* pVoxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * new_count + 1, alignof(voxelDescPacked)); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+			voxelDescPacked* pVoxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * new_count, CACHE_LINE_BYTES); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
 
 			// copy over existing data
 			memcpy(pVoxels, pDestMem->_Voxels, sizeof(voxelDescPacked) * frameOffset); // frameOffset contains the total size b4 this vdb frame.
@@ -1013,18 +1013,19 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 			memcpy(pVoxels + frameOffset, allVoxels.data(), sizeof(voxelDescPacked) * numVoxels);
 
 			// swap pointers
-			std::swap<voxelDescPacked*>(pDestMem->_Voxels, pVoxels);
+			voxelDescPacked* pDelVoxels(const_cast<voxelDescPacked*>(pDestMem->_Voxels)); // to be released
+			pDestMem->_Voxels = pVoxels;
 
 			// release the old allocation
-			if (pVoxels) {
-				scalable_aligned_free(pVoxels);
-				pVoxels = nullptr;
+			if (pDelVoxels) {
+				scalable_aligned_free(pDelVoxels);
+				pDelVoxels = nullptr;
 			}
 		}
 	} // release of temporary memory happens at this end of scope.
 	
 	if (numVoxels) { // check
-		auto const [numVoxelsFrame, numVoxelsEmissiveFrame, numVoxelsTransparentFrame] = OptimizeVoxels(pDestMem->_Voxels + frameOffset, numVoxels); // optimizing *only* voxels for this frame
+		auto const [numVoxelsFrame, numVoxelsEmissiveFrame, numVoxelsTransparentFrame] = OptimizeVoxels(const_cast<Volumetric::voxB::voxelDescPacked* const>(pDestMem->_Voxels + frameOffset), numVoxels); // optimizing *only* voxels for this frame
 
 		if (numVoxelsFrame) { // check
 
@@ -1079,7 +1080,7 @@ static bool const SaveV1XACachedFile(std::wstring_view const path, voxelModelBas
 				
 				for (uint32_t channel = 0; channel < numChannels; ++channel) {
 
-					uint32_t const name_length(sequence->getChannelName(channel).length());
+					uint32_t const name_length((uint32_t)sequence->getChannelName(channel).length());
 					_fwrite_nolock(&name_length, sizeof(name_length), 1, stream);
 					_fwrite_nolock(sequence->getChannelName(channel).data(), sizeof(char), name_length, stream);
 				}
@@ -1137,7 +1138,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 	if (!error) {
 
 		if (mmap.is_open() && mmap.is_mapped()) {
-			__prefetch_vmem(mmap.data(), mmap.size());
+			___prefetch_vmem(mmap.data(), mmap.size());
 
 			uint8_t const* pReadPointer((uint8_t*)mmap.data());
 
@@ -1255,7 +1256,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 					
 					if (!result.state) {
 
-						pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, alignof(voxelDescPacked));
+						pDestMem->_Voxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * pDestMem->_numVoxels, CACHE_LINE_BYTES);
 						memcpy((void* __restrict)pDestMem->_Voxels, outDecompressed, decompressed_size);
 					}
 					else {
@@ -1340,12 +1341,12 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 
 							// release the uncompressed voxel data in the model
 							if (pDestMem->_Voxels) {
-								scalable_aligned_free(pDestMem->_Voxels);
+								scalable_aligned_free(const_cast<voxelDescPacked*>(pDestMem->_Voxels));
 								pDestMem->_Voxels = nullptr;
 							}
 
 							// update "_Voxels" to point to beginning of memory mapped file
-							pDestMem->_Voxels = (voxelDescPacked* const __restrict)_persistant_mmp.back().data();
+							pDestMem->_Voxels = (voxelDescPacked const* const __restrict)_persistant_mmp.back().data();
 							pDestMem->_Mapped = true;
 
 							// model voxel data is now read-only and is "virtual memory", so it saves physical memory by only keeping whats active from virtual memory.
@@ -1568,36 +1569,6 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	SaveV1XACachedFile(szCachedPathFilename, pDestMem);
 	
 	return(-1); // indicating new sequence loaded
-}
-
-void ApplyAllTransparent(voxelModelBase* const __restrict pModel)
-{
-	struct FuncTransparentAll {
-		
-		voxelModelBase* const __restrict	   Model;
-
-		__inline FuncTransparentAll(voxelModelBase* const __restrict Model_)
-			: Model(Model_)
-		{}
-
-		void operator()(const tbb::blocked_range<uint32_t>& r) const {
-
-			for (uint32_t i = r.begin(); i != r.end(); ++i) {
-
-				Model->_Voxels[i].Transparent = true;
-				
-			}
-		}
-	};
-
-	{
-		uint32_t const numVoxels(pModel->_numVoxels);
-		FuncTransparentAll const applyAll(pModel);
-		// apply to all voxels of model (transparecy capability)
-		tbb::parallel_for(tbb::blocked_range<uint32_t>(0, numVoxels), applyAll);
-		// important to update this count!!!!
-		pModel->_numVoxelsTransparent = numVoxels;
-	}
 }
 
 void voxelModelBase::ComputeLocalAreaAndExtents()

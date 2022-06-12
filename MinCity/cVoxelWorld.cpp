@@ -142,7 +142,7 @@ namespace // private to this file (anonymous)
 	{
 		static inline tbb::queuing_rw_mutex lock; // for the::grid
 
-		static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for the::grid
+		static inline constinit struct // purposely anonymous union, protected pointer implementation for the::grid
 		{
 			Iso::Voxel* __restrict		 _protected = nullptr;
 
@@ -150,7 +150,7 @@ namespace // private to this file (anonymous)
 				return(_protected);
 			}
 		} grid{};
-		static inline constinit alignas(CACHE_LINE_BYTES) struct // purposely anonymous union, protected pointer implementation for the::temp
+		static inline constinit struct // purposely anonymous union, protected pointer implementation for the::temp
 		{
 			Iso::mini::Voxel const** __restrict	 _protected = nullptr;
 
@@ -170,7 +170,7 @@ namespace // private to this file (anonymous)
 
 		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
 
-		static inline constinit alignas(CACHE_LINE_BYTES)
+		static inline constinit
 			volume* __restrict bits{ nullptr };
 
 	} // end ns
@@ -792,7 +792,7 @@ void cVoxelWorld::OnMouseRightClick()
 		return; // input disabled!
 
 	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::TINY_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
@@ -2451,8 +2451,7 @@ namespace // private to this file (anonymous)
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-			tbb::affinity_partitioner& __restrict partitioner)
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
 		{
 			bool bVisible(true);
 
@@ -2468,7 +2467,7 @@ namespace // private to this file (anonymous)
 					bVisible = false; // voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
-				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans, partitioner);
+				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 
@@ -2552,7 +2551,7 @@ namespace // private to this file (anonymous)
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			voxelEnd.y -= lines_missing;
 #endif
-			typedef struct alignas(16) no_vtable sRenderFuncBlockChunk {
+			typedef struct no_vtable sRenderFuncBlockChunk {
 
 			private:
 				point2D_t const 								voxelStart;
@@ -2565,8 +2564,6 @@ namespace // private to this file (anonymous)
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
-
-				tbb::affinity_partitioner& __restrict partitioner;
 				
 				sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 			public:
@@ -2579,10 +2576,9 @@ namespace // private to this file (anonymous)
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
-					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_,
-					tbb::affinity_partitioner& __restrict partitioner_)
+					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
 					: voxelStart(voxelStart_), theGrid(theGrid_), theTemp(theTemp_),
-					voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_), partitioner(partitioner_)
+					voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
 				{}
 
 				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
@@ -2628,7 +2624,7 @@ namespace // private to this file (anonymous)
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans, partitioner);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -2636,7 +2632,7 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans, partitioner);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 									}
 								}
 							}
@@ -2690,10 +2686,10 @@ namespace // private to this file (anonymous)
 			{
 				tbb::queuing_rw_mutex::scoped_lock lock(the::lock, false); // read-only grid access
 
-				tbb::affinity_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-					RenderFuncBlockChunk(voxelStart, the::grid, the::temp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans, part), part
+					RenderFuncBlockChunk(voxelStart, the::grid, the::temp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
 				);
 			}
 			// ####################################################################################################################
@@ -2927,8 +2923,8 @@ namespace world
 			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			the::temp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
 			 
-			__memclr_stream<CACHE_LINE_BYTES>(the::grid._protected, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			__memclr_stream<CACHE_LINE_BYTES>(the::temp._protected, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			memset(the::grid._protected, 0, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			memset(the::temp._protected, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			
 			mini::voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
@@ -2943,7 +2939,7 @@ namespace world
 #ifndef NDEBUG
 		OutputVoxelStats();
 #endif
-		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(0), MinCity::Vulkan->computeQueue(0), MinCity::getFramebufferSize());
+		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(0), MinCity::Vulkan->computeQueue(0), MinCity::getFramebufferSize(), MinCity::hardware_concurrency());
 		MinCity::PostProcess->create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), MinCity::getFramebufferSize());
 		createAllBuffers(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue());
 		
@@ -3721,31 +3717,16 @@ namespace world
 
 
 		// mapped clears // parallel = higher bandwidth achieved //
-		tbb::parallel_invoke(
-			[&] {
-				// clears w/o requirement of being mapped //
-				_OpacityMap.clear();
-			},
-			[&] {
-				__memclr_stream<32>(MappedVoxels_Terrain_Start, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
-			},
-				[&] {
-				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
-			},
-				[&] {
-				__memclr_stream<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
-			},
-				[&] {
-				__memclr_stream<32>(MappedVoxels_Static_Start, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
-			},
-				[&] {
-				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
-			},
-				[&] {
-				__memclr_stream<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
-			});
+		___memset_threaded<32>(MappedVoxels_Terrain_Start, 0, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
+		___memset_threaded<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
+		___memset_threaded<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
+		___memset_threaded<32>(MappedVoxels_Static_Start, 0, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
+		___memset_threaded<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
+		___memset_threaded<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
+
+		async_long_task::wait<background_critical>(_OpacityMap.getAsyncClearTaskID(), "async clears"); // ensure the async clears are done
 		
-		__streaming_store_fence(); // ensure "streaming" clears are coherent
+		___streaming_store_fence(); // ensure "streaming" clears are coherent
 
 		// GRID RENDER //
 		voxelRender::RenderGrid<Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z>(
@@ -3841,10 +3822,7 @@ namespace world
 			}
 		}
 		
-		
-		// Update stagingBuffere inside this thread (no two memory regions are overlapping while mapped across threads)
-		_OpacityMap.commit(resource_index, MinCity::hardware_concurrency()); // copy lightbuffer from cpu friendly read-write normal memory to potentially write combined (writeonly) buffer
-
+		_OpacityMap.commit(); // lightweight call (commits the new bounds)
 
 		///
 		{
@@ -4541,7 +4519,47 @@ namespace world
 		// special input handling (required every frame) //
 		HoverVoxel();
 	}
-	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bFirstUpdateProgram)
+	bool const cVoxelWorld::UpdateOnce(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused)
+	{
+		bool const bJustLoaded(_onLoadedRequired);
+		
+		[[unlikely]]  if (bJustLoaded) {
+			// ### ONLOADED EVENT must be triggered here !! //
+			OnLoaded(tNow);
+		}
+		else {
+			
+			updateMouseOcclusion(bPaused);
+
+			_sim->run(tNow, tDelta, the::grid);
+
+			{ // static instance validation
+
+				using static_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
+				for (static_unordered_map::const_iterator iter = _hshVoxelModelInstances_Static.cbegin();
+					iter != _hshVoxelModelInstances_Static.cend(); ++iter) {
+
+					if (iter->second) {
+						iter->second->Validate();
+					}
+				}
+			}
+			{ // dynamic instance validation
+
+				using dynamic_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
+				for (dynamic_unordered_map::const_iterator iter = _hshVoxelModelInstances_Dynamic.cbegin();
+					iter != _hshVoxelModelInstances_Dynamic.cend(); ++iter) {
+
+					if (iter->second) {
+						iter->second->Validate();
+					}
+				}
+			}
+		} // !bJustLoaded
+		
+		return(bJustLoaded);
+	}
+	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bJustLoaded)
 	{
 		tTime const tStart(start());
 
@@ -4549,275 +4567,121 @@ namespace world
 		/*XMVECTOR const xmOrigin =*/ UpdateCamera(tNow, tDelta);
 
 		//###########################################################//
-		UpdateUniformStateTarget(now(), tStart, bFirstUpdateProgram);
+		UpdateUniformStateTarget(tNow, tStart, bJustLoaded);
 		//###########################################################//
 		
 		// ***** Anything that uses uniform state updates AFTER
 		_bMotionDelta = false; // must reset *here*
 		
-		[[likely]] if (!bFirstUpdateProgram && !_onLoadedRequired) {
+		[[unlikely]] if (bJustLoaded)
+			return;
+		
+		[[unlikely]] if (eExclusivity::DEFAULT != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
+			return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
 
-			[[unlikely]] if (eExclusivity::DEFAULT != cMinCity::getExclusivity()) // ** Only after this point exists game update related code
-				return;															 // ** above is independent, and is compatible with all alternative exclusivity states (LOADING/SAVING/etc.)
+		// any operations that do not need to execute while paused should not
+		if (!bPaused) {
 
-			updateMouseOcclusion(bPaused);
+			if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
+				SAFE_DELETE(_activeRain);
+			}
+			
+			if (oCamera.ZoomToExtents) {
 
-			if (_sim) {
-				_sim->run(tNow, tDelta, the::grid);
+				// auto zoom to AABB extents feature
+				zoomCamera(XMLoadFloat3A(&oCamera.ZoomExtents));
 			}
 
-#ifdef GIF_MODE
-			static constexpr float const SWING = 0.025f;
-			static float accumulator(0.0f);
+			// update all image animations //
+			{
+				auto it = ImageAnimation::begin();
+				while (ImageAnimation::end() != it) {
 
-			if ((tNow - tStart) >= milliseconds(2000)) {
-				accumulator += tDelta.count() * 0.1666f;
-
-				static float negative(1.0f), positive(0.0f);
-
-				if (accumulator >= 1.0f) {
-					accumulator -= 1.0f;
-					std::swap(negative, positive);
+					it->OnUpdate(tNow, tDelta);
+					++it;
 				}
-
-				rotateCamera(SFM::triangle_wave(-(1.0f + negative), (1.0f + positive), accumulator) * SWING);
 			}
-#endif
-
-			// any operations that do not need to execute while paused should not
-			if (!bPaused) {
-
-				if (oCamera.ZoomToExtents) {
-
-					// auto zoom to AABB extents feature
-					zoomCamera(XMLoadFloat3A(&oCamera.ZoomExtents));
-				}
-
-				{ // static instance validation
-
-					using static_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
-					for (static_unordered_map::const_iterator iter = _hshVoxelModelInstances_Static.cbegin();
-						iter != _hshVoxelModelInstances_Static.cend(); ++iter) {
-
-						if (iter->second) {
-							iter->second->Validate();
-						}
-					}
-					// parallel version any benefit? did crash....
-					/*
-					tbb::parallel_for_each(_hshVoxelModelInstances_Static.cbegin(), _hshVoxelModelInstances_Static.cend(), [&](std::pair<uint32_t const, Volumetric::voxelModelInstance_Static*> iter) {
-						if (iter.second) {
-							iter.second->Validate();
-						}
-					});
-					*/
-				}
-				{ // dynamic instance validation
-
-					using dynamic_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
-					for (dynamic_unordered_map::const_iterator iter = _hshVoxelModelInstances_Dynamic.cbegin();
-						iter != _hshVoxelModelInstances_Dynamic.cend(); ++iter) {
-
-						if (iter->second) {
-							iter->second->Validate();
-						}
-					}
-					/* parallel version any benefit? did crash....
-					tbb::parallel_for_each(_hshVoxelModelInstances_Dynamic.cbegin(), _hshVoxelModelInstances_Dynamic.cend(), [&](std::pair<uint32_t const, Volumetric::voxelModelInstance_Dynamic*> iter) {
-						if (iter.second) {
-							iter.second->Validate();
-						}
-					});
-					*/
-				}
-
-				// update all image animations //
+			// update all dynamic/updateable game objects //
+			{
 				{
-					auto it = ImageAnimation::begin();
-					while (ImageAnimation::end() != it) {
+					auto it = cExplosionGameObject::begin();
+					while (cExplosionGameObject::end() != it) {
 
 						it->OnUpdate(tNow, tDelta);
 						++it;
 					}
 				}
-				// update all dynamic/updateable game objects //
-				{
-					{
-						auto it = cExplosionGameObject::begin();
-						while (cExplosionGameObject::end() != it) {
-
-							it->OnUpdate(tNow, tDelta);
-							++it;
-						}
-					}
 						
-					// import //
-					{
-						auto it = cImportGameObject_Dynamic::begin();
-						while (cImportGameObject_Dynamic::end() != it) {
-
-							it->OnUpdate(tNow, tDelta);
-							++it;
-						}
-					}
-					{
-						auto it = cImportGameObject_Static::begin();
-						while (cImportGameObject_Static::end() != it) {
-
-							it->OnUpdate(tNow, tDelta);
-							++it;
-						}
-					}
-				}
+				// import //
 				{
-					// traffic controllers - *should be done b4 cars* //
-					auto it = cTrafficControlGameObject::begin();
-					while (cTrafficControlGameObject::end() != it) {
-
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
-					::cCarGameObject::UpdateAll(tNow, tDelta);
-					::cPoliceCarGameObject::UpdateAll(tNow, tDelta);
-				}
-				{
-					// copter //
-					auto it = cCopterGameObject::begin();
-					while (cCopterGameObject::end() != it) {
+					auto it = cImportGameObject_Dynamic::begin();
+					while (cImportGameObject_Dynamic::end() != it) {
 
 						it->OnUpdate(tNow, tDelta);
 						++it;
 					}
 				}
 				{
-					auto it = cRemoteUpdateGameObject::begin();
-					while (cRemoteUpdateGameObject::end() != it) {
+					auto it = cImportGameObject_Static::begin();
+					while (cImportGameObject_Static::end() != it) {
 
 						it->OnUpdate(tNow, tDelta);
 						++it;
 					}
 				}
-				{
-					auto it = cTestGameObject::begin();
-					while (cTestGameObject::end() != it) {
+			}
+			{
+				// traffic controllers - *should be done b4 cars* //
+				auto it = cTrafficControlGameObject::begin();
+				while (cTrafficControlGameObject::end() != it) {
 
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
+					it->OnUpdate(tNow, tDelta);
+					++it;
 				}
+				::cCarGameObject::UpdateAll(tNow, tDelta);
+				::cPoliceCarGameObject::UpdateAll(tNow, tDelta);
+			}
+			{
+				// copter //
+				auto it = cCopterGameObject::begin();
+				while (cCopterGameObject::end() != it) {
 
-				// last
-				{
-					auto it = cLevelSetGameObject::begin();
-					while (cLevelSetGameObject::end() != it) {
-
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
+					it->OnUpdate(tNow, tDelta);
+					++it;
 				}
+			}
+			{
+				auto it = cRemoteUpdateGameObject::begin();
+				while (cRemoteUpdateGameObject::end() != it) {
 
-				// ---------------------------------------------------------------------------//
-				CleanUpInstanceQueue(); // *** must be done after all game object updates *** //
-				// ---------------------------------------------------------------------------//
-
-				// TESTING: //
-				/*
-				static tTime tLastTest(zero_time_point);
-				static uint32_t copter_count(0);
-
-				if (copter_count < 5 && tNow - tLastTest > milliseconds(500))
-				{
-					tLastTest = tNow;
-
-					point2D_t const randomVoxelIndex = getRandomNonVisibleVoxelIndexNear();
-
-					Iso::Voxel const* const pVoxel(world::getVoxelAt(randomVoxelIndex));
-					if (pVoxel) {
-
-						Iso::Voxel oVoxel(*pVoxel);
-
-						if (!(Iso::isExtended(oVoxel) && Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))) { // only if not road
-							if (nullptr != placeCopterInstanceAt(randomVoxelIndex)) {
-								++copter_count;
-							}
-						}
-
-						//world::setVoxelAt(randomRoadEdgeVoxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-					}
-					else {
-						FMT_LOG_FAIL(GAME_LOG, "No voxel at ({:d},{:d}) !!", randomVoxelIndex.x, randomVoxelIndex.y);
-					}
-
-
+					it->OnUpdate(tNow, tDelta);
+					++it;
 				}
-				static tTime tLast(zero_time_point);
+			}
+			{
+				auto it = cTestGameObject::begin();
+				while (cTestGameObject::end() != it) {
 
-				if ((high_resolution_clock::now() - tLast) > nanoseconds(milliseconds(50))) {
-
-					FMT_NUKLEAR_DEBUG(false, " copters( {:n} )", copter_count);
-					tLast = high_resolution_clock::now();
+					it->OnUpdate(tNow, tDelta);
+					++it;
 				}
-				*/
+			}
 
-				// special instances //
-				/*
-				if (_activeExplosion) {
+			// last
+			{
+				auto it = cLevelSetGameObject::begin();
+				while (cLevelSetGameObject::end() != it) {
 
-					if (!UpdateExplosion(tNow, _activeExplosion)) {
-						SAFE_DELETE(_activeExplosion);
-					}
+					it->OnUpdate(tNow, tDelta);
+					++it;
 				}
-				else {
+			}
 
-					_activeExplosion = new sExplosionInstance(XMVectorZero(), 50.0f);
-				}
+		} // end !Paused //
 
-				if (_activeTornado) {
-
-					if (!UpdateTornado(tNow, _activeTornado)) {
-						SAFE_DELETE(_activeTornado);
-					}
-				}
-				else {
-
-					//_activeTornado = new sTornadoInstance(XMVectorZero(), 75.0f);
-				}
-				*/
-
-				if (_activeRain) {
-
-					if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
-						SAFE_DELETE(_activeRain);
-					}
-				}
-
-				// City Update //
-				// bugged todo : 
-				/*
-				MinCity::City->Update(tNow);
-
-				// TESTING //
-				{
-					tTime tLast(zero_time_point);
-					seconds interval(1);
-
-					if (tNow - tLast > nanoseconds(interval)) {
-
-						MinCity::City->modifyPopulationBy(PsuedoRandomNumber(-10000, 10000));
-						MinCity::City->modifyCashBy(PsuedoRandomNumber32(-1000, 1000));
-
-						interval = seconds(PsuedoRandomNumber(1, 15));
-						tLast = tNow;
-					}
-				}
-				*/
-
-			} // end !Paused //
-		}
-		else // first update program + onLoadedRequired events //
-		{ // ### ONLOADED EVENT must be triggered here !! //
-			OnLoaded(tNow);
-		}
+		// ---------------------------------------------------------------------------//
+		CleanUpInstanceQueue(); // *** must be done after all game object updates *** //
+		// ---------------------------------------------------------------------------//
 	}
 
 	// voxel painting
@@ -4827,7 +4691,7 @@ namespace world
 			// **bugfix - because nothing is rendered while the window is not active (user alt-tabbed, etc) the "reset" that each minivoxel does for it self after being rendered never happens.
 			// this results in an evergrowing linked list, resulting in undefined behaviour. So while paused this works around that by clearing the pointers to the vector of minivoxels.
 			// so there is no separate clear while not paused - which is the normal path.
-			__memclr_stream<CACHE_LINE_BYTES>(the::temp, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE); // set all pointers to nullptr
+			___memset_threaded<CACHE_LINE_BYTES>(the::temp, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE); // set all pointers to nullptr
 			// clearing the vector must follow
 		}
 
@@ -5648,7 +5512,8 @@ namespace world
 
 	void cVoxelWorld::CleanUp()
 	{
-		
+		async_long_task::wait<background_critical>(_OpacityMap.getAsyncClearTaskID(), "async clears"); // ensure the async clears are done
+
 		SAFE_DELETE(_sim);
 
 		// cleanup special instances

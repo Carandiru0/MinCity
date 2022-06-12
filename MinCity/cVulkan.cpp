@@ -466,9 +466,10 @@ void cVulkan::CreateVolumetricResources()
 			{ { 0.0f,  1.0f,  0.0f }, },
 		};
 
-		alignas(16) uint16_t const indices[] = {
+		uint16_t const indices[] = {
 			0,1,2, 2,3,0, 1,5,6, 6,2,1, 7,6,5, 5,4,7, 4,0,3, 3,7,4, 4,5,1, 1,0,4, 3,2,6, 6,7,3,
 		};
+		
 		{
 			vk::DeviceSize gpuSize = _countof(vertices) * sizeof(VertexDecl::just_position);
 			_volData._vbo = vku::VertexBuffer(gpuSize);
@@ -518,6 +519,8 @@ void cVulkan::CreateVolumetricResources()
 	pm.back(stencilOp);
 
 	pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
+	pm.sampleShadingEnable(VK_TRUE);
+	pm.minSampleShading(0.25f);
 	pm.blendBegin(VK_FALSE);
 	pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes, all imageStores
 
@@ -1073,11 +1076,11 @@ void cVulkan::CreateVoxelResources()
 			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_road.vert.bin", constants_road_vs };
 			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_road.geom.bin", constants_road_gs };
 			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_road.frag.bin", constants_road_fs };
-			CreateVoxelResource(_rtData[eVoxelPipeline::VOXEL_ROAD],
+			CreateVoxelResource<false, false, false, false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD],  // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
 				_window->midPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 
-			CreateVoxelResource(_rtData[eVoxelPipeline::VOXEL_ROAD_OFFSCREEN],
+			CreateVoxelResource<false, false, false, false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_OFFSCREEN], // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
 				_window->offscreenPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 
@@ -1099,7 +1102,7 @@ void cVulkan::CreateVoxelResources()
 			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.vert.bin", constants_road_vs };
 			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.geom.bin", constants_road_gs };
 			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.frag.bin", constants_road_fs };
-			CreateVoxelResource<false, false, false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS],
+			CreateVoxelResource<false, false, false, true, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS], // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
 				_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 
@@ -2028,7 +2031,7 @@ NO_INLINE void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out)
 		// copy entire framebuffer to output
 		// 200 to 400 us faster than standard memcpy - hopefully this works for all frameBuffer sizes
 		// frameBufferSizes are guaranteed to have a granularity of 8 (bugfix in GLFW)
-		__memcpy_threaded<32>((uint8_t* const __restrict)mem_out, (uint8_t const* const __restrict)gpu_read_back, size, size / MinCity::hardware_concurrency());
+		___memcpy_threaded<32>((uint8_t* const __restrict)mem_out, (uint8_t const* const __restrict)gpu_read_back, size, size / MinCity::hardware_concurrency());
 
 		_offscreenBuffer.unmap();
 	}
@@ -2442,8 +2445,10 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	pp.cb.end();
 }
 
-void cVulkan::renderComplete() // triggered internally on Render Completion (after final queue submission / present by vku framework
+void cVulkan::renderComplete(uint32_t const resource_index) // triggered internally on Render Completion (after final queue submission / present by vku framework
 {
+	MinCity::OnRenderComplete(resource_index);
+
 	[[unlikely]] if ( _bOffscreenCopy ) { // single frame capture is a rare operation
 
 		_OffscreenCopied.clear(); // signal copied / copy finished
@@ -2451,16 +2456,19 @@ void cVulkan::renderComplete() // triggered internally on Render Completion (aft
 	}
 }
 
-static microseconds const frameTiming(tTime const& tNow) // real-time domain
+static microseconds const frameTiming(tTime const& tNow, bool const real_frame) // real-time domain
 {
 	static constexpr milliseconds const PRINT_FRAME_INTERVAL = milliseconds(5500); // ms
 	static auto start = high_resolution_clock::now();
 	static auto lastPrint = high_resolution_clock::now();
-	static microseconds sum{}, peak{}, aboveaveragelevel{}, lastaverage{};
+	static microseconds last{}, sum{}, peak{}, aboveaveragelevel{}, lastaverage{};
 	static size_t framecount(0), aboveaveragecount(0), belowaveragecount(0);
 
 	auto const deltaNano = tNow - start;
 	start = tNow;
+	if (!real_frame) {
+		return(last);
+	}
 
 	microseconds const deltaMicro = duration_cast<microseconds>(deltaNano);
 	peak = microseconds( std::max(peak, deltaMicro) );
@@ -2514,7 +2522,8 @@ static microseconds const frameTiming(tTime const& tNow) // real-time domain
 		return(lastaverage);
 	}
 
-	return(sum / framecount);
+	last = sum / framecount;
+	return(last);
 }
 
 void cVulkan::Render()
@@ -2524,21 +2533,26 @@ void cVulkan::Render()
 		return;
 	}
 
-	tTime const tNow(high_resolution_clock::now());  // rendering functions requiring real-time domain
-
-	_frameTimingAverage = frameTiming(tNow);
-
 #if (!defined(NDEBUG) & defined(LIVESHADER_MODE) & defined(LIVE_PIPELINE) & defined(LIVE_PIPELINELAYOUT) & defined(LIVE_RENDERPASS) & defined(LIVE_INTERVAL))
 	liveshader::recreate_pipeline(LIVE_PIPELINE, _device, _fw, LIVE_PIPELINELAYOUT, LIVE_RENDERPASS, LIVE_INTERVAL);
 #endif
 
 	// ####### //
+	constinit static uint32_t last_free_resource_index(0);
+	
 	_current_free_resource_index = _window->draw(
 		_device, cVulkan::renderCompute, cVulkan::renderDynamicCommandBuffer, cVulkan::renderOverlayCommandBuffer
 	);
 	// ####### //
 
-	renderComplete(); // this happens after queue submission / present by the vku framework
+	bool const real_frame(last_free_resource_index != _current_free_resource_index);
+
+	if (real_frame) {
+		renderComplete(_current_free_resource_index); // this happens after queue submission / present by the vku framework on real frames only
+	}
+	_frameTimingAverage = frameTiming(high_resolution_clock::now(), real_frame);
+
+	last_free_resource_index = _current_free_resource_index;
 }
 
 void cVulkan::setStaticCommandsDirty()

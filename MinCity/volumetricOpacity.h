@@ -8,6 +8,7 @@
 #include <Math/v2_rotation_t.h>
 #include <Utility/scalable_aligned_allocator.h>
 #include "voxelAlloc.h"
+#include <Utility/async_long_task.h>
 
 namespace Volumetric {
 	extern bool const isGraduallyStartingUp();
@@ -136,13 +137,14 @@ namespace Volumetric
 		// Accessor ///
 		voxelVolumeSet const& __restrict													getVolumeSet() const { return(VolumeSet); }
 		__inline lightVolume const& __restrict												getMappedVoxelLights() const { return(MappedVoxelLights); }
-
+		task_id_t const& __restrict															getAsyncClearTaskID() const { return(AsyncClearTaskID); }
+		
 		// Mutators //
 		__inline void __vectorcall pushViewMatrix(FXMMATRIX xmView) {
 			// only need mat3 for purposes of compute shader transforming light direction vector
 			XMStoreFloat4x4(&PushConstants.view, xmView);
 		}
-
+		
 #ifdef DEBUG_LIGHT_PROPAGATION
 		int32_t const getDebugSliceIndex() const {
 			return(DebugSlice);
@@ -162,16 +164,19 @@ namespace Volumetric
 		}
 #endif
 		// Main Methods //
-		void commit(uint32_t const resource_index, size_t const hw_concurrency) const { // this method will quickly [map, copy, unmap] to gpu write-combined stagingBuffer, no reads of this buffer of any kind
-														   // private write-combined memory copy - no *reading* *warning* *severe* *performance degradation if one reads from a write-combined gpu buffer*
-			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.commit(LightProbeMap.stagingBuffer[resource_index], hw_concurrency);
+		void commit() const { 
+			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.commit();
 		}
 
-		void clear() const { // happens before a comitt, does not require stagingbuffer to clear, all safe memory
+		void clear(uint32_t const resource_index) {
 
-			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.clear();
+			// asynchronously clear the lightbuffer memory
+			AsyncClearTaskID = async_long_task::enqueue<background_critical>([&] {
+
+				MappedVoxelLights.clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+			});
 		}
-
+		
 		void release() {
 
 			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
@@ -230,7 +235,7 @@ namespace Volumetric
 		}
 
 	public:
-		void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize) {
+		void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize, size_t const hardware_concurrency) {
 
 			createIndirectDispatch(device, commandPool, queue);
 
@@ -243,7 +248,8 @@ namespace Volumetric
 
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightProbeMap.imageGPUIn[resource_index]->image(), vkNames::Image::LightProbeMap);
 			}
-			
+			MappedVoxelLights.create(hardware_concurrency); // prepares/clears buffers/memory
+
 			for (uint32_t i = 0; i < 2; ++i) {
 				PingPongMap[i] = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);
@@ -409,9 +415,9 @@ namespace Volumetric
 #endif
 
 	private:
-		lightVolume											MappedVoxelLights;
 		voxelTexture3D										LightProbeMap;
-
+		lightVolume											MappedVoxelLights;
+		
 		vku::IndirectBuffer* __restrict						ComputeLightDispatchBuffer;
 		vku::TextureImageStorage3D*							PingPongMap[2];
 		voxelLightmapSet									LightMap; // final output
@@ -422,6 +428,7 @@ namespace Volumetric
 		static inline float const							VolumeLength = (std::hypot(float(Size), float(Size), float(Size))),
 															InvVolumeLength = (1.0f / VolumeLength);
 
+		task_id_t											AsyncClearTaskID;
 		int32_t												ClearStage;
 
 		UniformDecl::ComputeLightPushConstants				PushConstants;
@@ -435,6 +442,7 @@ namespace Volumetric
 	public:
 		volumetricOpacity()
 			:
+			MappedVoxelLights(LightProbeMap.stagingBuffer),
 			ComputeLightDispatchBuffer{ nullptr }, LightMap{ nullptr }, LightMapHistory{ nullptr }, OpacityMap{ nullptr },
 			VolumeSet{},
 			ClearStage(0)
@@ -853,7 +861,7 @@ namespace Volumetric
 			}
 			bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
 		}
-
+		
 		return(true); // always upload whether the command buffer was updated or not. *Fractional* changes in position need to be accounted for (which reuses the command buffer for upload, but this updates the internal light position data).
 	}				  // then compute will run as it should on the updated light position data.
 

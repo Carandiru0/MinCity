@@ -2,6 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 //#extension GL_KHR_shader_subgroup_ballot : enable
 #extension GL_KHR_shader_subgroup_vote : enable
+//#extension GL_KHR_shader_subgroup_arithmetic : enable
+//#extension GL_KHR_shader_subgroup_shuffle: enable
 //#extension GL_KHR_shader_subgroup_quad : enable
 #extension GL_EXT_control_flow_attributes : enable
 
@@ -143,6 +145,48 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 	}
 }
 
+/*
+void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
+
+	const warp_local read_warp = group_load(read_location);
+
+	[[branch]] if ( isLit(read_warp.packed_color) ) {	// new
+			
+		const float read_distance = distance(read_warp.emitter_location, current_location);
+
+		current_distance = subgroupMin(read_distance);
+		
+		// acquire id of the active invocation that contains the least distance
+		const uint active_invocation_id = subgroupBallotFindMSB(subgroupBallot(read_distance == current_distance));
+		
+		// every other invocation acquires the active_invocation's warp, which is the location and color of the light that was deemed the closest across the entire subgroup.
+		warp = subgroupShuffle(read_warp, active_invocation_id);
+	}
+}
+*/
+
+/*
+void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
+
+	const warp_local read_warp = group_load(read_location);
+
+	const bool lit = isLit(read_warp.packed_color);
+	const float read_distance = lit ? distance(read_warp.emitter_location, current_location) : 99999.99999f;
+
+	current_distance = subgroupMin(read_distance);
+
+	// acquire id of the active invocation that contains the least distance
+	const uint active_invocation_id = subgroupBallotFindMSB(subgroupBallot(read_distance == current_distance));
+		
+	// every other invocation acquires the active_invocation's warp, which is the location and color of the light that was deemed the closest across the entire subgroup.
+	[[branch]] if ( isLit(read_warp.packed_color) ) {	// new
+		
+	
+	warp = subgroupShuffle(read_warp, active_invocation_id);
+
+	}
+}*/
+
 // moore neighbour hood (3D) (less samples and produces acceptable results)
 /*
 const ivec3 offsets[] = ivec3[]( ivec3(-1,  0,  -1 ),
@@ -169,7 +213,7 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 #endif
 	float current_distance = 99999999999.9f;
 	
-	barrier(); // required so that lds is coherent between the last writes and now reads
+	barrier(); // required so that lds is coherent between the last writes and now reads (memorybarriershared is included in barrier too)
 	
 	ivec3 offset;
 	for (offset.z = -1 ; offset.z <= 1 ; ++offset.z) {
@@ -207,7 +251,7 @@ void main()
 	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 	propogateBlocks(warp, global_invocation_id * InvVolumeDimensions * WorldDimensions + 0.5f);
 
-	imageStore(pingpongImage[pc.index_output], ivec3(global_invocation_id), warp);
+	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
 }
 
 #endif // not MIP

@@ -48,7 +48,7 @@ namespace supernoise
 		vku::TextureImage2D*	  _blueNoiseTexture;
 		vku::TextureImage2DArray* _blueNoiseTextures;
 
-		alignas(16) float* _blueNoise1D;
+		float* _blueNoise1D;
 
 	public:
 		cBlueNoise();

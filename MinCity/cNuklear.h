@@ -278,8 +278,8 @@ private:
 								_bModalPrompted;
 	bool                        _bMinimapRenderingEnabled;
 
-	alignas(16) VertexDecl::nk_vertex*		_vertices;
-	alignas(16) uint16_t*					_indices;
+	VertexDecl::nk_vertex*		_vertices;
+	uint16_t*					_indices;
 private:
 
 	struct guiTextures

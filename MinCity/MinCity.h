@@ -81,7 +81,7 @@ public:
 	static __inline bool const			isPaused() { return(m_bPaused); }
 	static __inline bool const			isFocused() { return(m_bFocused); }
 	static __inline bool const			isGraduallyStartingUp() { return(m_bGradualStartingUp); }
-	static __inline size_t const		hardware_concurrency() { return(m_hwCoreCount); }
+	static __inline size_t const		hardware_concurrency() { return(m_hwCoreCount); }  // logical cpu processor count
 
 	static __inline uint32_t const		getExclusivity() { return(m_eExclusivity); }
 
@@ -113,7 +113,8 @@ public:
 	// Callbacks / Events //
 	static void OnFocusLost();
 	static void OnFocusRestored();
-
+	static void OnRenderComplete(uint32_t const resource_index);
+	
 	// Tidy memory //
 	__declspec(noinline) static void Cleanup(struct GLFWwindow* const glfwwindow);
 private:

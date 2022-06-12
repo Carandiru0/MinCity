@@ -35,7 +35,7 @@ BETTER_ENUM(eStreamingBatchSize, uint32_t const,		// batch sizes for batched str
 template<typename T, uint32_t const Size>
 struct sBatched
 {
-	alignas(64) T			data_set[Size];  // *bugfix: over aligned to avoid false sharing.
+	T						data_set[Size];  // *BUGFIX - this structure is thread local, so use the same alignment for the type already has enough
 	uint32_t				Count;
 
 	// methods to use coupled with atomic memory pointer with a global or unknown range/bounds ( maximum benefit obtained )

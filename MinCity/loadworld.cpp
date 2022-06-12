@@ -105,7 +105,7 @@ namespace world
 				if (!error) {
 
 					if (mmap.is_open() && mmap.is_mapped()) {
-						__prefetch_vmem(mmap.data(), mmap.mapped_length());	// only prefetch a smaller size
+						___prefetch_vmem(mmap.data(), mmap.mapped_length());	// only prefetch a smaller size
 
 						uint8_t const* pReadPointer((uint8_t*)mmap.data());
 
@@ -177,7 +177,7 @@ namespace world
 			if (!error) {
 
 				if (mmap.is_open() && mmap.is_mapped()) {
-					__prefetch_vmem(mmap.data(), mmap.size());
+					___prefetch_vmem(mmap.data(), mmap.size());
 
 					MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(10));
 

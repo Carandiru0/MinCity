@@ -294,17 +294,11 @@ namespace voxB
 		
 		voxelModelFeatures() = default;
 
-		voxelModelFeatures(voxelModelFeatures const& src)
+		voxelModelFeatures(voxelModelFeatures&& src)
 		{
 			// otherwise pointers are set to nullptr by default initialization (above)
-			if (src.videoscreen) {
-
-				videoscreen = new voxelScreen(*src.videoscreen);
-			}
-			if (src.sequence) {
-
-				sequence = new voxelSequence(*src.sequence);
-			}
+			std::swap<voxelScreen const*>(videoscreen, src.videoscreen);
+			std::swap<voxelSequence const*>(sequence, src.sequence);
 		}
 		~voxelModelFeatures() {
 			SAFE_DELETE(videoscreen);
@@ -322,7 +316,7 @@ namespace voxB
 	
 	typedef struct voxelModelBase
 	{		
-		voxelDescPacked* __restrict   _Voxels;			// Finalized linear array of voxels (constant readonly memory)
+		voxelDescPacked const* __restrict   _Voxels;			// Finalized linear array of voxels (constant readonly memory)
 
 		uint32_t 		_numVoxels;						// # of voxels activated
 		uint32_t		_numVoxelsEmissive;
@@ -341,10 +335,10 @@ namespace voxB
 		{}
 
 		voxelModelBase(voxelModelBase&& src)
-			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(src._Features), 
+			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(std::move(src._Features)), 
 			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(src._Mapped)
 		{
-			std::swap<voxelDescPacked* __restrict>(_Voxels, src._Voxels);
+			std::swap<voxelDescPacked const* __restrict>(_Voxels, src._Voxels);
 		}
 
 		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
@@ -357,7 +351,7 @@ namespace voxB
 			XMVECTOR const xmDimensions(maxDimensions.v4f());
 			XMStoreFloat3A(&_maxDimensionsInv, XMVectorReciprocal(xmDimensions));
 
-			_Voxels = (voxelDescPacked * __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * (width * height * depth), alignof(voxelDescPacked)); // matches voxBinary usage (alignment)
+			_Voxels = (voxelDescPacked const* __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * (width * height * depth), CACHE_LINE_BYTES); // matches voxBinary usage (alignment)
 			
 			ComputeLocalAreaAndExtents();
 		}
@@ -398,8 +392,7 @@ namespace voxB
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-			tbb::affinity_partitioner& __restrict partitioner) const;
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 
 	private:
 		voxelModel(voxelModel<Dynamic> const&) = delete;
@@ -439,8 +432,7 @@ namespace voxB
 		voxelModelInstance<Dynamic> const& instance,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-		tbb::affinity_partitioner& __restrict partitioner) const
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
 	{
 		typedef struct no_vtable sRenderFuncBlockChunk {
 
@@ -695,6 +687,7 @@ namespace voxB
 
 		uint32_t const vxl_offset(instance.getVoxelOffset());
 		
+		tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 		tbb::parallel_for(tbb::blocked_range<uint32_t>(vxl_offset, vxl_offset + vxl_count, eThreadBatchGrainSize::MODEL),
 			RenderFuncBlockChunk(xmVoxelOrigin, 
 				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
@@ -704,7 +697,7 @@ namespace voxB
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceCounters
 #endif
-			), partitioner
+			), part
 		);
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION

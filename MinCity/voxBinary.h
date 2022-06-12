@@ -42,8 +42,6 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 
 bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem); // for ImportProxy Usage
 
-void ApplyAllTransparent(voxelModelBase* const __restrict pModel);  // default transparency level for model instances is 0.5f(DEFAULT_TRANSPARENCY), each instance has independent transparency
-	
 
 } // end namespace voxB
 

@@ -174,7 +174,7 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 				if (pVoxel) {
 					Iso::Voxel const oVoxel(*pVoxel);
 
-					_blink |= Iso::getColor(oVoxel); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
 					highlightVoxel(voxelIndex, color);
 				}
 				// outside
@@ -201,7 +201,7 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 				if (pVoxel) {
 					Iso::Voxel const oVoxel(*pVoxel);
 
-					_blink |= Iso::getColor(oVoxel); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
 					highlightVoxel(voxelIndex, color);
 				}
 				// outside
@@ -228,7 +228,7 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 				if (pVoxel) {
 					Iso::Voxel const oVoxel(*pVoxel);
 
-					_blink |= Iso::getColor(oVoxel); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
 					highlightVoxel(voxelIndex, color);
 				}
 				// outside
@@ -255,7 +255,7 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 				if (pVoxel) {
 					Iso::Voxel const oVoxel(*pVoxel);
 
-					_blink |= Iso::getColor(oVoxel); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
 					highlightVoxel(voxelIndex, color);
 				}
 				// outside
@@ -286,7 +286,7 @@ void __vectorcall cAbstractToolMethods::highlightArea(rect2D_t area, uint32_t co
 				if (pVoxel) {
 					Iso::Voxel const oVoxel(*pVoxel);
 
-					_blink |= Iso::getColor(oVoxel); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
 					highlightVoxel(voxelIndex, color);
 				}
 			}
@@ -337,7 +337,7 @@ void __vectorcall cAbstractToolMethods::highlightPerimeter(rect2D_t area, uint32
 							if (pVoxel) {
 								Iso::Voxel const oVoxel(*pVoxel);
 
-								_blink |= Iso::getColor(oVoxel); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+								_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
 								highlightVoxel(voxelIndex, color);
 							}
 						}

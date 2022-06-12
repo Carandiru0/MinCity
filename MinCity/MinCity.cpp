@@ -21,9 +21,11 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #define RANDOM_IMPLEMENTATION
 #define NOISE_IMPLEMENTATION
+#define ASYNC_LONG_TASK_IMPLEMENTATION
 #include <Random/superrandom.hpp>
 #include <Noise/supernoise.hpp>
 #include <Math/superfastmath.h>
+#include <Utility/async_long_task.h>
 
 #include "cVulkan.h"
 #include "cTextureBoy.h"
@@ -35,9 +37,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "cUserInterface.h"
 #include "cAudio.h"
 #include "cCity.h"
-
-#define ASYNC_LONG_TASK_IMPLEMENTATION
-#include <Utility/async_long_task.h>
 
 // ^^^^ SINGLETON INCLUDES ^^^^ // b4 MinCity.h include
 #define MINCITY_IMPLEMENTATION
@@ -363,7 +362,7 @@ void cMinCity::Pause(bool const bStateIsPaused)
 
 	if (bStateIsPaused) {
 		if (!m_bPaused) { // block if already paused dont want to change last timestamp
-			m_tLastPause = high_resolution_clock::now();
+			m_tLastPause = now();
 			m_bPaused = true;
 			FMT_LOG(GAME_LOG, "Paused");
 		}
@@ -696,7 +695,7 @@ void cMinCity::UpdateWorld()
 		bWasPaused = true;
 	}
 	else if (bWasPaused) {
-		tLast = tNow; // resume as if no time elapsed
+		tNow = tNow; // resume as if no time elapsed
 		m_tCriticalNow = tNow; // synchronize
 		bWasPaused = false;
 	}
@@ -731,12 +730,18 @@ void cMinCity::UpdateWorld()
 
 		tAccumulate -= critical_delta();
 		
-		if (!bTick) {
-			Physics->Update(); // limited to the fixed timestep of one iteration per frame
+		bool bJustLoaded(false);
+		
+		if (!bTick) { // limited to the fixed timestep of one iteration per frame
+			
+			Physics->Update();
+			
+			bJustLoaded = VoxelWorld->UpdateOnce(m_tNow, tDeltaFixedStep, bPaused);
+
+			bTick = true;
 		}
 		// *bugfix - it's absoletly critical to keep this in the while loop, otherwise frame rate independent motion will be broken.
-		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused); // world/game uses regular timing, with a fixed timestep (best practice)
-		bTick = true;
+		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused, bJustLoaded); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
 	
 	// fractional amount for render path (uniform shader variables)
@@ -916,6 +921,16 @@ void cMinCity::OnFocusRestored()
 	SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
 }
 
+void cMinCity::OnRenderComplete(uint32_t const resource_index)
+{
+	// anything that should not be repeated for the short final frame goes here //
+	// idea is the clears are uneccessary due to RenderGrid not actually being called on the short finaL frame. so they are already cleared from the previous frame. nothing has changed but a blit of the final short frame.
+	// do not put anything that isn't related to rendering in here. eg.) clearing physics here would be a bad idea.
+	
+	// asynchronous clears go here
+	VoxelWorld->getVolumetricOpacity().clear(resource_index); // corresponding wait is in RenderGrid of the next frame.
+}
+
 __declspec(noinline) static bool SetProcessPrivilege(
 	HANDLE const hToken,          // access token handle
 	LPCTSTR lpszPrivilege,  // name of privilege to enable/disable
@@ -967,7 +982,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 
 	bool async_threads_started(false);
 
-	int32_t num_hw_threads(-1); // -1 will have tbb automatically fallback, in cases where it can't be optimized here.00000000000000002111111111111111/
+	int32_t hardware_concurrency(-1); // -1 will have tbb automatically fallback, in cases where it can't be optimized here.00000000000000002111111111111111/
 	HANDLE const hProcess(GetCurrentProcess());
 	HANDLE const hThread(GetCurrentThread());
 
@@ -990,115 +1005,6 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 
 	// ensure boosting is enabled for this process
 	SetProcessPriorityBoost(hProcess, FALSE);
-
-	// cpu and core optimization
-	{
-		// Windows 10 - new optimal CPUSet API for managing threads
-		unsigned long retsize = 0;
-		(void)GetSystemCpuSetInformation(nullptr, 0, &retsize,
-			hProcess, 0);
-
-		if (retsize) {
-			std::unique_ptr<uint8_t[]> data(new uint8_t[retsize]);
-			PSYSTEM_CPU_SET_INFORMATION const& cpu_set(reinterpret_cast<PSYSTEM_CPU_SET_INFORMATION>(data.get()));
-			if (GetSystemCpuSetInformation(
-				cpu_set,
-				retsize, &retsize, hProcess, 0))
-			{
-
-				std::set<DWORD> hw_cores;
-				std::vector<DWORD> logical_processors;
-
-				logical_processors.reserve(32);
-
-				uint8_t const* ptr = data.get();
-				for (DWORD size = 0; size < retsize; ) {
-					auto const info = reinterpret_cast<SYSTEM_CPU_SET_INFORMATION const* const>(ptr);
-					if (CpuSetInformation == info->Type) {
-						logical_processors.push_back(info->CpuSet.Id);
-						hw_cores.insert(info->CpuSet.CoreIndex);
-					}
-					ptr += info->Size;
-					size += info->Size;
-				}
-
-				num_hw_threads = (int32_t)hw_cores.size();
-
-				bool const hyperthreaded = logical_processors.size() != hw_cores.size();
-
-				unsigned long logical_processor_count_used(0);
-
-				if (hyperthreaded) {
-
-					// reserve both logical processors on second hardware core for main thread
-					{
-						unsigned long const cores[] = { logical_processors[0], logical_processors[1] };
-						logical_processor_count_used = 2;
-						SetThreadSelectedCpuSets(hThread, &logical_processors[1], 1);
-					}
-				}
-				else {
-					// reserve logical processor that is the first hardware core for main thread
-					{
-						unsigned long const cores[] = { logical_processors[0] };
-						logical_processor_count_used = 1;
-						SetThreadSelectedCpuSets(hThread, cores, logical_processor_count_used);
-					}
-				}
-
-				// remove main application threads cores from vector so they are not used for any new threads spawned from this point on.
-				for (std::vector<DWORD>::const_iterator iter = logical_processors.cbegin(); iter != logical_processors.cend(); ) {
-
-					if (0 == logical_processor_count_used) {
-						break;
-					}
-					else {
-						iter = logical_processors.erase(iter);
-					}
-					--logical_processor_count_used;
-				}
-
-				// Start background thread for long running tasks, setup using the second logical core of the last two hw cores if system is hyperthreaded.
-				{
-					int32_t const logical_processor_count((int32_t const)logical_processors.size());
-					int32_t last_logical_second_core_index[2]{};
-
-					last_logical_second_core_index[0] = logical_processor_count - 1;	// last, will be second core
-					last_logical_second_core_index[1] = logical_processor_count - 3;	// second last would be 1st logical core so skip to the next hw core, second logical core
-
-					// if there are not enough cores, set cores to zero  to disable special handling of cores for async threads
-					unsigned long cores[2]{};
-
-					if (last_logical_second_core_index[0] > 0) {
-						cores[0] = logical_processors[last_logical_second_core_index[0]];
-					}
-					if (last_logical_second_core_index[1] > 0) {
-						cores[1] = logical_processors[last_logical_second_core_index[1]];
-					}
-
-					async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
-				}
-
-				// no more limiting needed. Locking to hw cores only results in worse performance.
-				
-				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread/logical core.
-				if (logical_processors.size() > 1) {
-					SetProcessDefaultCpuSets(hProcess, logical_processors.data(), (unsigned long)logical_processors.size());
-				}
-			}
-		}
-	}
-
-	// fallback compatibility
-	if (!async_threads_started) {
-
-		unsigned long const cores[2]{}; // indicating zero will disable special handling of cores for async threads
-
-		async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
-		if (!async_threads_started) {
-			FMT_LOG_FAIL(INFO_LOG, "Background Thread for long tasks could not be initialized! \n");
-		}
-	}
 
 	// turn off windows managed power throttling off for this process
 	{
@@ -1147,8 +1053,116 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 			&MemPrio,
 			sizeof(MemPrio));
 	}
+	
+	// cpu and core optimization
+	{
+		// Windows 10 - new optimal CPUSet API for managing threads
+		unsigned long retsize = 0;
+		(void)GetSystemCpuSetInformation(nullptr, 0, &retsize,
+			hProcess, 0);
 
-	return(num_hw_threads);
+		if (retsize) {
+			std::unique_ptr<uint8_t[]> data(new uint8_t[retsize]);
+			PSYSTEM_CPU_SET_INFORMATION const& cpu_set(reinterpret_cast<PSYSTEM_CPU_SET_INFORMATION>(data.get()));
+			if (GetSystemCpuSetInformation(
+				cpu_set,
+				retsize, &retsize, hProcess, 0))
+			{
+
+				std::set<DWORD> hw_cores;
+				std::vector<DWORD> logical_processors;
+
+				logical_processors.reserve(32);
+
+				uint8_t const* ptr = data.get();
+				for (DWORD size = 0; size < retsize; ) {
+					auto const info = reinterpret_cast<SYSTEM_CPU_SET_INFORMATION const* const>(ptr);
+					if (CpuSetInformation == info->Type) {
+						logical_processors.push_back(info->CpuSet.Id);
+						hw_cores.insert(info->CpuSet.CoreIndex);
+					}
+					ptr += info->Size;
+					size += info->Size;
+				}
+
+				hardware_concurrency = std::max(logical_processors.size(), hw_cores.size()); // std::hardware_concurrency() matches logical processor count
+				
+				bool const hyperthreaded = logical_processors.size() != hw_cores.size();
+
+				unsigned long logical_processor_count_used(0);
+
+				if (hyperthreaded) {
+
+					// reserve both logical processors on first hardware core for main thread
+					{
+						unsigned long const cores[] = { logical_processors[0], logical_processors[1] };
+						logical_processor_count_used = 2;
+						SetThreadSelectedCpuSets(hThread, cores, logical_processor_count_used);
+					}
+				}
+				else {
+					// reserve logical processor that is the first hardware core for main thread
+					{
+						unsigned long const cores[] = { logical_processors[0] };
+						logical_processor_count_used = 1;
+						SetThreadSelectedCpuSets(hThread, cores, logical_processor_count_used);
+					}
+				}
+
+				// remove main application threads cores from vector so they are not used for any new threads spawned from this point on.
+				for (std::vector<DWORD>::const_iterator iter = logical_processors.cbegin(); iter != logical_processors.cend(); ) {
+
+					if (0 == logical_processor_count_used) {
+						break;
+					}
+	
+					iter = logical_processors.erase(iter);
+					--logical_processor_count_used;
+				}
+
+				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread/logical core.
+				if (logical_processors.size() > 1) {
+					SetProcessDefaultCpuSets(hProcess, logical_processors.data(), (unsigned long)logical_processors.size());
+				}
+				
+				// Start background thread for long running tasks, setup using the second logical core of the last two hw cores if system is hyperthreaded.
+				{
+					int32_t const logical_processor_count_remaining((int32_t const)logical_processors.size());
+					int32_t last_logical_second_core_index[2]{};
+
+					last_logical_second_core_index[0] = logical_processor_count_remaining - 1;	// last, will be second core
+					last_logical_second_core_index[1] = logical_processor_count_remaining - 3;	// second last would be 1st logical core so skip to the next hw core, second logical core
+
+					// if there are not enough cores, set cores to zero  to disable special handling of cores for async threads
+					unsigned long cores[2]{};
+
+					if (last_logical_second_core_index[0] > 0) {
+						cores[0] = logical_processors[last_logical_second_core_index[0]];
+					}
+					if (last_logical_second_core_index[1] > 0) {
+						cores[1] = logical_processors[last_logical_second_core_index[1]];
+					}
+
+					async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
+				}
+
+				// no more limiting needed. Locking to hw cores only results in worse performance.
+			}
+		}
+	}
+
+	// fallback compatibility
+	if (!async_threads_started) {
+
+		unsigned long const cores[2]{}; // indicating zero will disable special handling of cores for async threads
+
+		async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
+		if (!async_threads_started) {
+			FMT_LOG_FAIL(INFO_LOG, "Background Thread for long tasks could not be initialized! \n");
+		}
+	}
+
+	return(hardware_concurrency);
 }
 
 // *********************************************************************************************************************************************************************************************************************************************************************** //
@@ -1191,7 +1205,7 @@ cVulkan const& cMinCity::Priv_Vulkan() { return(_.Vulkan); }
 
 // *********************************************************************************************************************************************************************************************************************************************************************** //
 
-extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, int32_t const num_threads, uint32_t const thread_stack_size = 0);  // external forward decl
+extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
 	// secure process:
@@ -1231,16 +1245,16 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	// https://docs.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
 	timeBeginPeriod(1); // ensure that the regular default timer resolution is active
 
-	int32_t const num_hw_threads(SetupEnvironment());
+	int32_t const hardware_concurrency(SetupEnvironment());
 
-	if (num_hw_threads > 0) { // successfully optimized to hardware "real" core count
-		m_hwCoreCount = (size_t)num_hw_threads;
+	if (hardware_concurrency > 0) { // successfully optimized threading in setupenvironment()
+		m_hwCoreCount = hardware_concurrency;
 	}
 	else { // automatic (fallback)
 		m_hwCoreCount = std::max(m_hwCoreCount, (size_t)std::thread::hardware_concurrency()); // can return 0 on failure, so keep the highest core count. default of 1 is set for m_hwCoreCount.
 	}
 
-	global_init_tbb_floating_point_env(TASK_INIT, num_hw_threads, Globals::DEFAULT_STACK_SIZE);
+	global_init_tbb_floating_point_env(TASK_INIT, Globals::DEFAULT_STACK_SIZE);
 
 #if !defined(NDEBUG) || defined(DEBUG_CONSOLE)
 	RedirectIOToConsole();	// always on in debug builds, conditionally on in release builds with DEBUG_CONSOLE

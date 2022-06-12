@@ -295,10 +295,7 @@ void main() {
 	fresnelTerm = smoothstep(0.0f, 1.0f, min(1.0f, bump /* (1.0f - terrainHeight)*/ + pow(bump, 5.0f)));
 
 	// smoother
-	//vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
-	
-	// or ** more sharp pixelated but without any aliasing hmmm...
-	vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.road_uv.xy, vec2(64.0f, 16.0f)),In.road_uv.z), dFdx(In.road_uv.xy), dFdy(In.road_uv.xy)); 
+	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
 	
 	road_segment.rgb *= road_segment.a; // important
 	

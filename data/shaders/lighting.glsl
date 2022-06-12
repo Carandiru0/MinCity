@@ -108,11 +108,11 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 }
 #endif
 
-vec3 reflection(in const float lighting_luminance) 
+vec3 reflection() 
 {
 	// no aliasing
 	// pre-multiplied in
-	return(subpassLoad(ambientLightMap).rgb * (1.0f - lighting_luminance)); // balanced reflection intensity, inverse relationship with current lighting luminance.
+	return(subpassLoad(ambientLightMap).rgb);
 }
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
@@ -180,9 +180,9 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 
 #ifndef OUT_REFLECTION
-	const vec3 ambient_reflection = reflection(luminance);
+	const vec3 ambient_reflection = reflection();
 #else
-	ambient_reflection = reflection(luminance);
+	ambient_reflection = reflection();
 #endif
 
 #ifdef OUT_FRESNEL
