@@ -309,7 +309,7 @@ void main() {
 		// BLOOM // // *BEST APPLIED ONLY HERE* bloom after the 3D lut is applied (expanding output range) and before any HDR transforms.
 		const vec3 bloom = textureLod(blurMap[0], In.uv, 0).rgb;
 		const float inv_luma = 1.0f - luminance;
-		color = color + dot(bloom, vec3(inv_luma * 0.5f, inv_luma * 0.25f, inv_luma * 0.125f));
+		color = color + dot(bloom, vec3(inv_luma, inv_luma * 0.5f, inv_luma * 0.25f)); //*bugfix - this is correct don't change
 	}
 
 	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
