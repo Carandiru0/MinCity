@@ -13,6 +13,7 @@
 #include "cNuklear.h"
 #include "cPostProcess.h"
 #include "adjacency.h"
+#include "cPhysics.h"
 #include <Utility/async_long_task.h>
 
 #define V2_ROTATION_IMPLEMENTATION
@@ -792,7 +793,7 @@ void cVoxelWorld::OnMouseRightClick()
 		return; // input disabled!
 
 	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::TINY_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
@@ -2269,7 +2270,7 @@ namespace // private to this file (anonymous)
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 			uint32_t const alpha_color(oVoxel.index.w);
 
-			bool const emissive(Iso::mini::emissive == (oVoxel.flags & Iso::mini::emissive) & (bool)alpha_color); // if color is true black it's not emissive
+			bool const emissive(Iso::mini::emissive == ((oVoxel.flags & Iso::mini::emissive) & (bool)alpha_color)); // if color is true black it's not emissive
 
 			if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
 
@@ -2785,7 +2786,8 @@ namespace world
 		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
-		_activeRain(nullptr)
+		_activeRain(nullptr),
+		_AsyncClearTaskID(0)
 #ifdef DEBUG_STORAGE_BUFFER
 		, DebugStorageBuffer(nullptr)
 #endif
@@ -3451,7 +3453,7 @@ namespace world
 			cExplosionGameObject* pExplosionGameObj(nullptr);
 			cLevelSetGameObject* pSphereGameObj(nullptr);
 
-			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
+			pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
 			//pExplosionGameObj = placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
 			//	Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
@@ -3715,17 +3717,8 @@ namespace world
 			MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans]
 		};
 
-
-		// mapped clears // parallel = higher bandwidth achieved //
-		___memset_threaded<32>(MappedVoxels_Terrain_Start, 0, voxels.visibleTerrain.stagingBuffer[resource_index].activesizebytes());
-		___memset_threaded<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleRoad.opaque.stagingBuffer[resource_index].activesizebytes());
-		___memset_threaded<32>(MappedVoxels_Road_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleRoad.trans.stagingBuffer[resource_index].activesizebytes());
-		___memset_threaded<32>(MappedVoxels_Static_Start, 0, voxels.visibleStatic.stagingBuffer[resource_index].activesizebytes());
-		___memset_threaded<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], 0, voxels.visibleDynamic.opaque.stagingBuffer[resource_index].activesizebytes());
-		___memset_threaded<16>(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], 0, voxels.visibleDynamic.trans.stagingBuffer[resource_index].activesizebytes());
-
-		async_long_task::wait<background_critical>(_OpacityMap.getAsyncClearTaskID(), "async clears"); // ensure the async clears are done
-		
+		// ensure the async clears are done
+		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears");
 		___streaming_store_fence(); // ensure "streaming" clears are coherent
 
 		// GRID RENDER //
@@ -3736,6 +3729,10 @@ namespace world
 			MappedVoxels_Static,
 			MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque], MappedVoxels_Dynamic[Volumetric::eVoxelType::trans]);
 
+		// game related asynchronous methods
+		// physics can be "cleared" as early as here. corresponding wait is in Update() of VoxelWorld.
+		MinCity::Physics->AsyncClear();
+		
 		{ // voxels //
 			vku::VertexBufferPartition* const __restrict& __restrict dynamic_partition_info_updater(MinCity::Vulkan->getDynamicPartitionInfo(resource_index));
 
@@ -4477,14 +4474,17 @@ namespace world
 		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset MUST be added here for jitter free movement of camera -in a matrix. does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
-		XMMATRIX const xmOffsetWorld( XMMatrixTranslationFromVector(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)) );  // *bugfix major: - this is the only place the fractional offset needs to be added to. Result no jitter, perfect alignment of rasterized and raymarched views!
+		
+		XMMATRIX xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
+												 XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
-		XMMATRIX const xmView = XMMatrixMultiply(xmOffsetWorld, XMMatrixLookAtLH(xmEyePos,  // normal view matrix
-																				 XMVectorZero(), Iso::xmUp)); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMVECTOR const xmOffset(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
+		// *bugfix major: - this is the only place the fractional offset needs to be added to. Result no jitter, perfect alignment of rasterized and raymarched views!
 
+		_OpacityMap.pushViewMatrix(XMMatrixMultiply(XMMatrixTranslationFromVector(XMVectorNegate(xmOffset)), xmView));
+		
+		xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(xmOffset), xmView);
 		_currentState.Uniform.view = xmView;
-		_OpacityMap.pushViewMatrix(xmView);
-
 		// not yet required
 		//_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
 
@@ -4582,6 +4582,8 @@ namespace world
 		// any operations that do not need to execute while paused should not
 		if (!bPaused) {
 
+			MinCity::Physics->Update(tNow, tDelta);
+
 			if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
 				SAFE_DELETE(_activeRain);
 			}
@@ -4629,6 +4631,10 @@ namespace world
 						++it;
 					}
 				}
+			}
+			{
+				// select buildings only update
+				::cBuildingGameObject::UpdateAll(tNow, tDelta);
 			}
 			{
 				// traffic controllers - *should be done b4 cars* //
@@ -4684,6 +4690,45 @@ namespace world
 		// ---------------------------------------------------------------------------//
 	}
 
+	void cVoxelWorld::AsyncClears(uint32_t const resource_index)
+	{
+		_AsyncClearTaskID = async_long_task::enqueue<background_critical>([&, resource_index] {
+
+			getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+			
+			{
+				auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleRoad.opaque.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleRoad.trans.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
+				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
+				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+		});
+	}
+	
 	// voxel painting
 	void cVoxelWorld::clearMiniVoxels(bool const bPaused)
 	{
@@ -5512,7 +5557,7 @@ namespace world
 
 	void cVoxelWorld::CleanUp()
 	{
-		async_long_task::wait<background_critical>(_OpacityMap.getAsyncClearTaskID(), "async clears"); // ensure the async clears are done
+		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears"); // ensure the async clears are done
 
 		SAFE_DELETE(_sim);
 

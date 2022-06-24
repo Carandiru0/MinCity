@@ -288,13 +288,9 @@ void cVulkan::CreateComputeResources()
 			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
 			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-			dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (distance & direction)
-			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (distance & direction)
-			dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (color)
-			dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // temporal history volumes (color)
-			dslm.image(7U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (color)
-			dslm.image(8U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume lightmap history (reflection color)
-			dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1 + 2); // final output + temporal history volumes (reflection color)
+			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
+			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
+			dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 8bpc output (reflection color)
 			
 			_comData.light.descLayout = dslm.createUnique(_device);
 		}
@@ -1036,11 +1032,11 @@ void cVulkan::CreateVoxelResources()
 				_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_basic_terrain_, geom_basic_terrain_, frag_basic_, 0U);
 
-			vku::ShaderModule const vert_basic_clear_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_height.vert.bin", constants_terrain_basic_vs };
+			vku::ShaderModule const vert_basic_clear_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_height.vert.bin", constants_terrain_basic_vs }; // clear from opacity map
 
 			CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR],
-				_window->finalPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_basic_clear_terrain_, geom_null_, frag_null_, 2U);
+				_window->clearPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+				vert_basic_clear_terrain_, geom_null_, frag_null_, 0U);
 		}
 	}
 
@@ -1164,11 +1160,11 @@ void cVulkan::CreateVoxelResources()
 					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 					vert_basic_, geom_basic_, frag_basic_, 0U);
 
-				vku::ShaderModule const vert_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear.vert.bin", constants_voxel_basic_vs };
+				vku::ShaderModule const vert_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear.vert.bin", constants_voxel_basic_vs }; // clear from opacity map
 
 				CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR],
-					_window->finalPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_clear_, geom_null_, frag_null_, 2U);
+					_window->clearPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_basic_clear_, geom_null_, frag_null_, 0U);
 			}
 		}
 		{ // dynamic //
@@ -1211,11 +1207,11 @@ void cVulkan::CreateVoxelResources()
 					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 					vert_dynamic_basic_, geom_basic_, frag_basic_, 0U);
 
-				vku::ShaderModule const vert_dynamic_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_dynamic.vert.bin", constants_voxel_basic_vs };
+				vku::ShaderModule const vert_dynamic_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_dynamic.vert.bin", constants_voxel_basic_vs }; // clear from opacity map
 
 				CreateVoxelResource<true, true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR],
-					_window->finalPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_dynamic_basic_clear_, geom_null_, frag_null_, 2U);
+					_window->clearPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_dynamic_basic_clear_, geom_null_, frag_null_, 0U);
 			}
 
 			// child custom pipeline "shader voxels"
@@ -1767,7 +1763,8 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer);
 	_window->setGpuReadbackCommands(cVulkan::gpuReadback);
 	_window->setStaticPresentCommands(cVulkan::renderPresentCommandBuffer);
-
+	_window->setStaticClearCommands(cVulkan::renderClearCommandBuffer);
+	
 	WaitDeviceIdle(); // bugfix, wait until device is ready before proceeding with execution
 }
 
@@ -1798,6 +1795,10 @@ void cVulkan::renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o)
 void cVulkan::renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp)
 {
 	MinCity::Vulkan->_renderPresentCommandBuffer(std::forward<vku::present_renderpass&&>(pp));
+}
+void cVulkan::renderClearCommandBuffer(vku::clear_renderpass&& __restrict c)
+{
+	MinCity::Vulkan->_renderClearCommandBuffer(std::forward<vku::clear_renderpass&&>(c));
 }
 void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
 {
@@ -1883,37 +1884,37 @@ void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CH
 	}
 }
 
-void cVulkan::clearAllVoxels(vku::present_renderpass&& __restrict s)  // for clearing opacity map (only done in finalPass / Present //
+void cVulkan::clearAllVoxels(vku::clear_renderpass&& __restrict c)  // for clearing opacity map (only done in finalPass / Present //
 {
-	uint32_t const resource_index(s.resource_index);
+	uint32_t const resource_index(c.resource_index);
 	// ***** descriptor set must be set outside of this function ***** //
 
 	{ // dynamic voxels
 
 		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR;
 
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+		c.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_DYNAMIC), 1, 0);
+		c.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_DYNAMIC), 1, 0);
 	}
 
 	{ // static voxels
 		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR;
 
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+		c.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_STATIC), 1, 0);
+		c.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_STATIC), 1, 0);
 	}
 
 	{ // terrain
 		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR;
 
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+		c.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_TERRAIN), 1, 0);
+		c.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_TERRAIN), 1, 0);
 	}
 }
 
@@ -2420,29 +2421,44 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
 	
-	_indirectActiveCount[pp.resource_index]->barrier( // required b4 usage //
-		pp.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
-		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eIndirectCommandRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
-	);
-
 	// begin "actual render pass"
 	pp.cb.beginRenderPass(pp.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
 
 	MinCity::PostProcess->Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
 	// must be back to back //
 	MinCity::PostProcess->Present(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
-	
-	{
-		// all voxels share the same descriptor set
-		bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(pp.resource_index, pp.cb);
-		//################ specialized FAST clear 3d volume/texture "opacity" for usage next frame ##########################//
-		clearAllVoxels(std::forward<vku::present_renderpass&&>(pp));
-		// *** no reads or writes occur until next frame after this point from the opacity map *** //
-	}
+
 	// *** Command buffer ends
 	pp.cb.endRenderPass();
 	pp.cb.end();
+}
+inline void cVulkan::_renderClearCommandBuffer(vku::clear_renderpass&& __restrict c)
+{
+	// Clear pass
+	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
+	c.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb, vkNames::CommandBuffer::CLEAR);
+
+
+	_indirectActiveCount[c.resource_index]->barrier( // required b4 usage //
+		c.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
+		vk::DependencyFlagBits::eByRegion,
+		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eIndirectCommandRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
+	);
+
+	// begin "actual render pass"
+	c.cb.beginRenderPass(c.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
+
+	{
+		// all voxels share the same descriptor set
+		bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(c.resource_index, c.cb);
+		//################ specialized FAST clear 3d volume/texture "opacity" for usage next frame ##########################//
+		clearAllVoxels(std::forward<vku::clear_renderpass&&>(c));
+		// *** no reads or writes occur until next frame after this point from the opacity map *** //
+	}
+
+	// *** Command buffer ends
+	c.cb.endRenderPass();
+	c.cb.end();
 }
 
 void cVulkan::renderComplete(uint32_t const resource_index) // triggered internally on Render Completion (after final queue submission / present by vku framework

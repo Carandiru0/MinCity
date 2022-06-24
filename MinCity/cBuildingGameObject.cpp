@@ -9,6 +9,8 @@
 
 namespace world
 {
+	tbb::concurrent_queue<cBuildingGameObject*>		cBuildingGameObject::_updateable;
+	
 	static void OnRelease(void const* const __restrict _this) // private to this file
 	{
 		if (_this) {
@@ -137,11 +139,11 @@ namespace world
 				if (scalar_force > cPhysics::MIN_FORCE) { // IF FORCE ISN'T HIGH ENOUGH, DON'T DESTROY, BURN!
 					_destroyed->set_bit(voxel.x, voxel.y, voxel.z); // next time voxel will be "destroyed"
 					
-					if (++_MutableState->_destroyed_count > (instance->getVoxelCount() >> 1)) { // if destroyed voxel count is greater than half the number of voxels that the model contains, destroy the building game object instance.
-						const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
+					++_MutableState->_destroyed_count.local(); // thread local count will be summed in queued update
+					if (!_MutableState->_queued_updatable.test_and_set()) { // only a single voxel needs to schedule an update for the entire instance.
+						_updateable.push(const_cast<cBuildingGameObject* const>(this));
 					}
 				}
-				
 				
 				return(voxel);
 			}
@@ -268,7 +270,48 @@ namespace world
 		return(voxel);
 	}
 
+	// select building updates if queued.
+	void __vectorcall cBuildingGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
+	{
+		Volumetric::voxelModelInstance_Static* const __restrict instance(getModelInstance());
 
+		[[likely]] if (instance) {
+
+			uint32_t voxels_destroyed(0);
+			for (thread_local_counter::const_iterator i = _MutableState->_destroyed_count.begin(); i != _MutableState->_destroyed_count.end(); ++i)
+			{
+				voxels_destroyed += *i;
+			}
+
+			if (voxels_destroyed > (instance->getVoxelCount() >> 1)) { // 50% destroyed, destroy building.
+				instance->destroy();
+			}
+		}
+		
+		if (_MutableState) {
+			_MutableState->_queued_updatable.clear(); // reset this instance
+		}
+	}
+	void cBuildingGameObject::UpdateAll(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
+	{
+		if (!_updateable.empty()) {
+			
+			while (!_updateable.empty()) {
+				
+				cBuildingGameObject* instance(nullptr);
+				if (_updateable.try_pop(instance)) {
+					if (instance) {
+						
+						instance->OnUpdate(tNow, tDelta);
+					}
+				}
+			}
+		}
+		//if (> (instance->getVoxelCount() >> 1)) { // if destroyed voxel count is greater than half the number of voxels that the model contains, destroy the building game object instance.
+		//	const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
+		//}
+		
+	}
 
 	cBuildingGameObject::~cBuildingGameObject()
 	{

@@ -32,11 +32,12 @@ private:
 	}
 public:
 	bool const Initialize();
-	void Update();
+	void AsyncClear();
+	void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 private:
-	force_volume* __restrict _force_field_direction[2];
+	force_volume* __restrict _force_field_direction[2]; // 16.7MB each
 
-	int64_t					 _task_id_physics;
+	int64_t					 _AsyncClearTaskID;
 public:
 	cPhysics();
 	~cPhysics() = default;  // uses CleanUp instead

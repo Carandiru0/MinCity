@@ -7,7 +7,7 @@
 #define PAST STAGING // use with care
 
 cPhysics::cPhysics()
-	: _force_field_direction{ nullptr, nullptr }, _task_id_physics(0)
+	: _force_field_direction{ nullptr, nullptr }, _AsyncClearTaskID(0)
 {
 
 }
@@ -20,35 +20,34 @@ bool const cPhysics::Initialize()
 	return(true);
 }
 
-void cPhysics::Update()
+void cPhysics::AsyncClear()
 {
 	// CURRENT MAIN THREAD //
-	
-	// this update ensures at every game loop tick() that the latest COHERENT forcefield is used, and the STAGING forcefield is cleared for next frame.
-	
-	{ // direction
-		// all staging must be complete by the time this update method is called //
-		auto const old_ptr = _force_field_direction[COHERENT];
-		_force_field_direction[COHERENT] = _force_field_direction[STAGING];
-		_force_field_direction[STAGING] = old_ptr;
-	}
-	
-	{ // magnitude
-		// all staging must be complete by the time this update method is called //
-		//auto const old_ptr = _force_field_magnitude[COHERENT];
-		//_force_field_magnitude[COHERENT] = _force_field_magnitude[STAGING];
-		//_force_field_magnitude[STAGING] = old_ptr;
-	}
+	_AsyncClearTaskID = async_long_task::enqueue<background_critical>([&] {
 
-	// - NOW WERE COHERENT - //
-	
-	// PREPARE / CLEAR STAGING FOR NEXT RENDER STAGING ASYNCHRONOUSLY, ALLOW MAIN THREAD TO CONTINUE //
-	//async_long_task::wait<background>(_task_id_physics, "physics");
-	//_task_id_physics = async_long_task::enqueue<background>([&] {
+		// this update ensures at every game loop tick() that the latest COHERENT forcefield is used, and the STAGING forcefield is cleared for next frame.
 
-		// direction
+		{ // direction
+			// all staging must be complete by the time this update method is called //
+			std::swap<force_volume* __restrict>(_force_field_direction[COHERENT], _force_field_direction[STAGING]);
+		}
+
+		{ // magnitude
+			// all staging must be complete by the time this update method is called //
+			//auto const old_ptr = _force_field_magnitude[COHERENT];
+			//_force_field_magnitude[COHERENT] = _force_field_magnitude[STAGING];
+			//_force_field_magnitude[STAGING] = old_ptr;
+		}
+
+		// - NOW WERE COHERENT - //
+
+		// PREPARE / CLEAR STAGING FOR NEXT RENDER STAGING ASYNCHRONOUSLY, ALLOW MAIN THREAD TO CONTINUE //
+		//async_long_task::wait<background>(_task_id_physics, "physics");
+		//_task_id_physics = async_long_task::enqueue<background>([&] {
+
+			// direction
 		_force_field_direction[STAGING]->clear(); // reset for next stage!
-		
+
 		{ // magnitude
 			// @todo ******performance of this memset is laughable 500MB / frame haha or 16 GB of BW per second. DDR4 RAM can handle.... ~40GB/s 4 channel i believe. My system is gimped at 3 channel, one DIMM destroyed so 30 GB/s - this uses half of the available BW if it were ideal - multithreaded memset maybe needed?
 			//__memset_threaded<64>(_force_field_magnitude[STAGING], 0, force_volume::total_bit_count * sizeof(float)); // reset for next stage!
@@ -56,10 +55,16 @@ void cPhysics::Update()
 
 		// NEW STAGING CAN BEGIN //
 	//});
-
+	});
 	// CONTINUE, NO DATA DEPENDENCY ON CLEARING THE OLD DATA THAT WILL BE USED FOR STAGING THE NEXT FRAME //
 }
-	
+
+void cPhysics::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
+{
+	async_long_task::wait<background_critical>(_AsyncClearTaskID, "physics async clear"); // synchronize with clearing being done for physics
+	_AsyncClearTaskID = 0; // reset *important*
+}
+
 XMVECTOR const __vectorcall	cPhysics::get_force(uvec4_v const xmIndex) const
 {
 	XMVECTOR xmForce(XMVectorZero());
@@ -143,6 +148,8 @@ XMVECTOR const __vectorcall	cPhysics::get_force(uvec4_v const xmIndex) const
 
 void cPhysics::CleanUp()
 {
+	async_long_task::wait<background_critical>(_AsyncClearTaskID, "physics async clear"); // ensure the async clear done
+	
 	for (uint32_t i = 0; i < 2; ++i) {
 		if (_force_field_direction[i]) {
 			force_volume::destroy(_force_field_direction[i]);

@@ -263,6 +263,7 @@ namespace world
 		void destroyVoxelModelInstance(uint32_t const hash);  // concurrency safe
 		void destroyImmediatelyVoxelModelInstance(uint32_t const hash);  // not concurrency safe *** (public) // typically instances destroy themselves asynchronously, this is for special purposes
 
+		void AsyncClears(uint32_t const resource_index);
 		void clearMiniVoxels(bool const bPaused);
 		void CleanUp();
 
@@ -353,6 +354,7 @@ namespace world
 
 		cSimulation*				_sim;
 
+		task_id_t					_AsyncClearTaskID;
 		uint32_t					_mouseState;
 		XMFLOAT2A					_vMouse;
 		point2D_t					_voxelIndexHover;

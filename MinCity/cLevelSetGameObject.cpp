@@ -90,10 +90,20 @@ namespace world
 		SFM::saturate_to_u8(XMVectorScale(XMVector3Length(xmUVW), 255.0f), rgba);
 		
 		//bool const odd(((voxel.x & 1) & (voxel.y & 1) & (voxel.z & 1)));
-		voxel.Color = SFM::pack_rgba(rgba);
+		//voxel.Color = SFM::pack_rgba(rgba);
 		//voxel.setMetallic(true);
 		//voxel.setRoughness(0.5f);
-		voxel.Emissive = true;
+		uint32_t const adjacency(voxel.getAdjacency());
+		uint32_t adjacent_count(0);
+		for (uint32_t i = 0; i < 5; ++i) {
+			if (adjacency & (1 << i)) {
+				++adjacent_count;
+			}
+		}
+
+		voxel.Hidden = (adjacent_count > 3);
+		voxel.Emissive = !voxel.Hidden && (adjacent_count < 1);
+		voxel.Metallic = true;
 		//voxel.Transparent = true;
 		//voxel.Hidden = !odd;
 		
@@ -102,6 +112,14 @@ namespace world
 		return(voxel);
 	}
 
+	/*
+	float sdOctahedron( vec3 p, float s)
+	{
+	  p = abs(p);
+	  return (p.x+p.y+p.z-s)*0.57735027;
+	}
+	*/
+	
 	STATIC_INLINE_PURE float const __vectorcall op(uvec4_v const voxel, float const t)
 	{				
 		XMVECTOR xmUVW(XMVectorMultiply(voxel.v4f(), XMVectorReplicate(_xmInvBounds)));
@@ -112,10 +130,13 @@ namespace world
 		//xmUVW = XMVectorScale(xmUVW, 2.0f);
 		
 		XMFLOAT3A vUVW;
-		XMStoreFloat3A(&vUVW, xmUVW);
+		XMStoreFloat3A(&vUVW, SFM::abs(xmUVW));
+		
+		// octahedron
+		float sdf = (vUVW.x + vUVW.y + vUVW.z - SFM::min(1.0f, (0.5f + SFM::triangle_wave(0.0f, 1.0f, SFM::fract(t * 0.1f))))) * 0.57735027f;
 		
 		// sphere
-		float sdf = XMVectorGetX(XMVector3Length(xmUVW)) - 1.0f; // 1.0f is the limits of the level set volume (128x128x128) that a sphere can fit into. (normalized)
+		//float sdf = XMVectorGetX(XMVector3Length(xmUVW)) - 1.0f; // 1.0f is the limits of the level set volume (128x128x128) that a sphere can fit into. (normalized)
 		
 		// spiral noise
 		//sdf += supernoise::getSpiralNoise3D(vUVW.x, vUVW.y, vUVW.z, SFM::abs(SFM::__sin(t)) ) * 2.4f;
@@ -182,20 +203,15 @@ namespace world
 							bits->write_bit(x, z, y, inside); // clear or set required
 							
 							if (inside) {
-								Volumetric::voxB::voxelDescPacked voxel{};
 								
-								voxel.x = x; voxel.y = z; voxel.z = y;
-								
-								float const d = -distance;
-								
-								uint32_t const red = SFM::saturate_to_u8((1.0f - (1.0f / (1.0f + d))) * 255.0f);
-								uint32_t const green = SFM::saturate_to_u8((1.0f / (1.0f + d)) * 255.0f);
-								uint32_t const blue = SFM::saturate_to_u8((1.0f / (1.0f + d * d)) * 255.0f);
-								
-								voxel.Color = SFM::pack_rgba(red, green, blue, 0);
-								//voxel.Emissive = blue > 0xaf;
-								
-								linear_voxel_array[active_voxel_count++] = voxel;
+								Volumetric::voxB::voxelDescPacked voxel{ linear_voxel_array[active_voxel_count] };
+																
+								if (!voxel.Hidden) {
+
+									voxel.x = x; voxel.y = z; voxel.z = y;
+
+									linear_voxel_array[active_voxel_count++] = voxel;
+								}
 							}
 						}
 					}
@@ -214,7 +230,7 @@ namespace world
 			RenderFuncBlockChunk(_bits, numVoxels, const_cast<Volumetric::voxB::voxelDescPacked* const>(getModel()->_Voxels), duration_cast<fp_seconds>(now() - start()).count()), part
 		);
 	
-		getModel()->_numVoxels = numVoxels;
+		getModelInstance()->setVoxelOffsetCount(0, numVoxels);
 		
 		getModelInstance()->setAzimuth(getModelInstance()->getAzimuth() + 0.1f * tDelta.count());
 	}

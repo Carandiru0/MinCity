@@ -65,8 +65,6 @@ namespace Volumetric
 	class alignas(16) volumetricOpacity
 	{
 	public:
-		static constexpr uint32_t const TEMPORAL_VOLUMES = 2;	// last n frames
-	public:
 		static constexpr uint32_t const // "non-uniform light volume size"
 			LightWidth = (Size >> ComputeLightConstants::LIGHT_MOD_WIDTH_BITS),
 			LightHeight = (Size >> ComputeLightConstants::LIGHT_MOD_HEIGHT_BITS),
@@ -137,7 +135,6 @@ namespace Volumetric
 		// Accessor ///
 		voxelVolumeSet const& __restrict													getVolumeSet() const { return(VolumeSet); }
 		__inline lightVolume const& __restrict												getMappedVoxelLights() const { return(MappedVoxelLights); }
-		task_id_t const& __restrict															getAsyncClearTaskID() const { return(AsyncClearTaskID); }
 		
 		// Mutators //
 		__inline void __vectorcall pushViewMatrix(FXMMATRIX xmView) {
@@ -169,12 +166,7 @@ namespace Volumetric
 		}
 
 		void clear(uint32_t const resource_index) {
-
-			// asynchronously clear the lightbuffer memory
-			AsyncClearTaskID = async_long_task::enqueue<background_critical>([&] {
-
-				MappedVoxelLights.clear(resource_index); // better distribution of cpu at a later point in time of the frame.
-			});
+			MappedVoxelLights.clear(resource_index);
 		}
 		
 		void release() {
@@ -191,11 +183,7 @@ namespace Volumetric
 			}
 
 			VolumeSet.LightMap = nullptr;
-			for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
-				SAFE_RELEASE_DELETE(LightMapHistory[i].DistanceDirection);
-				SAFE_RELEASE_DELETE(LightMapHistory[i].Color);
-				SAFE_RELEASE_DELETE(LightMapHistory[i].Reflection);
-			}
+
 			SAFE_RELEASE_DELETE(LightMap.DistanceDirection);
 			SAFE_RELEASE_DELETE(LightMap.Color);
 			SAFE_RELEASE_DELETE(LightMap.Reflection);
@@ -269,19 +257,6 @@ namespace Volumetric
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Color->image(), vkNames::Image::LightMap_Color);
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Reflection->image(), vkNames::Image::LightMap_Reflection);
 
-			for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
-				LightMapHistory[i].DistanceDirection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR16G16B16A16Snorm, false, false); // only signed normalized values
-				LightMapHistory[i].Color = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, false);
-				LightMapHistory[i].Reflection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR8G8B8A8Unorm, false, false);
-
-				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].DistanceDirection->image(), vkNames::Image::LightMapHistory_DistanceDirection);
-				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].Color->image(), vkNames::Image::LightMapHistory_Color);
-				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMapHistory[i].Reflection->image(), vkNames::Image::LightMapHistory_Reflection);
-			}
-
 			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 				Size, Size, Size, 1U, vk::Format::eR8Unorm, false, true);
 			VolumeSet.OpacityMap = OpacityMap;
@@ -289,7 +264,7 @@ namespace Volumetric
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)OpacityMap->image(), vkNames::Image::OpacityMap);
 
 			FMT_LOG(TEX_LOG, "LightProbe Volumetric data: {:n} bytes", LightProbeMap.imageGPUIn[0]->size() + LightProbeMap.imageGPUIn[1]->size());
-			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size() + (LightMapHistory[0].DistanceDirection->size() + LightMapHistory[0].Color->size() + LightMapHistory[0].Reflection->size()) * TEMPORAL_VOLUMES);
+			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size());
 			FMT_LOG(TEX_LOG, "Opacitymap [GPU Resident Only] Volumetric data: {:n} bytes", OpacityMap->size());
 
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -304,18 +279,12 @@ namespace Volumetric
 				LightProbeMap.imageGPUIn[1]->setLayout(cb, vk::ImageLayout::eTransferDstOptimal);  // required initial state
 				VolumeSet.OpacityMap->setLayout(cb, vk::ImageLayout::eGeneral);					   //    ""      ""      ""
 
-				LightMap.DistanceDirection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);		// the final oututs are never "read" in comute shaders
+				LightMap.DistanceDirection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);		// the final oututs are never "read" in compute shaders
 				LightMap.Color->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);					// *only* read by fragment shaders
 				LightMap.Reflection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);				// *only* read by fragment shaders
 
 				PingPongMap[0]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 				PingPongMap[1]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
-
-				for (uint32_t i = 0; i < TEMPORAL_VOLUMES; ++i) {
-					LightMapHistory[i].DistanceDirection->setLayoutCompute(cb, vku::ACCESS_READWRITE);			// never changes
-					LightMapHistory[i].Color->setLayoutCompute(cb, vku::ACCESS_READWRITE);						// never changes
-					LightMapHistory[i].Reflection->setLayoutCompute(cb, vku::ACCESS_READWRITE);					// never changes
-				}
 
 				});
 		}
@@ -357,41 +326,13 @@ namespace Volumetric
 
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-			dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-
-			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[0].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(4U, 1, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[1].DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(4U, 2, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
-
-			dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[0].Color->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(6U, 1, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[1].Color->imageView(), vk::ImageLayout::eGeneral);
-			
-			dsu.beginImages(7U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(8U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
-
-			dsu.beginImages(9U, 0, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[0].Reflection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(9U, 1, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMapHistory[1].Reflection->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(9U, 2, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
 		}
 
@@ -421,14 +362,12 @@ namespace Volumetric
 		vku::IndirectBuffer* __restrict						ComputeLightDispatchBuffer;
 		vku::TextureImageStorage3D*							PingPongMap[2];
 		voxelLightmapSet									LightMap; // final output
-		voxelLightmapSet									LightMapHistory[TEMPORAL_VOLUMES];
 		vku::TextureImageStorage3D*							OpacityMap;
 		voxelVolumeSet										VolumeSet;
 
 		static inline float const							VolumeLength = (std::hypot(float(Size), float(Size), float(Size))),
 															InvVolumeLength = (1.0f / VolumeLength);
 
-		task_id_t											AsyncClearTaskID;
 		int32_t												ClearStage;
 
 		UniformDecl::ComputeLightPushConstants				PushConstants;
@@ -443,7 +382,7 @@ namespace Volumetric
 		volumetricOpacity()
 			:
 			MappedVoxelLights(LightProbeMap.stagingBuffer),
-			ComputeLightDispatchBuffer{ nullptr }, LightMap{ nullptr }, LightMapHistory{ nullptr }, OpacityMap{ nullptr },
+			ComputeLightDispatchBuffer{ nullptr }, LightMap{ nullptr }, OpacityMap{ nullptr },
 			VolumeSet{},
 			ClearStage(0)
 

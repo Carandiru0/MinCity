@@ -1,7 +1,6 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
-#extension GL_KHR_shader_subgroup_quad: enable
-#extension GL_KHR_shader_subgroup_quad: enable
+#extension GL_KHR_shader_subgroup_quad : enable
 #extension GL_EXT_control_flow_attributes :enable
 
 /* Copyright (C) 20xx Jason Tully - All Rights Reserved
@@ -26,7 +25,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS 512.0f
-
+#define BLUE_NOISE_SCALAR dt
 #define BOUNCE_EPSILON 0.5f
 
 const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
@@ -55,7 +54,7 @@ layout(location = 0) in streamIn
 	readonly noperspective vec3	rd;
 	readonly noperspective vec3	eyePos;
 	readonly flat vec3			eyeDir;
-	//readonly flat float			slice;
+	readonly flat float			slice;
 } In;
 
 #define OUT_REFLECT 0
@@ -110,8 +109,8 @@ vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
 
 vec3 offset(in const vec3 uvw)
 {
-	return(uvw); // linear interpolation (best)
-	//return((floor(uvw * VolumeDimensions + 0.5f)) * InvVolumeDimensions); // exact to the voxel but has banding
+	//return(uvw); // linear interpolation (best)
+	return((floor(uvw * VolumeDimensions + 0.5f)) * InvVolumeDimensions); // exact to the voxel but has banding
 }
 vec2 offset(in const vec2 uv)
 {
@@ -188,13 +187,13 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const f
 
 // (intended for volumetric light) - returns attenuation and light color, uses directional derivatiuves to further shade lighting 
 // see: https://iquilezles.org/www/articles/derivative/derivative.htm
-float fetch_light_volumetric( out vec3 light_color, out float scattering, in const vec3 uvw, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
+float fetch_light_volumetric( out vec3 light_color, out float scattering, in const vec3 uvw, in const float opacity, in const float dt, in const vec2 bn) { // interpolates light normal/direction & normalized distance
 		
 	vec4 Ld;
-	getLightFast(light_color, Ld, offset(uvw));
+	getLightFast(light_color, Ld, uvw);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
-	Ld.att *= max(0.0f, dot(Ld.dir, vec3(0,0,-1))); // **bugfix for correct lighting. 
+	Ld.att *= max(0.0f, dot(Ld.dir, normalize(vec3(bn * BLUE_NOISE_SCALAR, -1)))); // **bugfix for correct lighting. 
 
 	// directional derivative - equivalent to dot(N,L) operation
 	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -211,9 +210,9 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	return(Ld.att); // returns lightAmount  
 }
 
-float fetch_bluenoise(in const vec2 pixel)
+vec2 fetch_bluenoise(in const vec2 pixel)
 {																// *bugfix - animated blue noise in raymarch step offset randomization does not look good. too noisy, have to scale it well below dt (a step) - animated blue noise suitable more for dithering and reconstruction - can't see any noisy movement)
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, 0), 0).r ); // *bluenoise RED channel used* // *bugfix - single frame/slice is better for raymarch.
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).rg ); // *bluenoise RED channel used* // *bugfix - single frame/slice is better for raymarch.
 }
 float fetch_depth()
 {
@@ -230,12 +229,8 @@ vec3 reconstruct_depth(in const vec3 rd, in const float linear_depth)	// https:/
 	// Scale the view ray by the ratio of the linear z value to the projected view ray
 	return( /*In.eyePos +*/ rd * (linear_depth/viewZDist) );	// eye relative position (skipping redundant add and subtraction of eyePos to obtain yltimately interval //
 }
+
 /*
-vec3 reconstruct_normal(in const vec3 eye_relative_depth) // this function can only be called in regular program flow, not inside a branch or condition
-{														  // too low resolution but works
-	// xyz -> xzy
-	return( normalize(cross(dFdx(eye_relative_depth.xzy), dFdy(eye_relative_depth.xzy))).xzy );
-}
 vec3 reconstruct_normal_fine(in const vec3 rd)
 {
 	const vec2 InvDepthResDimensions = 2.0f / ScreenResDimensions; // depth is available at double the resolution of current color attribute
@@ -265,7 +260,7 @@ void integrate_opacity(inout float opacity, in const float new_opacity, in const
 
 // volumetric light
 void vol_lit(out vec3 light_color, out float emission, out float attenuation, out float fogAmount, inout float opacity,
-		     in const vec3 p, in const float dt)
+		     in const vec3 p, in const float dt, in const vec2 bn)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
 
@@ -278,16 +273,16 @@ void vol_lit(out vec3 light_color, out float emission, out float attenuation, ou
 	integrate_opacity(opacity, extract_opacity(opacity_emission), dt);
 
 	// lightAmount = attenuation
-	attenuation = fetch_light_volumetric(light_color, fogAmount, p, opacity, dt);
+	attenuation = fetch_light_volumetric(light_color, fogAmount, p, opacity, dt, bn);
 }
 
-void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt)
+void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, in const float dt, in const vec2 bn)
 {
 	//#########################
 	vec3 light_color;
 	float emission, attenuation, fogAmount;
 	
-	vol_lit(light_color, emission, attenuation, fogAmount, opacity, p, dt);  // shadow march tried, kills framerate
+	vol_lit(light_color, emission, attenuation, fogAmount, opacity, p, dt, bn);  // shadow march tried, kills framerate
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -334,7 +329,7 @@ void reflection(out vec4 voxel, in const float bounce_scatter, in const vec3 p, 
 	reflect_lit(light_color, emission, attenuation, p, opacity, dt);
 	
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = mix(vec3(0), light_color * attenuation, min(1.0f, opacity + emission));
+	voxel.light = mix(vec3(0), light_color * attenuation, min(opacity + emission, 1.0f));
 	voxel.a = bounce_scatter;
 }
 
@@ -347,42 +342,44 @@ float fetch_opacity_reflection( in const vec3 p ) { // hit test for reflections 
 
 // all in parameters is important
 void traceReflection(out vec4 voxel, in vec3 rd, in vec3 p, in const float dt, in float interval_remaining, in const float bn)
-{
-	// interval_remaining currently equals the bounce interval location
-	float interval = bn * 0.5f + 0.25f;
-	interval = interval * (dt * MAX_STEPS * 0.5f - interval_remaining);
-	interval = interval + subgroupQuadSwapHorizontal(interval);
-	interval = interval + subgroupQuadSwapVertical(interval);
-	interval_remaining = interval * 0.25f; // this makes the subgroup pixel quad travel the same max distance for reflections
-													 // resulting in better capture of reflection and performance
-	rd = reflect(rd, computeNormal(p));
-	
-	const vec3 bounce = p;
+{								
+	interval_remaining = (interval_remaining * (7.0f + bn * BLUE_NOISE_SCALAR)); // *bugfix - 7 is a good number suprisingly reflections are not tanking performance, no longer the current shader bound (gpu bound elsewhere)
+	interval_remaining = interval_remaining + subgroupQuadSwapHorizontal(interval_remaining);
+	interval_remaining = interval_remaining + subgroupQuadSwapVertical(interval_remaining);
+	interval_remaining = interval_remaining * 0.25f; // less divergence with reflections
 
-	p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point - critical to avoid moirre artifacts that this is done with a large enough step (hence scaling by golden ratio) tuned/tweaked.
-	
 	voxel = vec4(0); // clear
+
+	rd = normalize(reflect(rd, computeNormal(p)));
+
+	[[branch]] if (dot(normalize(In.eyeDir), rd) < 0.0f) { // optimization, if reflected vector direction is towards the eye, it is not a reflection that can be seen. 
+														   // if it's heading towards the eye, there is no bounce, end will end up in empty space iterating far to long with zero reflection (less shader divergance)
+		const vec3 bounce = p;
+
+		p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point - critical to avoid moirre artifacts that this is done with a large enough step (hence scaling by golden ratio) tuned/tweaked.
 	
-	float opacity = 0.0f;
-	{ //  begin new reflection raymarch to find reflected surface
+		float opacity = 0.0f;
+		{ //  begin new reflection raymarch to find reflected surface
 
-		// find reflection
-		[[dont_unroll]] for( ; interval_remaining >= 0.0f ; interval_remaining -= dt) {  // fast sign test
+			// find reflection
+			[[dont_unroll]] for( ; interval_remaining >= 0.0f ; interval_remaining -= dt) {  // fast sign test
 
-			// hit opaque voxel ?
-			// extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
-			integrate_opacity(opacity, fetch_opacity_reflection(p), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
-			[[branch]] if(bounced(opacity)) { 
+				// hit opaque voxel ?
+				// extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
+				integrate_opacity(opacity, fetch_opacity_reflection(p), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
+				[[branch]] if(bounced(opacity)) { 
 				
-				const float dist_to_bounce = distance(p, bounce) * VolumeLength;
-				reflection(voxel, 1.0f/(1.0f + dist_to_bounce*dist_to_bounce), p, opacity, dt);
-				break;	// hit reflected *opaque surface*
+					const float dist_to_bounce = distance(p, bounce) * VolumeLength;
+					reflection(voxel, 1.0f/(1.0f + dist_to_bounce*dist_to_bounce), p, opacity, dt);
+					break;	// hit reflected *opaque surface*
+				}
+
+				p += dt * rd;
 			}
 
-			p += dt * rd;
-		}
-
-	} // end raymarch
+		} // end raymarch
+	}
+	
 }
 
 void main() {
@@ -445,8 +442,8 @@ void main() {
 	// without modifying interval variables start position
 	
 	// adjust start position by "bluenoise step"	
-	const float bn = fetch_bluenoise(gl_FragCoord.xy);
-	const float jittered_interval = dt * bn; // jittered offset should be scaled by golden ratio zero (hides some noise)
+	const vec2 bn = fetch_bluenoise(gl_FragCoord.xy);
+	const float jittered_interval = 0.0f;//dt * bn.y; // jittered offset should be scaled by golden ratio zero (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -472,7 +469,7 @@ void main() {
 		
 			// -------------------------------- part lighting ----------------------------------------------------
 			// ## evaluate light
-			evaluateVolumetric(voxel, opacity, p, dt); // evaluated at 2x dt because of skipped light evaluation (only every second step)
+			evaluateVolumetric(voxel, opacity, p, dt, interval_remaining * GOLDEN_RATIO * (bn * 2.0f - 1.0f)); // evaluated at 2x dt because of skipped light evaluation (only every second step)
 
 			// ## test hit voxel
 			[[branch]] if( bounced(opacity) ) {	
@@ -511,7 +508,7 @@ void main() {
 			vec4 refine_voxel = voxel;
 			float refine_opacity = opacity;
 
-			evaluateVolumetric(refine_voxel, refine_opacity, p, dt);
+			evaluateVolumetric(refine_voxel, refine_opacity, p, dt, vec2(0)); // no bn required here (exact sample)
 
 			[[branch]] if (refine_opacity > opacity) { // is next opacity closer?
 				// take refinement
@@ -530,7 +527,7 @@ void main() {
 			interval_remaining += dt;
 			p += interval_remaining * rd;  // this is the last "partial" step!
 
-			evaluateVolumetric(voxel, opacity, p, interval_remaining);
+			evaluateVolumetric(voxel, opacity, p, interval_remaining, vec2(0)); // no bn required here (exact sample)
 		}
 
 		// output volumetric light
@@ -546,10 +543,11 @@ void main() {
 		//return;
 #endif
 	    // store volumetrics
+		//imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), vec4(computeNormal(p) * 0.5f + 0.5f, 1.0f));
 		imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
 
 		traceReflection(voxel, rd, 
-						p, dt, interval_remaining, bn);
+						p, dt, interval_remaining, bn.x);
 		
 		// store reflection 
 		imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), voxel);

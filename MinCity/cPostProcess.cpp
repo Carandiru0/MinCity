@@ -5,6 +5,7 @@
 #include <Imaging/Imaging/Imaging.h>
 #include <Utility/stringconv.h>
 #include <Utility/async_long_task.h>
+#include "tTime.h"
 
 #define COLOR_LUT_FILE "color.cube"
 
@@ -199,14 +200,54 @@ bool const cPostProcess::UploadLUT()
 
 void cPostProcess::setPresentationBlendWeight(uint32_t const imageIndex)
 {
-	float blend_weight(0.0f);
+	static constexpr nanoseconds const target_duration = fixed_delta_duration;
+	static constexpr nanoseconds const target_x2_duration = target_duration * 2;
+	
+	static constexpr float const max_duration = time_to_float(duration_cast<fp_seconds>(target_x2_duration));
+		
+	constinit static tTime last_timestamp{};
+	constinit static nanoseconds last_duration[3]{};
+	
+	float blend_weight_injection(0.0f);
+	
+
+	tTime const timestamp(std::chrono::high_resolution_clock::now());
+	nanoseconds const nano_duration(timestamp - last_timestamp);
+		
+	// frames 0 & 1 contain normal timing, frame 2 is added to frame 1's time as frame 1 is eventually the final result, frame 2.
+
+	// only frame 1 does frame interpolation, and it's blend_weight is calculated here.
+		
+	if (1 == imageIndex) {
+					
+		fp_seconds const current_duration(duration_cast<fp_seconds>(nano_duration));
+		fp_seconds const last_frame_duration[2]{ duration_cast<fp_seconds>(last_duration[0]), duration_cast<fp_seconds>(last_duration[1]) + duration_cast<fp_seconds>(last_duration[2]) }; // @todo verify frame match timings.
+	
+		float const tAverage = time_to_float((((last_frame_duration[0] + last_frame_duration[1]) * 0.5) + current_duration) * 0.5);
+			
+		blend_weight_injection = SFM::linearstep(0.0f, max_duration, tAverage);
+
+		//FMT_NUKLEAR_DEBUG(false, "blend_weight: {:.3f}    {:.3f} / {:.3f} / {:.3f} / {:.3f}  {:.6f} ", blend_weight_injection, time_to_float(last_duration[0]), time_to_float(last_duration[1]), time_to_float(last_duration[2]), time_to_float(last_duration[1] + last_duration[2]), time_to_float(last_duration[0] - (last_duration[1] + last_duration[2])));
+	}
+	
+	// if you are currently frame 0, duration is equal to time from frame 2 till now (2->0) (frame time for frame 2)
+	// if you are currently frame 1, duration is equal to time from frame 0 till now (0->1) (frame time for frame 0)
+	// if you are currently frame 2, duration is equal to time from frame 1 till now (1->2) (frame time for frame 1)
+	// so imageIndex - 1's should be the index to store the last frame's duration in to correctly deposit each frames duration.
+	int corrected_frame_duration_index = imageIndex - 1;
+	if (corrected_frame_duration_index < 0) {
+		corrected_frame_duration_index = 2;
+	}
+	last_duration[corrected_frame_duration_index] = nano_duration;
+	last_timestamp = timestamp;
+	
+	float blend_weight(blend_weight_injection);
 	
 	switch (imageIndex) {
 	case 0:
 		blend_weight = 0.0f; // full first frame
 		break;
-	case 1:
-		blend_weight = 0.5f; // half first frame, half next frame
+	case 1: // injected already in blend_weight
 		break;
 	case 2:
 		blend_weight = 1.0f; // full next frame

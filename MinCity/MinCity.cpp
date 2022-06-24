@@ -734,8 +734,6 @@ void cMinCity::UpdateWorld()
 		
 		if (!bTick) { // limited to the fixed timestep of one iteration per frame
 			
-			Physics->Update();
-			
 			bJustLoaded = VoxelWorld->UpdateOnce(m_tNow, tDeltaFixedStep, bPaused);
 
 			bTick = true;
@@ -928,7 +926,8 @@ void cMinCity::OnRenderComplete(uint32_t const resource_index)
 	// do not put anything that isn't related to rendering in here. eg.) clearing physics here would be a bad idea.
 	
 	// asynchronous clears go here
-	VoxelWorld->getVolumetricOpacity().clear(resource_index); // corresponding wait is in RenderGrid of the next frame.
+	VoxelWorld->AsyncClears(resource_index);
+	// corresponding wait is in RenderGrid of the next frame.
 }
 
 __declspec(noinline) static bool SetProcessPrivilege(

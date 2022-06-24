@@ -111,8 +111,6 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 __inline void cPostProcess::Present(vku::present_renderpass&& __restrict pp,
 	                                struct cVulkan::sPOSTAADATA const& __restrict render_data) const
 {
-	uint32_t const resource_index(pp.resource_index);
-
 	// descriptor sets are aLREADY set by Render()
 
 	// presentation (blendiung) pass

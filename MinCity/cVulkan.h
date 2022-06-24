@@ -328,6 +328,7 @@ public:
 	static void renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	static void renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
 	static void renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp);
+	static void renderClearCommandBuffer(vku::clear_renderpass&& __restrict pp);
 	static void gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
 private:
     inline bool const _renderCompute(vku::compute_pass&& __restrict c);
@@ -335,12 +336,13 @@ private:
 	inline void _renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	inline void _renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
 	inline void _renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp);
+	inline void _renderClearCommandBuffer(vku::clear_renderpass&& __restrict c);
 	inline void _gpuReadback(vk::CommandBuffer& cb, uint32_t resource_index);
 
 	void renderComplete(uint32_t const resource_index); // triggered internally on Render Completion (after final queue submission / present by vku framework
 
 	void renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (&__restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount);
-	void clearAllVoxels(vku::present_renderpass&& __restrict s);  // <-- this one clears the opacitymap
+	void clearAllVoxels(vku::clear_renderpass&& __restrict c);  // <-- this one clears the opacitymap
 
 	void copyMouseBuffer(vk::CommandBuffer& cb, uint32_t resource_index) const;
 	void barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t resource_index) const;

@@ -17,7 +17,7 @@ INLINE_MEMFUNC __streaming_store_residual(XMFLOAT4A* const __restrict dest, XMFL
 {
 	_mm_stream_ps((float* const __restrict)(dest + index), _mm_load_ps((float const* const __restrict)(src + index)));
 }
-INLINE_MEMFUNC __streaming_store(XMFLOAT4A* const __restrict dest, XMFLOAT4A const* const __restrict src, uint32_t const (&index)[8]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
+INLINE_MEMFUNC __streaming_store(XMFLOAT4A* const __restrict dest, XMFLOAT4A const* const __restrict src, uint32_t const (& __restrict index)[8]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
 {
 	XMVECTOR const
 		r0(_mm_load_ps((float const* const __restrict)(src + index[0]))),	// random locations, but should be in recently used L1/L2 cache so fast to access (from the light _cache)
@@ -192,6 +192,8 @@ public:
 			auto& light(*iter);
 			light->out(_staging[_active_resource_index], _cache);
 		}
+		___streaming_store_fence();
+		_stagingBuffer[_active_resource_index].flush(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
 	}
 
 #ifdef DEBUG_PERF_LIGHT_RELOADS

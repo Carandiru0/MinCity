@@ -86,8 +86,8 @@ __declspec(noinline) void WaitIOClose()
 	}
 	else if (_IO_CONSOLE == _IsRedirectedTo) {
 
-		static constexpr uint32_t const SLEEPTIME = 100U;
-		static constexpr seconds const AUTOCLOSE_SECONDS = seconds(5U);
+		static constexpr uint32_t const SLEEPTIME = 64U;
+		static constexpr seconds const AUTOCLOSE_SECONDS = seconds(3U);
 
 		std::atomic_bool timed_out;
 		timed_out = false;

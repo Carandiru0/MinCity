@@ -10,7 +10,7 @@ writeonly layout(location = 0) out streamOut
 	noperspective vec3	rd;
 	noperspective vec3	eyePos;
 	flat vec3			eyeDir;
-	//flat float			slice; // *bugfix - animated blue noise in raymarch step offset randomization does not look good. too noisy, have to scale it well below dt (a step) - animated blue noise suitable more for dithering and reconstruction - can't see any noisy movement)
+	flat float			slice; 
 } Out;
 
 // "World Visible Volume"			 // xyz
@@ -41,7 +41,7 @@ void main() {
 	Out.eyeDir.xzy = normalize(eyeDir); // Out.eyeDir is flat, normalized and good to use in fragment shaders
 	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
 
-	//Out.slice = float(u._uframe & 63U); // +blue noise over time // *bugfix - animated blue noise in raymarch step offset randomization does not look good. too noisy, have to scale it well below dt (a step) - animated blue noise suitable more for dithering and reconstruction - can't see any noisy movement)
+	Out.slice = float(u._uframe & 63U); // +blue noise over time
 }
 
 /*

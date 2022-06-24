@@ -7,21 +7,21 @@
 
 namespace Iso
 {
-	static constexpr double       const EYE_DISTANCE				= (Globals::MAXZ_DEPTH - Globals::MINZ_DEPTH) * -0.75; // *do not change* // (see xmEyePt_Iso below)
+	static constexpr double       const EYE_DISTANCE				= (Globals::MAXZ_DEPTH - Globals::MINZ_DEPTH) * 0.75; // *do not change* // (see xmEyePt_Iso below)
 
 	// True Isometric (TOO LOW):								  
 	static constexpr XMFLOAT3A   const TRUE_ISOMETRIC_ANGLES		= { 0.52359877559829887308f, 0.52359877559829887308f, 0.0f };   // in radians  x,y,z ( 30 degrees, 30 degrees, 0 degrees )
-	static constexpr XMFLOAT3A   const TRUE_ISOMETRIC				= { EYE_DISTANCE * 0.86602540378443864676, EYE_DISTANCE * 0.5, EYE_DISTANCE * 0.5 };		// x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const TRUE_ISOMETRIC				= { EYE_DISTANCE * -0.86602540378443864676, EYE_DISTANCE * -0.5, EYE_DISTANCE * -0.5 };		// x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 	
 
 	// 2:1 (Psuedo/Dimetric) Isometric (TOO HIGH):			  
 	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC_ANGLES		= { XM_PIDIV4, XM_PIDIV4, 0.0f };  // in radians  x,y,z ( 45 degrees, 45 degrees, 0 degrees )
-	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC			= { EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC			= { EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 	
 
 	// Balanced Isometric (JUST RIGHT):							
 	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC_ANGLES	= { 0.58177641733144319231f, XM_PIDIV4, 0.0f };  // in radians   x,y,z ( 33.333 degrees, 45 degrees, 0 degrees )
-	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC			= { EYE_DISTANCE * 0.7071067811865475244, EYE_DISTANCE * 0.54950897807080603526, EYE_DISTANCE * 0.7071067811865475244 };  // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC			= { EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.54950897807080603526, EYE_DISTANCE * -0.7071067811865475244 };  // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	static constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= BALANCED_ISOMETRIC_ANGLES;
