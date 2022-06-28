@@ -54,13 +54,12 @@ void main() {
 layout (constant_id = 4) const float VolumeDimensions = 0.0f;
 layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
 layout (constant_id = 6) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
-layout (constant_id = 7) const float InvVolumeLength = 0.0f; // <---- is ok, not scaled by voxel size.
-layout (constant_id = 8) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 9) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 10) const float LightVolumeDimensions_Z = 0.0f; 
-layout (constant_id = 11) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 12) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 13) const float InvLightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 7) const float LightVolumeDimensions_X = 0.0f;
+layout (constant_id = 8) const float LightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 9) const float LightVolumeDimensions_Z = 0.0f; 
+layout (constant_id = 10) const float InvLightVolumeDimensions_X = 0.0f;
+layout (constant_id = 11) const float InvLightVolumeDimensions_Y = 0.0f;
+layout (constant_id = 12) const float InvLightVolumeDimensions_Z = 0.0f; 
 #define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
 #define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
 

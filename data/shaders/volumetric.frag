@@ -193,7 +193,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	getLightFast(light_color, Ld, uvw);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
-	Ld.att *= max(0.0f, dot(Ld.dir, normalize(vec3(bn * BLUE_NOISE_SCALAR, -1)))); // **bugfix for correct lighting. 
+	Ld.att *= max(0.0f, dot(Ld.dir, normalize(In.rd.xyz + vec3(bn * BLUE_NOISE_SCALAR,-In.rd.z + bn.x * BLUE_NOISE_SCALAR)))); // **bugfix for correct lighting. 
 
 	// directional derivative - equivalent to dot(N,L) operation
 	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -370,7 +370,7 @@ void traceReflection(out vec4 voxel, in vec3 rd, in vec3 p, in const float dt, i
 				[[branch]] if(bounced(opacity)) { 
 				
 					const float dist_to_bounce = distance(p, bounce) * VolumeLength;
-					reflection(voxel, 1.0f/(1.0f + dist_to_bounce*dist_to_bounce), p, opacity, dt);
+					reflection(voxel, 1.0f / fma(dist_to_bounce, dist_to_bounce, 1.0f), p, opacity, dt);
 					break;	// hit reflected *opaque surface*
 				}
 
@@ -443,7 +443,7 @@ void main() {
 	
 	// adjust start position by "bluenoise step"	
 	const vec2 bn = fetch_bluenoise(gl_FragCoord.xy);
-	const float jittered_interval = 0.0f;//dt * bn.y; // jittered offset should be scaled by golden ratio zero (hides some noise)
+	const float jittered_interval = dt * bn.y; // jittered offset should be scaled by golden ratio zero (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -543,7 +543,8 @@ void main() {
 		//return;
 #endif
 	    // store volumetrics
-		//imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), vec4(computeNormal(p) * 0.5f + 0.5f, 1.0f));
+		//voxel.xyz = vec3(0);
+		//voxel.w = 1.0f;
 		imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
 
 		traceReflection(voxel, rd, 

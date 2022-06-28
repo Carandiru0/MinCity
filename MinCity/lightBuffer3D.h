@@ -314,6 +314,8 @@ private:
 public:
 	__declspec(safebuffers) void __vectorcall seed(XMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
+		xmPosition = XMVectorSubtract(xmPosition, world::getFractionalOffset());
+		
 		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Size>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// thread_local init (only happens once/thread)

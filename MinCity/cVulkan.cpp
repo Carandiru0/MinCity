@@ -2203,7 +2203,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// Volume Rendering using raymarch of 3d/volume texture:
 	{
-#ifndef VOLUMETRIC_RAYMARCHING_DISABLED
 
 		s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_volData.pipelineLayout, 0,
 			_volData.sets[resource_index], nullptr);
@@ -2214,7 +2213,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 		s.cb.bindIndexBuffer(_volData._ibo.buffer(), vk::DeviceSize(0), vk::IndexType::eUint16);
 
 		s.cb.drawIndexed(_volData.index_count, 1, 0, 0, 0);
-#endif
+
 		// renderpass changes layout - update state of image to match
 		_window->depthResolvedImage(1).setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 

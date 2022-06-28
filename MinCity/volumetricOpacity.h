@@ -137,9 +137,9 @@ namespace Volumetric
 		__inline lightVolume const& __restrict												getMappedVoxelLights() const { return(MappedVoxelLights); }
 		
 		// Mutators //
-		__inline void __vectorcall pushViewMatrix(FXMMATRIX xmView) {
-			// only need mat3 for purposes of compute shader transforming light direction vector
+		__inline void __vectorcall pushViewMatrixOffset(FXMMATRIX xmView, FXMVECTOR xmOffset) {
 			XMStoreFloat4x4(&PushConstants.view, xmView);
+			XMStoreFloat3(&PushConstants.offset, xmOffset);
 		}
 		
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -303,8 +303,6 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(6, 1.0f / (float)LightWidth)); // should be inv width
 			constants.emplace_back(vku::SpecializationConstant(7, 1.0f / (float)LightDepth)); // should be inv depth
 			constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)LightHeight)); // should be inv height
-
-			constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::MINI_VOX_SIZE*0.5f)); // should be minivoxsize * 0.5f (0.5f for only compute shader provides better smoother light propogation)
 		}
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder) const
@@ -365,7 +363,8 @@ namespace Volumetric
 		vku::TextureImageStorage3D*							OpacityMap;
 		voxelVolumeSet										VolumeSet;
 
-		static inline float const							VolumeLength = (std::hypot(float(Size), float(Size), float(Size))),
+		static inline float const							VolumeSize = Size * Iso::VOX_SIZE, // must be VOX_SIZE for maximizing the range of the distance field correctly
+															VolumeLength = (std::hypot(float(VolumeSize), float(VolumeSize), float(VolumeSize))),
 															InvVolumeLength = (1.0f / VolumeLength);
 
 		int32_t												ClearStage;
@@ -397,6 +396,7 @@ namespace Volumetric
 			PushConstants.index_filter = 0;  // independent
 			
 			XMStoreFloat4x4(&PushConstants.view, XMMatrixIdentity());
+			XMStoreFloat3(&PushConstants.offset, XMVectorZero());
 		}
 		~volumetricOpacity()
 		{

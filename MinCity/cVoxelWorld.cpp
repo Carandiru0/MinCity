@@ -3453,7 +3453,7 @@ namespace world
 			cExplosionGameObject* pExplosionGameObj(nullptr);
 			cLevelSetGameObject* pSphereGameObj(nullptr);
 
-			pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
+			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
 			//pExplosionGameObj = placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
 			//	Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
@@ -4476,14 +4476,13 @@ namespace world
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset MUST be added here for jitter free movement of camera -in a matrix. does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
 		XMMATRIX xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
-												 XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+										   XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		XMVECTOR const xmOffset(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
 		// *bugfix major: - this is the only place the fractional offset needs to be added to. Result no jitter, perfect alignment of rasterized and raymarched views!
 
-		_OpacityMap.pushViewMatrix(XMMatrixMultiply(XMMatrixTranslationFromVector(XMVectorNegate(xmOffset)), xmView));
+		_OpacityMap.pushViewMatrixOffset(xmView, xmOffset);
 		
-		xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(xmOffset), xmView);
 		_currentState.Uniform.view = xmView;
 		// not yet required
 		//_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
@@ -4495,6 +4494,7 @@ namespace world
 		// Get current projection matrix after update of frustum and in turn projection
 		_currentState.Uniform.proj = _Visibility.getProjectionMatrix();
 
+		xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(xmOffset), xmView);
 		_currentState.Uniform.viewproj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);			// matrices can not be interpolated effectively they must be recalculated
 																										// from there base components
 
@@ -4774,7 +4774,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)(downResFrameBufferSz.x)));// // half-res frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)(downResFrameBufferSz.y)));// // half-res frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should always be: VolumeLength * MINI_VOX_SIZE (too bright if multiplied by 0.5f or SFM::GOLDEN_RATIO_ZERO) 
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * 0.5f)); 
 
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getSize()));		  // should be size
@@ -4852,16 +4852,15 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
-		constants.emplace_back(vku::SpecializationConstant(7, (float)(Volumetric::voxelOpacity::getInvVolumeLength()))); // should be 1 / World Volume Length
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength())));
 
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(10, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
 
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(13, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4875,16 +4874,15 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
-		constants.emplace_back(vku::SpecializationConstant(7, (float)(Volumetric::voxelOpacity::getInvVolumeLength()))); // should be 1 / World Volume Length
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength()))); 
 
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(10, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
 
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(13, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
@@ -5005,16 +5003,15 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO))); // should always be: VolumeLength * MINI_VOX_SIZE * SFM::GOLDEN_RATIO_ZERO
-		constants.emplace_back(vku::SpecializationConstant(7, (float)(Volumetric::voxelOpacity::getInvVolumeLength()))); // should be 1 / World Volume Length
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength())));
 
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(10, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
 
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(13, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
+		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
+		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants)

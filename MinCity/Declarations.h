@@ -131,12 +131,14 @@ namespace UniformDecl
 	typedef struct no_vtable alignas(4) ComputeLightPushConstantsFilter : ComputeLightPushConstantsJFA { // 4 rows * 4 floats per row * 4bytes, +2 floats = 72 bytes
 		uint32_t	index_filter;
 		XMFLOAT4X4	view;
+		XMFLOAT3	offset;
 	} ComputeLightPushConstantsFilter;
 	// only typedef for size
 	typedef struct no_vtable alignas(4) ComputeLightPushConstantsOverlap {
 		uint32_t const	index_input;
 		uint32_t		index_filter;
 		XMFLOAT4X4		view;
+		XMFLOAT3		offset;
 	} ComputeLightPushConstantsOverlap;
 
 	// ###pipelinelayout### uses the leaf, order of data is defined here with multiple inheritance, memory layout is in order they are defined:

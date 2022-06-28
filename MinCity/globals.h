@@ -58,7 +58,6 @@
 //#define DEBUG_MOUSE_HOVER_VOXEL
 #define DEBUG_FPS_WINDOW
 //#define DEBUG_LUT_WINDOW
-//#define VOLUMETRIC_RAYMARCHING_DISABLED
 #define VOX_DEBUG_ENABLED
 #define DEBUG_EXPLOSION_WINDOW
 //#define DEBUG_DISALLOW_RENDER_DISABLING	// note that this causes any swapchain recreation to fail, this is not normally on in release
