@@ -20,8 +20,6 @@
 #include "betterenums.h"
 #include <optional>
 
-extern void setPresentationBlendWeight(uint32_t const); // workaround to get current blend weight for current imageIndex
-
 namespace eSamplerSampling {
 	enum : uint32_t const {
 		NEAREST = 0,
@@ -179,7 +177,6 @@ public:
 	vk::CommandPool const& __restrict							computePool(uint32_t const index) const { if (0u == index) return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_PRIMARY)); return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_SECONDARY)); }
 	vk::CommandPool const& __restrict							dmaTransferPool(vku::eCommandPools const dma_transfer_pool_id) const { return(_window->commandPool(dma_transfer_pool_id)); }
 
-	vk::ImageView const											frameView(uint32_t const index) const { return(_window->frameView(index)); }
 	vk::ImageView const&										offscreenImageView2D() const { return(_window->offscreenImageView()); }
 	vk::ImageView const&										offscreenImageView2DArray() const { return(*_offscreenImageView2DArray); } // for compatbility with Nuklear GUI shader pipeline
 
@@ -242,7 +239,7 @@ public:
 	// Main Methods //
 	void setFullScreenExclusiveEnabled(bool const bEnabled);
 	void setHDREnabled(bool const bEnabled, uint32_t const max_nits = 0);
-
+		
 	bool const LoadVulkanFramework();
 	bool const LoadVulkanWindow(struct GLFWwindow* const glfwwindow);
 	void CreateResources();
@@ -254,7 +251,7 @@ public:
 	// Callbacks //
 	void OnRestored(struct GLFWwindow* const glfwwindow);
 	void OnLost(struct GLFWwindow* const glfwwindow);
-
+	
 	// Specific Rendering //
 	void setStaticCommandsDirty();
 	void checkStaticCommandsDirty(uint32_t const resource_index);
@@ -384,7 +381,7 @@ public:	// ### public skeleton
 	typedef struct sPOSTAADATA
 	{
 		vk::UniquePipelineLayout		pipelineLayout;
-		vk::Pipeline					pipeline[6];
+		vk::Pipeline					pipeline[5];
 		vk::UniqueDescriptorSetLayout	descLayout;
 		std::vector<vk::DescriptorSet>	sets;
 
@@ -852,7 +849,7 @@ template<uint32_t const descriptor_set>
 STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(uint32_t const resource_index, vk::CommandBuffer& __restrict cb)
 {
 	cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_rtSharedDescSet[descriptor_set].pipelineLayout, 0,
-		_rtSharedDescSet[descriptor_set].sets[resource_index], nullptr);
+						  _rtSharedDescSet[descriptor_set].sets[resource_index], nullptr);
 }
 
 template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks>
@@ -862,7 +859,6 @@ STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass
 
 	[[maybe_unused]]
 	uint32_t ActiveMaskCount(0);
-
 	if constexpr (0U != numChildMasks) {
 		ActiveMaskCount = 0U;
 		for (uint32_t i = 0U; i < numChildMasks; ++i)

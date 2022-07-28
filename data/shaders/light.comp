@@ -21,7 +21,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "transform.glsl"
 
 #define GROUP_SIZE_XY 8
-#define GROUP_SIZE_Z 4 // must match ComputeLightConstants.h
+#define GROUP_SIZE_Z 8 // must match ComputeLightConstants.h
 
 layout (local_size_x = GROUP_SIZE_XY, local_size_y = GROUP_SIZE_XY, local_size_z = GROUP_SIZE_Z) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,8=256 tested optimal warp size at height 128 and 256 visible voxels
 
@@ -66,15 +66,11 @@ layout (constant_id = 8) const float InvVolumeDimensions_Height = 0.0f;
 #define packed_color a
 #define warp_local vec4
 
-bool isLit( in const float sampled_packed_color )
-{
-	return( 0.0f != sampled_packed_color );
-}
-
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location )
 {
-	return( textureLod(map, (read_location + 0.5f) * InvVolumeDimensions, 0) );
+	//return( textureLod(map, (read_location + 0.5f) * InvVolumeDimensions, 0) );
+	return( texelFetch(map, ivec3(floor(read_location + 0.5f)), 0) );
 }
 #ifdef SEED
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -129,11 +125,11 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	[[branch]] if ( isLit(read_warp.packed_color) ) {	// new
+	if ( 0.0f != read_warp.packed_color ) {	// new
 			
 		const float read_distance = distance(read_warp.emitter_location, current_location);
 
-		[[branch]] if ( read_distance < current_distance ) {
+		if ( read_distance < current_distance ) {
 			
 			current_distance = read_distance;
 			warp = read_warp;
@@ -219,14 +215,14 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 #ifndef SEED
 	const int current_step = pc.current_step;
 #endif
-	float current_distance = isLit(warp.packed_color) ? distance(warp.emitter_location, current_location) : 99999999999.9f;
+	float current_distance = 0.0f != warp.packed_color ? distance(warp.emitter_location, current_location) : 99999999999.9f;
 	
 	barrier(); // required so that lds is coherent between the last writes and now reads (memorybarriershared is included in barrier too)
 	
 	for (uint i = 0u ; i < offsets.length() ; ++i) {
 
 #ifdef SEED
-		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offsets[i]);
+		//propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offsets[i]);
 #else
 		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + offsets[i] * current_step);
 #endif
@@ -244,9 +240,9 @@ void main()
 	}
 
 	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
-	
-	propogateBlocks(warp, global_invocation_id * InvVolumeDimensions * WorldDimensions + 0.5f);
-
+#ifndef SEED
+	propogateBlocks(warp, global_invocation_id * InvVolumeDimensions * WorldDimensions);
+#endif
 	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
 }
 
@@ -374,215 +370,174 @@ vec3 temporalBlendC( in const restrict sampler3D inputTemporalC, in const restri
 	return(emission * color);
 }
 */
-void sample_moore(in const restrict sampler3D inputDD, in const vec3 uvw, inout vec4 current_direction_distance, in const vec3 current_location) 
-{	
-	warp_local moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(0,-1,-1));
-	
-	vec4 moore_direction_distance = emitter_to_direction_distance(moore_warp.emitter_location, current_location);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(0,1,-1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(1,0,-1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(-1,0,-1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(0,-1,0));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(0,1,0));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(1,0,0));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(-1,0,0));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(0,-1,1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(0,1,1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(1,0,1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-	
-	moore_warp = textureLodOffset(inputDD, uvw, 0, ivec3(-1,0,1));
-	moore_direction_distance = mix(moore_direction_distance, emitter_to_direction_distance(moore_warp.emitter_location, current_location), 0.5f);
-		
-	const float diff = current_direction_distance.w - moore_direction_distance.w;
-	
-	//current_direction_distance.xyz = normalize(normalize(moore_direction_distance.xyz) + current_direction_distance.xyz);
-	current_direction_distance.w = normalize_distance(current_direction_distance.w - diff); // remove voronoi edges
-}
 								
-void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout vec4 current_direction_distance, inout vec3 current_color, in const vec3 current_location) 
+void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout vec4 current_direction_distance, inout vec3 current_color, in const vec3 current_location) 
 {	
 	warp_local neighbour_warp;
 	vec4 neighbour_direction_distance;
 
+	// 1 center
+	current_color = current_color * attenuation(current_direction_distance.w);
+		
 	// 26 neighbours
 	
 	// 1
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1,-1,-1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1,-1,-1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 2
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, -1, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, -1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 3
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, -1, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, -1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 4
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, 0, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 0, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 5
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, 0, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 0, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 6
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, 0, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 0, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 7
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, 1, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 	
 	// 8
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, 1, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 9
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, 1, -1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	
 	// 10
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, -1, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, -1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 11
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, -1, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, -1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 12
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, -1, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, -1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 13
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, 0, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 0, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 14
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, 0, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 0, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 15
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, 1, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 16
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, 1, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 17
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, 1, 0)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	
 	// 18
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, -1, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, -1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 19
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, -1, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, -1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 20
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, -1, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, -1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 21
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, 0, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 0, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 22
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, 0, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 0, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 	
 	// 23
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, 0, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 0, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 24
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(-1, 1, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 25
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(0, 1, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 
 	// 26
-	neighbour_warp = textureLodOffset(pingpong, uvw, 0, ivec3(1, 1, 1)); //
+	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
 	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
-	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance, neighbour_direction_distance);
+	if (neighbour_direction_distance.w < current_direction_distance.w) { current_direction_distance = vec4(normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz), smin(current_direction_distance.w, neighbour_direction_distance.w, 0.07f)); }
 }
 
 //const vec3 fix_direction = normalize(vec3(1,0,-1));
@@ -593,28 +548,26 @@ void main()
 			return;
 	}
 
-	const vec3 uvw = gl_GlobalInvocationID.xyz * InvVolumeDimensions;
+	const vec3 uvw = gl_GlobalInvocationID.xyz * InvVolumeDimensions; // all center-tapped samples
 
 	// spatial interpolation
 	const warp_local current_warp = textureLod(pingpongTexture[pc.index_input], uvw, 0);
 
-	const vec3 current_location = floor(uvw * WorldDimensions);
+	const vec3 current_location = (uvw * WorldDimensions);
 
-	vec3 current_color = unpackColor(current_warp.packed_color); //mix(unpackColor(last_warp.packed_color), unpackColor(current_warp.packed_color), 0.5f);
+	vec3 current_color = unpackColor(current_warp.packed_color);
 
-	//float d0;
 	// #################################################################################################################
 	{	// distance & direction ###
 		
 		vec4 current_direction_distance = emitter_to_direction_distance(current_warp.emitter_location, current_location);
-		current_color = current_color * attenuation(current_direction_distance.w);
-		const vec3 original_color = current_color;
 		
-		sample_warp(pingpongTexture[pc.index_input], uvw, current_direction_distance, current_color, current_location);
+		const float original_distance = current_direction_distance.w; 
 		
-		current_color -= original_color;
-		current_color += original_color * attenuation(current_direction_distance.w);
-		//d0 = current_direction_distance.w;
+		sample_warp(pingpongTexture[pc.index_input], ivec3(gl_GlobalInvocationID.xyz), current_direction_distance, current_color, current_location);
+		
+		// denormalization and scaling to world coordinates (actual world distance) + 1.0
+		//current_color = current_color * fma(current_direction_distance.w, current_direction_distance.w, 1.0f); // instead of dividing current color / attenuation(current_direction_distance.w)
 		
 		// temporal interpolation 
 		/*const float original_distance = normalize_distance(current_direction_distance.w);
@@ -631,7 +584,8 @@ void main()
 			d0 = current_direction_distance.w;
 		}
 		*/
-		current_direction_distance.xyz = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xyz);
+		// view is in xyz form, must swizzle direction to xzy form to be xyz form match the view. On output, swizzled back to xzy form as that is the standard for the volumes best data layout. (x = width, z = depth, y = height/slice)
+		current_direction_distance.xzy = transformNormalToViewSpace(mat3(pc.view), current_direction_distance.xzy);
 		current_direction_distance.w = normalize_distance(current_direction_distance.w) * 2.0f - 1.0f; // expand distance to range [-1,1] for signed texture precision usage
 		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), current_direction_distance);
 	}

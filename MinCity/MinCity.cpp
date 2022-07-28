@@ -9,6 +9,12 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
 #include "pch.h"
+
+#ifndef NDEBUG
+#define CMDLINE_IMPLEMENTATION
+#include <Utility/cmdline.h>
+#endif
+
 #include <combaseapi.h>
 #include <timeapi.h>
 #include <oleacc.h>
@@ -212,6 +218,7 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_TRUE);  // Show window always sets input focus
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_FALSE);	// ensure this is off
+	glfwWindowHint(GLFW_CURSOR, GLFW_CURSOR_NORMAL);  // required to no capture mouse on window creation, it's disabled later at the right time.
 	
 	glfwWindowHint(GLFW_RED_BITS, 10);
 	glfwWindowHint(GLFW_GREEN_BITS, 10);
@@ -261,7 +268,10 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	}										// the actual exclusive mode is handled in the window part of vku
 	
 	glfwwindow = glfwCreateWindow(resolution.x, resolution.y, Globals::TITLE, monitor, nullptr);
-
+	
+	glfwSetInputMode(glfwwindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL); // *bugfix - ensure normal if it is not already. this becomes disabled at a later time.
+	ClipCursor(nullptr); // part of bugfix
+	
 	point2D_t framebuffer_size;
 	glfwGetFramebufferSize(glfwwindow, &framebuffer_size.x, &framebuffer_size.y);
 
@@ -323,18 +333,20 @@ NO_INLINE bool const cMinCity::Initialize(GLFWwindow*& glfwwindow)
 	m_bNewEventsAllowed = true; // important for this to be enabled right here //
 	VoxelWorld->Initialize();
 
-	Vulkan->UpdateDescriptorSetsAndStaticCommandBuffer();
-
 	// deferred window show / focus set
 	{
 		glfwSetWindowIconifyCallback(glfwwindow, window_iconify_callback);
 		glfwSetWindowFocusCallback(glfwwindow, window_focus_callback);
 
 		glfwShowWindow(glfwwindow);
-
+		glfwSetInputMode(glfwwindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED); // this captures the cursor completely - beware (for natural side scrolling camera movement controls)
+		
 		glfwPollEvents(); // required once here, which will enable rendering at the right time
 		window_iconify_callback(glfwwindow, 0);  // required to triggger first time, ensures rendering is started
 	}
+
+	Vulkan->UpdateDescriptorSetsAndStaticCommandBuffer();
+
 	// #### City pointer must be valid starting *here*
 	City = new cCity(m_szCityName);
 
@@ -1208,12 +1220,13 @@ extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_sc
 __declspec(noinline) void cMinCity::CriticalInit()
 {
 	// secure process:
+	// *bugfix - dynamic code execution required by *nvidia* driver usage in specifically - vkCmdBindDescriptorSets() uses dynamic code? Disabling the code below fixes the issue.
 
 	// setup zero dynamic code execution
-	PROCESS_MITIGATION_DYNAMIC_CODE_POLICY policy{};
-	policy.ProhibitDynamicCode = 1;
+	//PROCESS_MITIGATION_DYNAMIC_CODE_POLICY policy{};
+	//policy.ProhibitDynamicCode = 1;
 
-	SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &policy, sizeof(PROCESS_MITIGATION_DYNAMIC_CODE_POLICY));
+	//SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &policy, sizeof(PROCESS_MITIGATION_DYNAMIC_CODE_POLICY));
 
 	// setup secure loading of dlls, should be done before loading any dlls, or creation of any threads under this process (including dlls creating threads)
 	{
@@ -1283,6 +1296,9 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	// huge memory leak bugfix
 	_.Vulkan.WaitDeviceIdle();
 
+	_mm_pause();
+	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
+	
 	async_long_task::wait_for_all(); // *bugfix for safe cleanup, all background tasks must complete
 
 	SAFE_DELETE(City);
@@ -1294,11 +1310,18 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	_.VoxelWorld.CleanUp();
 	_.TextureBoy.CleanUp();
 
+	_mm_pause();
+	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
+	
+	_.Vulkan.WaitDeviceIdle();
 	_.Vulkan.Cleanup(glfwwindow);  /// should be LAST //
 }
 
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {
+	_mm_pause();
+	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
+	
 	SAFE_DELETE(TASK_INIT);
 	timeEndPeriod(1);
 }
@@ -1313,11 +1336,15 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
 	(void)UNREFERENCED_PARAMETER(lpCmdLine);
 	(void)UNREFERENCED_PARAMETER(nCmdShow);
 	g_hInstance = hInstance;
-
-	cMinCity::CriticalInit();
 	
+	cMinCity::CriticalInit();
+
+#ifndef NDEBUG // use quick_exit(0) at point where bug has been successfully passed, quick_exit(1) happens in the validation callback when BREAK_ON_VALIDATION_ERROR is equal to 1 in vku.hpp (for isolating sync validation errors with automation using debug_sync program)
+	cmdline::arguments(__wargv, __argc);
+#endif
+		
 	cMinCity::Initialize(g_glfwwindow);  // no need to check the state here, unless handling errors
-									   // Running status is updated in this function if succesful
+										// Running status is updated in this function if succesful
 
 	// Loop waiting for the window to close, exit of program, etc
 	while (cMinCity::isRunning()) {
@@ -1328,6 +1355,7 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
 
 	cMinCity::Cleanup(g_glfwwindow);
 	cMinCity::CriticalCleanup();
+
 
 	WaitIOClose();
 

@@ -139,15 +139,20 @@ public:
 		_maximum = std::move<Bounds&&>(Bounds{});
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
 
-		// clear staging buffer
-		___memset_threaded<16>(_staging[resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
-
-		// clear internal memory
-		___memset_threaded<CACHE_LINE_BYTES>(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), _block_size_atomic); // 700KB / thread (12 cores)
-
-		// clear internal cache
-		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
-
+		tbb::parallel_invoke(
+			[=] {
+				// clear staging buffer
+				___memset_threaded<16>(_staging[resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
+			},
+			[=] {
+				// clear internal memory
+				___memset_threaded<CACHE_LINE_BYTES>(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), _block_size_atomic); // 700KB / thread (12 cores)
+			},
+			[=] {
+				// clear internal cache
+				___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
+			}
+		);
 		_active_resource_index = resource_index;
 	}
 
@@ -314,8 +319,6 @@ private:
 public:
 	__declspec(safebuffers) void __vectorcall seed(XMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
-		xmPosition = XMVectorSubtract(xmPosition, world::getFractionalOffset());
-		
 		const_cast<lightBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth, Size>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// thread_local init (only happens once/thread)

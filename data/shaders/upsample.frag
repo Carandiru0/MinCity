@@ -4,6 +4,8 @@
 #define subgroup_quad_enabled
 #define fragment_shader
 
+layout(early_fragment_tests) in;  
+
 #if !defined(BLEND)
 
 #include "screendimensions.glsl"
@@ -17,8 +19,6 @@
 #endif
 
 #include "common.glsl"
-
-layout(early_fragment_tests) in;  
 
 #if defined(BLEND)
 layout(location = 0) out vec4 outColor;
@@ -294,9 +294,9 @@ void main() {
 			alphaSumV *= inv_weight;	// average final alpha
 
 			const vec4 alphaSamplesR = textureGather(reflectionMap, jittered_uv, 3);
-			alphaSumR_Blur = dot(alphaSamplesR, depthWeights);
+			alphaSumR_Blur = dot(1.0f - alphaSamplesR, depthWeights);
 			alphaSumR_Blur *= inv_weight;	// average final alpha
-			alphaSumR_Fade = dot(1.0f - alphaSamplesR, depthWeights);
+			alphaSumR_Fade = dot(alphaSamplesR, depthWeights);
 			alphaSumR_Fade *= inv_weight;	// average final alpha
 		}
 	}
@@ -312,7 +312,7 @@ void main() {
 		volume_color *= alphaSumV; // pre-multiply w/ bilateral alpha
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
 	}
-
+	
 	{ // Reflection
 		// Reflection map extra AA filtering and blur //      
 		vec3 bounce_color = supersample(reflectionMap, In.uv, vdFd);

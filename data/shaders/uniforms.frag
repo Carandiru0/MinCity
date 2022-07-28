@@ -1,6 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_quad: enable
+#define subgroup_quad_enabled
+#define fragment_shader
 
 /* Copyright (C) 20xx Jason Tully - All Rights Reserved
  * You may use, distribute and modify this code under the
@@ -12,14 +14,12 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
-#define subgroup_quad_enabled
-#define fragment_shader
+layout(early_fragment_tests) in;  
+
 #if !defined(BASIC)
 #include "screendimensions.glsl"           
 #include "common.glsl"     
-#endif
-
-layout(early_fragment_tests) in;              
+#endif            
 
 #if defined(TRANS)
 layout(location = 0) out vec4 outColor;

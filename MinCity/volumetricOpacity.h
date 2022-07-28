@@ -138,8 +138,8 @@ namespace Volumetric
 		
 		// Mutators //
 		__inline void __vectorcall pushViewMatrixOffset(FXMMATRIX xmView, FXMVECTOR xmOffset) {
-			XMStoreFloat4x4(&PushConstants.view, xmView);
-			XMStoreFloat3(&PushConstants.offset, xmOffset);
+			XMStoreFloat4x4(&PushConstants.view, xmView);   // view matrix stored in xyz form
+			XMStoreFloat3(&PushConstants.offset, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOffset)); // offset properly swizzled to xzy form
 		}
 		
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -229,7 +229,7 @@ namespace Volumetric
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 
-				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), true, true);
+				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Random, true, true);
 
 				LightProbeMap.imageGPUIn[resource_index] = new vku::TextureImage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,
 					LightWidth, LightDepth, LightHeight, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);
@@ -592,6 +592,11 @@ namespace Volumetric
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
 				renderSeed(c, render_data, resource_index); // input flips with resource_index
 
+				//*bugfix - sync validation, solved by automation
+				vku::memory_barrier(c.cb_render_light,
+					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
+					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
+				
 				// ( JFA ) //
 				uint32_t uPing(!resource_index), uPong(resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
 
@@ -602,6 +607,11 @@ namespace Volumetric
 				{
 					renderJFA(c, render_data, uPing, uPong, step);
 
+					//*bugfix - sync validation, solved by automation
+					vku::memory_barrier(c.cb_render_light,
+						vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
+						vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
+					
 					std::swap(uPing, uPong);
 
 					step >>= 1;
@@ -610,6 +620,11 @@ namespace Volumetric
 				// (JFA + 1)
 				renderJFA(c, render_data, uPing, uPong, 1);
 
+				//*bugfix - sync validation, solved by automation
+				vku::memory_barrier(c.cb_render_light,
+					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
+					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
+				
 				// Last step, filtering - temporal super-sampling, blending & antialiasing
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
 
@@ -632,7 +647,6 @@ namespace Volumetric
 			LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
 			LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
 			LightMap.Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
-			
 		}
 
 		return(false); // returns no longer dirty by default, resetting dirty state after compute cb is "scheduled"
@@ -793,7 +807,7 @@ namespace Volumetric
 				region.imageExtent.height = extents_max.z - extents_min.z;   // Y Axis Major (Slices ordered by Y)
 
 				region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 };
-
+				
 				cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn[resource_index]->image(), vk::ImageLayout::eTransferDstOptimal, region);
 
 				cb.end();

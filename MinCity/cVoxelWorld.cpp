@@ -3619,27 +3619,27 @@ namespace world
 		// *** these staging buffers are dynamic, the active size is reset to zero for a reason here.
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
 			voxels.visibleDynamic.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), true, true);
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleDynamic.opaque.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleDynamic.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), true, true);
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleDynamic.trans.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleStatic.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), true, true);
+				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleStatic.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleTerrain.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), true, true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleTerrain.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleRoad.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.opaque.type), true, true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.opaque.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleRoad.opaque.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleRoad.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.trans.type), true, true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.trans.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleRoad.trans.stagingBuffer[i].setActiveSizeBytes(0);
 		}
 
@@ -4459,7 +4459,7 @@ namespace world
 		XMStoreFloat2A(&vPush, getDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR));
 #endif
 		//pack into vector for uniform buffer layout																			   // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
-		_currentState.Uniform.aligned_data0 = XMVectorSet(vPush.x, vPush.y, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
+		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.z, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
 
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4480,7 +4480,8 @@ namespace world
 
 		XMVECTOR const xmOffset(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
 		// *bugfix major: - this is the only place the fractional offset needs to be added to. Result no jitter, perfect alignment of rasterized and raymarched views!
-
+		xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(xmOffset), xmView);
+		
 		_OpacityMap.pushViewMatrixOffset(xmView, xmOffset);
 		
 		_currentState.Uniform.view = xmView;
@@ -4493,8 +4494,6 @@ namespace world
 
 		// Get current projection matrix after update of frustum and in turn projection
 		_currentState.Uniform.proj = _Visibility.getProjectionMatrix();
-
-		xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(xmOffset), xmView);
 		_currentState.Uniform.viewproj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);			// matrices can not be interpolated effectively they must be recalculated
 																										// from there base components
 
@@ -4694,38 +4693,62 @@ namespace world
 	{
 		_AsyncClearTaskID = async_long_task::enqueue<background_critical>([&, resource_index] {
 
-			getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+			tbb::parallel_invoke(
+				[=] {
+					getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+				},
+				[=] {
+					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				},
+				[=] {
+					auto const& stagingBuffer(voxels.visibleRoad.opaque.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				},
+				[=] {
+					auto const& stagingBuffer(voxels.visibleRoad.trans.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				},
+				[=] {
+					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				},
+				[=] {
+					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
+					___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				},
+				[=] {
+					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
+					___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				);
 			
+			/*
 			{
-				auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
+				
 			}
 			{
-				auto const& stagingBuffer(voxels.visibleRoad.opaque.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
+
 			}
 			{
-				auto const& stagingBuffer(voxels.visibleRoad.trans.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
+				
 			}
 			{
-				auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
+				
 			}
 			{
-				auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
+				
 			}
 			{
-				auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
+				
 			}
+			*/
 		});
 	}
 	
@@ -4764,6 +4787,8 @@ namespace world
 		// volume dimensions																				 // xyz
 		constants.emplace_back(vku::SpecializationConstant(0, (float)Volumetric::voxelOpacity::getSize()));  // should be world volume size
 	}
+	static constexpr float const VOXEL_SCALAR = 1.0f;
+	static constexpr float const VOLUMETRIC_WORLD_SCALAR = VOXEL_SCALAR;
 	void cVoxelWorld::SetSpecializationConstants_VolumetricLight_FS(std::vector<vku::SpecializationConstant>& __restrict constants) // all shader variables should be swizzled to xzy into fragment shader for texture lookup optimization. (ie varying vertex->fragnent shader variables)
 	{
 		point2D_t const frameBufferSz(MinCity::getFramebufferSize());
@@ -4774,7 +4799,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)(downResFrameBufferSz.x)));// // half-res frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)(downResFrameBufferSz.y)));// // half-res frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * 0.5f)); 
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * VOLUMETRIC_WORLD_SCALAR));
 
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getSize()));		  // should be size
@@ -4840,6 +4865,8 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 		constants.emplace_back(vku::SpecializationConstant(4, (float)MinCity::Vulkan->getMaximumNits()));// // maximum brightness of user monitor in nits, as defined in MinCity.ini
 	}
+
+	static constexpr float const VOXEL_WORLD_SCALAR = VOXEL_SCALAR;
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		point2D_t const frameBufferSize(MinCity::getFramebufferSize());
@@ -4852,7 +4879,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength())));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
@@ -4874,7 +4901,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength()))); 
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
@@ -5003,7 +5030,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength())));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
 		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth

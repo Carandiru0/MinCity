@@ -231,8 +231,14 @@ namespace world
 		}
 		else if (isVoxelWindow(voxel)) { // Only for specific emissive voxels, with matching palette index for building windows
 
+			static constexpr float UINT32_MAXF = (float)UINT32_MAX,
+								   MIN_BRIGHTNESS = 136.0f; // found to be lowest usuable minimum for window shades.
+			
 			int32_t found_index(-1);
-
+			
+			uint8_t const brightness = SFM::saturate_to_u8(((float)Hash((int32_t)vxl_index) / UINT32_MAXF) * 255.0f + MIN_BRIGHTNESS);
+			voxel.Color = 0x00ffffff & SFM::pack_rgba(uvec4_t{ brightness, brightness, brightness, 255u });
+			
 			sMutableState::Window const* const& windows(_MutableState->_changedWindows);
 			uint32_t const windowCount(_MutableState->_changedWindowIndex);
 			for (uint32_t iDx = 0; iDx < sMutableState::CACHE_SZ; ++iDx) {

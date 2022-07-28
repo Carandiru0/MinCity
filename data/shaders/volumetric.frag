@@ -26,7 +26,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS 512.0f
 #define BLUE_NOISE_SCALAR dt
-#define BOUNCE_EPSILON 0.5f
+#define BOUNCE_EPSILON 0.25f
 
 const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float PHASE_FUNCTION = 1.0 / (GOLDEN_RATIO * PI); // Isotropic
@@ -193,7 +193,7 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	getLightFast(light_color, Ld, uvw);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
-	Ld.att *= max(0.0f, dot(Ld.dir, normalize(In.rd.xyz + vec3(bn * BLUE_NOISE_SCALAR,-In.rd.z + bn.x * BLUE_NOISE_SCALAR)))); // **bugfix for correct lighting. 
+	//Ld.att *= max(0.0f, dot(Ld.dir, normalize(In.rd.xyz + vec3(bn * BLUE_NOISE_SCALAR,-In.rd.z + bn.x * BLUE_NOISE_SCALAR)))); // **bugfix for correct lighting. 
 
 	// directional derivative - equivalent to dot(N,L) operation
 	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -312,7 +312,7 @@ void reflect_lit(out vec3 light_color, out float emission, out float attenuation
 	attenuation = fetch_light_reflected(light_color, p, opacity, dt);
 }
 
-void reflection(out vec4 voxel, in const float bounce_scatter, in const vec3 p, in const float opacity, in const float dt)
+void reflection(inout vec4 voxel, in const float bounce_scatter, in const vec3 p, in const float opacity, in const float dt)
 {
  	// opacity at this point may be equal to zero
 	// which means a "surface" was not hit after the initial bounce
@@ -329,7 +329,8 @@ void reflection(out vec4 voxel, in const float bounce_scatter, in const vec3 p, 
 	reflect_lit(light_color, emission, attenuation, p, opacity, dt);
 	
 	// add ambient light that is reflected																								  // combat moire patterns with blue noise
-	voxel.light = mix(vec3(0), light_color * attenuation, min(opacity + emission, 1.0f));
+	voxel.light += mix(vec3(0), light_color * attenuation, min(opacity + emission, 1.0f));
+	voxel.light += opacity * bounce_scatter;
 	voxel.a = bounce_scatter;
 }
 
@@ -337,22 +338,24 @@ float fetch_opacity_reflection( in const vec3 p ) { // hit test for reflections 
 	
 	//const vec3 uvw = fma(p, VolumeDimensions, In.frac);
 	const vec3 uvw = offset(p);
-	return( max(textureLod(volumeMap[OPACITY], uvw, 0).r, texelFetch(volumeMap[OPACITY], ivec3(floor(uvw * VolumeDimensions + 0.5f)), 0).r) ); // *bugfix - smoother
+	// texelfetch first to bring into cache the same result trilinear filtered in following textureLod (potentially)
+	return( max(texelFetch(volumeMap[OPACITY], ivec3(floor(uvw * VolumeDimensions + 0.5f)), 0).r, textureLod(volumeMap[OPACITY], uvw, 0).r) ); // *bugfix - smoother
 }
 
 // all in parameters is important
-void traceReflection(out vec4 voxel, in vec3 rd, in vec3 p, in const float dt, in float interval_remaining, in const float bn)
+void traceReflection(inout vec4 voxel, in vec3 rd, in vec3 p, in const float dt, in float interval_remaining, in const float bn)
 {								
 	interval_remaining = (interval_remaining * (7.0f + bn * BLUE_NOISE_SCALAR)); // *bugfix - 7 is a good number suprisingly reflections are not tanking performance, no longer the current shader bound (gpu bound elsewhere)
 	interval_remaining = interval_remaining + subgroupQuadSwapHorizontal(interval_remaining);
 	interval_remaining = interval_remaining + subgroupQuadSwapVertical(interval_remaining);
 	interval_remaining = interval_remaining * 0.25f; // less divergence with reflections
 
-	voxel = vec4(0); // clear
-
+	//voxel = vec4(0); // clear
 	rd = normalize(reflect(rd, computeNormal(p)));
 
-	[[branch]] if (dot(normalize(In.eyeDir), rd) < 0.0f) { // optimization, if reflected vector direction is towards the eye, it is not a reflection that can be seen. 
+	const float dp = dot(normalize(In.eyeDir), rd);
+
+	[[branch]] if (dp < 0.0f) { // optimization, if reflected vector direction is towards the eye, it is not a reflection that can be seen. 
 														   // if it's heading towards the eye, there is no bounce, end will end up in empty space iterating far to long with zero reflection (less shader divergance)
 		const vec3 bounce = p;
 

@@ -13,13 +13,9 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
-#include "screendimensions.glsl"
-
-#define BINDING 3
-#define READWRITE
-#include "sharedbuffer.glsl"
-
 layout(early_fragment_tests) in;
+
+#include "screendimensions.glsl"
 
 #define FRAGMENT_IN
 #include "voxel_fragment.glsl"
@@ -34,6 +30,10 @@ const uint MAX_LAYERS = 255;
 layout(std430, set=0, binding=2) restrict buffer subgroupMaximum { // reset every frame (CPU clear buffer upload to GPU)
   uint8_t subgroup_layer_count_max[];
 };
+
+#define BINDING 3
+#define READWRITE
+#include "sharedbuffer.glsl"
 
 // voxels, accumulating to alpha only
 void main() {
@@ -52,7 +52,7 @@ void main() {
     // the resulting transparency is then equally distributed for that pixel, giving a good close approximation to order independent transparency
 
     // update maximum transparency layer "depth"
-    const uint pixel_index = uint(fma(gl_FragCoord.y, ScreenResDimensions.x, gl_FragCoord.x));
+    const uint pixel_index = uint(floor(fma(floor(gl_FragCoord.y), ScreenResDimensions.x, floor(gl_FragCoord.x))));   // *bugfix - out of bounds access (gpu-assisted validation error), must floor gl_FragCoord to get correct index
 
     // for any pixel contained in subgroup, get current value of the pixel count, store the new maximum to all pixels belonging to the subgroup
     // after all pixels are completed in succession the buffer will contain subgroup "blocks" with repective maximum for each subgroup.

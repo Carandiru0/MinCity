@@ -115,10 +115,6 @@ namespace UniformDecl
 		uint32_t array_index,
 				 type;
 	} NuklearPushConstants;
-
-	typedef struct no_vtable alignas(4) PostPushConstants { // 4 = 4 bytes
-		float blend_weight;
-	} PostPushConstants;
 	
 	// overlapping ranges defined per struct (inherited)
 

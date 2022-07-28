@@ -68,7 +68,7 @@ cVulkan::cVulkan()
 }
 
 bool const cVulkan::LoadVulkanFramework()
-{
+{	
 	if (VK_SUCCESS == volkInitialize()) { // first !!!!
 
 		// Initialise the Vookoo framework.
@@ -252,7 +252,7 @@ void cVulkan::CreateNuklearResources()
 
 	// Create a pipeline using a seperate renderPass built for overlay.
 	// leveraging overlay render pass, subpass index 2
-	pm.subPass(2);
+	pm.subPass(1);
 	pm.rasterizationSamples(vku::DefaultSampleCount);
 
 	auto &cache = _fw.pipelineCache();
@@ -515,8 +515,6 @@ void cVulkan::CreateVolumetricResources()
 	pm.back(stencilOp);
 
 	pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
-	pm.sampleShadingEnable(VK_TRUE);
-	pm.minSampleShading(0.25f);
 	pm.blendBegin(VK_FALSE);
 	pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes, all imageStores
 
@@ -798,8 +796,6 @@ void cVulkan::CreatePostAAResources()
 	dslm.image(10U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// anamorphic flare array out
 	dslm.image(11U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, samplers);					// 3d lut
 	dslm.image(12U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui
-	dslm.image(13U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 0
-	dslm.image(14U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input presentation 1
 	
 	_aaData.descLayout = dslm.createUnique(_device);	// *same descriptor set used across all post - process shaders *
 	// We need to create a descriptor set to tell the shader where
@@ -817,7 +813,6 @@ void cVulkan::CreatePostAAResources()
 	// 
 	vku::PipelineLayoutMaker		plm;
 	plm.descriptorSetLayout(*_aaData.descLayout);			// *same pipeline layout used across all post - process shaders *
-	plm.pushConstantRange(vk::ShaderStageFlagBits::eFragment, 0, sizeof(UniformDecl::PostPushConstants));
 	_aaData.pipelineLayout = plm.createUnique(_device);
 
 	std::vector< vku::SpecializationConstant > constants;
@@ -845,7 +840,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[0] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
+		_aaData.pipeline[0] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->postAAPass(0));
 	}
 	{ // blur downsampled horizontally + anamorphic reduction
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -864,7 +859,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[1] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
+		_aaData.pipeline[1] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->postAAPass(1));
 	}
 	{ // blur downsampled vertically
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -883,7 +878,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[2] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
+		_aaData.pipeline[2] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->postAAPass(2));
 	}
 
 	if (isHDR()) {
@@ -954,31 +949,10 @@ void cVulkan::CreatePostAAResources()
 
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
-		pm.subPass(1U);
+		pm.subPass(0U);
 
 		auto& cache = _fw.pipelineCache();
 		_aaData.pipeline[4] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
-	}
-	
-	{ // presentation
-		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
-		pm.depthCompareOp(vk::CompareOp::eAlways);
-		pm.depthClampEnable(VK_FALSE);
-		pm.depthTestEnable(VK_FALSE);
-		pm.depthWriteEnable(VK_FALSE);
-		pm.cullMode(vk::CullModeFlagBits::eBack);
-		pm.frontFace(vk::FrontFace::eClockwise);
-		
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp3.frag.bin", constants };
-		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
-		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
-
-		// Create a pipeline using a renderPass
-		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
-		pm.subPass(2U);
-		
-		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[5] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
 	}
 }
 
@@ -1524,13 +1498,13 @@ void cVulkan::CreateResources()
 
 	// mouse gpu readback buffers
 	_mouseBuffer[0] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, true); 
+		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Random, true, true);
 	_mouseBuffer[1] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, true); 
+		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Random, true, true);
 
 	// offscreen gpu readback buffer
 	_offscreenBuffer = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_GPU_TO_CPU, true, true);
+		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true);
 
 	CreateComputeResources();
 
@@ -1560,8 +1534,8 @@ void cVulkan::CreateIndirectActiveCountBuffer() // required critical buffer need
 	using buf = vk::BufferUsageFlagBits;
 	using pfb = vk::MemoryPropertyFlagBits;
 
-	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_TO_GPU, true, true); // persistantly mapped
-	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_CPU_TO_GPU, true, true); // persistantly mapped
+	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
+	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
 	_indirectActiveCount[0] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
 	_indirectActiveCount[1] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
 }
@@ -1619,9 +1593,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 		_dsu.beginDescriptorSet(_comData.light.sets[0]);
 		MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::BORDER>());
 
-		// update descriptor set (still called)
-		_dsu.update(_device);
-
 		// [[deprecated]] ###### Texture Shaders (Compute)
 		/*for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
 		{
@@ -1643,8 +1614,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 		// Set initial sampler value
 		MinCity::Nuklear->UpdateDescriptorSet(_dsu, getLinearSampler());
 
-		// update descriptor set
-		_dsu.update(_device);
 	}
 	{ // Shared Voxel "One descriptor: set for all voxels"
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
@@ -1657,8 +1626,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			// Set initial sampler value
 			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(), SAMPLER_SET_STANDARD_POINT_ANISO);
 			
-			// update descriptor set
-			_dsu.update(_device);
 		}
 	}
 	{ // Shared Voxel Masking Clear
@@ -1671,8 +1638,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 
 			MinCity::VoxelWorld->UpdateDescriptorSet_Voxel_ClearMask(resource_index, _dsu);
 
-			// update descriptor set
-			_dsu.update(_device);
 		}
 	}
 
@@ -1687,8 +1652,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			// Set initial sampler value
 			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
 
-			// update descriptor set
-			_dsu.update(_device);
 		}
 	}
 	{ // ###### Bilateral Upsample for Volumetrics
@@ -1703,8 +1666,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 
 			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), _window->colorVolumetricImageView(), _window->colorReflectionImageView(), SAMPLER_SET_STANDARD_POINT);
 
-			// update descriptor set
-			_dsu.update(_device);
 		}
 
 		// upsample part
@@ -1718,8 +1679,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			// Set initial sampler value
 			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightUpsample(resource_index, _dsu, _window->depthResolvedImageView(0), _window->depthResolvedImageView(1), _window->colorVolumetricDownResImageView(), _window->colorReflectionDownResImageView(), SAMPLER_SET_STANDARD_POINT);
 			
-			// update descriptor set
-			_dsu.update(_device);
 		}
 
 		// blend part
@@ -1729,8 +1688,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 		_dsu.beginImages(0U, 0, vk::DescriptorType::eInputAttachment);
 		_dsu.image(nullptr, _window->colorVolumetricImageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		// update descriptor set
-		_dsu.update(_device);
 	}
 	{ // ###### Depth resolve
 		_dsu.beginDescriptorSet(_depthData.sets[0]);
@@ -1741,8 +1698,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 		_dsu.beginImages(1U, 0, vk::DescriptorType::eStorageImage);
 		_dsu.image(nullptr, _window->depthResolvedImageView(1), vk::ImageLayout::eGeneral);
 
-		// update descriptor set
-		_dsu.update(_device);
 	}
 	{ // ###### Post Anti-aliasing
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
@@ -1754,11 +1709,14 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 
 			// Set initial sampler value
 			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA(_dsu, _window->lastColorImageView(), _window->guiImageView(), SAMPLER_SET_STANDARD_POINT);
-
-			// update descriptor set
-			_dsu.update(_device);
 		}
 	}
+
+	// update gpu with all descriptor sets previously created and added to the descriptor set updater instance
+	_dsu.update(_device);
+	
+	WaitDeviceIdle(); // be safe and wait
+	
 	// set static pre-recorded command buffers here //
 	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer);
 	_window->setGpuReadbackCommands(cVulkan::gpuReadback);
@@ -2172,7 +2130,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	s.cb.draw(3, 1, 0, 0);
 
 	s.cb.endRenderPass();
-
+	
 	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
 	auto& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
 
@@ -2205,7 +2163,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	{
 
 		s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_volData.pipelineLayout, 0,
-			_volData.sets[resource_index], nullptr);
+								_volData.sets[resource_index], nullptr);
 
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _volData.pipeline);
 
@@ -2241,14 +2199,20 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	s.cb.draw(3, 1, 0, 0);
 
 	s.cb.endRenderPass();
-
+		
 	// layout is changed in previous renderpass, sync its state
 	_window->colorReflectionImage().setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // fixes bug with validation error on first frame
 
-
+	//*bugfix - sync validation read after write hazard
+	MinCity::VoxelWorld->getSharedBuffer()[resource_index].barrier(s.cb, 
+		vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eFragmentShader,
+		vk::DependencyFlagBits::eByRegion,
+		vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead, 
+		MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex());
+		
 	// #### MID / INTERMEDIATTE RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiMid, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
-
+	
 	// SUBPASS - Regular voxel rendering
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, s.cb); // all voxels share the same descriptor set
 	(void)renderAllVoxels<1>(s);
@@ -2378,41 +2342,28 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 				}
 			}
 		}
-
-		o.cb_render->nextSubpass(vk::SubpassContents::eInline); // SUBPASS - Isolated Resolve of Color buffer to fix validation error (required, see vku_framework)
 		
-
 		o.cb_render->nextSubpass(vk::SubpassContents::eInline); // SUBPASS - Nuklear 2D GUI Overlay *bugfix, must be in seperate dedicated pass or else performance suffers greatly! //
 		{
 			RenderingInfo const nk_renderInfo(o.rpbi, _nkData.pipelineLayout, _nkData.pipeline, _nkData.descLayout, _nkData.sets);
 			MinCity::Nuklear->Render(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo, nk_renderInfo);
 		}
-
+		
 		// ############# TRANSPARENCY END PASS ################################################ //
 		o.cb_render->endRenderPass();
 
 		// prepare for usage in vertex shader (general layout) - clearing opacity map 
 		MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // required to update internal image state - present command buffer is reused and only recorded once at init.
 		MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(*o.cb_render, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
-		
+
 		// The offscreen copy if enabled has to happen here, where there is no further usage by rendering of it in an imageView (like in the Nuklear GUI above)
 		[[unlikely]] if ( _bOffscreenCopy ) { // single frame capture is a rare operation
 			copyOffscreenBuffer(*o.cb_render);		// copy & barrier done here to simplify - overlay cb is dynamic (built every frame) unlike the static or present cb's
 			barrierOffscreenBuffer(*o.cb_render);	// don't want to reset both cb's for single frame capture
 		}
-
+		
 		o.cb_render->end();
 	}
-}
-
-// global for vku
-void setPresentationBlendWeight(uint32_t const imageIndex) // workaround to get current blend weight for current imageIndex
-{
-	MinCity::Vulkan->setPresentationBlendWeight(imageIndex);
-}
-void cVulkan::setPresentationBlendWeight(uint32_t const imageIndex)
-{
-	MinCity::PostProcess->setPresentationBlendWeight(imageIndex);
 }
 
 inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __restrict pp) // fully static set once command buffer at app startup
@@ -2420,15 +2371,9 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
 	
-	// begin "actual render pass"
-	pp.cb.beginRenderPass(pp.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
-
 	MinCity::PostProcess->Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
-	// must be back to back //
-	MinCity::PostProcess->Present(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
 
 	// *** Command buffer ends
-	pp.cb.endRenderPass();
 	pp.cb.end();
 }
 inline void cVulkan::_renderClearCommandBuffer(vku::clear_renderpass&& __restrict c)
@@ -2437,13 +2382,13 @@ inline void cVulkan::_renderClearCommandBuffer(vku::clear_renderpass&& __restric
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	c.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb, vkNames::CommandBuffer::CLEAR);
 
-
 	_indirectActiveCount[c.resource_index]->barrier( // required b4 usage //
 		c.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
 		vk::DependencyFlagBits::eByRegion,
 		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eIndirectCommandRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 	);
 
+	
 	// begin "actual render pass"
 	c.cb.beginRenderPass(c.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //
 
@@ -2471,7 +2416,7 @@ void cVulkan::renderComplete(uint32_t const resource_index) // triggered interna
 	}
 }
 
-static microseconds const frameTiming(tTime const& tNow, bool const real_frame) // real-time domain
+static microseconds const frameTiming(tTime const& tNow) // real-time domain
 {
 	static constexpr milliseconds const PRINT_FRAME_INTERVAL = milliseconds(5500); // ms
 	static auto start = high_resolution_clock::now();
@@ -2481,9 +2426,6 @@ static microseconds const frameTiming(tTime const& tNow, bool const real_frame) 
 
 	auto const deltaNano = tNow - start;
 	start = tNow;
-	if (!real_frame) {
-		return(last);
-	}
 
 	microseconds const deltaMicro = duration_cast<microseconds>(deltaNano);
 	peak = microseconds( std::max(peak, deltaMicro) );
@@ -2553,21 +2495,14 @@ void cVulkan::Render()
 #endif
 
 	// ####### //
-	constinit static uint32_t last_free_resource_index(0);
-	
 	_current_free_resource_index = _window->draw(
 		_device, cVulkan::renderCompute, cVulkan::renderDynamicCommandBuffer, cVulkan::renderOverlayCommandBuffer
 	);
 	// ####### //
 
-	bool const real_frame(last_free_resource_index != _current_free_resource_index);
+	renderComplete(_current_free_resource_index); // this happens after queue submission / present by the vku framework on real frames only
 
-	if (real_frame) {
-		renderComplete(_current_free_resource_index); // this happens after queue submission / present by the vku framework on real frames only
-	}
-	_frameTimingAverage = frameTiming(high_resolution_clock::now(), real_frame);
-
-	last_free_resource_index = _current_free_resource_index;
+	_frameTimingAverage = frameTiming(high_resolution_clock::now());
 }
 
 void cVulkan::setStaticCommandsDirty()
@@ -2709,7 +2644,7 @@ void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 {
 	// Wait until all drawing is done and then kill the window.
 	WaitDeviceIdle();
-
+	
 	using pool_map = tbb::concurrent_unordered_map<VkCommandPool, vku::CommandBufferContainer<1>>;
 	for (pool_map::iterator iter = vku::pool_.begin(); iter != vku::pool_.end(); ++iter) {
 

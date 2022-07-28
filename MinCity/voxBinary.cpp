@@ -250,10 +250,10 @@ static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t con
 	static constexpr uint32_t const  OFFSET_MAIN_CHUNK = 8;				// n bytes to structures
 	static constexpr uint32_t const  TAG_LN = 4;
 	static constexpr char const      TAG_VOX[TAG_LN] = { 'V', 'O', 'X', ' ' },
-		TAG_MAIN[TAG_LN] = { 'M', 'A', 'I', 'N' },
-		TAG_DIMENSIONS[TAG_LN] = { 'S', 'I', 'Z', 'E' },
-		TAG_XYZI[TAG_LN] = { 'X', 'Y', 'Z', 'I' },
-		TAG_PALETTE[TAG_LN] = { 'R', 'G', 'B', 'A' };
+									 TAG_MAIN[TAG_LN] = { 'M', 'A', 'I', 'N' },
+									 TAG_DIMENSIONS[TAG_LN] = { 'S', 'I', 'Z', 'E' },
+									 TAG_XYZI[TAG_LN] = { 'X', 'Y', 'Z', 'I' },
+									 TAG_PALETTE[TAG_LN] = { 'R', 'G', 'B', 'A' };
 
 	static constexpr uint8_t const TAG_DUMMY = 0xFF;
 

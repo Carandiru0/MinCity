@@ -34,9 +34,6 @@
     <Filter Include="Header Files\voxel effects">
       <UniqueIdentifier>{53c37bfd-60ba-4421-ace5-546e4616e797}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\voxel effects">
-      <UniqueIdentifier>{14c847f4-1673-4e07-b62f-f291d8485b84}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\Gameplay\Copter">
       <UniqueIdentifier>{f8371f77-371b-43c7-89db-c9ec9fe6b13b}</UniqueIdentifier>
     </Filter>
@@ -57,6 +54,9 @@
     </Filter>
     <Filter Include="Shaders\textureshaders">
       <UniqueIdentifier>{e31b0f6d-6586-4d77-85b8-45ad7ef68e74}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\VulkanCore\voxel effects">
+      <UniqueIdentifier>{14c847f4-1673-4e07-b62f-f291d8485b84}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -447,7 +447,7 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="rain.cpp">
-      <Filter>Source Files\voxel effects</Filter>
+      <Filter>Source Files\VulkanCore\voxel effects</Filter>
     </ClCompile>
     <ClCompile Include="cCopterBodyGameObject.cpp">
       <Filter>Source Files\Gameplay\Copter</Filter>

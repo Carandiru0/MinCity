@@ -94,7 +94,9 @@ namespace world
 		
 		// Accessors
 		Volumetric::voxelOpacity const& __restrict				getVolumetricOpacity() const { return(_OpacityMap); }
-
+		vku::double_buffer<vku::StorageBuffer> const&			getSharedBuffer() const { return(_buffers.shared_buffer); }
+		
+		
 		// Mutators //
 		Volumetric::voxelOpacity& __restrict					getVolumetricOpacity() { return(_OpacityMap); }
 

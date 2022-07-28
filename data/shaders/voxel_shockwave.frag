@@ -3,12 +3,12 @@
 #extension GL_KHR_shader_subgroup_quad: enable
 #extension GL_KHR_shader_subgroup_arithmetic: enable
 
+layout(early_fragment_tests) in;
+
 #define subgroup_quad_enabled
 #define fragment_shader
 #include "screendimensions.glsl"
 #include "common.glsl"
-
-layout(early_fragment_tests) in;
 
 #define TRANS
 

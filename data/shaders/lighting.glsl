@@ -173,8 +173,6 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 #endif
 		)
 { 
-	//return attenuation.xxx;
-
 	const float NdotL = 1.0f - max(0.0f, dot(N, -L)); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
 	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum

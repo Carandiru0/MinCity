@@ -436,7 +436,7 @@ void cNuklear::Initialize(GLFWwindow* const& __restrict win)
 	glfw.fb_scale.y = (float)glfw.display_height / (float)glfw.height;
 	*/
 	
-	glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	// hook all glfw callbacks into nuklear callbacks
 	glfwSetScrollCallback(win, nk_scroll_callback);
 	glfwSetKeyCallback(win, nk_key_callback);
 	glfwSetCharCallback(win, nk_char_callback);
@@ -572,7 +572,7 @@ void cNuklear::LoadGUITextures()
 		// Common staging buffer for thumbnail
 		_guiTextures.load_thumbnail.stagingBuffer = new vku::GenericBuffer((vk::BufferUsageFlags)vk::BufferUsageFlagBits::eTransferSrc, 
 																		   (vk::DeviceSize)(_guiTextures.load_thumbnail.image[0]->ysize * _guiTextures.load_thumbnail.image[0]->linesize), 
-																		   vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, VMA_MEMORY_USAGE_CPU_ONLY);
+																		   vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, vku::eMappedAccess::Sequential);
 
 		// must allocate texture memory for each thumbnail so an id can be associated with the textures imageView()
 		for (uint32_t i = 0; i < guiTextures::load_thumbnail::count; ++i) {

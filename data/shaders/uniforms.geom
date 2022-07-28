@@ -121,159 +121,8 @@ const uint BIT_ADJ_ABOVE = (1<<0),
 #define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) >= 0.0f )
 #endif
 
-vec3 PerQuad(in vec3 normal)
+void PerVoxel()
 {
-	normal = normalize(normal);
-
-#if !defined(BASIC)
-	// final output must be xzy and transformed to eye/view space for fragment shader
-	Out.N.xzy = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
-#endif
-
-	return normal;	// normal at this point is still xyz, but used internally for calculating offset / corner of worldPos
-					// this is fixed later for fragment output of xzy
-}
-
-void EmitVxlVertex(in const vec3 center, in const vec3 tangent)
-{
-	vec3 worldPos = center + tangent;
-
-#if defined(HEIGHT)
-	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
-#endif
-#if !defined(BASIC)
-	// main uvw coord for light, common to terrain, road & normal voxels
-	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
-
-	// final output must be xzy and transformed to eye/view space for fragment shader
-	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
-	// so no need for eyePos
-
-	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
-#endif																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
-	
-	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
-	EmitVertex();
-}
-
-void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal) 
-{	
-#if !defined(BASIC)
-
-#if defined(HEIGHT) 
-	const vec2 texel_texture = HALF_TEXEL_OFFSET_TEXTURE; // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
-#endif
-#if defined(ROAD)
-	const vec2 texel_road_texture = vec2(0.5f, ROAD_WIDTH * 0.5f);
-#endif
-
-#endif // not basic
-	
-#ifdef ROAD
-#ifndef BASIC
-	const float rotate = In[0].extra.y;
-	const vec2 texel_texture = mix(HALF_TEXEL_OFFSET_TEXTURE.yx, HALF_TEXEL_OFFSET_TEXTURE.xy, rotate); // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
-#endif
-	const vec4 corners = In[0].corners; 
-#endif
-
-{ // right - up vertex
-	vec3 tangent = right - up;
-#ifdef ROAD
-	tangent.y += corners.x;
-#endif
-#if !defined(BASIC)
-
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-#endif
-#ifdef ROAD
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
-#endif // not basic
-
-	EmitVxlVertex(center, tangent);
-
-}
-
-{ // -right - up vertex
-	vec3 tangent = -right - up;
-#ifdef ROAD
-	tangent.y += corners.y;
-#endif
-#if !defined(BASIC)
-	 
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-#endif
-#ifdef ROAD
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
-#endif // not basic
-
-	EmitVxlVertex(center, tangent);
-
-}
-
-{ // right + up vertex
-	vec3 tangent = right + up;
-#ifdef ROAD
-	tangent.y += corners.z;
-#endif
-#if !defined(BASIC)
-	
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-#endif
-#ifdef ROAD 
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
-#endif // not basic
-
-	EmitVxlVertex(center, tangent);
-
-}
-
-{ // -right + up vertex
-	vec3 tangent = -right + up;
-#ifdef ROAD
-	tangent.y += corners.w;
-#endif
-#if !defined(BASIC)
-	
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
-#endif
-#ifdef ROAD 
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
-#endif // not basic
-
-	EmitVxlVertex(center, tangent);
-
-	EndPrimitive(); // *bugfix: if endprimitive is not used per quad - there are cases where the voxel trianglestrip is not drawing a "face" of the cube
-					//          which is very hard to isolate as its rare, < 2% of all voxels drawn for exammple with ground. 
-					//			by emitting a unique triangle strip quad, 3 times individually for the voxel's faces this problem is avoided
-					//			the optimal vertex count emission per primitive from a geometry shader is actually 4.
-					//			so this works out really well!
-}
-
-} // end BeginQuad
-
-
-// GEOMETRY - - - - In = xyz world space
-//					all calculation in this shader remain in xyz world space
-//			--------Out = xzy view space
-void main() {
-	
-	const vec3 center = gl_in[0].gl_Position.xyz;
-	const vec3 right = In[0].right;
-    const vec3 up = In[0].up;
-	const vec3 forward = In[0].forward;
-
-	// ** Per voxel ops *** //
 #ifndef BASIC
 	
 #ifdef _color
@@ -308,18 +157,188 @@ void main() {
 #endif
 
 #endif
-
 #else // basic
 
 	Out._voxelIndex = In[0].world_uv.xy; // normalized world grid uv coords
 
 #endif  // basic
+}
+
+vec3 PerQuad(in vec3 normal)
+{
+#if !defined(BASIC)
+	// final output must be xzy and transformed to eye/view space for fragment shader
+	Out.N.xzy = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
+#endif
 	
+	return normal;	// normal at this point is still xyz, but used internally for calculating offset / corner of worldPos
+					// this is fixed later for fragment output of xzy
+}
+
+void EmitVxlVertex(in const vec3 center, in const vec3 tangent, in const vec3 normal)
+{
+	// *bugfix - on amd we can get away with only setting these once per voxel, once per quad
+	// on nvidia, it's strict to the spec that all output values must be set on every vertex emission -like they are reset every EmitVertex()
+	// must re-initialize all output values for next vertex
+	PerVoxel();
+	PerQuad(normal);
+	
+	vec3 worldPos = center + tangent;
+
+#if defined(HEIGHT)
+	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
+#endif
+	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
+	
+#if !defined(BASIC)
+
+	worldPos = worldPos + fractional_offset();
+	
+	// main uvw coord for light, common to terrain, road & normal voxels
+	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
+
+	// final output must be xzy and transformed to eye/view space for fragment shader
+	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
+	// so no need for eyePos
+
+	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
+#endif																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
+	
+	EmitVertex();
+}
+
+void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal) 
+{	
+#if !defined(BASIC)
+
+#if defined(HEIGHT) 
+	const vec2 texel_texture = HALF_TEXEL_OFFSET_TEXTURE; // careful....
+	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
+#endif
+#if defined(ROAD)
+	const vec2 texel_road_texture = vec2(0.5f, ROAD_WIDTH * 0.5f);
+#endif
+
+#endif // not basic
+	
+#ifdef ROAD
+#ifndef BASIC
+	const float rotate = In[0].extra.y;
+	const vec2 texel_texture = mix(HALF_TEXEL_OFFSET_TEXTURE.yx, HALF_TEXEL_OFFSET_TEXTURE.xy, rotate); // careful....
+	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
+#endif
+	const vec4 corners = In[0].corners; 
+#endif
+	
+	// 2+<--------+1
+	//  |\\       |
+	//  | \\\\    |
+	//  |     \\\ |
+	//  |        \|
+	// 4+<--------+3
+	
+{ // right - up vertex
+	vec3 tangent = right - up;
+#ifdef ROAD
+	tangent.y += corners.x;
+#endif
+#if !defined(BASIC)
+
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#endif
+#ifdef ROAD
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+#endif
+#endif // not basic
+
+	EmitVxlVertex(center, tangent, normal);
+
+}
+
+{ // -right - up vertex
+	vec3 tangent = -right - up;
+#ifdef ROAD
+	tangent.y += corners.y;
+#endif
+#if !defined(BASIC)
+	 
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#endif
+#ifdef ROAD
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+#endif
+#endif // not basic
+
+	EmitVxlVertex(center, tangent, normal);
+
+}
+
+{ // right + up vertex
+	vec3 tangent = right + up;
+#ifdef ROAD
+	tangent.y += corners.z;
+#endif
+#if !defined(BASIC)
+	
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#endif
+#ifdef ROAD 
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+#endif
+#endif // not basic
+
+	EmitVxlVertex(center, tangent, normal);
+
+}
+
+{ // -right + up vertex
+	vec3 tangent = -right + up;
+#ifdef ROAD
+	tangent.y += corners.w;
+#endif
+#if !defined(BASIC)
+	
+#if defined(HEIGHT) || defined(ROAD)
+	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
+#endif
+#ifdef ROAD 
+	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
+#endif
+#endif // not basic
+
+	EmitVxlVertex(center, tangent, normal);
+
+	EndPrimitive(); // *bugfix: if endprimitive is not used per quad - there are cases where the voxel trianglestrip is not drawing a "face" of the cube
+					//          which is very hard to isolate as its rare, < 2% of all voxels drawn for exammple with ground. 
+					//			by emitting a unique triangle strip quad, 3 times individually for the voxel's faces this problem is avoided
+					//			the optimal vertex count emission per primitive from a geometry shader is actually 4.
+					//			so this works out really well!
+}
+
+} // end BeginQuad
+
+
+// GEOMETRY - - - - In = xyz world space
+//					all calculation in this shader remain in xyz world space
+//			--------Out = xzy view space
+void main() {
+	
+	const vec3 center = gl_in[0].gl_Position.xyz;
+	const vec3 right = In[0].right;
+    const vec3 up = In[0].up;
+	const vec3 forward = In[0].forward;
+
+	// ** Per voxel ops *** //
+
+
 #ifndef ROAD // only top quad is required for roads
 	// RIGHT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {
 #define _normal right
-		const vec3 normal = PerQuad(_normal);
+		const vec3 normal = normalize(_normal);
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, up, forward, normal);
@@ -329,7 +348,7 @@ void main() {
 	// LEFT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_LEFT) ) {
 #define _normal -right              
-		const vec3 normal = PerQuad(_normal);
+		const vec3 normal = normalize(_normal);
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, forward, up, normal); 
@@ -340,7 +359,7 @@ void main() {
 	// FRONT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_FRONT) ) {
 #define _normal -forward
-		const vec3 normal = PerQuad(_normal);
+		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, up, right, normal);
@@ -350,7 +369,7 @@ void main() {
 	// BACK
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BACK) ) {
 #define _normal forward
-		const vec3 normal = PerQuad(_normal);
+		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, up, normal);
@@ -365,7 +384,7 @@ void main() {
 	// UP
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_ABOVE) ) {
 #define _normal -up
-		const vec3 normal = PerQuad(_normal);
+		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, forward, normal);			
