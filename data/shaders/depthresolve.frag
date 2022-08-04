@@ -21,7 +21,7 @@ void main() {
 
 	depth = min(depth, subgroupQuadSwapHorizontal(depth));  // <--- this is proper - nice clean edges intersecting volumetrics and rest of scene (correct)
 	depth = min(depth, subgroupQuadSwapVertical(depth));
-
+														
 	//depth += subgroupQuadSwapHorizontal(depth);   // <--- incorrect
 	//depth += subgroupQuadSwapVertical(depth);
 	//depth *= 0.25f;

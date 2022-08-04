@@ -38,7 +38,7 @@ layout(std430, set=0, binding=2) restrict buffer subgroupMaximum { // reset ever
 // voxels, accumulating to alpha only
 void main() {
   
-    outColor.a = 1.0f / 255.0f;
+    outColor.a = 1.0f / 255.0f; // (additive blending is enabled)
 #ifdef MOUSE
     outMouse = vec2(0); // required for mouse occlusion query to discern transparency
 #endif

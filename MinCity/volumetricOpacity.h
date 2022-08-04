@@ -334,10 +334,10 @@ namespace Volumetric
 			dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
 		}
 
-		__inline bool const renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
+		__inline void renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 
 	private:
-		__inline bool const upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);  // returns true when "dirty" status should be set, so that compute shader knows it needs to run
+		__inline void upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex);
 
 		__inline void renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input);
 
@@ -544,11 +544,13 @@ namespace Volumetric
 	}*/
 
 	template< uint32_t Size >
-	__inline bool const volumetricOpacity<Size>::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
+	__inline void volumetricOpacity<Size>::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
 		if (c.cb_transfer_light)
 		{
-			return(upload_light(c.resource_index, c.cb_transfer_light));  // returns current dirty state
+			if (c.async_compute_enabled) {
+				upload_light(c.resource_index, c.cb_transfer_light, c.transferQueueFamilyIndex, c.computeQueueFamilyIndex);
+			}
 		}
 		else if (c.cb_render_light) { 
 
@@ -576,13 +578,42 @@ namespace Volumetric
 					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY);
 				}
 
+				{ // bugfix: Must be set for both buffers, validation error. [acquire image barrier]
+					using afb = vk::AccessFlagBits;
+
+					static constexpr size_t const image_count(2ULL); // batched
+					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[0], LightProbeMap.imageGPUIn[1] };
+					std::array<vk::ImageMemoryBarrier, image_count> imbs{};
+					
+					for (uint32_t i = 0; i < image_count; ++i) {
+
+						imbs[i].srcQueueFamilyIndex = c.transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+						imbs[i].dstQueueFamilyIndex = c.computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+						imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
+						imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
+						imbs[i].image = images[i]->image();
+						imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+						imbs[i].srcAccessMask = (afb)0;
+						imbs[i].dstAccessMask = afb::eShaderRead;
+					}
+
+					using psfb = vk::PipelineStageFlagBits;
+
+					vk::PipelineStageFlags const srcStageMask(psfb::eTopOfPipe),
+												 dstStageMask(psfb::eComputeShader);
+
+					c.cb_render_light.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+				}
+				
+				// layout actually transitions below
 				{ // bugfix: Must be set for both buffers, validation error.
 					static constexpr size_t const image_count(2ULL); // batched
 					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[0], LightProbeMap.imageGPUIn[1] };
 
 					vku::GenericImage::setLayout<image_count>(images, c.cb_render_light, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eTransfer, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_READONLY);
 				}
-
+				
 				// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
 				c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[0], nullptr);
 
@@ -648,13 +679,11 @@ namespace Volumetric
 			LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
 			LightMap.Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
 		}
-
-		return(false); // returns no longer dirty by default, resetting dirty state after compute cb is "scheduled"
 	}
 
 	// returns true when "dirty" status should be set, so that compute shader knows it needs to run
 	template< uint32_t Size >
-	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb) {
+	__inline void volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex) {
 
 		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
 
@@ -684,7 +713,7 @@ namespace Volumetric
 				uvec4_v::any<3>(current_min != last_min)) {
 
 				if (_mm_testz_si128(current_max.v, current_max.v)) {
-					return(false); // maximum is zero, skip upload or changes to any state
+					return; // maximum is zero, skip upload or changes to any state
 				}
 
 				// ClearStage 0 
@@ -799,24 +828,51 @@ namespace Volumetric
 
 				// swizzle to xzy
 				region.imageOffset.x = extents_min.x;
-				region.imageOffset.z = extents_min.y;
+				region.imageOffset.z = extents_min.y; // Y Axis Major (Slices ordered by Y)
 				region.imageOffset.y = extents_min.z;
 				//  ""  ""  "  ""
 				region.imageExtent.width = extents_max.x - extents_min.x;
-				region.imageExtent.depth = extents_max.y - extents_min.y;
-				region.imageExtent.height = extents_max.z - extents_min.z;   // Y Axis Major (Slices ordered by Y)
+				region.imageExtent.depth = extents_max.y - extents_min.y; // Y Axis Major (Slices ordered by Y)
+				region.imageExtent.height = extents_max.z - extents_min.z;   
 
 				region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 };
 				
 				cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn[resource_index]->image(), vk::ImageLayout::eTransferDstOptimal, region);
 
+				{ // bugfix: Must be set for both buffers, validation error. [release image barrier]
+					using afb = vk::AccessFlagBits;
+					
+					static constexpr size_t const image_count(2ULL); // batched
+					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[0], LightProbeMap.imageGPUIn[1] };
+					std::array<vk::ImageMemoryBarrier, image_count> imbs{};
+					
+					for (uint32_t i = 0; i < image_count; ++i) {
+
+						imbs[i].srcQueueFamilyIndex = transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+						imbs[i].dstQueueFamilyIndex = computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+						imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
+						imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
+						imbs[i].image = images[i]->image();
+						imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+						
+						imbs[i].srcAccessMask = afb::eTransferWrite;
+						imbs[i].dstAccessMask = (afb)0;
+					}
+
+					using psfb = vk::PipelineStageFlagBits;
+					
+					vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
+												 dstStageMask(psfb::eBottomOfPipe);
+					
+					cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+				}
 				cb.end();
 			}
 			bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
 		}
 		
-		return(true); // always upload whether the command buffer was updated or not. *Fractional* changes in position need to be accounted for (which reuses the command buffer for upload, but this updates the internal light position data).
-	}				  // then compute will run as it should on the updated light position data.
+		// *bugfix - always upload whether the command buffer was updated or not. *Fractional* changes in position need to be accounted for (which reuses the command buffer for upload, but this updates the internal light position data).
+	}	// then compute will run as it should on the updated light position data.
 
 
 } // end ns

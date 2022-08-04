@@ -251,8 +251,8 @@ void cVulkan::CreateNuklearResources()
 	pm.dynamicState(vk::DynamicState::eScissor);
 
 	// Create a pipeline using a seperate renderPass built for overlay.
-	// leveraging overlay render pass, subpass index 2
-	pm.subPass(1);
+	// leveraging gui render pass, subpass index 0
+	pm.subPass(0);
 	pm.rasterizationSamples(vku::DefaultSampleCount);
 
 	auto &cache = _fw.pipelineCache();
@@ -771,50 +771,93 @@ void cVulkan::CreateDepthResolveResources()
 
 void cVulkan::CreatePostAAResources()
 {
-	// Build a template for descriptor sets that use these shaders. *same descriptor set used across all post-process shaders*
-	vku::DescriptorSetLayoutMaker	dslm;
-	dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
-	dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // full resolution backbuffer color source
-	dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // 2d blue noise
+	// Post Stage //
+	{
+		// Build a template for descriptor sets that use these shaders. *same descriptor set used across all post-process shaders*
+		vku::DescriptorSetLayoutMaker	dslm;
+		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
+		dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // full resolution backbuffer color source
+		dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // 2d blue noise
 
-	dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1, nullptr);										// full resolution out temporal
-	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());	// full resolution temporal source 
+		dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1, nullptr);										// full resolution out temporal
+		dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());	// full resolution temporal source 
+
+		dslm.image(5U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);
+
+		auto const samplers{ getSamplerArray
+				<eSamplerAddressing::CLAMP>(
+					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+				)
+		};
+
+		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);	// full resolution blurstep color source 
+		dslm.image(7U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// full resolution out blurstep
+
+		dslm.image(8U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);							// anamorphic flare array source
+		dslm.image(9U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// anamorphic flare array out
+
+		_aaData.descLayout[sPOSTAADATA::eStage::Post] = dslm.createUnique(_device);	// *same descriptor set used across all post - process shaders *
+
+		// We need to create a descriptor set to tell the shader where
+		// our buffers are.
+		vku::DescriptorSetMaker			dsm;	// *same descriptor set used across all post-process shaders*
+		dsm.layout(*_aaData.descLayout[sPOSTAADATA::eStage::Post]);
+
+		// double buffered
+		_aaData.sets[sPOSTAADATA::eStage::Post].emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+		_aaData.sets[sPOSTAADATA::eStage::Post].emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+		_aaData.sets[sPOSTAADATA::eStage::Post].shrink_to_fit();
+
+		// Make a default pipeline layout. This shows how pointers
+		// to resources are layed out.
+		// 
+		vku::PipelineLayoutMaker		plm;
+		plm.descriptorSetLayout(*_aaData.descLayout[sPOSTAADATA::eStage::Post]);			// *same pipeline layout used across all post - process shaders *
+		_aaData.pipelineLayout[sPOSTAADATA::eStage::Post] = plm.createUnique(_device);
+	}
 	
-	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 1, nullptr);										// full resolution out last color
-	dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // last color source
+	// Final Stage //
+	{
+		// Build a template for descriptor sets that use these shaders. *same descriptor set used across all post-process shaders*
+		vku::DescriptorSetLayoutMaker	dslm;
+		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
+		dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());  // full resolution backbuffer color source
+		dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // 2d blue noise
 
-	auto const samplers{ getSamplerArray
-			<eSamplerAddressing::CLAMP>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
-			)
-	};
+		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler());	// full resolution temporal source 
 
-	dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);	// full resolution blurstep color source 
-	dslm.image(8U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// full resolution out blurstep
+		auto const samplers{ getSamplerArray
+				<eSamplerAddressing::CLAMP>(
+					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+				)
+		};
+
+		dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);	// full resolution blurstep color source 
+
+		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);							// anamorphic flare array source
+		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, samplers);					// 3d lut
+		dslm.image(7U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui
+
+		_aaData.descLayout[sPOSTAADATA::eStage::Final] = dslm.createUnique(_device);	// *same descriptor set used across all post - process shaders *
+
+		// We need to create a descriptor set to tell the shader where
+		// our buffers are.
+		vku::DescriptorSetMaker			dsm;	// *same descriptor set used across all post-process shaders*
+		dsm.layout(*_aaData.descLayout[sPOSTAADATA::eStage::Final]);
+
+		// double buffered
+		_aaData.sets[sPOSTAADATA::eStage::Final].emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+		_aaData.sets[sPOSTAADATA::eStage::Final].emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+		_aaData.sets[sPOSTAADATA::eStage::Final].shrink_to_fit();
+
+		// Make a default pipeline layout. This shows how pointers
+		// to resources are layed out.
+		// 
+		vku::PipelineLayoutMaker		plm;
+		plm.descriptorSetLayout(*_aaData.descLayout[sPOSTAADATA::eStage::Final]);			// *same pipeline layout used across all post - process shaders *
+		_aaData.pipelineLayout[sPOSTAADATA::eStage::Final] = plm.createUnique(_device);
+	}
 	
-	dslm.image(9U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers);							// anamorphic flare array source
-	dslm.image(10U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2, nullptr);										// anamorphic flare array out
-	dslm.image(11U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, samplers);					// 3d lut
-	dslm.image(12U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1, nullptr);									// input gui
-	
-	_aaData.descLayout = dslm.createUnique(_device);	// *same descriptor set used across all post - process shaders *
-	// We need to create a descriptor set to tell the shader where
-	// our buffers are.
-	vku::DescriptorSetMaker			dsm;	// *same descriptor set used across all post-process shaders*
-	dsm.layout(*_aaData.descLayout);
-
-	// double buffered
-	_aaData.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
-	_aaData.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
-	_aaData.sets.shrink_to_fit();
-
-	// Make a default pipeline layout. This shows how pointers
-	// to resources are layed out.
-	// 
-	vku::PipelineLayoutMaker		plm;
-	plm.descriptorSetLayout(*_aaData.descLayout);			// *same pipeline layout used across all post - process shaders *
-	_aaData.pipelineLayout = plm.createUnique(_device);
-
 	std::vector< vku::SpecializationConstant > constants;
 
 	// Create two unique shaders per pass, vertex and fragment. 
@@ -840,7 +883,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[0] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->postAAPass(0));
+		_aaData.pipeline[0] = pm.create(_device, cache, *_aaData.pipelineLayout[sPOSTAADATA::eStage::Post], _window->postAAPass(0));
 	}
 	{ // blur downsampled horizontally + anamorphic reduction
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -859,7 +902,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[1] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->postAAPass(1));
+		_aaData.pipeline[1] = pm.create(_device, cache, *_aaData.pipelineLayout[sPOSTAADATA::eStage::Post], _window->postAAPass(1));
 	}
 	{ // blur downsampled vertically
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -878,7 +921,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[2] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->postAAPass(2));
+		_aaData.pipeline[2] = pm.create(_device, cache, *_aaData.pipelineLayout[sPOSTAADATA::eStage::Post], _window->postAAPass(2));
 	}
 
 	if (isHDR()) {
@@ -898,6 +941,10 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
+		// two color attachments require 2 blend attachments to be defined
+		pm.blendBegin(VK_FALSE);
+		pm.blendBegin(VK_FALSE);
+		
 		std::wstring szFragShader;
 		if (isHDR()) { // select shader
 			szFragShader = SHADER_BINARY_DIR "postaapp2_hdr.frag.bin";
@@ -913,7 +960,7 @@ void cVulkan::CreatePostAAResources()
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[3] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
+		_aaData.pipeline[3] = pm.create(_device, cache, *_aaData.pipelineLayout[sPOSTAADATA::eStage::Final], _window->finalPass());
 	}
 	{ // overlay final(actual) subpass(gui overlay)
 		vku::PipelineMaker pm(MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y);
@@ -946,13 +993,16 @@ void cVulkan::CreatePostAAResources()
 
 		typedef vk::ColorComponentFlagBits ccbf;
 		pm.blendColorWriteMask(ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA);
-
+		
+		// two color attachments require 2 blend attachments to be defined
+		pm.blendBegin(VK_FALSE);
+		
 		// Create a pipeline using a renderPass
 		pm.rasterizationSamples(vk::SampleCountFlagBits::e1);
 		pm.subPass(0U);
 
 		auto& cache = _fw.pipelineCache();
-		_aaData.pipeline[4] = pm.create(_device, cache, *_aaData.pipelineLayout, _window->finalPass());
+		_aaData.pipeline[4] = pm.create(_device, cache, *_aaData.pipelineLayout[sPOSTAADATA::eStage::Final], _window->finalPass());
 	}
 }
 
@@ -1073,7 +1123,7 @@ void cVulkan::CreateVoxelResources()
 			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.geom.bin", constants_road_gs };
 			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.frag.bin", constants_road_fs };
 			CreateVoxelResource<false, false, false, true, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS], // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
-				_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+				_window->transPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 
 			{ // specialization for static road
@@ -1200,7 +1250,7 @@ void cVulkan::CreateVoxelResources()
 			{							
 				vku::ShaderModule const frag_voxeltrans_{ _device, SHADER_BINARY_DIR "uniforms_trans.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_TRANS>(
-					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
+					_window->transPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_, geom_trans_, frag_voxeltrans_, 0U);
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_TRANS>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
 					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_TRANS].vbo_partition_info));
@@ -1220,7 +1270,7 @@ void cVulkan::CreateVoxelResources()
 				// ***inherits the same constants as base voxel fragment shader //
 				vku::ShaderModule const frag_voxelrain_{ _device, SHADER_BINARY_DIR "voxel_rain.frag.bin", constants_voxel_fs };
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_SHADER_RAIN>(
-					_window->overlayPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
+					_window->transPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,	// overlaypass, subpass 0
 					vert_dynamic_trans_rain_, geom_trans_, frag_voxelrain_, 0U);
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_RAIN>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
 					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_RAIN].vbo_partition_info));
@@ -1623,8 +1673,8 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			// Set initial sampler value
-			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(), SAMPLER_SET_STANDARD_POINT_ANISO);
+			// Set initial sampler value - common descriptor set uses the lastColorImageView in binding 6, for transparency usage in the overlay/transparency pass, at that point, it only contains the scene rendered of opaques. "grab pass"
+			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_STANDARD_POINT_ANISO);
 			
 		}
 	}
@@ -1701,14 +1751,24 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	}
 	{ // ###### Post Anti-aliasing
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
-			_dsu.beginDescriptorSet(_aaData.sets[resource_index]);
+			_dsu.beginDescriptorSet(_aaData.sets[sPOSTAADATA::eStage::Post][resource_index]);
 
 			// Set initial uniform buffer value
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			// Set initial sampler value
-			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA(_dsu, _window->lastColorImageView(), _window->guiImageView(), SAMPLER_SET_STANDARD_POINT);
+			// Set initial sampler value - lastColorImageView becomes the main color texture sampled, by this time it contains the opaques, transparents & volumetrics.
+			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA_Post(_dsu, _window->lastColorImageView(1), _window->lastColorImageView(2), SAMPLER_SET_STANDARD_POINT);
+		}
+		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
+			_dsu.beginDescriptorSet(_aaData.sets[sPOSTAADATA::eStage::Final][resource_index]);
+
+			// Set initial uniform buffer value
+			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
+			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
+
+			// Set initial sampler value - lastColorImageView becomes the main color texture sampled, by this time it contains the opaques, transparents & volumetrics.
+			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA_Final(_dsu, _window->lastColorImageView(1), _window->guiImageView(), SAMPLER_SET_STANDARD_POINT);
 		}
 	}
 
@@ -1718,7 +1778,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	WaitDeviceIdle(); // be safe and wait
 	
 	// set static pre-recorded command buffers here //
-	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer);
+	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer, true);
 	_window->setGpuReadbackCommands(cVulkan::gpuReadback);
 	_window->setStaticPresentCommands(cVulkan::renderPresentCommandBuffer);
 	_window->setStaticClearCommands(cVulkan::renderClearCommandBuffer);
@@ -1734,9 +1794,9 @@ namespace vku
 	}
 } // end ns
 
-bool const cVulkan::renderCompute(vku::compute_pass&& __restrict c)
+void cVulkan::renderCompute(vku::compute_pass&& __restrict c)
 {
-	return(MinCity::Vulkan->_renderCompute(std::forward<vku::compute_pass&& __restrict>(c)));
+	MinCity::Vulkan->_renderCompute(std::forward<vku::compute_pass&& __restrict>(c));
 }
 void cVulkan::renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
 {
@@ -1763,7 +1823,7 @@ void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
 	MinCity::Vulkan->_gpuReadback(cb, resource_index);
 }
 
-inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
+inline void cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 {
 	if (c.cb_transfer) { // **** very first gpu transfer on every new frame ***
 
@@ -1775,7 +1835,7 @@ inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 		c.cb_transfer.end();
 	}
 	
-	return(MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData)); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
+	MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
 }
 
 void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (& __restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount)
@@ -2133,11 +2193,11 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	
 	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
 	auto& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
-
+	
 	volume_set.OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
 		vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
-	{ // required at this point, light:
+	if (s.async_compute_enabled) { // required at this point, light:
 		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral); // *bugfix for tricky validation error
 		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eGeneral);
 		volume_set.LightMap->Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
@@ -2232,23 +2292,32 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// End of frame main renderpass //
 
-	// #### optional OFFSCREEN RENDERPASS BEGIN #### //
-	if (_bOffscreenRender) {
-		s.cb.beginRenderPass(s.rpbiOff, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
+	// begin of frame main transparency renderpass //
+	s.cb.beginRenderPass(s.rpbiTransparency, vk::SubpassContents::eInline);
 
+	// all voxels share the same descriptor set
+	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, s.cb); // all voxels share the same descriptor set
+
+	// specific voxel rendering for transparency pass //
+	renderTransparentVoxels(s); 
+
+	s.cb.endRenderPass();
+	
+	// #### optional OFFSCREEN RENDERPASS BEGIN #### //
+	s.cb.beginRenderPass(s.rpbiOff, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
+	
+	if (_bOffscreenRender) {
 		// SUBPASS - Regular voxel rendering
 		bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, s.cb); // all voxels share the same descriptor set
 
 		// specific voxel rendering for offscreen pass //
 		renderOffscreenVoxels(s); // currently draws all voxels except terrain for GUI presentation
+	}
+	s.cb.endRenderPass();
 
-		s.cb.endRenderPass();
-	}
-	else {
-		// just allow transition of image layout 
-		s.cb.beginRenderPass(s.rpbiOff, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
-		s.cb.endRenderPass();
-	}
+	// prepare for usage in vertex shader (general layout) - clearing opacity map 
+	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // required to update internal image state - present command buffer is reused and only recorded once at init.
+	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(s.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
 
 	s.cb.end();
 }
@@ -2275,94 +2344,33 @@ inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __res
 	if (nullptr != o.cb_transfer) {
 		MinCity::Nuklear->Upload(resource_index, *o.cb_transfer, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
 	}
-	else if (nullptr != o.cb_render ) // rendering
-	{
-		// ############# TRANSPARENCY BEGIN PASS ################################################ //
-		vk::CommandBufferBeginInfo bi2(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
-		o.cb_render->begin(bi2); VKU_SET_CMD_BUFFER_LABEL(*o.cb_render, vkNames::CommandBuffer::OVERLAY_RENDER);
-
-		// leverage free (waiting) time to ...
-		
-		// prepare for usage in fragment shader, transparent voxels do not modify the opacity map so its layout is left unmodified
-		_window->colorReflectionImage().setLayout(*o.cb_render, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
-
-		MinCity::Nuklear->AcquireTransferQueueOwnership(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
-
-		o.cb_render->beginRenderPass(o.rpbi, vk::SubpassContents::eInline);
-
-		// all voxels share the same descriptor set
-		bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, *o.cb_render); // all voxels share the same descriptor set
-
-		// SUBPASS - voxels w/Transparency //
-
-		{ // transparent roads
-			constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_TRANS;
-
-			uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
-			if (0 != ActiveVertexCount) {
-
-				o.cb_render->bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-
-				// trans partition
-				{
-					auto const& partition_info((*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_TRANS]);
-					uint32_t const partition_vertex_count = partition_info.active_vertex_count;
-					if (0 != partition_vertex_count) {
-						o.cb_render->bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-						uint32_t const partition_start_vertex = partition_info.vertex_start_offset;
-						o.cb_render->draw(partition_vertex_count, 1, partition_start_vertex, 0);
-					}
-				}
-			}
-		}
-		{ // dynamic voxels
-			uint32_t const ActiveVertexCount = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
-			if (0 != ActiveVertexCount) {
-
-				// draw children dynamic shader voxels (customized) (transparent voxel shaders only)
-
-				// leveraging dynamic vb 
-				// all child shaders share this descriptor set, but have unique pipelines
-				o.cb_render->bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-
-				for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
-
-					vku::VertexBufferPartition const* const __restrict child_partition = _rtDataChild[child].vbo_partition_info[resource_index];
-					if (nullptr != child_partition && _rtDataChild[child].transparency) {
-
-						uint32_t const partition_vertex_count = child_partition->active_vertex_count;
-						if (0 != partition_vertex_count) {
-
-							o.cb_render->bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
-
-							uint32_t const partition_start_vertex = child_partition->vertex_start_offset;
-							o.cb_render->draw(partition_vertex_count, 1, partition_start_vertex, 0);
-						}
-					}
-				}
-			}
-		}
-		
-		o.cb_render->nextSubpass(vk::SubpassContents::eInline); // SUBPASS - Nuklear 2D GUI Overlay *bugfix, must be in seperate dedicated pass or else performance suffers greatly! //
+	else { 
+	
+		if (nullptr != o.cb_render) // rendering
 		{
-			RenderingInfo const nk_renderInfo(o.rpbi, _nkData.pipelineLayout, _nkData.pipeline, _nkData.descLayout, _nkData.sets);
-			MinCity::Nuklear->Render(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo, nk_renderInfo);
-		}
-		
-		// ############# TRANSPARENCY END PASS ################################################ //
-		o.cb_render->endRenderPass();
+			vk::CommandBufferBeginInfo bi2(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
+			o.cb_render->begin(bi2); VKU_SET_CMD_BUFFER_LABEL(*o.cb_render, vkNames::CommandBuffer::OVERLAY_RENDER);
 
-		// prepare for usage in vertex shader (general layout) - clearing opacity map 
-		MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // required to update internal image state - present command buffer is reused and only recorded once at init.
-		MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setLayout(*o.cb_render, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY);
+			// leverage free (waiting) time to ...
 
-		// The offscreen copy if enabled has to happen here, where there is no further usage by rendering of it in an imageView (like in the Nuklear GUI above)
-		[[unlikely]] if ( _bOffscreenCopy ) { // single frame capture is a rare operation
-			copyOffscreenBuffer(*o.cb_render);		// copy & barrier done here to simplify - overlay cb is dynamic (built every frame) unlike the static or present cb's
-			barrierOffscreenBuffer(*o.cb_render);	// don't want to reset both cb's for single frame capture
+			MinCity::Nuklear->AcquireTransferQueueOwnership(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo);
+
+			// Offscreen Overlay GUI Renderpass
+			o.cb_render->beginRenderPass(o.rpbiOverlay, vk::SubpassContents::eInline);
+			{
+				RenderingInfo const nk_renderInfo(o.rpbiOverlay, _nkData.pipelineLayout, _nkData.pipeline, _nkData.descLayout, _nkData.sets);
+				MinCity::Nuklear->Render(*o.cb_render, _nkData._vbo[resource_index], _nkData._ibo[resource_index], _nkData._ubo, nk_renderInfo);
+			}
+			o.cb_render->endRenderPass();
+			
+			// The offscreen copy if enabled has to happen here, where there is no further usage by rendering of it in an imageView (like in the Nuklear GUI above)
+			[[unlikely]] if (_bOffscreenCopy) { // single frame capture is a rare operation
+				copyOffscreenBuffer(*o.cb_render);		// copy & barrier done here to simplify - overlay cb is dynamic (built every frame) unlike the static or present cb's
+				barrierOffscreenBuffer(*o.cb_render);	// don't want to reset both cb's for single frame capture
+			}
+
+			o.cb_render->end();
 		}
-		
-		o.cb_render->end();
 	}
 }
 
@@ -2372,7 +2380,7 @@ inline void cVulkan::_renderPresentCommandBuffer(vku::present_renderpass&& __res
 	pp.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(pp.cb, vkNames::CommandBuffer::PRESENT);
 	
 	MinCity::PostProcess->Render(std::forward<vku::present_renderpass&& __restrict>(pp), _aaData);
-
+	
 	// *** Command buffer ends
 	pp.cb.end();
 }

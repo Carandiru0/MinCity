@@ -15,7 +15,9 @@ class no_vtable cPostProcess : no_copy
 {
 public:
 	void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize);
-	void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp);
+
+	void UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict lastFrameView, vk::Sampler const& __restrict samplerLinearClamp);
+	void UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp);
 
 	__inline void Render(vku::present_renderpass&& __restrict pp,
 						 struct cVulkan::sPOSTAADATA const& __restrict render_data) const;
@@ -32,7 +34,6 @@ public:
 private:
 	vku::TextureImageStorage2D* _anamorphicFlare[2];
 
-	vku::TextureImageStorage2D* _lastColorImage;			// last post process result with temporal weight in alpha (does not contain GUI)
 	vku::TextureImageStorage2D* _temporalColorImage;
 
 	vku::TextureImageStorage2D* _blurStep[2];
@@ -54,10 +55,12 @@ public:
 __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 								   struct cVulkan::sPOSTAADATA const& __restrict render_data) const
 {
-	uint32_t const resource_index(pp.resource_index);
+	static constexpr uint32_t const post_stage(cVulkan::sPOSTAADATA::eStage::Post), final_stage(cVulkan::sPOSTAADATA::eStage::Final);
 
-	// common descriptor set to all post aa passes and final present pass
-	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout, 0, render_data.sets[resource_index], nullptr);
+	uint32_t const resource_index(pp.resource_index);
+		
+	// common descriptor set to 3 post aa passes
+	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout[post_stage], 0, render_data.sets[post_stage][resource_index], nullptr);
 		
 	// ----- 0
 	// begin "actual render pass"
@@ -86,6 +89,10 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	pp.cb.draw(3, 1, 0, 0);
 	pp.cb.endRenderPass();
 	
+	
+	// common descriptor set to final present pass
+	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout[final_stage], 0, render_data.sets[final_stage][resource_index], nullptr);
+
 	// -------- final / present
 	// begin "actual render pass"
 	pp.cb.beginRenderPass(pp.rpbi_final, vk::SubpassContents::eInline);

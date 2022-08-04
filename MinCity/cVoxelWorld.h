@@ -122,7 +122,7 @@ namespace world
 		template<bool const bEnable = true> // eInputEnabledBits
 		uint32_t const InputEnable(uint32_t const bits); 
 
-		bool const renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
+		void renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 		
 		void Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo);
 		void Transfer(uint32_t resource_index, vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer* const* const& __restrict vbo);
@@ -207,7 +207,8 @@ namespace world
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, vk::ImageView const& __restrict fullvolumetricImageView, vk::ImageView const& __restrict fullreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		
-		void UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView, SAMPLER_SET_STANDARD_POINT);
+		void UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict lastFrameView, SAMPLER_SET_STANDARD_POINT);
+		void UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView, SAMPLER_SET_STANDARD_POINT);
 		
 		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO);
 		void UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict ds);

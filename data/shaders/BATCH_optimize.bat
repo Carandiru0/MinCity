@@ -40,9 +40,9 @@ for %%f in (*.bin) do (
 				
 		if !counter! LEQ 1 (
 			echo last .bin ....
-			start /WAIT /B !spirv-opt! --target-env=vulkan1.2 --upgrade-memory-model -O !vIn! -o !vOut!
+			start /WAIT /B !spirv-opt! --target-env=vulkan1.3 --upgrade-memory-model -O !vIn! -o !vOut!
 		) else (
-			start /B !spirv-opt! --target-env=vulkan1.2 --upgrade-memory-model -O !vIn! -o !vOut!
+			start /B !spirv-opt! --target-env=vulkan1.3 --upgrade-memory-model -O !vIn! -o !vOut!
 		)
 		
 		echo optimized !vOut!

@@ -320,7 +320,7 @@ private:
 
 	
 public:
-	static bool const renderCompute(vku::compute_pass&& __restrict c);
+	static void renderCompute(vku::compute_pass&& __restrict c);
 	static void renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	static void renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	static void renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
@@ -328,7 +328,7 @@ public:
 	static void renderClearCommandBuffer(vku::clear_renderpass&& __restrict pp);
 	static void gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
 private:
-    inline bool const _renderCompute(vku::compute_pass&& __restrict c);
+    inline void _renderCompute(vku::compute_pass&& __restrict c);
 	inline void _renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	inline void _renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	inline void _renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
@@ -380,19 +380,28 @@ private:
 public:	// ### public skeleton
 	typedef struct sPOSTAADATA
 	{
-		vk::UniquePipelineLayout		pipelineLayout;
+		enum eStage
+		{
+			Post = 0,
+			Final = 1,
+			Count
+		};
+		
+		vk::UniquePipelineLayout		pipelineLayout[eStage::Count];
 		vk::Pipeline					pipeline[5];
-		vk::UniqueDescriptorSetLayout	descLayout;
-		std::vector<vk::DescriptorSet>	sets;
+		vk::UniqueDescriptorSetLayout	descLayout[eStage::Count];
+		std::vector<vk::DescriptorSet>	sets[eStage::Count];
 
 		sPOSTAADATA()
 		{}
 
 		~sPOSTAADATA()
 		{
-			pipelineLayout.release();
-			sets.clear(); sets.shrink_to_fit();
-			descLayout.release();
+			for (uint32_t i = 0; i < eStage::Count; ++i) {
+				pipelineLayout[i].release();
+				sets[i].clear(); sets[i].shrink_to_fit();
+				descLayout[i].release();
+			}
 		}
 	} sPOSTAADATA;
 private: // ### private instance
@@ -649,6 +658,8 @@ private:
 	template<uint32_t const numChildMasks = 0>
 	STATIC_INLINE uint32_t const renderAllVoxels_ZPass(vku::static_renderpass const& s, sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks = nullptr);
 
+	STATIC_INLINE void renderTransparentVoxels(vku::static_renderpass const& s);
+	
 	static void renderOffscreenVoxels(vku::static_renderpass const& s);
 };
 
@@ -732,10 +743,10 @@ void cVulkan::CreateVoxelResource(
 	pm.depthClampEnable(VK_FALSE);
 
 	if constexpr (isClear) {
-		pm.depthCompareOp(vk::CompareOp::eNever);
+		pm.depthCompareOp(vk::CompareOp::eNever); // during a "voxel clear" it is ojnly required to remove it from the opacity volume texture, this fails the depth test an prevents any unneccessary fragment shading.
 		pm.depthTestEnable(VK_FALSE);
 		pm.depthWriteEnable(VK_FALSE);
-		pm.rasterizerDiscardEnable(VK_TRUE);
+		pm.rasterizerDiscardEnable(VK_TRUE); // fragment shader not used, so discard fragments (clear op occurs in vertex shading stage of pipeline for the opacity volume map)
 	}
 	else if constexpr (isBasic) {
 		pm.depthTestEnable(VK_TRUE);
@@ -855,7 +866,7 @@ STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(uint32_t const resource_index
 template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks>
 STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass const& s, [[maybe_unused]] sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks)
 {
-	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
+	uint32_t const resource_index(s.resource_index);
 
 	[[maybe_unused]]
 	uint32_t ActiveMaskCount(0);
@@ -919,7 +930,7 @@ STATIC_INLINE uint32_t const cVulkan::renderDynamicVoxels(vku::static_renderpass
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 {
-	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
+	uint32_t const resource_index(s.resource_index);
 
 	// static voxels
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC + voxel_pipeline_index;
@@ -936,7 +947,7 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
 {
-	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
+	uint32_t const resource_index(s.resource_index);
 
 	// roads
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_BASIC + voxel_pipeline_index;
@@ -960,7 +971,7 @@ STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
 template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 {
-	uint32_t const resource_index(s.resource_index > 1 ? 0 : s.resource_index);
+	uint32_t const resource_index(s.resource_index);
 
 	// terrain
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC + voxel_pipeline_index;
@@ -1036,6 +1047,62 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 
 	return(ActiveMaskCount);
 }
+
+__inline void cVulkan::renderTransparentVoxels(vku::static_renderpass const& s)
+{
+	uint32_t const resource_index(s.resource_index);
+	
+	// SUBPASS - voxels w/Transparency //
+
+	{ // transparent roads
+		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_TRANS;
+
+		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
+		if (0 != ActiveVertexCount) {
+
+			s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+
+			// trans partition
+			{
+				auto const& partition_info((*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_TRANS]);
+				uint32_t const partition_vertex_count = partition_info.active_vertex_count;
+				if (0 != partition_vertex_count) {
+					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+					uint32_t const partition_start_vertex = partition_info.vertex_start_offset;
+					s.cb.draw(partition_vertex_count, 1, partition_start_vertex, 0);
+				}
+			}
+		}
+	}
+	{ // dynamic voxels
+		uint32_t const ActiveVertexCount = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
+		if (0 != ActiveVertexCount) {
+
+			// draw children dynamic shader voxels (customized) (transparent voxel shaders only)
+
+			// leveraging dynamic vb 
+			// all child shaders share this descriptor set, but have unique pipelines
+			s.cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+
+			for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+
+				vku::VertexBufferPartition const* const __restrict child_partition = _rtDataChild[child].vbo_partition_info[resource_index];
+				if (nullptr != child_partition && _rtDataChild[child].transparency) {
+
+					uint32_t const partition_vertex_count = child_partition->active_vertex_count;
+					if (0 != partition_vertex_count) {
+
+						s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
+
+						uint32_t const partition_start_vertex = child_partition->vertex_start_offset;
+						s.cb.draw(partition_vertex_count, 1, partition_start_vertex, 0);
+					}
+				}
+			}
+		}
+	}
+}
+
 
 
 

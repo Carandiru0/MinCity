@@ -26,7 +26,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS 512.0f
 #define BLUE_NOISE_SCALAR dt
-#define BOUNCE_EPSILON 0.25f
+#define BOUNCE_EPSILON 0.49f
 
 const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float PHASE_FUNCTION = 1.0 / (GOLDEN_RATIO * PI); // Isotropic
@@ -312,7 +312,7 @@ void reflect_lit(out vec3 light_color, out float emission, out float attenuation
 	attenuation = fetch_light_reflected(light_color, p, opacity, dt);
 }
 
-void reflection(inout vec4 voxel, in const float bounce_scatter, in const vec3 p, in const float opacity, in const float dt)
+void reflection(inout vec4 voxel, in const float bounce_scatter, in const vec3 p, in const float opacity, in const float dp, in const float dt)
 {
  	// opacity at this point may be equal to zero
 	// which means a "surface" was not hit after the initial bounce
@@ -328,9 +328,9 @@ void reflection(inout vec4 voxel, in const float bounce_scatter, in const vec3 p
 
 	reflect_lit(light_color, emission, attenuation, p, opacity, dt);
 	
-	// add ambient light that is reflected																								  // combat moire patterns with blue noise
+	// add ambient light that is reflected																								  
 	voxel.light += mix(vec3(0), light_color * attenuation, min(opacity + emission, 1.0f));
-	voxel.light += opacity * bounce_scatter;
+	voxel.light = max(voxel.light, dp * opacity * opacity); // these are the detail highlights that are very noisy as they are from "low light samples" blue noise is added to combat noisyness
 	voxel.a = bounce_scatter;
 }
 
@@ -372,8 +372,8 @@ void traceReflection(inout vec4 voxel, in vec3 rd, in vec3 p, in const float dt,
 				integrate_opacity(opacity, fetch_opacity_reflection(p), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 				[[branch]] if(bounced(opacity)) { 
 				
-					const float dist_to_bounce = distance(p, bounce) * VolumeLength;
-					reflection(voxel, 1.0f / fma(dist_to_bounce, dist_to_bounce, 1.0f), p, opacity, dt);
+					const float dist_to_bounce = distance(p, bounce) * VolumeLength;				// see reflection() for why bn is added here
+					reflection(voxel, 1.0f / fma(dist_to_bounce, dist_to_bounce, 1.0f), p, opacity, min(1.0f, abs(dp) + bn * BLUE_NOISE_SCALAR), dt);
 					break;	// hit reflected *opaque surface*
 				}
 
@@ -429,7 +429,7 @@ void main() {
 	float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
 	pre_dt = max(pre_dt, interval_length*INV_MAX_STEPS);
 	// ----------------------------------- //
-	const float dt = max(pre_dt, MIN_STEP); // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
+	const float dt = max(pre_dt, MIN_STEP) * GOLDEN_RATIO_ZERO; // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth

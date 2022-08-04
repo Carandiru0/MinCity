@@ -10,7 +10,7 @@
 #define COLOR_LUT_FILE "color.cube"
 
 cPostProcess::cPostProcess()
-	: _blurStep{ nullptr }, _lastColorImage(nullptr), _temporalColorImage(nullptr), _anamorphicFlare{ nullptr },
+	: _blurStep{ nullptr }, _temporalColorImage(nullptr), _anamorphicFlare{ nullptr },
 	_lutTex{ nullptr }
 #ifdef DEBUG_LUT_WINDOW
 	,_lut(nullptr), _task_id_mix_luts(0)
@@ -26,11 +26,9 @@ void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool c
 		FMT_LOG_FAIL(TEX_LOG, "Unable to load 3D lut {:s}", COLOR_LUT_FILE);
 	}
 
-	_temporalColorImage = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, device,
+	_temporalColorImage = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
 		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, false, true);
-	_lastColorImage = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, device,	// last post process result with temporal weight in alpha
-		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, false, true); // NON SRGB
-
+	
 	_anamorphicFlare[0] = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
 		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8Unorm);
 	_anamorphicFlare[1] = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
@@ -42,11 +40,8 @@ void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool c
 		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, false, true);
 
 	vku::executeImmediately(device, commandPool, queue, [&](vk::CommandBuffer cb) {
-
-		_temporalColorImage->clear(cb);
+		// image layout initial startup requirement
 		_temporalColorImage->setLayout(cb, vk::ImageLayout::eGeneral);		// ""    ""     //
-		_lastColorImage->clear(cb);
-		_lastColorImage->setLayout(cb, vk::ImageLayout::eGeneral);
 		_anamorphicFlare[0]->setLayout(cb, vk::ImageLayout::eGeneral);
 		_anamorphicFlare[1]->setLayout(cb, vk::ImageLayout::eGeneral);
 		_blurStep[0]->setLayout(cb, vk::ImageLayout::eGeneral);		// never changes //
@@ -200,7 +195,7 @@ bool const cPostProcess::UploadLUT()
 }
 #endif
 
-void cPostProcess::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp)
+void cPostProcess::UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict lastFrameView, vk::Sampler const& __restrict samplerLinearClamp)
 {
 	// 1 - colorview (backbuffer) (prior function set)
 	// 2 - bluenoise (prior function set)
@@ -208,47 +203,67 @@ void cPostProcess::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restr
 	// 3 - temporal out image
 	dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
 	dsu.image(nullptr, _temporalColorImage->imageView(), vk::ImageLayout::eGeneral);
+	
 	// 4 - temporal sampler general
 	dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _temporalColorImage->imageView(), vk::ImageLayout::eGeneral);
 
-	// 5 - last color out image
-	dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
-	dsu.image(nullptr, _lastColorImage->imageView(), vk::ImageLayout::eGeneral);
-	// 6 - last color sampler general; 
-	dsu.beginImages(6U, 0, vk::DescriptorType::eCombinedImageSampler);
-	dsu.image(samplerLinearClamp, _lastColorImage->imageView(), vk::ImageLayout::eGeneral);
+	// 5 - last color input attachment 
+	dsu.beginImages(5U, 0, vk::DescriptorType::eInputAttachment);
+	dsu.image(nullptr, lastFrameView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
-	// 7 - blurStep[] sampler general
-	dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
+	// 6 - blurStep[] sampler general
+	dsu.beginImages(6U, 0, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _blurStep[0]->imageView(), vk::ImageLayout::eGeneral);
-	dsu.beginImages(7U, 1, vk::DescriptorType::eCombinedImageSampler);
+	dsu.beginImages(6U, 1, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _blurStep[1]->imageView(), vk::ImageLayout::eGeneral);
 
-	// 8 - blurStep[] out image
-	dsu.beginImages(8U, 0, vk::DescriptorType::eStorageImage);
+	// 7 - blurStep[] out image
+	dsu.beginImages(7U, 0, vk::DescriptorType::eStorageImage);
 	dsu.image(nullptr, _blurStep[0]->imageView(), vk::ImageLayout::eGeneral);
-	dsu.beginImages(8U, 1, vk::DescriptorType::eStorageImage);
+	dsu.beginImages(7U, 1, vk::DescriptorType::eStorageImage);
 	dsu.image(nullptr, _blurStep[1]->imageView(), vk::ImageLayout::eGeneral);
 
-	// 9 - anamorphic flare sampler array
-	dsu.beginImages(9U, 0, vk::DescriptorType::eCombinedImageSampler);
+	// 8 - anamorphic flare sampler array
+	dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _anamorphicFlare[0]->imageView(), vk::ImageLayout::eGeneral);
-	dsu.beginImages(9U, 1, vk::DescriptorType::eCombinedImageSampler);
+	dsu.beginImages(8U, 1, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _anamorphicFlare[1]->imageView(), vk::ImageLayout::eGeneral);
 
-	// 10 - anamorphic flare image array
-	dsu.beginImages(10U, 0, vk::DescriptorType::eStorageImage);
+	// 9 - anamorphic flare image array
+	dsu.beginImages(9U, 0, vk::DescriptorType::eStorageImage);
 	dsu.image(nullptr, _anamorphicFlare[0]->imageView(), vk::ImageLayout::eGeneral);
-	dsu.beginImages(10U, 1, vk::DescriptorType::eStorageImage);
+	dsu.beginImages(9U, 1, vk::DescriptorType::eStorageImage);
 	dsu.image(nullptr, _anamorphicFlare[1]->imageView(), vk::ImageLayout::eGeneral);
+}
 
-	// 11 - 3d lut
-	dsu.beginImages(11U, 0, vk::DescriptorType::eCombinedImageSampler);
+void cPostProcess::UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp)
+{
+	// 1 - colorview (backbuffer) (prior function set)
+	// 2 - bluenoise (prior function set)
+
+	// 3 - temporal sampler general
+	dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
+	dsu.image(samplerLinearClamp, _temporalColorImage->imageView(), vk::ImageLayout::eGeneral);
+
+	// 4 - blurStep[] sampler general
+	dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
+	dsu.image(samplerLinearClamp, _blurStep[0]->imageView(), vk::ImageLayout::eGeneral);
+	dsu.beginImages(4U, 1, vk::DescriptorType::eCombinedImageSampler);
+	dsu.image(samplerLinearClamp, _blurStep[1]->imageView(), vk::ImageLayout::eGeneral);
+
+	// 5 - anamorphic flare sampler array
+	dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
+	dsu.image(samplerLinearClamp, _anamorphicFlare[0]->imageView(), vk::ImageLayout::eGeneral);
+	dsu.beginImages(5U, 1, vk::DescriptorType::eCombinedImageSampler);
+	dsu.image(samplerLinearClamp, _anamorphicFlare[1]->imageView(), vk::ImageLayout::eGeneral);
+
+	// 6 - 3d lut
+	dsu.beginImages(6U, 0, vk::DescriptorType::eCombinedImageSampler);
 	dsu.image(samplerLinearClamp, _lutTex->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-	// 12 - gui
-	dsu.beginImages(12U, 0, vk::DescriptorType::eInputAttachment);
+	// 7 - gui
+	dsu.beginImages(7U, 0, vk::DescriptorType::eInputAttachment);
 	dsu.image(nullptr, guiImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 }
 
@@ -263,7 +278,6 @@ void cPostProcess::CleanUp()
 	SAFE_RELEASE_DELETE(_blurStep[0]);
 	SAFE_RELEASE_DELETE(_blurStep[1]);
 	SAFE_RELEASE_DELETE(_temporalColorImage)
-	SAFE_RELEASE_DELETE(_lastColorImage);
 	SAFE_RELEASE_DELETE(_anamorphicFlare[0]);
 	SAFE_RELEASE_DELETE(_anamorphicFlare[1]);
 	SAFE_RELEASE_DELETE(_lutTex);

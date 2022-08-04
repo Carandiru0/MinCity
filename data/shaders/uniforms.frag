@@ -367,7 +367,7 @@ void main() {
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);                            
-			        
+	
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
@@ -378,6 +378,7 @@ void main() {
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
 #else     
 #define SCROLL_SPEED GOLDEN_RATIO
+
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
@@ -398,8 +399,8 @@ void main() {
 	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency + In._transparency * In.material.emission);
 
 	outColor = applyTransparency( color, In._transparency + In._transparency*density*density, weight );
-
-	/*
+	
+	/*1
 	const float accurate = InvVolumeDimensions * (128.0f);                                                              
 	float scanline = aaStep( accurate, triangle_wave(mod(In.uv.z * VolumeDimensions + mod(SCROLL_SPEED * In._time, VolumeDimensions), accurate * 1.5f * 1.5f))) * (N.z * 0.5f + 0.5f);
 	//scanline = triangle_wave(scanline);

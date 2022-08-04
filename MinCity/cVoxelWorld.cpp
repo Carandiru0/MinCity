@@ -3921,7 +3921,7 @@ namespace world
 	{
 		RenderTask_Normal(resource_index);
 	}
-	bool const cVoxelWorld::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
+	void cVoxelWorld::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
 		// texture shaders [[deprecated]]
 		/*if (c.cb_render_texture) {
@@ -4012,7 +4012,7 @@ namespace world
 			}
 		}
 		*/
-		return(_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data));
+		_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data);
 	}
 
 	void cVoxelWorld::Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo)
@@ -5159,7 +5159,20 @@ namespace world
 		dsu.beginBuffers(6U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
 	}
-	void cVoxelWorld::UpdateDescriptorSet_PostAA(vku::DescriptorSetUpdater& __restrict dsu,
+	void cVoxelWorld::UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu,
+		vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict lastFrameView,
+		SAMPLER_SET_STANDARD_POINT)
+	{
+		// 1 - colorview (backbuffer)
+		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, colorImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
+		// 2 - bluenoise
+		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // presentation uses single channel, all slices of blue noise
+
+		MinCity::PostProcess->UpdateDescriptorSet_PostAA_Post(dsu, lastFrameView, samplerLinearClamp);
+	}
+	void cVoxelWorld::UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu,
 		vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView,
 		SAMPLER_SET_STANDARD_POINT)
 	{
@@ -5170,9 +5183,8 @@ namespace world
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // presentation uses single channel, all slices of blue noise
 
-		MinCity::PostProcess->UpdateDescriptorSet_PostAA(dsu, guiImageView, samplerLinearClamp);
+		MinCity::PostProcess->UpdateDescriptorSet_PostAA_Final(dsu, guiImageView, samplerLinearClamp);
 	}
-
 	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO)
 	{
 		dsu.beginBuffers(1U, 0, vk::DescriptorType::eStorageBuffer);

@@ -11,7 +11,14 @@ layout (constant_id = 4) const float MaximumNits = 1000.0f;
 #define fragment_shader
 #include "common.glsl"
 
+#if defined (SMAA_PASS_2) || defined(OVERLAY)
+#define FINAL // indicating stage is final / last one
+#endif
+
 layout(location = 0) out vec4 outColor;
+#ifdef FINAL
+layout(location = 1) out vec4 outLastFrame;
+#endif
 
 layout(location = 0) in streamIn
 {
@@ -25,24 +32,38 @@ layout(location = 0) in streamIn
 } In;
 #define texcoord uv // alias
 
+#ifndef FINAL
+// Post Descriptor Set //
 layout (binding = 1) uniform sampler2D colorMap;
 layout (binding = 2) uniform sampler2DArray noiseMap;	// bluenoise RG channels, 64 slices.
 
 layout (binding = 3, rgba8) writeonly restrict uniform image2D outTemporal;
 layout (binding = 4) uniform sampler2D temporalColorMap;
 
-layout (binding = 5, rgba8) writeonly restrict uniform image2D outLastColor;
-layout (binding = 6) uniform sampler2D lastColorMap;
+layout (input_attachment_index = 0, set = 0, binding = 5) uniform subpassInput lastColorMap;
 
-layout (binding = 7) uniform sampler2D blurMap[2];
-layout (binding = 8, rgba8) writeonly restrict uniform image2D outBlur[2];
+layout (binding = 6) uniform sampler2D blurMap[2];
+layout (binding = 7, rgba8) writeonly restrict uniform image2D outBlur[2];
 
-layout (binding = 9) uniform sampler2D anamorphicMap[2];
-layout (binding = 10, r8) writeonly restrict uniform image2D outAnamorphic[2];
+layout (binding = 8) uniform sampler2D anamorphicMap[2];
+layout (binding = 9, r8) writeonly restrict uniform image2D outAnamorphic[2];
 
-layout (binding = 11) uniform sampler3D lutMap;
+#else
+// Final Descriptor Set //
+layout (binding = 1) uniform sampler2D colorMap;
+layout (binding = 2) uniform sampler2DArray noiseMap;	// bluenoise RG channels, 64 slices.
 
-layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput inputGUI;
+layout (binding = 3) uniform sampler2D temporalColorMap;
+
+layout (binding = 4) uniform sampler2D blurMap[2];
+
+layout (binding = 5) uniform sampler2D anamorphicMap[2];
+
+layout (binding = 6) uniform sampler3D lutMap;
+
+layout (input_attachment_index = 0, set = 0, binding = 7) uniform subpassInput inputGUI;
+
+#endif
 
 #if defined(TMP_PASS)
 // Shadertoy - https://www.shadertoy.com/view/lt3SWj
@@ -65,7 +86,7 @@ layout (input_attachment_index = 0, set = 0, binding = 12) uniform subpassInput 
 
 vec4 temporal_aa(in const vec2 uv)
 {
-	const vec4 lastColor = textureLod(lastColorMap, uv, 0);
+	const vec4 lastColor = subpassLoad(lastColorMap);
     
     vec3 antialiased = lastColor.xyz;
     float mixRate = min(lastColor.w, 0.5);
@@ -117,7 +138,6 @@ vec4 temporal_aa(in const vec2 uv)
         
     return vec4(antialiased, mixRate);
 }
-#endif
 
 void anamorphicMask(in const vec3 color)
 {
@@ -132,7 +152,9 @@ void anamorphicMask(in const vec3 color)
 
 	imageStore(outAnamorphic[0], ivec2(In.uv * ScreenResDimensions), mask.xxxx);
 }
+#endif
 
+#ifdef SMAA_PASS_0
 void anamorphicReduction(in const vec2 uv)
 {
 	float color = 0;
@@ -147,7 +169,9 @@ void anamorphicReduction(in const vec2 uv)
 
 	imageStore(outAnamorphic[1], ivec2(In.uv * ScreenResDimensions), color.xxxx);
 }
+#endif
 
+#ifdef SMAA_PASS_2
 vec3 anamorphicFlare(in const vec2 uv)
 {
 	const float flare = textureLod(anamorphicMap[1], uv / vec2(128, 1), 0).r;
@@ -160,21 +184,27 @@ vec3 anamorphicFlare(in const vec2 uv)
 
    return color;
 }
+#endif
 
-#ifdef OVERLAY
+//#ifdef OVERLAY
 //const vec3 gui_punk = vec3( 937.254e-3f, 23.594e-3f, 411.764e-3f );
 //const vec3 gui_bleed = vec3( 349.019e-3f, 200e-3f, 635.294e-3f );
 
-const vec3 gui_green = vec3(266.666e-3f, 913.725e-3f, 537.254e-3f); // 0x0089E944  - abgr
-const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);		// 0x00CAFF9E  - abgr
+//const vec3 gui_green = vec3(266.666e-3f, 913.725e-3f, 537.254e-3f); // 0x0089E944  - abgr
+//const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);		// 0x00CAFF9E  - abgr
 	
 //const vec3 gui_bleed = vec3(1.0f, 545.098e-3f, 152.941e-3f);
 //const vec3 gui_nixie = vec3(960.784e-3f, 1.0f, 94.1176e-3f);
-#endif
+//#endif
+
+#ifdef SMAA_PASS_2
 
 #define LUT_SIZE_STANDARD 65
 const float LUT_SCALE = (LUT_SIZE_STANDARD - 1.0f) / LUT_SIZE_STANDARD;
 const float LUT_OFFSET = 1.0f / (2.0f * LUT_SIZE_STANDARD);
+
+#endif
+
 
 #ifdef HDR
 // sRGB to bt.2020 wide gamut
@@ -265,15 +295,10 @@ void main() {
 #elif defined (SMAA_PASS_2)	// final pass aa + blur upsample + dithering + anamorphic flare	
 
 	vec3 color = textureLod(colorMap, In.uv, 0).rgb;
+
 	const vec4 temporal_color = textureLod(temporalColorMap, In.uv, 0);
-
-	color = mix(color, temporal_color.rgb, 0.5f);  // 1st: average TAA result with MSAA result (provides best looking result - SMAA removed as it wasn't as sharp)
-
-//	const vec4 last_color = textureLod(lastColorMap, In.uv, 0); 
 	
-	// 2nd: average 2 temporal resolves. The remainder(mix_rate) of last color with current color
-	//									 The mix_rate from current temporal of last color with current color
-//	color = mix( mix(last_color.rgb, color, 1.0f - last_color.a).rgb, mix(last_color.rgb, color, temporal_color.a).rgb, 0.5f ); // not over-sharp like b4 and produces motion blur when there is significant velocity
+	color = mix(color, temporal_color.rgb, 0.5f);  // 1st: average TAA result with MSAA result (provides best looking result - SMAA removed as it wasn't as sharp)
 
 	// 3rd: blur the color so far using the temporal map, based on how dark it is
 	// using that result, subtract it from the color using absolute differences
@@ -291,8 +316,8 @@ void main() {
 	// AA at this point is nearly perfect, the image has an extremely wide range in contrast and just pops out
 	// very happy, backup!
 	// save last color for temporal usuage - do not want dithering to add random aliasing
-	imageStore(outLastColor, ivec2(In.uv * ScreenResDimensions), vec4(color, temporal_color.a));	// must preserve temporal alpha channel in output
-
+	outLastFrame = vec4(color, temporal_color.a); // must preserve temporal alpha channel in output
+	
 	{ // 1.) LUT & add in the finalized bloom
 	
 		// ############# Final Post Processing Pass ###################### //
@@ -307,7 +332,7 @@ void main() {
 
 	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
 	const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
-	{ // ANAMORPHIC FLARE
+	{ // ANAMORPHIC FLAREc
 	
 		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]
 		const vec3 flare = anamorphicFlare(In.uv);
