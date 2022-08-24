@@ -149,7 +149,7 @@ namespace world
 			}
 		}
 		
-		xmForce = XMVectorScale(xmForce, cPhysics::GRAVITY);
+		xmForce = XMVectorMultiply(xmForce, XMVectorSet(1.0f, cPhysics::GRAVITY, 1.0f, 0.0f));
 		
 		tTime const tNow(now());
 		float const tDelta = time_to_float(tNow - instance->getDestructionTime());
@@ -229,7 +229,7 @@ namespace world
 			// if video color is pure black turn off emission
 			voxel.Emissive = !(0 == voxel.Color);
 		}
-		else if (isVoxelWindow(voxel)) { // Only for specific emissive voxels, with matching palette index for building windows
+		/*else if (isVoxelWindow(voxel)) { // Only for specific emissive voxels, with matching palette index for building windows
 
 			static constexpr float UINT32_MAXF = (float)UINT32_MAX,
 								   MIN_BRIGHTNESS = 136.0f; // found to be lowest usuable minimum for window shades.
@@ -271,7 +271,7 @@ namespace world
 			else {
 				voxel.Emissive = windows[found_index].emissive;
 			}
-		}
+		}*/
 
 		return(voxel);
 	}
@@ -312,11 +312,7 @@ namespace world
 					}
 				}
 			}
-		}
-		//if (> (instance->getVoxelCount() >> 1)) { // if destroyed voxel count is greater than half the number of voxels that the model contains, destroy the building game object instance.
-		//	const_cast<Volumetric::voxelModelInstance_Static* const __restrict>(instance)->destroy();
-		//}
-		
+		}		
 	}
 
 	cBuildingGameObject::~cBuildingGameObject()

@@ -37,7 +37,6 @@ namespace world
 	
 	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*
 	XMVECTOR const __vectorcall getOrigin();
-	XMVECTOR const __vectorcall getOriginNoFractionalOffset(); // used only in rendering - use getOrigin() instead
 	XMVECTOR const __vectorcall getFractionalOffset(); // beware double adding the fractional offset to a transformation that will later be multiplied by the view matrix. the view matrix already contains the fractional offset translation!
 
 	v2_rotation_t const& getAzimuth();

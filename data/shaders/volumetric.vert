@@ -10,7 +10,7 @@ writeonly layout(location = 0) out streamOut
 	noperspective vec3	rd;
 	noperspective vec3	eyePos;
 	flat vec3			eyeDir;
-	flat float			slice; 
+
 } Out;
 
 // "World Visible Volume"			 // xyz
@@ -24,10 +24,10 @@ void main() {
 
 	volume_translation = (-0.5f - (volume_translation - inPos.xyz)) + vec3(-0.25f,-0.25f,0.25f); // this perfectly aligns the center of the volume *do not change* *verified*
 
-	precise vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
+	precise vec3 position = 0.5f * fma(inPos.xyz, WorldDimensions.xxx, volume_translation);//, fractional_offset()); // **bugfix** fractional offset must be applied here *last* for proper volume alignment // *bugfix [[[ 2/2 places fractional offset is added to ]]]
 
 	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewproj * vec4(position * 0.5f, 1.0f);
+	gl_Position = u._viewproj * vec4(position, 1.0f);
 
 	// Compute eye position and ray directions in the unit cube space
 
@@ -40,8 +40,6 @@ void main() {
 	eyeDir.y = -eyeDir.y;  // must invert y axis here!! otherwise rotation of camera reveals incorrect depth
 	Out.eyeDir.xzy = normalize(eyeDir); // Out.eyeDir is flat, normalized and good to use in fragment shaders
 	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
-
-	Out.slice = float(u._uframe & 63U); // +blue noise over time
 }
 
 /*

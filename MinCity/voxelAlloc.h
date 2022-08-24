@@ -17,7 +17,7 @@ namespace Volumetric
 												// 512x256x512 times VoxelNormal = 12.8 GB !!!! where a "line" of 2x256x512 times VoxelNormal = 50 MB
 	// needs measurement from stress test
 	BETTER_ENUM(Allocation, uint32_t const,
-		VOXEL_RENDER_FACTOR_BITS = 5,
+		VOXEL_RENDER_FACTOR_BITS = 6,
 		VOXEL_SCREEN_XYZ = Iso::SCREEN_VOXELS_X + Iso::SCREEN_VOXELS_Y + Iso::SCREEN_VOXELS_Z,
 
 		VOXEL_GRID_VISIBLE_XZ = Iso::SCREEN_VOXELS_XZ,
@@ -49,7 +49,7 @@ namespace Volumetric
 	read_only inline XMVECTORF32 const _xmInvTransformToIndexScale{ 0.5f, -0.5f, 0.5f };
 	read_only inline XMVECTORF32 const _xmTransformToIndexBias{ (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f, 0.0f, (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f };
 	read_only inline XMVECTORF32 const _xmTransformToIndexBiasOverScale{ ((float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f) / 2.0f, 0.0f, ((float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f) / 2.0f};
-	read_only inline XMVECTORF32 const _xmInverseVisibleXYZ{ Volumetric::INVERSE_MINIGRID_VISIBLE_X, Volumetric::INVERSE_MINIGRID_VISIBLE_Y, Volumetric::INVERSE_MINIGRID_VISIBLE_Z, 1.0f };
+	read_only inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_MINIGRID_VISIBLE_X, Volumetric::INVERSE_MINIGRID_VISIBLE_Y, Volumetric::INVERSE_MINIGRID_VISIBLE_Z, 1.0f };
 
 }// end ns
 

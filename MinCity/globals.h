@@ -180,13 +180,14 @@ namespace Globals
 #else
 								 MIN_ZOOM_FACTOR = DEFAULT_ZOOM_SCALAR, // fits the bounded volume in release builds
 #endif
-								 ZOOM_SPEED = 0.44f;
+								 ZOOM_SPEED = 0.44f; // see Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER for edge scrolling speed
+	
 							// Parallel Projections have a magnitude greater range in precision. Orthographic projection has nearly infinite accuracy compared to perspective projection. *Do not optimize these values further* The high depth buffer precision is supported, when coupled with a 32bit depth buffer.
 	static constexpr double const MINZ_DEPTH = (0.001 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
 	static constexpr double const MAXZ_DEPTH = (400.0 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
-	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 33;	 // 33ms = 30fps maximum gui update interval when no input is flagging the gui to be updated
+	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 16;	 // 16ms = 60fps maximum gui update interval when no input is flagging the gui to be updated (set for minimum latency)
 	
 	static constexpr 
 		uint32_t const MIN_BLACK_LVL_EMISSIVE = 8;

@@ -341,7 +341,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 			// take 2D (x,z) (in XMFLOAT2A form so residing in x,y) coordinates and add height, swizzle to correct form of x,y,z result
 			XMVECTOR xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSetZ(xmObjectGridSpace, fVoxelHeight)));
 			// *************** make relative to world origin (gridspace to worldspace transform) *****************************
-			xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, world::getOriginNoFractionalOffset()); // this is ultimately multiplied by view matrix which already has the fractional offset translation
+			xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, world::getOrigin() /* plus fractional offset to remove*/); // this is ultimately multiplied by view matrix which already has the fractional offset translation
 
 			// UV's swizzled to x,z,y form
 			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex (these voxels are not affected by gridoffset) - they may need to be***
@@ -355,7 +355,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 				// xyz = visible relative UV,  w = notusing detailed occlusion - set to something else ?
 				XMVECTOR xmUVs(XMVectorMultiplyAdd(
 					xmIndex,
-					Volumetric::_xmInverseVisibleXYZ,
+					Volumetric::_xmInverseVisible,
 					XMVectorSet(0.0f, 0.0f, 0.0f, fUniformDistance) // Uniform/voxel float parameter (instead of usual COLOR used by voxels in models
 				));
 

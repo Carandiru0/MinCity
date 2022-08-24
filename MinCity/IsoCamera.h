@@ -48,15 +48,9 @@ namespace Iso
 																															// *or* provably for the special case of a strictly isometric voxel engine - parallel orthographic projection is the best solution!
 
 	static constexpr fp_seconds const
-		CAMERA_SCROLL_DELAY = fp_seconds(milliseconds(333));
+		CAMERA_SCROLL_DELAY = fp_seconds(milliseconds(33));
 	static constexpr int32_t const
-		CAMERA_SCROLL_DISTANCE_MULTIPLIER = 1;    // 0 would be no multiplier (x1) same as input. 1 would be double multiplier (x2). 2 would be quadruple multiplier (4x)
-	static constexpr float const
-		CAMERA_TRANSLATE_SPEED = SFM::GOLDEN_RATIO * 2.0f, // good speed minimum
-		CAMERA_DAMPING = 0.09f;
-	static constexpr uint32_t const
-		CAMERA_DISTANCE_RESET_MILLISECONDS = 50,	// affects speed
-		CAMERA_VELOCITY_RESET_SECONDS = 4;			// stopping time
+		CAMERA_SCROLL_DISTANCE_MULTIPLIER = 0;    // 0 would be no multiplier (x1) same as input. 1 would be double multiplier (x2). 2 would be quadruple multiplier (4x)
 
 } // end ns
 

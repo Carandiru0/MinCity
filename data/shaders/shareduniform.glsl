@@ -10,15 +10,15 @@ layout (binding = 0) restrict readonly uniform SharedUniform {
   vec4		_eyePos;
   vec4		_eyeDir;	 // direction to origin(0,0,0) fixes rendering artifacts of raymarch
 
-  vec4		_aligned_data0;  // components #define below
+  precise vec4		_aligned_data0;  // components #define below
 
   uint		_uframe;	// must be last due to alignment 
 } u;
 
 // aligned data 0
-vec3 fractional_offset() { return(vec3(u._aligned_data0.x, 0.0f, u._aligned_data0.y)); }
-float time_delta() { return(u._aligned_data0.z); }
-float time() { return(u._aligned_data0.w); }
+precise vec3 fractional_offset() { return(vec3(u._aligned_data0.x, 0.0f, u._aligned_data0.y)); }
+precise float time_delta() { return(u._aligned_data0.z); }
+precise float time() { return(u._aligned_data0.w); }
 
 
 // aligned data 1

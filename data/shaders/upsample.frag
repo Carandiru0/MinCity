@@ -193,9 +193,9 @@ void main() {
 	// resolve 3 = unset start
 	const float scaled_bluenoise = fetch_bluenoise_scaled(In.uv, In.slice);
 	
-	// final verdict - denoise_sample wayy better than just a single reconstruct() - also leverages temporal supersampling of last frames full resolution output! superb reconstruction quality!
-	outVolumetric = denoise_sample(fullMap[VOLUME], checkeredMap[VOLUME], In.uv, scaled_bluenoise);
-	outReflection = denoise_sample(fullMap[REFLECT], checkeredMap[REFLECT], In.uv, scaled_bluenoise);
+	// final verdict - denoise sample results in blobbyness, reconstruct has more detail (better)
+	outVolumetric = reconstruct(checkeredMap[VOLUME], In.uv, scaled_bluenoise);   //denoise_sample(fullMap[VOLUME], checkeredMap[VOLUME], In.uv, scaled_bluenoise);
+	outReflection = reconstruct(checkeredMap[REFLECT], In.uv, scaled_bluenoise);  //denoise_sample(fullMap[REFLECT], checkeredMap[REFLECT], In.uv, scaled_bluenoise);
 }
 
 #else // not resolve
@@ -307,7 +307,7 @@ void main() {
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
 		vec3 volume_color = supersample(volumetricMap, In.uv, vdFd);
 
-		//expandAA(volumetricMap, volume_color.rgb, In.uv);  // softening of bilateral edges
+		//expandAA(volumetricMap, volume_color, In.uv);
 
 		volume_color *= alphaSumV; // pre-multiply w/ bilateral alpha
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
@@ -320,9 +320,6 @@ void main() {
 		// greater distance between source of reflection & reflected surface = greater blur
 		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
 	
-		// no aliasing
-		//expandBlurAA(reflectionMap, bounce_color.rgb, In.uv, 1.0f - alphaSumR_Blur);  // softening of bilateral edges
-
 		bounce_color.rgb *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha
 		outReflection = vec4(bounce_color, alphaSumR_Fade);
 

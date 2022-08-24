@@ -24,7 +24,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 //			--------Out = In
 
 // *********************************************** private usage : //     
-#ifdef FAST_LIGHTMAP
+
 void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -43,6 +43,7 @@ void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_colo
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
 }
+#ifdef FAST_LIGHTMAP
 void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -173,7 +174,7 @@ void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 ligh
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);
+	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions);
 
 	// nn sampling
 	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
@@ -181,7 +182,7 @@ void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in co
 void getLightMap( out float light_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);
+	//lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions);
 
 	// nn sampling
 	lightmap_internal_sampleNaturalNeighbour(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
@@ -190,12 +191,15 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 // main public functions:
 
 // final inverse square law equation used:
-// a = 1.0f / ( (d + 1.0) * (d + 1.0 )
-// see : https://www.desmos.com/calculator/hqksaay8ax
+// a = 1.0 / sqrt(d*d + 1.0)  [compute shader]   - light color is pre-multiplied by this equation
+// b = 1.0 / sqrt(d*d + 1.0)  [fragment shader]  - the light color is multiplied again by this equation
+// final attenuation is then b*a*color
+// see : https://www.desmos.com/calculator/qlxe8vxuzh
 float getAttenuation(in const float normalized_light_distance, in const float volume_length) // this is half of the equation, when light volume is generated, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
 {
-	// denormalization and scaling to world coordinates (actual world distance) + 1.0
-	return( 1.0f / fma(normalized_light_distance, volume_length, 1.0f) );
+	// denormalization and scaling to world coordinates (actual world distance)
+	const float d = normalized_light_distance * volume_length;
+	return( 1.0f / sqrt(fma(d,d,1.0)) );
 }
 
 #define att a

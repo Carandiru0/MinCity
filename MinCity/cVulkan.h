@@ -320,7 +320,7 @@ private:
 
 	
 public:
-	static void renderCompute(vku::compute_pass&& __restrict c);
+	static bool const renderCompute(vku::compute_pass&& __restrict c);
 	static void renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	static void renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	static void renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
@@ -328,7 +328,7 @@ public:
 	static void renderClearCommandBuffer(vku::clear_renderpass&& __restrict pp);
 	static void gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
 private:
-    inline void _renderCompute(vku::compute_pass&& __restrict c);
+    inline bool const _renderCompute(vku::compute_pass&& __restrict c);
 	inline void _renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	inline void _renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	inline void _renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);

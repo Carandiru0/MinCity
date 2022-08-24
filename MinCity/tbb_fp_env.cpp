@@ -1,6 +1,7 @@
 #include <xmmintrin.h>
 #include <pmmintrin.h>
 #include <tbb/tbb.h>
+#include <locale.h>
 
 // CALL from any thread other than main thread
 __declspec(noinline) void local_init_tbb_floating_point_env()

@@ -350,6 +350,7 @@ void main() {
 #if defined(BASIC) && !defined(ROAD) && !defined(TRANS) // only basic past this point
 
 	// derive the normalized index
+	//worldPos = worldPos - fractional_offset(); // *bugfix - the fractional offset was removed in RenderGrid(), here it's added back in just for the opacity map. This is required for the Volumetric raymarch to be properly aligned. This is the 2nd place the fractional offset is used (added back). Third in volumetric.vert
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
 #if !defined(HEIGHT)

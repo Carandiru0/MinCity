@@ -65,15 +65,15 @@ namespace Iso
 #define MINIVOXEL_FACTOR_BITS Iso::VOXELS_GRID_SLOT_XZ_BITS_2N
 
 	static constexpr uint32_t const
-		OVER_SCREEN_VOXELS_XZ = 256,
-		OVER_SCREEN_VOXELS_X = OVER_SCREEN_VOXELS_XZ,
-		OVER_SCREEN_VOXELS_Z = OVER_SCREEN_VOXELS_XZ;
-
-	static constexpr uint32_t const
 		SCREEN_VOXELS_XZ = 256,
 		SCREEN_VOXELS_X = SCREEN_VOXELS_XZ,		// must be be even numbers, maximum zoom out affects this value so screen grid is fully captured in its bounds
 		SCREEN_VOXELS_Y = 256,					// this is "up", needs to be measured
 		SCREEN_VOXELS_Z = SCREEN_VOXELS_XZ;		// x and z should be equal and divisible by 8
+
+	static constexpr uint32_t const
+		OVER_SCREEN_VOXELS_XZ = SCREEN_VOXELS_XZ, // (can optionally be set larger)
+		OVER_SCREEN_VOXELS_X = OVER_SCREEN_VOXELS_XZ,
+		OVER_SCREEN_VOXELS_Z = OVER_SCREEN_VOXELS_XZ;
 
 	static constexpr float const
 		HEIGHT_SCALE = 16.0f,		// this value and shader value for height need to always match (uniforms.vert)

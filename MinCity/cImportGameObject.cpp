@@ -47,7 +47,7 @@ namespace world
 
 	void __vectorcall cImportGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{		
-		XMVECTOR const xmWorldOrigin(world::getOriginNoFractionalOffset());
+		XMVECTOR const xmWorldOrigin(world::getOrigin());
 
 		XMVECTOR xmOrigin, xmControl;
 

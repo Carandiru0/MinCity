@@ -77,7 +77,7 @@ namespace // private to this file (anonymous)
 		static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
 
 		XMFLOAT3A Origin;  // always stored swizzled to x,z coordinates
-		XMFLOAT3A voxelFractionalGridOffset;  // always stored negated and swizzled to x,z coordinates
+		XMFLOAT3A voxelFractionalGridOffset; // always stored negated and swizzled to x,z coordinates
 
 		point2D_t
 			voxelIndex_TopLeft,
@@ -86,7 +86,7 @@ namespace // private to this file (anonymous)
 		v2_rotation_t Azimuth;
 		float PrevAzimuthAngle, TargetAzimuthAngle;	
 
-		XMFLOAT2A TargetPosition, Displacement;
+		XMFLOAT2A PrevPosition, TargetPosition, Displacement;
 		XMFLOAT2A Velocity;
 
 		XMFLOAT3A ZoomExtents;
@@ -410,74 +410,30 @@ static void UpdateFollow(tTime const& __restrict tNow)
 XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	static constexpr milliseconds const
-		SMOOTH_MS_ZOOM{ 241 },
-		SMOOTH_MS_ROTATE{ 361 };
+		SMOOTH_MS_ZOOM{ 200 },
+		SMOOTH_MS_ROTATE{ 400 },
+		SMOOTH_MS_TRANS(SMOOTH_MS_ROTATE);
 
 	// **** camera designed to allow rotation and zooming (no scrolling) while paused
 
+	// TRANSLATION //
+	if (zero_time_point != oCamera.tTranslateStart) {
+		static constexpr fp_seconds const tSmooth = fp_seconds(SMOOTH_MS_TRANS);
 
-	// **** NICE FUCKING SCROLLING ******** BEGIN // frame-rate independent and Very nice fine smooth control of camera heading from the translation distance delta	uint32_t Comp(0);
-	{
-		static tTime tLastDistance{ tNow }, tLastVelocity{ tNow };
+		fp_seconds const tDelta = critical_now() - oCamera.tTranslateStart;
 
-		XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin)));
+		XMVECTOR const targetPosition(XMVectorRound(XMLoadFloat2A(&oCamera.TargetPosition)));
 
-		if (zero_time_point != oCamera.tTranslateStart) {
-
-			XMVECTOR const xmTargetDisplacement = XMVectorSubtract(XMLoadFloat2A(&oCamera.TargetPosition), xmOrigin);
-			float const fDistance = XMVectorGetX(XMVector2Length(xmTargetDisplacement));
-
-			XMVECTOR const xmDisplacement(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Y, XM_SWIZZLE_X, XM_SWIZZLE_Y>(XMLoadFloat2A(&oCamera.Displacement)));
-
-			uint32_t Comp(0);
-			XMVectorEqualR(&Comp, SFM::abs(xmDisplacement), XMVectorZero());  // absolute, so its tested in either direction
-
-			if (XMComparisonAnyFalse(Comp) && oCamera.InitialDistanceToTarget >= 0) {
-
-				XMVECTORF32 const xmSpeed{ Iso::CAMERA_TRANSLATE_SPEED, Iso::CAMERA_TRANSLATE_SPEED, 0.0f, 0.0f };
-
-				XMVECTOR xmVelocity = SFM::__fma(XMVectorMultiply(xmDisplacement, _mm_set1_ps(time_to_float(tDelta))), xmSpeed, XMLoadFloat2A(&oCamera.Velocity));
-
-				xmVelocity = XMVectorScale(xmVelocity, 1.0f - Iso::CAMERA_DAMPING);
-
-				XMStoreFloat2A(&oCamera.Velocity, xmVelocity);
-				XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorAdd(xmOrigin, xmVelocity)));
-
-				oCamera.InitialDistanceToTarget -= XMVectorGetX(XMVector2Length(xmVelocity));
-
-				if (tNow - tLastDistance > milliseconds(Iso::CAMERA_DISTANCE_RESET_MILLISECONDS)) {  // allows a small amount of accumulation to simulate a small amount of instant acceleration =)
-					XMStoreFloat2A(&oCamera.Displacement, XMVectorZero());
-					tLastDistance = tNow;
-				}
-				tLastVelocity = tNow;  // keep reseting //
-
-			}
-			else {
-				oCamera.tTranslateStart = zero_time_point;
-			}
+		if (tDelta >= tSmooth) { // reset, finished transition
+			oCamera.tTranslateStart = zero_time_point;
+			XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(targetPosition));
 		}
 		else {
-
-			XMVECTOR xmVelocity = XMLoadFloat2A(&oCamera.Velocity);
-
-			{
-				uint32_t Comp(0);
-				XMVectorGreaterR(&Comp, SFM::abs(xmVelocity), XMVectorZero());  // absolute, so its tested in either direction
-
-				if (XMComparisonAnyTrue(Comp)) { // only decay to zero if needed
-					xmVelocity = XMVectorScale(xmVelocity, 1.0f - Iso::CAMERA_DAMPING);
-
-					XMStoreFloat2A(&oCamera.Velocity, xmVelocity);
-					XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorAdd(xmOrigin, xmVelocity)));
-				}
-			}
-
-			// ensure we decay to zero by reseting explicity after n seconds //
-			if (tNow - tLastVelocity > seconds(Iso::CAMERA_VELOCITY_RESET_SECONDS)) {
-				XMStoreFloat2A(&oCamera.Velocity, XMVectorZero());
-				tLastVelocity = tNow;
-			}
-		} // **** NICE FUCKING SCROLLING ******** END //
+			float const tInvDelta = SFM::saturate(time_to_float(tDelta / tSmooth));
+			XMVECTOR const xmInterpPosition(SFM::lerp(XMLoadFloat2A(&oCamera.PrevPosition), targetPosition, tInvDelta));
+			XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(xmInterpPosition));
+			oCamera.Azimuth = v2_rotation_t();
+		}
 	}
 
 	// ZOOM //
@@ -533,18 +489,16 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 			if (!vScroll.isZero()) {
 
-				_tBorderScroll -= delta();
+				float const len = XMVectorGetX(XMVector2Length(p2D_to_v2(vScroll)));
+				_tBorderScroll -= delta() / len;
 				_tBorderScroll = fp_seconds(SFM::max(0.0, _tBorderScroll.count()));
 
 				if (zero_time_duration == _tBorderScroll) {
 					translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
 					_bIsEdgeScrolling = true;
 					_bMotionDelta = true; // override so that dragging continue
+					_tBorderScroll = Iso::CAMERA_SCROLL_DELAY; // reset
 				}
-			}
-			else {
-				_tBorderScroll += delta();
-				_tBorderScroll = fp_seconds(SFM::min(Iso::CAMERA_SCROLL_DELAY.count(), _tBorderScroll.count()));
 			}
 		}
 	}
@@ -578,7 +532,10 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 				if (_bDraggingMouse) {
 					float const fXDelta = _vMouse.x - _vDragLast.x;
 
-					rotateCamera(fXDelta * time_to_float(tDelta));	// bugfix: must be constant delta, not the difference between now() and dragstart
+					//  fXDelta      angle
+					//----------- = --------
+					// max width     XM_2PI
+					rotateCamera((SFM::sgn(fXDelta) * SFM::saturate(abs(fXDelta) / SFM::__sqrt(Iso::SCREEN_VOXELS_XZ*Iso::SCREEN_VOXELS_XZ + Iso::SCREEN_VOXELS_XZ * Iso::SCREEN_VOXELS_XZ))) * XM_2PI * 3.0f);	// bugfix: must be constant delta, not the difference between now() and dragstart
 
 					_vDragLast = _vMouse;
 					_tDragStart = now();
@@ -603,22 +560,23 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	voxelIndex = p2D_sub(voxelIndex, visibleRadius);
 	
 	// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-	point2D_t const voxelIndex_TopLeft = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+	point2D_t const voxelIndex_TopLeft = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE));
 	oCamera.voxelIndex_TopLeft = p2D_sub(voxelIndex_TopLeft, Iso::GRID_OFFSET);
 
 	point2D_t voxelIndex_Center( SFM::clamp(oCamera.voxelIndex_TopLeft.v, _mm_setzero_si128(), _mm_set1_epi32(Iso::WORLD_GRID_SIZE - 1) ));
 	// Change from  (0,0) => (x,y) to  (-x,-y) => (x,y)
-	oCamera.voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+	oCamera.voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALFSIZE));
 
 	// Convert Fractional component from GridSpace
 	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin)));  // FOR REALLY SMOOTH SCROLLING //
 
 	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFract)); // store fractional offset always negated and swizzled to x,z components
+	
 	XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin)); // store origin always swizzled to x,z components
 
 #ifndef NDEBUG
 	static XMVECTOR DebugVariable;
-	DebugVariable = xmFract;
+	DebugVariable = XMLoadFloat3A(&oCamera.voxelFractionalGridOffset);
 	setDebugVariable(XMVECTOR, DebugLabel::CAMERA_FRACTIONAL_OFFSET, DebugVariable);
 #endif
 	
@@ -999,11 +957,7 @@ namespace world
 	XMVECTOR const __vectorcall getOrigin()
 	{
 		return(XMLoadFloat3A(&oCamera.Origin));
-	}
-	XMVECTOR const __vectorcall getOriginNoFractionalOffset() // used only in rendering - use getOrigin() instead
-	{	// voxelFractionalGridOffset is always stored negated, so we add it here to remove the fractional offset.
-		return(XMVectorAdd(XMLoadFloat3A(&oCamera.Origin), XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)));  // example) this gets used in calculation that later is multiplied by the view matrix.
-	}																											 //		     -view matrix already contains the translation neccessary for the fractional offset -this prevents the fractional offset from being added twice in rendering (voxel submission) - see volumetricradialgrid.h
+	}																										
 	XMVECTOR const __vectorcall getFractionalOffset()
 	{	// voxelFractionalGridOffset is always stored negated, so just add it!
 		return(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
@@ -2614,8 +2568,8 @@ namespace // private to this file (anonymous)
 						{
 							// Make index (row,col)relative to starting index voxel
 							// calculate origin from relative row,col
-							// Add the offset of the world origin calculated
-							XMVECTOR const xmVoxelOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart))); // make relative to render start position
+							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. this is the 1st place the fractional offset is used (removal). 2nd is in uniforms.vert
+							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)))); // make relative to render start position
 							bool bRenderVisible(false);
 
 							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
@@ -3721,6 +3675,8 @@ namespace world
 		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears");
 		___streaming_store_fence(); // ensure "streaming" clears are coherent
 
+		_OpacityMap.map(); // (maps, should be done once clear for lights has completed, and before any lights are added)
+
 		// GRID RENDER //
 		voxelRender::RenderGrid<Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z>(
 			oCamera.voxelIndex_TopLeft,
@@ -3819,7 +3775,7 @@ namespace world
 			}
 		}
 		
-		_OpacityMap.commit(); // lightweight call (commits the new bounds)
+		_OpacityMap.commit(); // (commits the new bounds, unmaps)
 
 		///
 		{
@@ -3921,7 +3877,7 @@ namespace world
 	{
 		RenderTask_Normal(resource_index);
 	}
-	void cVoxelWorld::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
+	bool const cVoxelWorld::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
 		// texture shaders [[deprecated]]
 		/*if (c.cb_render_texture) {
@@ -4012,14 +3968,19 @@ namespace world
 			}
 		}
 		*/
-		_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data);
+		return(_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data));
 	}
 
-	void cVoxelWorld::Transfer(vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo)
+	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo)
 	{
+		constinit static vku::double_buffer<UniformDecl::VoxelSharedUniform> current_state{};
+		
+		// make a copy to static memory, to ensure memory location and data is current for only this frame (this takes a snapshot of the current state and keeps it unique for double buffering)
+		current_state[resource_index] = _currentState.Uniform;
+		
 		// ######################### STAGE 1 - UBO UPDATE (that all subsequent renderpasses require //
 		cb.updateBuffer(
-			ubo.buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform), (const void*)&_currentState.Uniform
+			ubo.buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform), (const void*)&current_state[resource_index]
 		);
 
 		// *Required* - solves a bug with trailing voxels, Vulkan->cpp has the corresponding "acquire" operation in static command buffer operation
@@ -4031,7 +3992,7 @@ namespace world
 		);
 	}
 
-	void cVoxelWorld::Transfer(uint32_t resource_index, vk::CommandBuffer& __restrict cb,
+	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
 		vku::DynamicVertexBuffer* const* const& __restrict vbo)
 	{		
 		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
@@ -4080,10 +4041,8 @@ namespace world
 
 		// do not believe this is neccessary __streaming_store_fence(); // ensure writes are coherent before queue submission
 	}
-	void cVoxelWorld::AcquireTransferQueueOwnership(uint32_t resource_index, vk::CommandBuffer& __restrict cb)
-	{
-		resource_index = resource_index > 1 ? 0 : resource_index;
-		
+	void cVoxelWorld::AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb)
+	{		
 		// transfer queue ownership of buffers *required* see voxelworld.cpp Transfer() function
 		{ // ## ACQUIRE ## //
 			static constexpr size_t const buffer_count(2ULL);
@@ -4180,7 +4139,7 @@ namespace world
 		if (0.0f != anglerelative) {
 			// setup lerp
 			oCamera.PrevAzimuthAngle = oCamera.Azimuth.angle();
-			oCamera.TargetAzimuthAngle = oCamera.Azimuth.angle() + anglerelative * 2.0f;
+			oCamera.TargetAzimuthAngle = oCamera.Azimuth.angle() + anglerelative;
 
 			// signal transition
 			oCamera.tRotateStart = critical_now();
@@ -4203,13 +4162,12 @@ namespace world
 		XMVectorEqualR(&Result, XMVectorZero(), xmDisplacement);
 		if (XMComparisonAnyFalse(Result)) {
 
-			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin)));
+			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-			XMStoreFloat2A(&oCamera.TargetPosition, xmPosition);
-			XMStoreFloat2A(&oCamera.Displacement, XMVectorAdd(XMLoadFloat2A(&oCamera.Displacement), xmDisplacement));
-			XMStoreFloat(&oCamera.InitialDistanceToTarget, XMVector2Length(xmDisplacement));
+			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition));
+			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
 			// signal transition
 			oCamera.tTranslateStart = now();  // closer to exact now results in the lerp not being skipped right to target position
@@ -4226,24 +4184,15 @@ namespace world
 		XMVectorEqualR(&Result, XMVectorZero(), xmDisplacement);
 		if (XMComparisonAnyFalse(Result)) {
 
-			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin)));
+			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
 
 			// orient displacement in direction of camera
 			xmDisplacement = v2_rotate(xmDisplacement, oCamera.Azimuth);
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-			XMStoreFloat2A(&oCamera.TargetPosition, xmPosition);
-
-			float fDisplacementLength;
-			XMStoreFloat(&fDisplacementLength, XMVector2Length(xmDisplacement));
-
-			// get actual normal and scale it by the displacement length
-			xmDisplacement = XMVectorScale(XMVector2Normalize(XMVectorSubtract(xmPosition, xmOrigin)), fDisplacementLength);
-
-			// accumulate displacement
-			XMStoreFloat2A(&oCamera.Displacement, XMVectorAdd(XMLoadFloat2A(&oCamera.Displacement), xmDisplacement));
-			XMStoreFloat(&oCamera.InitialDistanceToTarget, XMVector2Length(xmDisplacement));
+			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition));// XMVectorAdd(xmPosition, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(getFractionalOffset())));
+			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
 			// signal transition
 			oCamera.tTranslateStart = now();
@@ -4262,11 +4211,11 @@ namespace world
 			
 		// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
 		point2D_t const absDir(p2D_abs(vDir));
-		if (absDir.x > absDir.y) {		 // 0.75f gives more fine grained distance selection when using multiplier
-			xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
+		if (absDir.x > absDir.y) {		 
+			xmIso = XMVectorScale(xmIso, 1.0f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 		}
 		else {
-			xmIso = XMVectorScale(xmIso, 0.75f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
+			xmIso = XMVectorScale(xmIso, 1.0f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
 		}
 			
 		::translateCameraOrient(xmIso); // this then scrolls in direction camera is currently facing correctly
@@ -4458,9 +4407,9 @@ namespace world
 #ifndef NDEBUG
 		XMStoreFloat2A(&vPush, getDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR));
 #endif
-		//pack into vector for uniform buffer layout																			   // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)
+		//pack into vector for uniform buffer layout								                                                 // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)											   
 		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.z, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
-
+		                                                                
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
 		time_last = _currentState.time; // update last interpolated time
@@ -4478,12 +4427,13 @@ namespace world
 		XMMATRIX xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
 										   XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
-		XMVECTOR const xmOffset(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
-		// *bugfix major: - this is the only place the fractional offset needs to be added to. Result no jitter, perfect alignment of rasterized and raymarched views!
-		xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(xmOffset), xmView);
-		
-		_OpacityMap.pushViewMatrixOffset(xmView, xmOffset);
-		
+		// *bugfix - ***do not change***
+		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. There are 2 locations in the voxel geometry and volumetric raymarch shaders where the fractional offset is applied.
+		// *bugfix - moved fractional offset to shaders, increasing precision of voxel alignment with map/view scrolling
+		// fractional offset needs to be the last mathematical operation before the final value of (x) is used - in the shader geometry this happens right before the output vertex transform is output. in the volumetric shader it is also the same.
+		// fractional offset should not be applied in the "light" compute shader (testing light alignment still), this is however sampled...
+		// sampling the light volume with uv's in generated in the geometry shader for voxels are derived from the output vertex world position...which just had the fractional offset added and was output to the vertex transform
+		//xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(getFractionalOffset()), xmView);
 		_currentState.Uniform.view = xmView;
 		// not yet required
 		//_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
@@ -4506,7 +4456,7 @@ namespace world
 
 		// "XMMatrixInverse" found to be imprecise for acquiring vector components (forward, direction)
 		// using original values instead (-----precise))
-		_targetState.Uniform.eyePos = v3_rotate_azimuth(Iso::xmEyePt_Iso, oCamera.Azimuth);
+		_targetState.Uniform.eyePos = v3_rotate_azimuth(XMVectorAdd(Iso::xmEyePt_Iso, getFractionalOffset()), oCamera.Azimuth);
 
 		_targetState.zoom = oCamera.ZoomFactor;
 		
@@ -4693,41 +4643,36 @@ namespace world
 	{
 		_AsyncClearTaskID = async_long_task::enqueue<background_critical>([&, resource_index] {
 
-			tbb::parallel_invoke(
-				[=] {
-					getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
-				},
-				[=] {
-					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				},
-				[=] {
-					auto const& stagingBuffer(voxels.visibleRoad.opaque.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				},
-				[=] {
-					auto const& stagingBuffer(voxels.visibleRoad.trans.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				},
-				[=] {
-					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				},
-				[=] {
-					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-					___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				},
-				[=] {
-					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-					___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				);
+			{
+				auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleRoad.opaque.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleRoad.trans.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
+				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
+				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
+			{
+				auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
+				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+				stagingBuffer.unmap();
+			}
 			
 			/*
 			{
@@ -4750,6 +4695,9 @@ namespace world
 			}
 			*/
 		});
+
+		// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
+		getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
 	}
 	
 	// voxel painting
@@ -4767,7 +4715,8 @@ namespace world
 							  // the bug actually still pointed to the old data (not zeroed) and resulted in undefined behaviour. That behaviour resulted in voxels being added to existing voxels every frame, boom was an ~indefinite loop of voxels to traverse in the linked list.
 		mini::bits->clear();
 	}
-
+	
+	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE; // should be minivox size
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		_OpacityMap.SetSpecializationConstants_ComputeLight(constants);
@@ -4787,8 +4736,7 @@ namespace world
 		// volume dimensions																				 // xyz
 		constants.emplace_back(vku::SpecializationConstant(0, (float)Volumetric::voxelOpacity::getSize()));  // should be world volume size
 	}
-	static constexpr float const VOXEL_SCALAR = 1.0f;
-	static constexpr float const VOLUMETRIC_WORLD_SCALAR = VOXEL_SCALAR;
+	
 	void cVoxelWorld::SetSpecializationConstants_VolumetricLight_FS(std::vector<vku::SpecializationConstant>& __restrict constants) // all shader variables should be swizzled to xzy into fragment shader for texture lookup optimization. (ie varying vertex->fragnent shader variables)
 	{
 		point2D_t const frameBufferSz(MinCity::getFramebufferSize());
@@ -4799,26 +4747,21 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)(downResFrameBufferSz.x)));// // half-res frame buffer width
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)(downResFrameBufferSz.y)));// // half-res frame buffer height
 
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getVolumeLength() * VOLUMETRIC_WORLD_SCALAR));
-
 		// volume dimensions //																					// xzy
-		constants.emplace_back(vku::SpecializationConstant(5,  (float)Volumetric::voxelOpacity::getSize()));		  // should be size
-		constants.emplace_back(vku::SpecializationConstant(6,  (float)Volumetric::voxelOpacity::getInvSize()));  // should be inverse size
+		constants.emplace_back(vku::SpecializationConstant(4,  (float)Volumetric::voxelOpacity::getSize()));		  // should be world volume size
+		constants.emplace_back(vku::SpecializationConstant(5,  1.0f / (float)Volumetric::voxelOpacity::getSize()));       // should be inverse world volume size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getVolumeLength())); // should be world volume length (1:1 ratio here, do not scale by voxel size)
 
 		// light volume dimensions //																				// xzy
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth()));		   // should be width
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth()));		   // should be depth
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight()));		   // should be height
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth()));  // should be width
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth()));  // should be depth
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size
+		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize()));   // should be 1.0 / light volume size
 
 		// For depth reconstruction from hardware depth buffer
 		// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 		constexpr double ZFar = Globals::MAXZ_DEPTH;
 		constexpr double ZNear = Globals::MINZ_DEPTH;
-		constants.emplace_back(vku::SpecializationConstant(13, (float)ZFar)); 
-		constants.emplace_back(vku::SpecializationConstant(14, (float)ZNear)); 
+		constants.emplace_back(vku::SpecializationConstant(9, (float)ZFar)); 
+		constants.emplace_back(vku::SpecializationConstant(10, (float)ZNear)); 
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4866,7 +4809,6 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)MinCity::Vulkan->getMaximumNits()));// // maximum brightness of user monitor in nits, as defined in MinCity.ini
 	}
 
-	static constexpr float const VOXEL_WORLD_SCALAR = VOXEL_SCALAR;
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		point2D_t const frameBufferSize(MinCity::getFramebufferSize());
@@ -4877,17 +4819,13 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
 
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4899,17 +4837,13 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
 
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
@@ -4921,7 +4855,7 @@ namespace world
 		XMFLOAT3A transformBias, transformInv;
 
 		XMStoreFloat3A(&transformBias, Volumetric::_xmTransformToIndexBias);
-		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisibleXYZ);
+		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisible);
 
 		// do not swizzle or change order
 		constants.emplace_back(vku::SpecializationConstant(2, (float)transformBias.x));
@@ -4986,7 +4920,7 @@ namespace world
 		XMFLOAT3A transformBias, transformInv;
 
 		XMStoreFloat3A(&transformBias, Volumetric::_xmTransformToIndexBias);
-		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisibleXYZ);
+		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisible);
 
 		// do not swizzle or change order
 		constants.emplace_back(vku::SpecializationConstant(0, (float)transformBias.x));
@@ -5028,17 +4962,13 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
 
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Volumetric::voxelOpacity::getInvSize())); // should be inverse world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
 
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightWidth())); // should be width
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightDepth())); // should be depth
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Volumetric::voxelOpacity::getLightHeight())); // should be height
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
-		constants.emplace_back(vku::SpecializationConstant(10, 1.0f / (float)Volumetric::voxelOpacity::getLightWidth())); // should be inv width
-		constants.emplace_back(vku::SpecializationConstant(11, 1.0f / (float)Volumetric::voxelOpacity::getLightDepth())); // should be inv depth
-		constants.emplace_back(vku::SpecializationConstant(12, 1.0f / (float)Volumetric::voxelOpacity::getLightHeight())); // should be inv height
+		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants)

@@ -175,7 +175,7 @@ vec3 PerQuad(in vec3 normal)
 					// this is fixed later for fragment output of xzy
 }
 
-void EmitVxlVertex(in const vec3 center, in const vec3 tangent, in const vec3 normal)
+void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 {
 	// *bugfix - on amd we can get away with only setting these once per voxel, once per quad
 	// on nvidia, it's strict to the spec that all output values must be set on every vertex emission -like they are reset every EmitVertex()
@@ -183,20 +183,21 @@ void EmitVxlVertex(in const vec3 center, in const vec3 tangent, in const vec3 no
 	PerVoxel();
 	PerQuad(normal);
 	
-	vec3 worldPos = center + tangent;
-
+	//worldPos = worldPos + fractional_offset(); // *bugfix [[[ 1/2 places fractional offset is added to ]]]
+	
 #if defined(HEIGHT)
 	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
 #endif
 	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
 #if !defined(BASIC)
-
-	worldPos = worldPos + fractional_offset();
 	
 	// main uvw coord for light, common to terrain, road & normal voxels
-	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
-
+#if defined(HEIGHT)
+	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex; // bugged, -2.0 on y axis required?
+#else
+	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex; /*+ vec3(0,1.0f/128.0f,0)*/; //*** @todo - this needs to be found and fixed properly, off by one error on y axis.
+#endif
 	// final output must be xzy and transformed to eye/view space for fragment shader
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
 	// so no need for eyePos
@@ -252,7 +253,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #endif // not basic
 
-	EmitVxlVertex(center, tangent, normal);
+	EmitVxlVertex(center + tangent, normal);
 
 }
 
@@ -271,7 +272,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #endif // not basic
 
-	EmitVxlVertex(center, tangent, normal);
+	EmitVxlVertex(center + tangent, normal);
 
 }
 
@@ -290,7 +291,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #endif // not basic
 
-	EmitVxlVertex(center, tangent, normal);
+	EmitVxlVertex(center + tangent, normal);
 
 }
 
@@ -309,7 +310,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 #endif // not basic
 
-	EmitVxlVertex(center, tangent, normal);
+	EmitVxlVertex(center + tangent, normal);
 
 	EndPrimitive(); // *bugfix: if endprimitive is not used per quad - there are cases where the voxel trianglestrip is not drawing a "face" of the cube
 					//          which is very hard to isolate as its rare, < 2% of all voxels drawn for exammple with ground. 

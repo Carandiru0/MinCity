@@ -553,7 +553,7 @@ namespace voxB
 							bool const Transparent(Faded | voxel.Transparent);
 							
 							// update xmStreamOut if xmIndex is modified in instance.OnVoxel
-							xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
+							//xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
 
 							// Build hash //
 							uint32_t hash(0);

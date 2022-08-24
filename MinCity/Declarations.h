@@ -93,9 +93,9 @@ namespace UniformDecl
 		XMMATRIX	proj;
 		XMVECTOR	eyePos;
 		XMVECTOR	eyeDir;
-		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
+		XMVECTOR	aligned_data0;	// .xy = fractional offset, .z = time, .w = frame time delta
 
-		uint32_t	frame; // must be last
+		uint32_t	frame; // *must be last*
 	};
 	struct no_vtable nk_uniform {
 		XMMATRIX	projection;
@@ -119,27 +119,11 @@ namespace UniformDecl
 	// overlapping ranges defined per struct (inherited)
 
 	// ###pipeline### pushes their own specific range with size of the struct, offset is manually defined at compile time in order defined for the pipelinelayout below
-	typedef struct no_vtable alignas(4) ComputeLightPushConstantsJFA { // 4+4+4 = 12 bytes
+	typedef struct no_vtable alignas(4) ComputeLightPushConstants { // 4+4+4 = 12 bytes
 		int32_t		step;
 		uint32_t	index_output,
-					index_input;  // **** index_input must be last as it overlaps - filter shader uses it and updates only it in addition to the data in ComputeLightPushConstantsFilter
-	} ComputeLightPushConstantsJFA;
-	typedef struct no_vtable alignas(4) ComputeLightPushConstantsFilter : ComputeLightPushConstantsJFA { // 4 rows * 4 floats per row * 4bytes, +2 floats = 72 bytes
-		uint32_t	index_filter;
-		XMFLOAT4X4	view;
-		XMFLOAT3	offset;
-	} ComputeLightPushConstantsFilter;
-	// only typedef for size
-	typedef struct no_vtable alignas(4) ComputeLightPushConstantsOverlap {
-		uint32_t const	index_input;
-		uint32_t		index_filter;
-		XMFLOAT4X4		view;
-		XMFLOAT3		offset;
-	} ComputeLightPushConstantsOverlap;
-
-	// ###pipelinelayout### uses the leaf, order of data is defined here with multiple inheritance, memory layout is in order they are defined:
-	struct no_vtable alignas(4) ComputeLightPushConstants : ComputeLightPushConstantsFilter {
-	};
+					index_input;
+	} ComputeLightPushConstants;
 
 #ifndef NDEBUG
 	struct no_vtable DebugStorageBuffer {

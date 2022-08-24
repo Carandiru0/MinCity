@@ -60,7 +60,7 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	uint32_t const resource_index(pp.resource_index);
 		
 	// common descriptor set to 3 post aa passes
-	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout[post_stage], 0, render_data.sets[post_stage][resource_index], nullptr);
+	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout[post_stage], 0, render_data.sets[post_stage][0], nullptr);
 		
 	// ----- 0
 	// begin "actual render pass"
@@ -91,7 +91,7 @@ __inline void cPostProcess::Render(vku::present_renderpass&& __restrict pp,
 	
 	
 	// common descriptor set to final present pass
-	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout[final_stage], 0, render_data.sets[final_stage][resource_index], nullptr);
+	pp.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *render_data.pipelineLayout[final_stage], 0, render_data.sets[final_stage][0], nullptr);
 
 	// -------- final / present
 	// begin "actual render pass"

@@ -39,10 +39,6 @@ void main() {
 
 #else
 
-#if (defined(ROAD) && !defined(TRANS))
-#define INOUT_FRESNEL
-#endif
-
 #ifdef TRANS 
 #define OUT_FRESNEL
 #endif
@@ -51,18 +47,12 @@ void main() {
 //layout (constant_id = 1) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 2) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
-layout (constant_id = 4) const float VolumeDimensions = 0.0f;
+layout (constant_id = 4) const float VolumeDimensions = 0.0f;	// world volume //
 layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
-layout (constant_id = 6) const float VolumeLength = 0.0f; // <--- beware this is scaled by voxel size, for lighting only
-layout (constant_id = 7) const float LightVolumeDimensions_X = 0.0f;
-layout (constant_id = 8) const float LightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 9) const float LightVolumeDimensions_Z = 0.0f; 
-layout (constant_id = 10) const float InvLightVolumeDimensions_X = 0.0f;
-layout (constant_id = 11) const float InvLightVolumeDimensions_Y = 0.0f;
-layout (constant_id = 12) const float InvLightVolumeDimensions_Z = 0.0f; 
-#define LightVolumeDimensions vec3(LightVolumeDimensions_X, LightVolumeDimensions_Y, LightVolumeDimensions_Z)
-#define InvLightVolumeDimensions vec3(InvLightVolumeDimensions_X, InvLightVolumeDimensions_Y, InvLightVolumeDimensions_Z)
+layout (constant_id = 6) const float VolumeLength = 0.0f; // <---- only for this constant ** length is scaled by voxel_size
 
+layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume //
+layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 
 #define DD 0
 #define COLOR 1
@@ -251,7 +241,7 @@ void main() {
 	getLight(light_color, Ld, In.uv.xyz);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 	
-																							// bugfix: y is flipped. simplest to correct here.
+																						// bugfix: y is flipped. simplest to correct here.
 	const float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
 
 	const vec3 N = normalize(In.N.xyz);
@@ -262,6 +252,13 @@ void main() {
 	outColor.rgb = lit( terrainHeight + grid_color, make_material(In._emission, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
 					    getOcclusion(In.uv.xyz), Ld.att,
 					    Ld.dir, N, V);
+	
+	/*
+	const vec3 N = normalize(In.N.xyz);
+	
+	float s = abs(step(0.0f, -N.y) * N.y);
+	
+	outColor.rgb = vec3(s);*/
 	
 	//outColor = vec3(attenuation);
 	//outColor.rgb = vec3(visibility);
@@ -287,12 +284,6 @@ void main() {
 	getLight(light_color, Ld, In.uv.xyz);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
-	float fresnelTerm;
-
-	//const float terrainHeight = textureLod(_texArray[TEX_TERRAIN], vec3(In._uv_texture.xy, 0), 0).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
-	const float bump = texture(_texArray[TEX_NOISE], vec3(In.world_uv.xy * 8.0f, 0))._perlin;
-	fresnelTerm = smoothstep(0.0f, 1.0f, min(1.0f, bump /* (1.0f - terrainHeight)*/ + pow(bump, 5.0f)));
-
 	// smoother
 	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
 	
@@ -303,9 +294,9 @@ void main() {
 
 	const float decal_luminance = min(1.0f, road_segment.g * Ld.att * Ld.att * 2.0f);
 
-	outColor.rgb = lit( road_segment.rgb, make_material(decal_luminance, 0.0f, mix(ROUGHNESS, 0.1f, min(1.0f, fresnelTerm + road_segment.g))), light_color,
+	outColor.rgb = lit( road_segment.rgb, make_material(decal_luminance, 0.0f, mix(ROUGHNESS, 0.1f, min(1.0f, road_segment.g))), light_color,
 					    getOcclusion(In.uv.xyz), Ld.att,
-					    Ld.dir, N, V, fresnelTerm );	
+					    -Ld.dir, N, V );	
 	//outColor.rgb = vec3(attenuation);
 
 #else  // roads, "transparent selection"
@@ -342,7 +333,7 @@ void main() {
 	color.rgb = lit( road_segment.rgb, make_material(road_segment.a * 20.0f, 0.0f, ROUGHNESS), light_color,	// todo roads need actual street lights for proper lighting or else too dark
 						1.0f, // occlusion
 						min(1.0f, Ld.att + decal_luminance),
-						Ld.dir, N, V, fresnelTerm);
+						-Ld.dir, N, V, fresnelTerm);
 						    
 	vec3 refract_color;
 	const float weight = refraction_color(refract_color, colorMap, decal_luminance);
@@ -372,7 +363,7 @@ void main() {
     
 	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
 						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
-						Ld.dir, N, V );
+						-Ld.dir, N, V );
 
 	//outColor.rgb = vec3(attenuation);
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
@@ -386,7 +377,7 @@ void main() {
 	float fresnelTerm;  // feedback from lit      
 	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
 						    getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
-						    Ld.dir, N, V, fresnelTerm );
+						    -Ld.dir, N, V, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //
 

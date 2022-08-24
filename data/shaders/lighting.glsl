@@ -175,14 +175,7 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 { 
 	const float NdotL = max(0.0f, dot(N, L)); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
-	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
-
-#ifndef OUT_REFLECTION
-	const vec3 ambient_reflection = reflection();
-#else
-	ambient_reflection = reflection();
-#endif
-
+	
 #ifdef OUT_FRESNEL
 	fresnelTerm = fresnel(N, V);
 #elif defined(INOUT_FRESNEL)
@@ -191,11 +184,19 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 	const float fresnelTerm = fresnel(N, V);
 #endif
 
+	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
+
 	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
-
-	const vec3 ambient_reflection_term = unpackColor(material.ambient) + ambient_reflection * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
+	
+	#ifndef OUT_REFLECTION
+	const vec3 ambient_reflection = reflection();
+#else
+	ambient_reflection = reflection();
+#endif
+	const vec3 ambient_reflection_term = (unpackColor(material.ambient) + ambient_reflection) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
+	
 			// ambient
 	return ( ambient_reflection_term +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					

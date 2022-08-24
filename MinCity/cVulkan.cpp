@@ -284,13 +284,14 @@ void cVulkan::CreateComputeResources()
 					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
 				)
 			};
-			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume seed (lightprobes)
-			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
-			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
+			dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eCompute, 1);
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, samplers); // 3d volume seed (lightprobes)
+			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
+			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
-			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
-			dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 8bpc output (reflection color)
+			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
+			dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
+			dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 8bpc output (reflection color)
 			
 			_comData.light.descLayout = dslm.createUnique(_device);
 		}
@@ -300,7 +301,9 @@ void cVulkan::CreateComputeResources()
 		vku::DescriptorSetMaker			dsm;
 		dsm.layout(*_comData.light.descLayout);
 
-		_comData.light.sets = dsm.create(_device, _fw.descriptorPool());
+		// double buffered
+		_comData.light.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
+		_comData.light.sets.emplace_back(dsm.create(_device, _fw.descriptorPool())[0]);
 		_comData.light.sets.shrink_to_fit();
 
 		std::vector< vku::SpecializationConstant > constants;
@@ -1640,9 +1643,13 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 //
 // Update the descriptor sets for the shader uniforms.
 	{ // ###### Compute
-		_dsu.beginDescriptorSet(_comData.light.sets[0]);
-		MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::BORDER>());
-
+		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
+			_dsu.beginDescriptorSet(_comData.light.sets[resource_index]);
+			// Set initial uniform buffer value
+			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
+			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
+			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::BORDER>());
+		}
 		// [[deprecated]] ###### Texture Shaders (Compute)
 		/*for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
 		{
@@ -1794,9 +1801,9 @@ namespace vku
 	}
 } // end ns
 
-void cVulkan::renderCompute(vku::compute_pass&& __restrict c)
+bool const cVulkan::renderCompute(vku::compute_pass&& __restrict c)
 {
-	MinCity::Vulkan->_renderCompute(std::forward<vku::compute_pass&& __restrict>(c));
+	return(MinCity::Vulkan->_renderCompute(std::forward<vku::compute_pass&& __restrict>(c)));
 }
 void cVulkan::renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
 {
@@ -1823,19 +1830,19 @@ void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
 	MinCity::Vulkan->_gpuReadback(cb, resource_index);
 }
 
-inline void cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
+inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 {
 	if (c.cb_transfer) { // **** very first gpu transfer on every new frame ***
 
 		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
 		c.cb_transfer.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb_transfer, vkNames::CommandBuffer::TRANSFER);
 
-		MinCity::VoxelWorld->Transfer(c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
+		MinCity::VoxelWorld->Transfer(c.resource_index, c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
 
 		c.cb_transfer.end();
-	}
+	} // ubo transfer always happens irregardless of compute/upload light
 	
-	MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
+	return(MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData)); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
 }
 
 void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (& __restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount)
@@ -2198,14 +2205,34 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 		vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
 	if (s.async_compute_enabled) { // required at this point, light:
-		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral); // *bugfix for tricky validation error
-		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eGeneral);
-		volume_set.LightMap->Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
 
-		static constexpr size_t const image_count(3ULL); // batched
-		std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color, volume_set.LightMap->Reflection };
+		{ // [acquire image barrier]
+			using afb = vk::AccessFlagBits;
 
-		vku::GenericImage::setLayout<image_count>(images, s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
+			static constexpr size_t const image_count(3ULL); // batched
+			std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color, volume_set.LightMap->Reflection };
+			std::array<vk::ImageMemoryBarrier, image_count> imbs{};
+
+			for (uint32_t i = 0; i < image_count; ++i) {
+
+				imbs[i].srcQueueFamilyIndex = _window->computeQueueFamilyIndex();  // (default) VK_QUEUE_FAMILY_IGNORED;
+				imbs[i].dstQueueFamilyIndex = _window->graphicsQueueFamilyIndex();  // (default) VK_QUEUE_FAMILY_IGNORED;
+				imbs[i].oldLayout = vk::ImageLayout::eGeneral;
+				imbs[i].newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+				imbs[i].image = images[i]->image();
+				imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+
+				imbs[i].srcAccessMask = (afb)0;
+				imbs[i].dstAccessMask = afb::eShaderRead;
+			}
+
+			using psfb = vk::PipelineStageFlagBits;
+
+			vk::PipelineStageFlags const srcStageMask(psfb::eTopOfPipe),
+										 dstStageMask(psfb::eFragmentShader);
+
+			s.cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+		}
 
 		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // *bugfix for tricky validation error
 		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);

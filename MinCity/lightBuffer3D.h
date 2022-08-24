@@ -134,26 +134,23 @@ public:
 	// methods //
 	__declspec(safebuffers) void __vectorcall clear(uint32_t const resource_index) {
 		// no need to clear main write-combined gpu staging buffer, it is fully replaced by _cache when comitted
+		_active_resource_index = resource_index;
 
 		// reset bounds
 		_maximum = std::move<Bounds&&>(Bounds{});
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
+	}
 
-		tbb::parallel_invoke(
-			[=] {
-				// clear staging buffer
-				___memset_threaded<16>(_staging[resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
-			},
-			[=] {
-				// clear internal memory
-				___memset_threaded<CACHE_LINE_BYTES>(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), _block_size_atomic); // 700KB / thread (12 cores)
-			},
-			[=] {
-				// clear internal cache
-				___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
-			}
-		);
-		_active_resource_index = resource_index;
+	__declspec(safebuffers) void __vectorcall map() {
+		_staging[_active_resource_index] = (XMFLOAT4A* const __restrict)_stagingBuffer[_active_resource_index].map(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
+
+		// clear internal memory
+		___memset_threaded<CACHE_LINE_BYTES>(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), _block_size_atomic); // 700KB / thread (12 cores)
+		// clear internal cache
+		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
+
+		// clear staging buffer (right before usage)
+		___memset_threaded<16>(_staging[_active_resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
 	}
 
 	__declspec(safebuffers) void __vectorcall commit() {
@@ -198,7 +195,8 @@ public:
 			light->out(_staging[_active_resource_index], _cache);
 		}
 		___streaming_store_fence();
-		_stagingBuffer[_active_resource_index].flush(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
+		_stagingBuffer[_active_resource_index].unmap(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
+		_stagingBuffer[_active_resource_index].flush();
 	}
 
 #ifdef DEBUG_PERF_LIGHT_RELOADS
@@ -328,8 +326,7 @@ public:
 		
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		uvec4_t uiIndex;
-		SFM::round_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);   // -applying fractional offset *not* to actual light emitter location, *only* the derived 3d texture index(see below) required for smoother lighting.
-																																											// safe to add here, not doubling adding fractional offset. cannot add to actual position stored in texture however, it's double-added. *just the index/3d texture coordinate location*
+		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);   
 
 		// slices ordered by Z 
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -358,9 +355,6 @@ public:
 		size = LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A);
 		_cache = (XMFLOAT4A * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
 		_block_size_cache = size / hardware_concurrency;
-
-		_staging[0] = (XMFLOAT4A * __restrict)_stagingBuffer[0].map(); // persistantly mapped.
-		_staging[1] = (XMFLOAT4A * __restrict)_stagingBuffer[1].map();
 
 		clear(0);
 	}
