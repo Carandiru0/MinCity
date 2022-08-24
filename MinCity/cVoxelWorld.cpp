@@ -489,8 +489,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 			if (!vScroll.isZero()) {
 
-				float const len = XMVectorGetX(XMVector2Length(p2D_to_v2(vScroll)));
-				_tBorderScroll -= delta() / len;
+				_tBorderScroll -= delta();
 				_tBorderScroll = fp_seconds(SFM::max(0.0, _tBorderScroll.count()));
 
 				if (zero_time_duration == _tBorderScroll) {
@@ -499,6 +498,10 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 					_bMotionDelta = true; // override so that dragging continue
 					_tBorderScroll = Iso::CAMERA_SCROLL_DELAY; // reset
 				}
+			}
+			else {
+				_tBorderScroll += delta();
+				_tBorderScroll = fp_seconds(SFM::min(Iso::CAMERA_SCROLL_DELAY.count(), _tBorderScroll.count()));
 			}
 		}
 	}
@@ -532,10 +535,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 				if (_bDraggingMouse) {
 					float const fXDelta = _vMouse.x - _vDragLast.x;
 
-					//  fXDelta      angle
-					//----------- = --------
-					// max width     XM_2PI
-					rotateCamera((SFM::sgn(fXDelta) * SFM::saturate(abs(fXDelta) / SFM::__sqrt(Iso::SCREEN_VOXELS_XZ*Iso::SCREEN_VOXELS_XZ + Iso::SCREEN_VOXELS_XZ * Iso::SCREEN_VOXELS_XZ))) * XM_2PI * 3.0f);	// bugfix: must be constant delta, not the difference between now() and dragstart
+					rotateCamera(fXDelta * time_to_float(tDelta));
 
 					_vDragLast = _vMouse;
 					_tDragStart = now();
@@ -2568,7 +2568,7 @@ namespace // private to this file (anonymous)
 						{
 							// Make index (row,col)relative to starting index voxel
 							// calculate origin from relative row,col
-							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. this is the 1st place the fractional offset is used (removal). 2nd is in uniforms.vert
+							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. don't fuck with the fractional offset, it's not required here
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)))); // make relative to render start position
 							bool bRenderVisible(false);
 
@@ -4166,7 +4166,7 @@ namespace world
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition));
+			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition)); // always a clean integral number on completion
 			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
 			// signal transition
@@ -4191,7 +4191,7 @@ namespace world
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition));// XMVectorAdd(xmPosition, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(getFractionalOffset())));
+			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition)); // always a clean integral number on completion
 			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
 			// signal transition
@@ -4212,10 +4212,10 @@ namespace world
 		// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
 		point2D_t const absDir(p2D_abs(vDir));
 		if (absDir.x > absDir.y) {		 
-			xmIso = XMVectorScale(xmIso, 1.0f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
+			xmIso = XMVectorScale(xmIso, SFM::GOLDEN_RATIO * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 		}
 		else {
-			xmIso = XMVectorScale(xmIso, 1.0f * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
+			xmIso = XMVectorScale(xmIso, SFM::GOLDEN_RATIO * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
 		}
 			
 		::translateCameraOrient(xmIso); // this then scrolls in direction camera is currently facing correctly
@@ -4407,8 +4407,8 @@ namespace world
 #ifndef NDEBUG
 		XMStoreFloat2A(&vPush, getDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR));
 #endif
-		//pack into vector for uniform buffer layout								                                                 // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)											   
-		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.z, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
+		//pack into vector for uniform buffer layout				  // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)											   
+		_currentState.Uniform.aligned_data0 = XMVectorSet(0.0f, 0.0f, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
 		                                                                
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4424,16 +4424,11 @@ namespace world
 		
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset MUST be added here for jitter free movement of camera -in a matrix. does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
-		XMMATRIX xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
-										   XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
+										         XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		// *bugfix - ***do not change***
-		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. There are 2 locations in the voxel geometry and volumetric raymarch shaders where the fractional offset is applied.
-		// *bugfix - moved fractional offset to shaders, increasing precision of voxel alignment with map/view scrolling
-		// fractional offset needs to be the last mathematical operation before the final value of (x) is used - in the shader geometry this happens right before the output vertex transform is output. in the volumetric shader it is also the same.
-		// fractional offset should not be applied in the "light" compute shader (testing light alignment still), this is however sampled...
-		// sampling the light volume with uv's in generated in the geometry shader for voxels are derived from the output vertex world position...which just had the fractional offset added and was output to the vertex transform
-		//xmView = XMMatrixMultiply(XMMatrixTranslationFromVector(getFractionalOffset()), xmView);
+		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
 		_currentState.Uniform.view = xmView;
 		// not yet required
 		//_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
@@ -4456,8 +4451,8 @@ namespace world
 
 		// "XMMatrixInverse" found to be imprecise for acquiring vector components (forward, direction)
 		// using original values instead (-----precise))
-		_targetState.Uniform.eyePos = v3_rotate_azimuth(XMVectorAdd(Iso::xmEyePt_Iso, getFractionalOffset()), oCamera.Azimuth);
-
+		_targetState.Uniform.eyePos = v3_rotate_azimuth(XMVectorAdd(Iso::xmEyePt_Iso, getFractionalOffset()), oCamera.Azimuth); // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (azimuth) - don't fuck with the fractional offset, it *is* required here.
+																																// this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
 		_targetState.zoom = oCamera.ZoomFactor;
 		
 		// move state to last target

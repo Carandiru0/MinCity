@@ -93,7 +93,7 @@ namespace UniformDecl
 		XMMATRIX	proj;
 		XMVECTOR	eyePos;
 		XMVECTOR	eyeDir;
-		XMVECTOR	aligned_data0;	// .xy = fractional offset, .z = time, .w = frame time delta
+		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
 
 		uint32_t	frame; // *must be last*
 	};

@@ -84,10 +84,8 @@ vec4 sampleInputVolume( in const vec3 read_location )
 	
 	return( now );
 */	
-	warp_local seed = sampleInputVolume(seedMap, read_location);
-	//seed.emitter_location = transformPositionToViewSpace(u._view, seed.emitter_location.xzy).xzy;
 
-	return(seed);
+	return(sampleInputVolume(seedMap, read_location));
 }
 #else
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -136,8 +134,6 @@ vec4 group_load( in const ivec3 local_location ) {
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
 
 	const warp_local read_warp = group_load(read_location);
-
-	//const uvec4 ballot = subgroupBallot(0.0f != read_warp.packed_color);
 
 	if ( 0.0f != read_warp.packed_color ) {	// new
 			

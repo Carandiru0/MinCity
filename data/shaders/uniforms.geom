@@ -183,8 +183,6 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	PerVoxel();
 	PerQuad(normal);
 	
-	//worldPos = worldPos + fractional_offset(); // *bugfix [[[ 1/2 places fractional offset is added to ]]]
-	
 #if defined(HEIGHT)
 	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
 #endif

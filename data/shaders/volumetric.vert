@@ -24,7 +24,7 @@ void main() {
 
 	volume_translation = (-0.5f - (volume_translation - inPos.xyz)) + vec3(-0.25f,-0.25f,0.25f); // this perfectly aligns the center of the volume *do not change* *verified*
 
-	precise vec3 position = 0.5f * fma(inPos.xyz, WorldDimensions.xxx, volume_translation);//, fractional_offset()); // **bugfix** fractional offset must be applied here *last* for proper volume alignment // *bugfix [[[ 2/2 places fractional offset is added to ]]]
+	precise vec3 position = 0.5f * fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
 	// inverted y translation, also put at groundlevel
 	gl_Position = u._viewproj * vec4(position, 1.0f);

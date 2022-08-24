@@ -48,7 +48,7 @@ namespace Iso
 																															// *or* provably for the special case of a strictly isometric voxel engine - parallel orthographic projection is the best solution!
 
 	static constexpr fp_seconds const
-		CAMERA_SCROLL_DELAY = fp_seconds(milliseconds(33));
+		CAMERA_SCROLL_DELAY = fp_seconds(milliseconds(16));
 	static constexpr int32_t const
 		CAMERA_SCROLL_DISTANCE_MULTIPLIER = 0;    // 0 would be no multiplier (x1) same as input. 1 would be double multiplier (x2). 2 would be quadruple multiplier (4x)
 
