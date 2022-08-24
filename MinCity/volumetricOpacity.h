@@ -680,7 +680,7 @@ namespace Volumetric
 
 				c.cb_render_light.end();
 
-				bRecorded[resource_index] = true;
+				bRecorded[resource_index] = true; // these compute buffers need only be recorded once, then re-used for every frame
 			}
 			
 			// Just update layouts that will be current after this compute cb is done.
@@ -699,109 +699,22 @@ namespace Volumetric
 	template< uint32_t Size >
 	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex) {
 
-		//constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
-
-		__m128i const xmZero(_mm_setzero_si128()), xmLimit(MappedVoxelLights.getVolumeExtentsLimit().v);
-
-		/*
-		// cheap loads reused, must be static - *bugfix: per resource state required
-		constinit static uvec4_t new_max_extents[2]{}, new_min_extents[2]{};		// these extents are before rounding to gpu memory granularity (pre-check)
-
-		[[maybe_unused]] uvec4_v clear_max_max, clear_min_min;
-
-		// at this point, these are the new extents only if they have changed
-		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), current_min(MappedVoxelLights.getCurrentVolumeExtentsMin());
-
-		{ // pad by one         // no modifications to .w component
- 			__m128i const xmOne(uvec4_v(1, 0).v);
-
-			current_max.v = _mm_add_epi32(current_max.v, xmOne);
-			current_max.v = SFM::clamp(current_max.v, xmZero, xmLimit);
-			current_min.v = _mm_sub_epi32(current_min.v, xmOne);
-			current_min.v = SFM::clamp(current_min.v, xmZero, xmLimit);
-		}
-
-		// at this point, these compare the currently used extents, and the new extents that may be pending
-		{
-			uvec4_v const last_max(new_max_extents[resource_index]), last_min(new_min_extents[resource_index]);
-			if (uvec4_v::any<3>(current_max != last_max) ||
-				uvec4_v::any<3>(current_min != last_min)) {
-
-				if (_mm_testz_si128(current_max.v, current_max.v)) {
-					return; // maximum is zero, skip upload or changes to any state
-				}
-
-				// ClearStage 0 
-				// for the change in dimensions of the light volume extents.
-				// a "union" which is the largest (max) volume that comprises the area's of the current and new volume extents.
-
-				// *bugfix:
-				
-				// when "growing", need full volume clear
-				if (uvec4_v::any<3>(current_max > last_max) ||
-					uvec4_v::any<3>(current_min < last_min)) {
-
-					clear_max_max.v = xmLimit;
-					clear_min_min.v = xmZero;
-				}
-				else { // when "shrinking", optimized union of regions for volume clearing!
-
-					// a maximum of both extents
-					clear_max_max.v = SFM::max(current_max.v, last_max.v);
-					
-					// a minimum of both extents
-					clear_min_min.v = SFM::min(current_min.v, last_min.v);
-				}
-
-				// new extents cached, updates comparison & extents that will be used after ClearStage 0
-				current_max.xyzw(new_max_extents[resource_index]);
-				current_min.xyzw(new_min_extents[resource_index]);
-
-				ClearStage = 1;
-			}
-		}
-		// Clearing is a two-frame process. The first frame clears and overwrites (current volume extents + new volume extents).
-		// The second frame is then just the new volume extents. This is reduced to updating what the current code uses for this
-		// iterations bounding extents. De-coupled from the actual command buffer, so that two paths are not required in it's re-record
-		// current_max & current_min now contain the frames bounding extents.
-		if (0 == --ClearStage) {
-
-			// Use the Clearing Volume that has enough area to actually clear the old extents with the new extents pending.
-			// Visually, hard to describe, a picture of the union of the two volumes merged would be better.
-			// There will be areas that clear the volume, and areas that overwrite the volume. Important that the volume
-			// does not shrink, it must be the maximum and minimum of both volumes to cover all of the space that may need to be cleared.
-			current_max.v = SFM::max(current_max.v, clear_max_max.v);
-			current_min.v = SFM::min(current_min.v, clear_min_min.v);
-			bRecorded[resource_index] = false; // both buffers must be reset so that they are in sync from frame to frame
-		}
-		else { // this is less than zero due to post-decrement above
-
-			// *reduces to new region this frame forward
-			
-			// ClearStage < 0
-			// for all numbers less than zero that this condition will be true for
-			// the volume xtents are finally updated to the new volume extents.
-			if (-1 == ClearStage) { // only required to invalidate the command buffer on first iteration (second frame this condition will be true (above))
-				bRecorded[resource_index] = false; // both buffers must be reset so that they are in sync from frame to frame
-			}
-		}
-		*/
-		// Prevent re-recording of command buffer if last output extents used matches in resolution //
-		// important to prevent de-optimization // *bugfix: per resource state required
-		constinit static uvec4_t last_max_extents[2]{}, last_min_extents[2]{};	// these extents are *after* rounding to gpu memory granularity (final check)
+		// optimizations removed due to unsynchronized behaviour of needing 2 frames to process the clear, then an upload of the volumetric area currently occupied by lights.
+		// this de-synchronizes the light positions by lagging behind. then the lights do not occur at the position they should be at for this frame messing with the fractional offset differences between the world and the light.
 		
-		// at this point, these are the new extents only if they have changed
-		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), current_min(MappedVoxelLights.getCurrentVolumeExtentsMin());
+		// instead - brute force update of volume occurs every frame (currently 128x128x128 ~33MB to upload every frame (<2ms), **note if 256x256x256 instead the upload size is ~268MB per frame which is dog slow (>21ms))
+		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
+
+		uvec4_v const current_max(MappedVoxelLights.getVolumeExtentsLimit().v/*MappedVoxelLights.getCurrentVolumeExtentsMax()*/), current_min(_mm_setzero_si128()/*MappedVoxelLights.getCurrentVolumeExtentsMin()*/); // no longer culling upload area to extents discovered by light volume occupancy - not worth the headache effects that are caused by this optimization.
 
 		// UPLOAD image already transitioned to transfer dest layout at this point
 		// ################################## //
 		// Light Probe Map 3D Texture Upload  //
 		// ################################## //
-		//bRecorded[resource_index] = false;
-		current_min.v = xmZero;
-		current_max.v = xmLimit;
 
-		//if (!bRecorded[resource_index]) {
+		// brute-force always entire volume extents uploaded (allows record once and reuse every frame)
+
+		if (!bRecorded[resource_index]) {
 
 			// to scalars for rounding to multiple of 8
 			uvec4_t extents_max, extents_min;
@@ -818,84 +731,68 @@ namespace Volumetric
 			extents_max.y = SFM::roundToMultipleOf<true>(extents_max.y, 8);
 			extents_max.z = SFM::roundToMultipleOf<true>(extents_max.z, 8);
 
-			// back to vector form
-			current_max.v = uvec4_v(extents_max).v;
-			current_max.v = SFM::clamp(current_max.v, xmZero, xmLimit);
-			current_min.v = uvec4_v(extents_min).v;
-			current_min.v = SFM::clamp(current_min.v, xmZero, xmLimit);
+			vk::CommandBufferBeginInfo bi{}; // recorded once only
+			cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER_LIGHT);
 
-			//if (uvec4_v::any<3>(current_max != uvec4_v(last_max_extents[resource_index])) ||
-			//	uvec4_v::any<3>(current_min != uvec4_v(last_min_extents[resource_index]))) {
+			vk::BufferImageCopy region{};
 
-				// update last used extents, at this point all 3 (extents_xxx, last_xxx_extents, current_xxx) will be equal
-				current_max.xyzw(last_max_extents[resource_index]);
-				current_min.xyzw(last_min_extents[resource_index]);
+			// 
+			// slices ordered by Z 
+			// (z * xMax * yMax) + (y * xMax) + x;
 
-				vk::CommandBufferBeginInfo bi{}; // recorded once only
-				cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER_LIGHT);
+			// slices ordered by Y: <---- USING Y
+			// (y * xMax * zMax) + (z * xMax) + x;
+			region.bufferOffset = ((extents_min.y * LightSize * LightSize) + (extents_min.z * LightSize) + extents_min.x) * MappedVoxelLights.element_size();
+			region.bufferOffset = SFM::roundToMultipleOf<false>((int32_t)region.bufferOffset, 8); // rounding down (effectively min)
+			region.bufferRowLength = LightSize;
+			region.bufferImageHeight = LightSize;
 
-				vk::BufferImageCopy region{};
+			// swizzle to xzy
+			region.imageOffset.x = extents_min.x;
+			region.imageOffset.z = extents_min.y; // Y Axis Major (Slices ordered by Y)
+			region.imageOffset.y = extents_min.z;
+			//  ""  ""  "  ""
+			region.imageExtent.width = extents_max.x - extents_min.x;
+			region.imageExtent.depth = extents_max.y - extents_min.y; // Y Axis Major (Slices ordered by Y)
+			region.imageExtent.height = extents_max.z - extents_min.z;   
 
-				// 
-				// slices ordered by Z 
-				// (z * xMax * yMax) + (y * xMax) + x;
-
-				// slices ordered by Y: <---- USING Y
-				// (y * xMax * zMax) + (z * xMax) + x;
-				region.bufferOffset = ((extents_min.y * LightSize * LightSize) + (extents_min.z * LightSize) + extents_min.x) * MappedVoxelLights.element_size();
-				region.bufferOffset = SFM::roundToMultipleOf<false>((int32_t)region.bufferOffset, 8); // rounding down (effectively min)
-				region.bufferRowLength = LightSize;
-				region.bufferImageHeight = LightSize;
-
-				// swizzle to xzy
-				region.imageOffset.x = extents_min.x;
-				region.imageOffset.z = extents_min.y; // Y Axis Major (Slices ordered by Y)
-				region.imageOffset.y = extents_min.z;
-				//  ""  ""  "  ""
-				region.imageExtent.width = extents_max.x - extents_min.x;
-				region.imageExtent.depth = extents_max.y - extents_min.y; // Y Axis Major (Slices ordered by Y)
-				region.imageExtent.height = extents_max.z - extents_min.z;   
-
-				region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 };
+			region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 };
 				
-				cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, region);
+			cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, region);
 
-				{ // [release image barrier]
-					using afb = vk::AccessFlagBits;
+			{ // [release image barrier]
+				using afb = vk::AccessFlagBits;
 					
-					static constexpr size_t const image_count(1ULL); // batched
-					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn };
-					std::array<vk::ImageMemoryBarrier, image_count> imbs{};
+				static constexpr size_t const image_count(1ULL); // batched
+				std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn };
+				std::array<vk::ImageMemoryBarrier, image_count> imbs{};
 					
-					for (uint32_t i = 0; i < image_count; ++i) {
+				for (uint32_t i = 0; i < image_count; ++i) {
 
-						imbs[i].srcQueueFamilyIndex = transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-						imbs[i].dstQueueFamilyIndex = computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-						imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
-						imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
-						imbs[i].image = images[i]->image();
-						imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+					imbs[i].srcQueueFamilyIndex = transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+					imbs[i].dstQueueFamilyIndex = computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+					imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
+					imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
+					imbs[i].image = images[i]->image();
+					imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 						
-						imbs[i].srcAccessMask = afb::eTransferWrite;
-						imbs[i].dstAccessMask = (afb)0;
-					}
-
-					using psfb = vk::PipelineStageFlagBits;
-					
-					vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
-												 dstStageMask(psfb::eTopOfPipe);
-					
-					cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+					imbs[i].srcAccessMask = afb::eTransferWrite;
+					imbs[i].dstAccessMask = (afb)0;
 				}
-				cb.end();
-				return(true);
-			//}
-			//bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
-		//}
+
+				using psfb = vk::PipelineStageFlagBits;
+					
+				vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
+												dstStageMask(psfb::eTopOfPipe);
+					
+				cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+			}
+			cb.end();
+			bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
+		}
 		
-			return(false);
-		// *bugfix - always upload whether the command buffer was updated or not. *Fractional* changes in position need to be accounted for (which reuses the command buffer for upload, but this updates the internal light position data).
-	}	// then compute will run as it should on the updated light position data.
+		return(true); // always succeed whether command buffer is recorded or re-used - indicating to the next stage (compute) to commence once transfer here has completed.
+	}
 
 
 } // end ns

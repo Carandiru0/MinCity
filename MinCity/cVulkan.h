@@ -169,12 +169,12 @@ public:
 	// Common Accessors //
 	vk::Device const&	__restrict								getDevice() const { return(_device); }
 	vk::Queue const& __restrict									graphicsQueue() const { return(_window->graphicsQueue()); }
-	vk::Queue const& __restrict									computeQueue(uint32_t const index = 0) const { return(_window->computeQueue(index)); }
+	vk::Queue const& __restrict									computeQueue() const { return(_window->computeQueue()); }
 	vk::Queue const& __restrict									transferQueue(uint32_t const index = 0) const { return(_window->transferQueue(index)); }
 
 	vk::CommandPool const& __restrict							defaultPool() const { return(_window->commandPool(vku::eCommandPools::DEFAULT_POOL)); }
 	vk::CommandPool const& __restrict							transientPool() const { return(_window->commandPool(vku::eCommandPools::TRANSIENT_POOL)); }
-	vk::CommandPool const& __restrict							computePool(uint32_t const index) const { if (0u == index) return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_PRIMARY)); return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL_SECONDARY)); }
+	vk::CommandPool const& __restrict							computePool() const { return(_window->commandPool(vku::eCommandPools::COMPUTE_POOL)); }
 	vk::CommandPool const& __restrict							dmaTransferPool(vku::eCommandPools const dma_transfer_pool_id) const { return(_window->commandPool(dma_transfer_pool_id)); }
 
 	vk::ImageView const&										offscreenImageView2D() const { return(_window->offscreenImageView()); }

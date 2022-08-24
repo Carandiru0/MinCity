@@ -432,7 +432,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 			float const tInvDelta = SFM::saturate(time_to_float(tDelta / tSmooth));
 			XMVECTOR const xmInterpPosition(SFM::lerp(XMLoadFloat2A(&oCamera.PrevPosition), targetPosition, tInvDelta));
 			XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(xmInterpPosition));
-			oCamera.Azimuth = v2_rotation_t();
+			//oCamera.Azimuth = v2_rotation_t(); wth? leaving commented just in case need to revert this change?
 		}
 	}
 
@@ -2895,7 +2895,7 @@ namespace world
 #ifndef NDEBUG
 		OutputVoxelStats();
 #endif
-		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(0), MinCity::Vulkan->computeQueue(0), MinCity::getFramebufferSize(), MinCity::hardware_concurrency());
+		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(), MinCity::Vulkan->computeQueue(), MinCity::getFramebufferSize(), MinCity::hardware_concurrency());
 		MinCity::PostProcess->create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), MinCity::getFramebufferSize());
 		createAllBuffers(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue());
 		
@@ -4212,10 +4212,10 @@ namespace world
 		// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
 		point2D_t const absDir(p2D_abs(vDir));
 		if (absDir.x > absDir.y) {		 
-			xmIso = XMVectorScale(xmIso, SFM::GOLDEN_RATIO * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
+			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 		}
 		else {
-			xmIso = XMVectorScale(xmIso, SFM::GOLDEN_RATIO * XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
+			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
 		}
 			
 		::translateCameraOrient(xmIso); // this then scrolls in direction camera is currently facing correctly

@@ -242,7 +242,7 @@ void main()
 
 	warp_local warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 
-#ifndef SEED // idealy SEED runs as 1+ JFA
+#ifndef SEED // SEED doesn't 1+JFA anymore, unless proven it is not messing with the fractional offset.
 	
 	barrier(); // required so that lds is coherent between the last writes and now reads (memorybarriershared is included in barrier too)
 
@@ -574,7 +574,6 @@ void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout
 }
 	
 
-//const vec3 fix_direction = normalize(vec3(1,0,-1));
 void main() 
 {
 	{ // #### Required Bounds Check //
