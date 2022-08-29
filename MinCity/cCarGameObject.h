@@ -70,7 +70,7 @@ namespace world
 							voxelOffsetFromRoadCenter,
 							voxelDirection;
 			float			distance;
-			v2_rotation_t   vAzimuth;
+			v2_rotation_t   vYaw;
 			bool			bTurning;
 
 			state() = default;
@@ -104,8 +104,8 @@ namespace world
 		bool const __vectorcall xing(state const& __restrict currentState, state& __restrict targetState, point2D_t const voxelRoadCenterNode, uint32_t const roadNodeType);
 		bool const __vectorcall corner(state const& __restrict currentState, state& __restrict targetState, point2D_t const voxelRoadCenterNode, uint32_t const roadNodeType);
 		bool const forward(state const& __restrict currentState, state& __restrict targetState, int32_t const distance);
-		void __vectorcall gravity(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth);	// makes car "hug" road
-		bool const __vectorcall ccd(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth) const; // continous collision detection (only against other dynamics (cars))
+		void __vectorcall gravity(FXMVECTOR const xmLocation, FXMVECTOR const xmYaw);	// makes car "hug" road
+		bool const __vectorcall ccd(FXMVECTOR const xmLocation, FXMVECTOR const xmYaw) const; // continous collision detection (only against other dynamics (cars))
 		void idle(tTime const idleStart) { _this.tIdleStart = idleStart; } // for cancelling idle timeout or reseting to zero idle start
 
 		// special 

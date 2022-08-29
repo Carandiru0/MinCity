@@ -54,7 +54,7 @@ namespace world
 			// communicate body states to prop
 			_prop->setLightsOn(_body->isLightsOn());
 			// update
-			_prop->OnUpdate(tNow, tDelta, _body->getModelInstance()->getLocation(), _body->getModelInstance()->getElevation(), _body->getModelInstance()->getAzimuth());
+			_prop->OnUpdate(tNow, tDelta, _body->getModelInstance()->getLocation(), _body->getModelInstance()->getElevation(), _body->getModelInstance()->getYaw());
 		}
 	}
 } // end ns

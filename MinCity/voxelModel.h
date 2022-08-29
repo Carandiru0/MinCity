@@ -399,11 +399,10 @@ namespace voxB
 		voxelModel<Dynamic>& operator=(voxelModel<Dynamic> const&) = delete;
 	};
 		
-	read_only inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 1.0f, 0.5f, 0.5f }; // **** note Y is not centered on origin of model, instead its at the bottom of model
+	read_only inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 0.5f, 0.5f, 0.5f };
 	STATIC_INLINE_PURE XMVECTOR XM_CALLCONV getMiniVoxelGridIndex(FXMVECTOR maxDimensions, FXMVECTOR maxDimensionsInv,
 		FXMVECTOR xmVoxelRelativeModelPosition)
 	{
-		
 		// Use relative coordinates in signed fashion so origin is forced to middle of model
 
 		// normalize relative coordinates (mul)  -  change from [0.0f ... 1.0f] tp [-1.0f ... 1.0f]
@@ -437,7 +436,7 @@ namespace voxB
 		typedef struct no_vtable sRenderFuncBlockChunk {
 
 		private:
-			XMVECTOR const											xmVoxelOrigin, xmUV;
+			XMVECTOR const											xmVoxelOrigin;
 			voxB::voxelDescPacked const* const __restrict			voxelsIn;
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict		voxels_static;
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_dynamic;
@@ -454,7 +453,7 @@ namespace voxB
 
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
-			__forceinline sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmUV_,
+			__forceinline sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_,
 				voxB::voxelDescPacked const* const __restrict voxelsIn_,
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic_,
@@ -466,7 +465,6 @@ namespace voxB
 			) // add in ground height from root voxel passed in, total area encompassing the model has been averaged / flat //
 				:
 				xmVoxelOrigin(XMVectorSubtract(xmVoxelOrigin_, XMVectorSet(0.0f, instance_.getElevation(), 0.0f, 0.0f))),
-				xmUV(xmUV_),
 				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
 				instance(instance_),
 
@@ -513,23 +511,24 @@ namespace voxB
 
 					XMVECTOR xmMiniVox = getMiniVoxelGridIndex(maxDimensions, maxDimensionsInv, _mm_cvtepi32_ps(voxel.getPosition()));
 
-					[[maybe_unused]] XMVECTOR xmOrient;  // combined rotation vectors (optimized out depending on "Dynamic")
+					[[maybe_unused]] XMVECTOR xmOrient, xmExtra;  // combined rotation vectors (optimized out depending on "Dynamic")
 
 					if constexpr (Dynamic) {
 						voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
 
-						XMVECTOR const xmAzimuth(instance_dynamic.getAzimuth().v2());
+						XMVECTOR const xmRoll(instance_dynamic.getRoll().v2());
+						XMVECTOR const xmYaw(instance_dynamic.getYaw().v2());
 						XMVECTOR const xmPitch(instance_dynamic.getPitch().v2());
-
 						// rotation order is important
 						// in this order, the rotations add together
 						// in the other order, each rotation is independent of each other
 						// no quaternions, no matrices, just vectors - simplest possible solution.
-						xmOrient = XMVectorAdd(XMVectorRotateRight<2>(xmAzimuth), xmPitch);
-						xmMiniVox = v3_rotate_azimuth(v3_rotate_pitch(xmMiniVox, xmPitch), xmAzimuth);
+						xmOrient = XMVectorAdd(XMVectorRotateRight<2>(xmYaw), xmPitch);
+						xmExtra = xmRoll;
+						xmMiniVox = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmMiniVox, xmPitch), xmYaw), xmRoll);
 					}
 
-					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, -YDimension - XMVectorGetY(xmMiniVox)), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin
+					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, SFM::__fms(YDimension, -0.5f, XMVectorGetY(xmMiniVox))), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin, precise height offset for center of model
 
 					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
@@ -565,7 +564,7 @@ namespace voxB
 							hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 Uxxx xxxx
 
 							// Make All voxels relative to voxel root origin // inversion neccessary //
-							XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)color)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+							// srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 							if (!Transparent) {
 
@@ -574,7 +573,7 @@ namespace voxB
 									local::voxels_dynamic.emplace_back(
 										voxels_dynamic,
 										xmStreamOut,
-										xmUVs,
+										XMVectorSetW(xmExtra, (float)color), // dynamic uses extra vector
 										xmOrient,
 										hash
 									);
@@ -583,7 +582,7 @@ namespace voxB
 									local::voxels_static.emplace_back(
 										voxels_static,
 										xmStreamOut,
-										xmUVs,
+										XMVectorSet(0.0f, 0.0f, 0.0f, (float)color), // static does not use extra vector except color (.w)
 										hash
 									);
 								}
@@ -598,7 +597,7 @@ namespace voxB
 									local::voxels_trans.emplace_back(
 										voxels_trans,
 										xmStreamOut,
-										xmUVs,
+										XMVectorSetW(xmExtra, (float)color), // dynamic uses extra vector
 										xmOrient,
 										hash
 									);
@@ -608,7 +607,7 @@ namespace voxB
 									local::voxels_trans.emplace_back(
 										voxels_trans,
 										xmStreamOut,
-										xmUVs,
+										XMVectorSet(1.0f, 0.0f, 0.0f, (float)color), // static does not use extra vector except color (.w) --- *bugfix since this is actualy upgraded to dynamic voxel, make rotation values correct for no rotation in the extra vector
 										XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f),  // bugfix: BIG bug: (first paramete must be equal to 1.0f, second 0.0f) - was rotated, now transparency adjacency works & solves problem with hidden voxels at 0.0f rotation
 										hash
 									);
@@ -689,8 +688,7 @@ namespace voxB
 		
 		tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 		tbb::parallel_for(tbb::blocked_range<uint32_t>(vxl_offset, vxl_offset + vxl_count, eThreadBatchGrainSize::MODEL),
-			RenderFuncBlockChunk(xmVoxelOrigin, 
-				XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE),
+			RenderFuncBlockChunk(xmVoxelOrigin,
 				_Voxels, 
 				pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
 				instance

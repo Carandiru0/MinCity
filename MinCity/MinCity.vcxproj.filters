@@ -58,6 +58,12 @@
     <Filter Include="Source Files\VulkanCore\voxel effects">
       <UniqueIdentifier>{14c847f4-1673-4e07-b62f-f291d8485b84}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Gameplay\YXI">
+      <UniqueIdentifier>{13912335-60df-46c2-a0d9-15a864ee315e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay\YXI">
+      <UniqueIdentifier>{ad6eaf07-02b5-4367-8886-7783cd2635d2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -348,6 +354,15 @@
     <ClInclude Include="cPhysics.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="cYXIGameObject.h">
+      <Filter>Header Files\Gameplay\YXI</Filter>
+    </ClInclude>
+    <ClInclude Include="cYXISphereGameObject.h">
+      <Filter>Header Files\Gameplay\YXI</Filter>
+    </ClInclude>
+    <ClInclude Include="cUser.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -523,6 +538,15 @@
     </ClCompile>
     <ClCompile Include="cPhysics.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cYXIGameObject.cpp">
+      <Filter>Source Files\Gameplay\YXI</Filter>
+    </ClCompile>
+    <ClCompile Include="cYXISphereGameObject.cpp">
+      <Filter>Source Files\Gameplay\YXI</Filter>
+    </ClCompile>
+    <ClCompile Include="cUser.cpp">
+      <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

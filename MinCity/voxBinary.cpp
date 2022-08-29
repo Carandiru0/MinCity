@@ -1576,7 +1576,7 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 	// only care about x, z axis ... y axis / height is not part of local area 
 
 	// +1 cause maxdimensions is equal to the max index, ie 0 - 31, instead of a size like 32
-	point2D_t vRadii(p2D_half(point2D_t(_maxDimensions.x + 1, _maxDimensions.z + 1)));
+	point2D_t vRadii(p2D_half(p2D_half(point2D_t(_maxDimensions.x + 1, _maxDimensions.z + 1))));
 
 	// determine if there is a remainder
 	point2D_t const vRemainder(vRadii.x % MINIVOXEL_FACTOR, vRadii.y % MINIVOXEL_FACTOR);

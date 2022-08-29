@@ -24,6 +24,9 @@
 #include "cUserInterface.h"
 #include "cCity.h"
 
+#include "cYXIGameObject.h"
+#include "cYXISphereGameObject.h"
+
 #include "rain.h"
 #include "cLightGameObject.h"
 #include "cImportGameObject.h"
@@ -79,15 +82,16 @@ namespace // private to this file (anonymous)
 		XMFLOAT3A Origin;  // always stored swizzled to x,z coordinates
 		XMFLOAT3A voxelFractionalGridOffset; // always stored negated and swizzled to x,z coordinates
 
+		float Elevation; // stored seperately from Origin and applied to view matrix in updase method
+
 		point2D_t
 			voxelIndex_TopLeft,
 			voxelIndex_Center;
 		
-		v2_rotation_t Azimuth;
-		float PrevAzimuthAngle, TargetAzimuthAngle;	
+		v2_rotation_t Yaw;
+		float PrevYawAngle, TargetYawAngle;	
 
-		XMFLOAT2A PrevPosition, TargetPosition, Displacement;
-		XMFLOAT2A Velocity;
+		XMFLOAT2A PrevPosition, TargetPosition;
 
 		XMFLOAT3A ZoomExtents;
 		
@@ -110,6 +114,7 @@ namespace // private to this file (anonymous)
 			:
 			Origin(0, 0, 0), // virtual coordinates
 			voxelFractionalGridOffset{},
+			Elevation(0.0f),
 			ZoomExtents{},
 			ZoomFactor(Globals::DEFAULT_ZOOM_SCALAR),
 			tTranslateStart{ zero_time_point },
@@ -124,7 +129,7 @@ namespace // private to this file (anonymous)
 		{
 			XMStoreFloat3A(&voxelFractionalGridOffset, XMVectorZero());
 			XMStoreFloat3A(&Origin, XMVectorZero());
-			Azimuth.zero();
+			Yaw.zero();
 
 			ZoomFactor = Globals::DEFAULT_ZOOM_SCALAR;
 			tTranslateStart = zero_time_point;
@@ -432,7 +437,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 			float const tInvDelta = SFM::saturate(time_to_float(tDelta / tSmooth));
 			XMVECTOR const xmInterpPosition(SFM::lerp(XMLoadFloat2A(&oCamera.PrevPosition), targetPosition, tInvDelta));
 			XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(xmInterpPosition));
-			//oCamera.Azimuth = v2_rotation_t(); wth? leaving commented just in case need to revert this change?
+			//oCamera.Yaw = v2_rotation_t(); wth? leaving commented just in case need to revert this change?
 		}
 	}
 
@@ -462,11 +467,11 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 		if (tDelta >= tSmooth) { // reset, finished transition
 			oCamera.tRotateStart = zero_time_point;
-			oCamera.Azimuth = oCamera.TargetAzimuthAngle;
+			oCamera.Yaw = oCamera.TargetYawAngle;
 		}
 		else {
 			float const tInvDelta = SFM::saturate(time_to_float(tDelta / tSmooth));
-			oCamera.Azimuth = v2_rotation_t( SFM::lerp(oCamera.PrevAzimuthAngle, oCamera.TargetAzimuthAngle, tInvDelta) );
+			oCamera.Yaw = v2_rotation_t( SFM::lerp(oCamera.PrevYawAngle, oCamera.TargetYawAngle, tInvDelta) );
 		}
 	}
 
@@ -962,9 +967,9 @@ namespace world
 	{	// voxelFractionalGridOffset is always stored negated, so just add it!
 		return(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
 	}
-	v2_rotation_t const& getAzimuth()
+	v2_rotation_t const& getYaw()
 	{
-		return(oCamera.Azimuth);
+		return(oCamera.Yaw);
 	}
 	
 	static Iso::mini::Voxel const* const __restrict __vectorcall getMiniVoxelAt(point2D_t voxelIndex) // no bounds checking required! (bounds checking is done prior)
@@ -3002,8 +3007,9 @@ namespace world
 
 							// set additional varying data
 							pInstance->setElevation(data_models_dynamic[i].elevation);
+							pInstance->setRoll(v2_rotation_t(data_models_dynamic[i].roll.x, data_models_dynamic[i].roll.y, data_models_dynamic[i].roll.z));
 							pInstance->setPitch(v2_rotation_t(data_models_dynamic[i].pitch.x, data_models_dynamic[i].pitch.y, data_models_dynamic[i].pitch.z));
-							pInstance->setLocationAzimuth(XMLoadFloat2(&data_models_dynamic[i].location), v2_rotation_t(data_models_dynamic[i].azimuth.x, data_models_dynamic[i].azimuth.y, data_models_dynamic[i].azimuth.z));
+							pInstance->setLocationYaw(XMLoadFloat2(&data_models_dynamic[i].location), v2_rotation_t(data_models_dynamic[i].yaw.x, data_models_dynamic[i].yaw.y, data_models_dynamic[i].yaw.z));
 						}
 					}
 
@@ -3041,7 +3047,7 @@ namespace world
 	}
 
 #ifdef GIF_MODE
-	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_guitarer(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_guitarer(XMVECTOR xmLocation, v2_rotation_t vYaw, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
 	{
 		{
 			static constexpr float const REFERENCE_HEIGHT = 5.31f;
@@ -3073,11 +3079,11 @@ namespace world
 
 			float const swing = SFM::triangle_wave(-XM_PI * 0.5f, XM_PI * 0.5f, accumulator.count() * INV_SWING_TIME);
 
-			vAzimuth = v2_rotation_t(REFERENCE_ANGLE + swing);
+			vYaw = v2_rotation_t(REFERENCE_ANGLE + swing);
 		}
-		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vYaw));
 	}
-	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_singer(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_singer(XMVECTOR xmLocation, v2_rotation_t vYaw, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
 	{
 		{
 			static constexpr float const REFERENCE_HEIGHT = 5.31f;
@@ -3111,9 +3117,9 @@ namespace world
 
 			xmLocation = XMVectorSetX(xmLocation, x);
 		}
-		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vYaw));
 	}
-	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_keyboarder(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_keyboarder(XMVECTOR xmLocation, v2_rotation_t vYaw, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
 	{
 		static constexpr float const REFERENCE_HEIGHT = 5.31f;
 		static constexpr milliseconds JUMP_TIME = milliseconds(300);
@@ -3130,9 +3136,9 @@ namespace world
 
 		xmLocation = XMVectorSetY(xmLocation, height);
 
-		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vYaw));
 	}
-	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_drummer(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_drummer(XMVECTOR xmLocation, v2_rotation_t vYaw, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
 	{
 		static constexpr float const REFERENCE_HEIGHT = 9.31f;
 		static constexpr milliseconds JUMP_TIME = milliseconds(500);
@@ -3149,10 +3155,10 @@ namespace world
 
 		xmLocation = XMVectorSetY(xmLocation, height);
 
-		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vYaw));
 	}
 	
-	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_crowd(XMVECTOR xmLocation, v2_rotation_t vAzimuth, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
+	static std::pair<XMVECTOR const, v2_rotation_t const> const do_update_crowd(XMVECTOR xmLocation, v2_rotation_t vYaw, tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, uint32_t const hash)
 	{
 		static constexpr float const REFERENCE_HEIGHT = 0.5f;
 		static constexpr milliseconds JUMP_TIME = milliseconds(750);
@@ -3180,7 +3186,7 @@ namespace world
 
 		xmLocation = XMVectorSetY(xmLocation, height);
 
-		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vAzimuth));
+		return(std::pair<XMVECTOR const, v2_rotation_t const>(xmLocation, vYaw));
 	}
 #endif
 	void cVoxelWorld::Clear()
@@ -3222,6 +3228,8 @@ namespace world
 
 	void cVoxelWorld::OnLoaded(tTime const& __restrict tNow)
 	{
+		MinCity::UserInterface->OnLoaded();
+
 		if (_terrainTempImage) {
 			MinCity::TextureBoy->ImagingToTexture_BC7<false>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
 			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
@@ -3276,7 +3284,7 @@ namespace world
 			if (pGameObject) {
 				pGameObject->setUpdateFunction(&do_update_guitarer);
 				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(7.0f, 5.31f, 8.0f, 0.0f));
-				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.3333f));
+				pGameObject->getModelInstance()->setYaw(v2_rotation_t(-1.3333f));
 			}
 
 			pGameObject = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
@@ -3285,7 +3293,7 @@ namespace world
 			if (pGameObject) {
 				pGameObject->setUpdateFunction(&do_update_singer);
 				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(1.0f, 5.31f, 3.0f, 0.0f));
-				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.4666f));
+				pGameObject->getModelInstance()->setYaw(v2_rotation_t(-1.4666f));
 			}
 
 			pGameObject = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
@@ -3294,7 +3302,7 @@ namespace world
 			if (pGameObject) {
 				pGameObject->setUpdateFunction(&do_update_keyboarder);
 				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(7.0f, 5.31f, -7.0f, 0.0f));
-				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.5999f));
+				pGameObject->getModelInstance()->setYaw(v2_rotation_t(-1.5999f));
 			}
 
 			pGameObject = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cRemoteUpdateGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(start, point2D_t(-100, 0)),
@@ -3303,7 +3311,7 @@ namespace world
 			if (pGameObject) {
 				pGameObject->setUpdateFunction(&do_update_drummer);
 				pGameObject->getModelInstance()->setLocation3D(XMVectorSet(26.0f, 9.316f, 0.0f, 0.0f));
-				pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(-1.6666f));
+				pGameObject->getModelInstance()->setYaw(v2_rotation_t(-1.6666f));
 			}
 		}
 
@@ -3328,7 +3336,7 @@ namespace world
 					if (pGameObject) {
 						pGameObject->setUpdateFunction(&do_update_crowd);
 						//pGameObject->getModelInstance()->setLocation3D(XMVectorSet(26.0f, 9.316f, 0.0f, 0.0f));
-						pGameObject->getModelInstance()->setAzimuth(v2_rotation_t(1.5999f));
+						pGameObject->getModelInstance()->setYaw(v2_rotation_t(1.5999f));
 					}
 
 				}
@@ -3409,8 +3417,8 @@ namespace world
 
 			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
-			//pExplosionGameObj = placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
-			//	Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			//pTstGameObj = placeUpdateableInstanceAt<cTestGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getVisibleGridCenter(),
+				//Volumetric::eVoxelModel::DYNAMIC::NAMED::YXI, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 			
 			/*
 			if (PsuedoRandom5050()) {
@@ -3554,9 +3562,9 @@ namespace world
 	{
 		return(oCamera.voxelIndex_Center);
 	}
-	v2_rotation_t const& cVoxelWorld::getAzimuth() const
+	v2_rotation_t const& cVoxelWorld::getYaw() const
 	{
-		return(oCamera.Azimuth);
+		return(oCamera.Yaw);
 	}
 	float const	cVoxelWorld::getZoomFactor() const
 	{
@@ -4138,8 +4146,8 @@ namespace world
 	{
 		if (0.0f != anglerelative) {
 			// setup lerp
-			oCamera.PrevAzimuthAngle = oCamera.Azimuth.angle();
-			oCamera.TargetAzimuthAngle = oCamera.Azimuth.angle() + anglerelative;
+			oCamera.PrevYawAngle = oCamera.Yaw.angle();
+			oCamera.TargetYawAngle = oCamera.Yaw.angle() + anglerelative;
 
 			// signal transition
 			oCamera.tRotateStart = critical_now();
@@ -4187,7 +4195,7 @@ namespace world
 			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
 
 			// orient displacement in direction of camera
-			xmDisplacement = v2_rotate(xmDisplacement, oCamera.Azimuth);
+			xmDisplacement = v2_rotate(xmDisplacement, oCamera.Yaw);
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
@@ -4231,13 +4239,18 @@ namespace world
 		::translateCameraOrient(xmDisplacement);
 	}
 
+	void cVoxelWorld::setCameraElevation(float const fElevation)
+	{
+		oCamera.Elevation = fElevation; // straight in units 0.0f - 256.0f or the max height of the main volume, no interpolation done here.
+	}
+
 	void cVoxelWorld::resetCameraAngleZoom()
 	{
 		// rotation //
-		if (0.0f != oCamera.Azimuth.angle()) {
+		if (0.0f != oCamera.Yaw.angle()) {
 			// setup lerp
-			oCamera.PrevAzimuthAngle = oCamera.Azimuth.angle();
-			oCamera.TargetAzimuthAngle = 0.0f;
+			oCamera.PrevYawAngle = oCamera.Yaw.angle();
+			oCamera.TargetYawAngle = 0.0f;
 
 			// signal transition
 			oCamera.tRotateStart = critical_now();
@@ -4416,16 +4429,16 @@ namespace world
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
 		// view matrix derived from eyePos
+		XMVECTOR const xmEyeElevation(XMVectorSet(0.0f, -oCamera.Elevation, 0.0f, 0.0f));
 		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
-		
+
 		// In the ening these must be w/o fractional offset - no jitter on lighting and everything else that uses these uniform variables (normal usage via uniform buffer in shader)
 		_currentState.Uniform.eyePos = xmEyePos;
 		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset MUST be added here for jitter free movement of camera -in a matrix. does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
-		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos,  // normal view matrix
-										         XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(xmEyePos, xmEyeElevation), xmEyeElevation, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		// *bugfix - ***do not change***
 		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
@@ -4451,7 +4464,7 @@ namespace world
 
 		// "XMMatrixInverse" found to be imprecise for acquiring vector components (forward, direction)
 		// using original values instead (-----precise))
-		_targetState.Uniform.eyePos = v3_rotate_azimuth(XMVectorAdd(Iso::xmEyePt_Iso, getFractionalOffset()), oCamera.Azimuth); // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (azimuth) - don't fuck with the fractional offset, it *is* required here.
+		_targetState.Uniform.eyePos = v3_rotate_yaw(XMVectorAdd(Iso::xmEyePt_Iso, getFractionalOffset()), oCamera.Yaw); // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (Yaw) - don't fuck with the fractional offset, it *is* required here.
 																																// this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
 		_targetState.zoom = oCamera.ZoomFactor;
 		
@@ -4525,19 +4538,28 @@ namespace world
 
 		// any operations that do not need to execute while paused should not
 		if (!bPaused) {
+			// update user game objects *after* user is updated
+			MinCity::UserInterface->Update(tNow, tDelta);
 
-			MinCity::Physics->Update(tNow, tDelta);
+			{
+				auto it = cYXIGameObject::begin();
+				while (cYXIGameObject::end() != it) {
 
-			if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
-				SAFE_DELETE(_activeRain);
+					it->OnUpdate(tNow, tDelta);
+					++it;
+				}
 			}
+			{
+				auto it = cYXISphereGameObject::begin();
+				while (cYXISphereGameObject::end() != it) {
+
+					it->OnUpdate(tNow, tDelta);
+					++it;
+				}
+			}
+
+			MinCity::Physics->Update(tNow, tDelta); // improving latency apply physics update after all user, user game object updates
 			
-			if (oCamera.ZoomToExtents) {
-
-				// auto zoom to AABB extents feature
-				zoomCamera(XMLoadFloat3A(&oCamera.ZoomExtents));
-			}
-
 			// update all image animations //
 			{
 				auto it = ImageAnimation::begin();
@@ -4617,7 +4639,6 @@ namespace world
 				}
 			}
 
-			// last
 			{
 				auto it = cLevelSetGameObject::begin();
 				while (cLevelSetGameObject::end() != it) {
@@ -4625,6 +4646,17 @@ namespace world
 					it->OnUpdate(tNow, tDelta);
 					++it;
 				}
+			}
+
+			// last etc.
+			if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
+				SAFE_DELETE(_activeRain);
+			}
+
+			if (oCamera.ZoomToExtents) {
+
+				// auto zoom to AABB extents feature
+				zoomCamera(XMLoadFloat3A(&oCamera.ZoomExtents));
 			}
 
 		} // end !Paused //
@@ -4711,7 +4743,7 @@ namespace world
 		mini::bits->clear();
 	}
 	
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE; // should be minivox size
+	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE / 2.0f; // should be minivox size
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		_OpacityMap.SetSpecializationConstants_ComputeLight(constants);
@@ -4841,9 +4873,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
+	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
 	{
-		constants.emplace_back(vku::SpecializationConstant(0, (float)(bMiniVoxel ? (Iso::MINI_VOX_SIZE) : Iso::VOX_SIZE))); // VS is dependent on type of voxel for geometry size
+		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 
@@ -4863,7 +4895,7 @@ namespace world
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, false);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 
@@ -4873,18 +4905,24 @@ namespace world
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_VoxelTerrain_Basic_VS(constants);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
+
+		// used for uv -> voxel in vertex shader image store operation for opacity map
+
+		constants.emplace_back(vku::SpecializationConstant(8, (float)1.0f / Iso::MAX_HEIGHT_STEP));
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::HEIGHT_SCALE));
+		constants.emplace_back(vku::SpecializationConstant(10, (int)MINIVOXEL_FACTOR));
 
 		constants.emplace_back(vku::SpecializationConstant(11, (float)Iso::ROAD_SEGMENT_WIDTH));
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel)
+	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
 	{
-		constants.emplace_back(vku::SpecializationConstant(0, (float)(bMiniVoxel ? (Iso::MINI_VOX_SIZE) : Iso::VOX_SIZE))); // VS is dependent on type of voxel for geometry size
+		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, false);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
@@ -4894,18 +4932,24 @@ namespace world
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_VoxelTerrain_VS(constants);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
+
+		// used for uv -> voxel in vertex shader image store operation for opacity map
+		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
+		constants.emplace_back(vku::SpecializationConstant(2, (float)1.0f / Iso::MAX_HEIGHT_STEP));
+		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::HEIGHT_SCALE));
+		constants.emplace_back(vku::SpecializationConstant(4, (int)MINIVOXEL_FACTOR));
 
 		constants.emplace_back(vku::SpecializationConstant(5, (float)Iso::ROAD_SEGMENT_WIDTH));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, true);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE);
 	}
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, true);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE);
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -5456,7 +5500,7 @@ namespace world
 
 								_queueCleanUpInstances.emplace(std::forward<hashArea&&>(hashArea{ hash,
 																								  r2D_add(vLocalArea, rootVoxel),
-																								  DeleteModelInstance_Dynamic->getAzimuth() }));
+																								  DeleteModelInstance_Dynamic->getYaw() }));
 
 								// *** Actual deletion of voxel model instance happens *** //
 								SAFE_DELETE(DeleteModelInstance_Dynamic);

@@ -39,7 +39,7 @@ namespace world
 	XMVECTOR const __vectorcall getOrigin();
 	XMVECTOR const __vectorcall getFractionalOffset(); // beware double adding the fractional offset to a transformation that will later be multiplied by the view matrix. the view matrix already contains the fractional offset translation!
 
-	v2_rotation_t const& getAzimuth();
+	v2_rotation_t const& getYaw();
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex);

@@ -311,10 +311,13 @@
     <ClInclude Include="cTrafficControlGameObject.h" />
     <ClInclude Include="cTrafficSignGameObject.h" />
     <ClInclude Include="cUpdateableGameObject.h" />
+    <ClInclude Include="cUser.h" />
     <ClInclude Include="cUserInterface.h" />
     <ClInclude Include="cVideoScreenGameObject.h" />
     <ClInclude Include="cVoxelWorld.h" />
     <ClInclude Include="cVulkan.h" />
+    <ClInclude Include="cYXIGameObject.h" />
+    <ClInclude Include="cYXISphereGameObject.h" />
     <ClInclude Include="cZoningTool.h" />
     <ClInclude Include="data.h" />
     <ClInclude Include="debug.h" />
@@ -403,10 +406,13 @@
     <ClCompile Include="cTrafficControlGameObject.cpp" />
     <ClCompile Include="cTrafficSignGameObject.cpp" />
     <ClCompile Include="cUpdateableGameObject.cpp" />
+    <ClCompile Include="cUser.cpp" />
     <ClCompile Include="cUserInterface.cpp" />
     <ClCompile Include="cVideoScreenGameObject.cpp" />
     <ClCompile Include="cVoxelWorld.cpp" />
     <ClCompile Include="cVulkan.cpp" />
+    <ClCompile Include="cYXIGameObject.cpp" />
+    <ClCompile Include="cYXISphereGameObject.cpp" />
     <ClCompile Include="cZoningTool.cpp" />
     <ClCompile Include="Debug.cpp" />
     <ClCompile Include="eVoxelModels.cpp" />

@@ -635,13 +635,13 @@ bool const cCarGameObject::forward(state const& __restrict currentState, state& 
 	return(false);
 }
 
-void __vectorcall cCarGameObject::gravity(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth)
+void __vectorcall cCarGameObject::gravity(FXMVECTOR const xmLocation, FXMVECTOR const xmYaw)
 {
 	// actual front & back (not offset to road center)
 	XMVECTOR xmFront, xmBack;
 
-	xmFront = XMVectorAdd(xmLocation, XMVectorScale(xmAzimuth, _this.half_length));
-	xmBack = XMVectorSubtract(xmLocation, XMVectorScale(xmAzimuth, _this.half_length));
+	xmFront = XMVectorAdd(xmLocation, XMVectorScale(xmYaw, _this.half_length));
+	xmBack = XMVectorSubtract(xmLocation, XMVectorScale(xmYaw, _this.half_length));
 
 	float fRoadHeightFront, fRoadHeightBack, fRoadHeightCenter;
 
@@ -739,10 +739,10 @@ void __vectorcall cCarGameObject::gravity(FXMVECTOR const xmLocation, FXMVECTOR 
 	(*Instance)->setPitch(vPitch);
 }
 
-bool const __vectorcall cCarGameObject::ccd(FXMVECTOR const xmLocation, FXMVECTOR const xmAzimuth) const
+bool const __vectorcall cCarGameObject::ccd(FXMVECTOR const xmLocation, FXMVECTOR const xmYaw) const
 {
 	// actual front + 1 (not offset to road center) // ***subtract here works for ccd don't know how - but it works***
-	XMVECTOR const xmAhead(XMVectorSubtract(xmLocation, XMVectorScale(xmAzimuth, _this.half_length + 1.0f)));
+	XMVECTOR const xmAhead(XMVectorSubtract(xmLocation, XMVectorScale(xmYaw, _this.half_length + 1.0f)));
 
 	// only doing check directly infront of car
 	point2D_t const voxelIndexAhead(v2_to_p2D_rounded(xmAhead)); // rounding to catch a collision that is a little more ahead than if this were not rounded as usual.
@@ -768,7 +768,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 
 		// any changes to members of *this should be done only *after* ccd (below)
 		XMVECTOR const xmTarget(p2D_to_v2(_this.targetState.voxelIndex));
-		XMVECTOR xmNow, xmNowR(_this.currentState.vAzimuth.v2());
+		XMVECTOR xmNow, xmNowR(_this.currentState.vYaw.v2());
 
 		// v = d/t
 		// t = d/v
@@ -782,7 +782,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 			end_of_state = true;
 			
 			xmNow = xmTarget;
-			xmNowR = _this.targetState.vAzimuth.v2();
+			xmNowR = _this.targetState.vYaw.v2();
 		}
 		else {
 
@@ -797,7 +797,7 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 				xmNow = biarc_interpolate(_arcs[0], _arcs[1], tNorm);
 
 				// rotation nlerp (direction only) // nlerp = normalize(lerp) * d  // see: https://www.desmos.com/calculator/rgfc7qpnru
-				xmNowR = XMVector2Normalize(SFM::lerp(_this.currentState.vAzimuth.v2(), _this.targetState.vAzimuth.v2(), tNorm));
+				xmNowR = XMVector2Normalize(SFM::lerp(_this.currentState.vYaw.v2(), _this.targetState.vYaw.v2(), tNorm));
 			}
 			else {
 				// position lerp
@@ -829,11 +829,11 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 				v2_rotation_t vNowR;
 				vNowR = xmNowR;
 
-				(*Instance)->setLocationAzimuth(xmNow, vNowR);
+				(*Instance)->setLocationYaw(xmNow, vNowR);
 			}
 			else {
 
-				(*Instance)->setLocationAzimuth(xmNow, _this.currentState.vAzimuth);
+				(*Instance)->setLocationYaw(xmNow, _this.currentState.vYaw);
 			}
 
 			_this.brakes_on = false;
@@ -897,17 +897,17 @@ void cCarGameObject::state::deduce_state()
 	case eDirection::N:
 		voxelOffsetFromRoadCenter.x = (Iso::ROAD_SEGMENT_WIDTH >> 2) + 1;
 		voxelDirection = point2D_t(0, 1);
-		vAzimuth = -v2_rotation_constants::v90;
+		vYaw = -v2_rotation_constants::v90;
 		break;
 	case eDirection::S:
 		voxelOffsetFromRoadCenter.x = -int32_t((Iso::ROAD_SEGMENT_WIDTH >> 2) + 1);
 		voxelDirection = point2D_t(0, -1);
-		vAzimuth = v2_rotation_constants::v90;
+		vYaw = v2_rotation_constants::v90;
 		break;
 	case eDirection::E:
 		voxelOffsetFromRoadCenter.y = -int32_t((Iso::ROAD_SEGMENT_WIDTH >> 2) + 1);
 		voxelDirection = point2D_t(1, 0);
-		vAzimuth = v2_rotation_constants::v180;
+		vYaw = v2_rotation_constants::v180;
 		break;
 	case eDirection::W:
 		voxelOffsetFromRoadCenter.y = (Iso::ROAD_SEGMENT_WIDTH >> 2) + 1;
@@ -930,7 +930,7 @@ cCarGameObject::state::state(uint32_t const type_, uint32_t const direction_, po
 
 void cCarGameObject::setInitialState(state&& initialState)
 {
-	(*Instance)->setAzimuth(initialState.vAzimuth);
+	(*Instance)->setYaw(initialState.vYaw);
 
 	_this.currentState = std::forward<state&&>(initialState);
 	_this.targetState = std::move(_this.currentState);

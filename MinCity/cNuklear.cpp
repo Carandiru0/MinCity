@@ -1151,6 +1151,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			WasPressed = 0;
 		}
 
+		/*
 		static tTime tLastPress(zero_time_point);
 		if (tLocal - tLastPress > milliseconds(164)) { // repeat rate 
 			
@@ -1191,7 +1192,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				FMT_NUKLEAR_DEBUG(false, "push_constant_vector: x{:02f} , y{:02f}\n", XMVectorGetX(xmPushConstant), XMVectorGetY(xmPushConstant));
 				tLastPress = tLocal;
 			}
-
+			*/
 			/*
 			static uint8_t uAdjust{0};
 			if (glfwGetKey(win, GLFW_KEY_PAGE_UP) == GLFW_PRESS) {
@@ -1252,7 +1253,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				tLastPress = tLocal;
 			}
 			*/
-			if (glfwGetKey(win, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {
+			/*if (glfwGetKey(win, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {
 
 				xmPushConstant = XMVectorZero();
 
@@ -1262,8 +1263,8 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 
 				WasPressed = GLFW_KEY_BACKSPACE;
 				tLastPress = tLocal;
-			}
-		} // repeatrate
+			}*/
+		//} // repeatrate
 	}
 	
 	tLocalLast = tLocal;

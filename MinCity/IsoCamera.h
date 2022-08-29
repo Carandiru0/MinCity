@@ -33,7 +33,7 @@ namespace Iso
 		xmUp = { 0.0f, 1.0f, 0.0f, 0.0f };																					// - The eye distance for the projection used always remains at the same distance. That distance (above) is set so the eye is dead center in the visible frustum.
 																															// - The distance from the lookat point and the eye will always be the same. Zooming is decoupled from the eye / view matrix.
 	read_only_no_constexpr inline v2_rotation_t const																		// - Only the orthographic projection matrix controls the zoom, or the distance from the eye to the look at. This is a "feature" due to parallel projection.
-		AzimuthIsometric(ISOMETRIC_ANGLES_USED.y);																			// - Perspective Projection is not used, which is the norm in 3D graphics. However, since all we care about is "isometric" - orthographic / parallel projection is required for an "isometric" view. 
+		YawIsometric(ISOMETRIC_ANGLES_USED.y);																			// - Perspective Projection is not used, which is the norm in 3D graphics. However, since all we care about is "isometric" - orthographic / parallel projection is required for an "isometric" view. 
 																															// - Parallel Projection Pros:
 																															//    - nearly infinite depth precision (extremely accurate) - vs perspective (limited precision)
 																															//    - depth is linear (simpler) - vs perspective (non-linear)

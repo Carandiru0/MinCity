@@ -53,7 +53,7 @@ namespace Volumetric
 				point2D_t const new_rootVoxel(v2_to_p2D(xmLoc)); // matches getVoxelIndex() method
 
 				// this could be a slight move (fractional) that does not change the voxelindex (integer)
-				if (new_rootVoxel != old_rootVoxel || vAzi != _vAzimuth) {
+				if (new_rootVoxel != old_rootVoxel || vAzi != _vYaw) {
 
 					Iso::Voxel const* const pVoxelNew = world::getVoxelAt(new_rootVoxel);
 					if (nullptr != pVoxelNew) {
@@ -62,14 +62,14 @@ namespace Volumetric
 						rect2D_t const vLocalArea(getModel()._LocalArea);
 
 						// clear old area of the hash id only			   
-						world::resetVoxelsHashAt(r2D_add(vLocalArea, old_rootVoxel), hashID, _vAzimuth); // using old location & azimuth
+						world::resetVoxelsHashAt(r2D_add(vLocalArea, old_rootVoxel), hashID, _vYaw); // using old location & Yaw
 
 						/// ////////////////////////////////////////////////////////////////////////////////////
 						Iso::Voxel oVoxelNew(*pVoxelNew);
-						uint8_t const new_index(Iso::getNextAvailableHashIndex<true>(oVoxelNew)); // must capture index here 1st
+						uint32_t const new_index(Iso::getNextAvailableHashIndex<true>(oVoxelNew)); // must capture index here 1st
 
 						// set new area of the hash id only
-						world::setVoxelsHashAt(r2D_add(vLocalArea, new_rootVoxel), hashID, vAzi); // using new location & azimuth
+						world::setVoxelsHashAt(r2D_add(vLocalArea, new_rootVoxel), hashID, vAzi); // using new location & Yaw
 
 						// update the new owner //
 						Iso::setAsOwner(oVoxelNew, new_index);
@@ -92,9 +92,9 @@ namespace Volumetric
 				}
 				
 				// this also covers fractional moves only (where voxelIndex does not change)
-				// and updates the location / azimuth for where the above case is true or false
+				// and updates the location / Yaw for where the above case is true or false
 				XMStoreFloat2A(&vLoc, xmLoc);
-				_vAzimuth = vAzi;
+				_vYaw = vAzi;
 
 			}
 			else
@@ -114,7 +114,7 @@ namespace Volumetric
 			//      Child (prop) is "gridless", and just for animation
 			//		so model instance only cares about the location & rotation.
 			XMStoreFloat2A(&vLoc, xmLoc);
-			_vAzimuth = vAzi;
+			_vYaw = vAzi;
 		}
 	}
 } //end ns volumetric

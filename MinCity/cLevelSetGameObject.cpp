@@ -232,7 +232,7 @@ namespace world
 	
 		getModelInstance()->setVoxelOffsetCount(0, numVoxels);
 		
-		getModelInstance()->setAzimuth(getModelInstance()->getAzimuth() + 0.1f * tDelta.count());
+		getModelInstance()->setYaw(getModelInstance()->getYaw() + 0.1f * tDelta.count());
 	}
 
 	cLevelSetGameObject::~cLevelSetGameObject()

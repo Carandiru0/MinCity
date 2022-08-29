@@ -202,18 +202,20 @@ namespace Volumetric
 	class alignas(16) voxelModelInstance_Dynamic : public voxelModelInstance<voxB::DYNAMIC>
 	{
 	private:
-		v2_rotation_t								_vAzimuth, _vPitch;	// Azimuth = rotation about Y Axis. Pitch = rotation about Z Axis
+		v2_rotation_t								 _vRoll, _vPitch, _vYaw;
 
 	public:
-		v2_rotation_t const& __vectorcall getAzimuth() const { return(_vAzimuth); }
+		v2_rotation_t const& __vectorcall getRoll() const { return(_vRoll); }
 		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); }
-
-		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc, _vAzimuth); }			//-ok
-		void __vectorcall setLocation3D(FXMVECTOR const xmLoc) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), _vAzimuth); }		//-ok
-		void __vectorcall setAzimuth(v2_rotation_t const vAzi) { synchronize(getLocation(), vAzi); }	//-ok
+		v2_rotation_t const& __vectorcall getYaw() const { return(_vYaw); }
+		
+		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc, _vYaw); }			//-ok
+		void __vectorcall setLocation3D(FXMVECTOR const xmLoc) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), _vYaw); }		//-ok
+		void __vectorcall setRoll(v2_rotation_t const vRoll) { _vRoll = vRoll; }						// row doesn't affect synchronization
 		void __vectorcall setPitch(v2_rotation_t const vPit) { _vPitch = vPit; }						// pitch doesn't affect synchronization
-		void __vectorcall setLocationAzimuth(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { synchronize(xmLoc, vAzi); }  //*best
-		void __vectorcall setLocation3DAzimuth(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), vAzi); }  //*best
+		void __vectorcall setYaw(v2_rotation_t const vAzi) { synchronize(getLocation(), vAzi); }	//-ok
+		void __vectorcall setLocationYaw(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { synchronize(xmLoc, vAzi); }  //*best
+		void __vectorcall setLocation3DYaw(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), vAzi); }  //*best
 	public:
 		void __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vAzi);	// must be called whenever a change in location/rotation is intended 
 	private:

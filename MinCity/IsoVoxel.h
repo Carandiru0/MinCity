@@ -77,7 +77,7 @@ namespace Iso
 
 	static constexpr float const
 		HEIGHT_SCALE = 16.0f,		// this value and shader value for height need to always match (uniforms.vert)
-		VOX_SIZE = 0.5f,			// this value and shader value for normal vox size need to always match
+		VOX_SIZE = 0.25f,			// this value and shader value for normal vox size need to always match
 		VOX_STEP = VOX_SIZE * 2.0f,
 		VOX_RADIUS = 866.025403784438646764e-3f, // calculated from usage of 0.5f
 
@@ -85,6 +85,7 @@ namespace Iso
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
 		MINI_VOX_RADIUS = VOX_RADIUS / MINIVOXEL_FACTORF, // calculated "" ""
 
+		WORLD_MAX_HEIGHT = (float)SCREEN_VOXELS_Y,
 		WORLD_GRID_FSIZE = (float)WORLD_GRID_SIZE,
 		WORLD_GRID_FHALFSIZE = (float)WORLD_GRID_HALFSIZE,
 		INVERSE_WORLD_GRID_FSIZE = 1.0f / WORLD_GRID_FSIZE,

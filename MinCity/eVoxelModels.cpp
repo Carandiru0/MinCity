@@ -232,24 +232,14 @@ namespace Volumetric
 		
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
 
+		// Loading Order Matters for Named Models/Sequences, index is defined by order in which they are loaded.
+		LoadModelNamed<DYNAMIC>("yxi");
+		LoadModelNamed<DYNAMIC>("yxi_sphere");
+
 		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("spike_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("tiny_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("medium_fire");
-		// no blosc support =( LoadModelSequenceNamed<DYNAMIC>("midair_explosion");
-#ifdef GIF_MODE
-		LoadModelNamed<DYNAMIC>("rock_stage/guitar");
-		LoadModelNamed<DYNAMIC>("rock_stage/singer");
-		LoadModelNamed<DYNAMIC>("rock_stage/musician");
-		LoadModelNamed<DYNAMIC>("rock_stage/light");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__0");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__1");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__2");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__3");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__4");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__5");
-		LoadModelNamed<DYNAMIC>("rock_stage/crowd__6");
-#endif
 
 		// last!
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last

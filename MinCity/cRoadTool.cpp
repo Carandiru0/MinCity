@@ -1760,7 +1760,7 @@ static void __vectorcall decorate_xing(point2D_t const currentPoint, Iso::Voxel 
 						flags::INSTANT_CREATION);
 
 					if (pGameObject) {
-						pGameObject->getModelInstance()->setAzimuth(xingRotation[xing]);
+						pGameObject->getModelInstance()->setYaw(xingRotation[xing]);
 						undoSignage.emplace_back(pGameObject->getModelInstance()->getHash());
 
 						pTrafficSignGameObject[traffic_signs] = pGameObject;
@@ -1868,7 +1868,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 					flags::INSTANT_CREATION);
 
 				if (pGameObject) {
-					pGameObject->getModelInstance()->setAzimuth(rotation);
+					pGameObject->getModelInstance()->setYaw(rotation);
 					lamp_post_swapped_for_sign = true;
 					return(pGameObject->getModelInstance()->getHash());
 				}
@@ -1879,7 +1879,7 @@ static uint32_t __vectorcall decorate_lamppost(point2D_t const currentPoint, Iso
 		auto const [hash, instance] = MinCity::VoxelWorld->placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(sidePoint[side], Volumetric::eVoxelModel::DYNAMIC::MISC::LAMP_POST,
 			flags::INSTANT_CREATION);
 		if (instance) {
-			instance->setAzimuth(rotation);
+			instance->setYaw(rotation);
 			return(hash);
 		}
 	}

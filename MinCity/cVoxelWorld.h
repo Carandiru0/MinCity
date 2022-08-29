@@ -88,7 +88,7 @@ namespace world
 		point2D_t const __vectorcall		getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const	__vectorcall		getHoveredVoxelIndex() const { return(_voxelIndexHover); } // updated only when valid, always contains the last known good voxelIndex that is hovered by the mouse
 
-		v2_rotation_t const&				getAzimuth() const;
+		v2_rotation_t const&				getYaw() const;
 		float const							getZoomFactor() const;
 		UniformState const& __vectorcall	getCurrentState() const { return(_currentState); }
 		
@@ -109,6 +109,8 @@ namespace world
 		void __vectorcall translateCamera(point2D_t const vDir);
 		void XM_CALLCONV translateCamera(FXMVECTOR const xmDisplacement);
 		void XM_CALLCONV translateCameraOrient(FXMVECTOR const xmDisplacement);
+		void setCameraElevation(float const fElevation);
+
 		void resetCameraAngleZoom(); // gradual over time
 		void resetCamera(); // immediatte
 		void setCameraTurnTable(bool const enable);
@@ -169,8 +171,8 @@ namespace world
 		void SetSpecializationConstants_PostAA(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_PostAA_HDR(std::vector<vku::SpecializationConstant>& __restrict constants);
 		
-		void SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel);
-		void SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, bool const bMiniVoxel);
+		void SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize);
+		void SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize);
 		void SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants);
 
 		void SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants);

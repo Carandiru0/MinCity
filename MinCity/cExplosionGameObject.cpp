@@ -64,7 +64,7 @@ namespace world
 		instance_->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
 
 		// random start angle
-		instance_->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
+		instance_->setYaw(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
 #ifdef DEBUG_EXPLOSION_WINDOW
 		debug_explosion_game_object = this;
 #endif
@@ -144,11 +144,11 @@ namespace world
 		if (_animation.update(getModelInstance(), tDelta)) {
 
 			// random start angle
-			//getModelInstance()->setAzimuth(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
+			//getModelInstance()->setYaw(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
 			//getModelInstance()->destroy(milliseconds(0));
 		}
 			
-		getModelInstance()->setAzimuth(getModelInstance()->getAzimuth() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
+		getModelInstance()->setYaw(getModelInstance()->getYaw() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
 		
 		// ** stable feedback auto regulating emission threshold. Dependent on both the temperature + flames boost levels/inputs.
 		// ** do not change ** provides some dynamic range to the emission/lighting. also optimizes out dark lights that have ~nil emission.

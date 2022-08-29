@@ -136,7 +136,7 @@ namespace world
 			v2_rotation_t vOrient;
 			vOrient = xmDir;
 
-			(*Instance)->setLocationAzimuth(xmLoc, /*_parent_rotation +*/ vOrient);
+			(*Instance)->setLocationYaw(xmLoc, /*_parent_rotation +*/ vOrient);
 		}
 
 		xmLoc = XMVectorSetY(xmLoc, (*Instance)->getElevation());
@@ -149,11 +149,32 @@ namespace world
 			//(*Instance)->setPitch(vOrient);
 		}
 #else
-		v2_rotation_t vOrient( (*Instance)->getAzimuth() );
+		{
+			v2_rotation_t vOrient((*Instance)->getYaw());
 
-		vOrient += time_to_float(tDelta) * 0.5f;
-			
-		(*Instance)->setAzimuth(vOrient);
+			vOrient += time_to_float(tDelta) * 0.5f;
+
+			(*Instance)->setYaw(vOrient);
+		}
+	    /* {
+			v2_rotation_t vOrient((*Instance)->getPitch());
+
+			vOrient += time_to_float(tDelta) * 0.5f;
+
+			(*Instance)->setPitch(vOrient);
+		}
+		{
+			v2_rotation_t vOrient((*Instance)->getRoll());
+
+			vOrient += time_to_float(tDelta) * 0.5f;
+
+			(*Instance)->setRoll(vOrient);
+		}*/
+
+		float const fElevation(Iso::MINI_VOX_SIZE * Iso::WORLD_MAX_HEIGHT * abs(sin(time_to_float(tNow - start()) * 0.1f)));
+
+		(*Instance)->setElevation(fElevation);
+		MinCity::VoxelWorld->setCameraElevation(fElevation);
 
 		/* some displacement on depth cube 
 		static v2_rotation_t vAngle;

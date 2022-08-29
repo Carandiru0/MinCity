@@ -105,7 +105,7 @@ void cZoningTool::paint()
 		// same length = (area.bottom - area.top) << 1;
 		//gui::draw_line(gui::axis::z, xmOrigin, origin, color, length, gui::flags::emissive);
 
-		v2_rotation_t const view(world::getAzimuth() + _offsetAngle); // range is -XM_PI to XM_PI or -180 to 180 // offset angle represents the most optimal "angle" offset to switch the gui text.
+		v2_rotation_t const view(world::getYaw() + _offsetAngle); // range is -XM_PI to XM_PI or -180 to 180 // offset angle represents the most optimal "angle" offset to switch the gui text.
 		point2D_t best_origin;
 		uint32_t axis;
 
@@ -178,7 +178,7 @@ void cZoningTool::paint()
 		bFindMaxVisibility = (quadrant_visibility < MIN_VISIBILITY);
 
 		// draw the current angle in the center of the square (for debugging)
-		v2_rotation_t const vangle(world::getAzimuth());
+		v2_rotation_t const vangle(world::getYaw());
 		float const angle = XMConvertToDegrees(vangle.angle());
 		origin = area.center();
 		xmOrigin = p2D_to_v2(origin);

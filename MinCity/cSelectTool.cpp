@@ -22,10 +22,10 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 
 		if (instance) {
 
-			v2_rotation_t azimuth(world::getAzimuth());
-			XMVECTOR vR(azimuth.v2());
+			v2_rotation_t Yaw(world::getYaw());
+			XMVECTOR vR(Yaw.v2());
 			vR = SFM::sgn(vR);
-			azimuth = XMVector2Normalize(vR);
+			Yaw = XMVector2Normalize(vR);
 
 
 			XMVECTOR const xmLoc(instance->getLocation());
@@ -39,7 +39,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				if (down) { // pressed
 					XMVECTOR xmDisplacement = XMVectorSet(0.0f, tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
 					// orient displacement in direction of camera
-					xmDisplacement = v2_rotate(xmDisplacement, azimuth);
+					xmDisplacement = v2_rotate(xmDisplacement, Yaw);
 					instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
 				}
 				break;
@@ -47,7 +47,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				if (down) { // pressed
 					XMVECTOR xmDisplacement = XMVectorSet(0.0f, -tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
 					// orient displacement in direction of camera
-					xmDisplacement = v2_rotate(xmDisplacement, azimuth);
+					xmDisplacement = v2_rotate(xmDisplacement, Yaw);
 					instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));;
 				}
 				break;
@@ -55,12 +55,12 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				if (down) { // pressed
 
 					if (ctrl) {
-						instance->setAzimuth(instance->getAzimuth() + tDelta * ROTATE_SELECTION_SPEED);
+						instance->setYaw(instance->getYaw() + tDelta * ROTATE_SELECTION_SPEED);
 					}
 					else {
 						XMVECTOR xmDisplacement = XMVectorSet(-tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
 						// orient displacement in direction of camera
-						xmDisplacement = v2_rotate(xmDisplacement, azimuth);
+						xmDisplacement = v2_rotate(xmDisplacement, Yaw);
 						instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
 					}
 				}
@@ -69,12 +69,12 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 				if (down) { // pressed
 
 					if (ctrl) {
-						instance->setAzimuth(instance->getAzimuth() - tDelta * ROTATE_SELECTION_SPEED);
+						instance->setYaw(instance->getYaw() - tDelta * ROTATE_SELECTION_SPEED);
 					}
 					else {
 						XMVECTOR xmDisplacement = XMVectorSet(tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
 						// orient displacement in direction of camera
-						xmDisplacement = v2_rotate(xmDisplacement, azimuth);
+						xmDisplacement = v2_rotate(xmDisplacement, Yaw);
 						instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
 					}
 				}
@@ -97,7 +97,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 			}
 #ifndef NDEBUG
 			point2D_t const voxelIndex(instance->getVoxelIndex());
-			FMT_NUKLEAR_DEBUG(false, "voxelIndex({:d}, {:d})  elevation({:f})  angle({:f})  ", voxelIndex.x, voxelIndex.y, instance->getElevation(), instance->getAzimuth().angle());
+			FMT_NUKLEAR_DEBUG(false, "voxelIndex({:d}, {:d})  elevation({:f})  angle({:f})  ", voxelIndex.x, voxelIndex.y, instance->getElevation(), instance->getYaw().angle());
 #endif
 		}
 	}

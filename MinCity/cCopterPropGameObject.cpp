@@ -114,13 +114,13 @@ namespace world
 		return(voxel);
 	}
 
-	void __vectorcall cCopterPropGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, FXMVECTOR xmLocation, float const fElevation, v2_rotation_t const& azimuth)
+	void __vectorcall cCopterPropGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, FXMVECTOR xmLocation, float const fElevation, v2_rotation_t const& Yaw)
 	{
 		// some spinning for copter prop
 		_this.angle -= tDelta.count() * 11.0f;
 
 		// inhreit parent location & orientation
-		(*Instance)->setLocationAzimuth(xmLocation, azimuth + _this.angle);
+		(*Instance)->setLocationYaw(xmLocation, Yaw + _this.angle);
 		(*Instance)->setElevation(fElevation);
 
 		// chsnging prop light

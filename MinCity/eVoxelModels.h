@@ -117,14 +117,19 @@ namespace Volumetric
 					LIGHT_X9 = 16,
 					LIGHT_X64 = 17;
 			};
-			struct NAMED // ** dynamic named **
+			struct NAMED // ** dynamic named ** (index == order of loading named models/sequences)
 			{
 				static inline uint32_t
 
-					GROUND_EXPLOSION = 0,
-					SPIKE_EXPLOSION = 1,
-					TINY_EXPLOSION = 2,
-					MEDIUM_FIRE = 3;
+					YXI = 0,
+					YXI_SPHERE = 1,
+
+					GROUND_EXPLOSION = 2,
+					SPIKE_EXPLOSION = 3,
+					TINY_EXPLOSION = 4,
+					MEDIUM_FIRE = 5;
+
+					
 			};
 		};
 	};

@@ -139,9 +139,10 @@ namespace world
 				// *set additional varying data
 				data_models.back().elevation = iter->second->getElevation();
 				XMStoreFloat2(&data_models.back().location, iter->second->getLocation());
-				XMStoreFloat3(&data_models.back().azimuth, iter->second->getAzimuth().data());
+				XMStoreFloat3(&data_models.back().roll, iter->second->getRoll().data());
 				XMStoreFloat3(&data_models.back().pitch, iter->second->getPitch().data());
-
+				XMStoreFloat3(&data_models.back().yaw, iter->second->getYaw().data());
+				
 				// set gameobject specific data
 				if (types::game_object_t::NoOwner != gameobject_type) {
 					BufferGameObject<Volumetric::voxelModelInstance_Dynamic>(hash, iter->second, data_gameobjects);

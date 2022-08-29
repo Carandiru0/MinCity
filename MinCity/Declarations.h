@@ -45,7 +45,7 @@ namespace VertexDecl
 	};
 	struct no_vtable alignas(16) VoxelDynamic : public VoxelNormal {
 
-		XMVECTOR	orient_reserved;						//x=cos,y=sin for azimuth, z=cos,w=sin for pitch 
+		XMVECTOR	orient_reserved;						//x=cos,y=sin for Yaw, z=cos,w=sin for pitch 
 
 		__forceinline explicit __vectorcall VoxelDynamic(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, FXMVECTOR orient_reserved_, uint32_t const hash) noexcept
 			: VoxelNormal(worldPos_, uv_vr_, hash), orient_reserved(orient_reserved_)

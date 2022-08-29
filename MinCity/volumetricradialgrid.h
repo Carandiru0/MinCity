@@ -352,13 +352,8 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 				&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 			{
-				// xyz = visible relative UV,  w = notusing detailed occlusion - set to something else ?
-				XMVECTOR xmUVs(XMVectorMultiplyAdd(
-					xmIndex,
-					Volumetric::_xmInverseVisible,
-					XMVectorSet(0.0f, 0.0f, 0.0f, fUniformDistance) // Uniform/voxel float parameter (instead of usual COLOR used by voxels in models
-				));
-
+				// xy = identity for roll portion of rotations, z = not used yet, w = uniform distance from origin in 0.0 to 1.0 range
+				XMVECTOR xmUVs(XMVectorSet(1.0f, 0.0f, 0.0f, fUniformDistance)); // Uniform/voxel float parameter (instead of usual COLOR used by voxels in models
 
 				// Build hash //
 				uint32_t hash(0);
@@ -373,8 +368,8 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 					radialGrid->getRotation() :
 					(radialGrid->getRotation() + desc.rotation));
 				// pitch is not supported but input is compliant here so shader behaves properly
-				// voxelradialgrid support only azimuth
-				XMVECTOR const xmR(XMVectorAdd(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), XMVectorRotateRight<2>(vR.v2()))); // *bugfix pitch is xy, azimuth is zw
+				// voxelradialgrid support only Yaw
+				XMVECTOR const xmR(XMVectorAdd(XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), XMVectorRotateRight<2>(vR.v2()))); // *bugfix pitch is xy, Yaw is zw
 
 				// begin render radial grid voxel (add to vertex buffer )
 				// critical to increment voxelDynamicRow whn finished, propogates 
@@ -423,18 +418,12 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 
 					if (0 != column_voxel_size) {
 
-						constexpr float const STEP_UV = Volumetric::INVERSE_MINIGRID_VISIBLE_Y * FILL_DIRECTION;
 						float const fInvMaxDistance((Iso::MINI_VOX_STEP / radialGrid->getScale()) * FILL_DIRECTION);
-
-						float fUVHeight(XMVectorGetY(xmUVs));
 
 						for (int32_t i = column_voxel_size - 1; i >= 0 ; --i) {
 
 							fVoxelHeight += fStepVoxel;
 							xmVoxelOrigin = XMVectorSetY(xmVoxelOrigin, fVoxelHeight);
-
-							fUVHeight -= STEP_UV;
-							xmUVs = XMVectorSetY(xmUVs, fUVHeight);
 
 							fUniformDistance -= fInvMaxDistance;
 							xmUVs = XMVectorSetW(xmUVs, fUniformDistance);

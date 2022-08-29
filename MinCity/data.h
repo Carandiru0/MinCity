@@ -60,7 +60,7 @@ struct model_state_instance_dynamic : model_state_instance<true> {
 
 	// additional varying dynamic model instance data
 	XMFLOAT2 location;
-	XMFLOAT3 azimuth, pitch;
+	XMFLOAT3 roll, pitch, yaw;
 
 	model_state_instance_dynamic()
 		: location{}

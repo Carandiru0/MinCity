@@ -122,13 +122,13 @@ namespace world
 
 		bool bNewRoute(false);
 		XMVECTOR xmLocation((*Instance)->getLocation());
-		XMVECTOR xmR((*Instance)->getAzimuth().v2());
+		XMVECTOR xmR((*Instance)->getYaw().v2());
 
 		auto const [xmNewLocation, xmNewR] = _this.ai.OnUpdate(xmLocation, xmR, tNow, tDelta, &bNewRoute);
 
-		v2_rotation_t vR((*Instance)->getAzimuth());
+		v2_rotation_t vR((*Instance)->getYaw());
 		vR = xmNewR;
-		(*Instance)->setLocationAzimuth(xmNewLocation, vR);
+		(*Instance)->setLocationYaw(xmNewLocation, vR);
 		(*Instance)->setElevation(_this.ai.getElevation());
 
 		// lights switching

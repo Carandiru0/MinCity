@@ -25,7 +25,7 @@ static constexpr milliseconds const LIFETIME_ANIMATION = milliseconds(9999999999
 
 static constexpr float const MAX_STREAK_LENGTH = 11.0f;
 
-static constexpr float const SPEED_SCALE = 0.1333333f * SFM::GOLDEN_RATIO_ZERO * Iso::MINI_VOX_SIZE;
+static constexpr float const SPEED_SCALE = 0.26666666f * SFM::GOLDEN_RATIO_ZERO * Iso::MINI_VOX_SIZE;
 static constexpr float const MAX_DROP_SPEED = 9.0f * SPEED_SCALE,
                              MIN_DROP_SPEED = 7.0f * SPEED_SCALE;
 
@@ -191,7 +191,7 @@ bool const UpdateRain(tTime const tNow, RainInstance* const __restrict Instance)
     {
         Instance->setLocation(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(world::getOrigin()));
 
-        Instance->getRotation() = world::getAzimuth();  // bugfix:need root of rain transform billboarded, each rain drop has a unique transform added to this later, otherwise while rotating view the rain can all dissappear at certain angles
+        Instance->getRotation() = world::getYaw();  // bugfix:need root of rain transform billboarded, each rain drop has a unique transform added to this later, otherwise while rotating view the rain can all dissappear at certain angles
 
 #ifdef DEBUG_RANGE
         static uint32_t tLastDebug;	// place holder testing
