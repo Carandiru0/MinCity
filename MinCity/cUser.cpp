@@ -44,10 +44,10 @@ void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)
 		switch (key) // keys are filtered before this function in cUserInterface, which is good as here a known key and down event means there is no conditional needed on the forces applied after - it is always the case.
 		{
 		case GLFW_KEY_LEFT:  // Joystick
-			xmAngularThrust = XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f);
+			xmAngularThrust = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 			break;
 		case GLFW_KEY_RIGHT:
-			xmAngularThrust = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+			xmAngularThrust = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
 			break;
 		case GLFW_KEY_UP: // Throttle
 			xmThrust = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);

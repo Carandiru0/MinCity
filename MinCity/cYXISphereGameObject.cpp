@@ -236,12 +236,14 @@ namespace world
 	{
 		XMStoreFloat3A(&_body.thrust, XMVectorAdd(XMLoadFloat3A(&_body.thrust), xmThrust));
 
-		XMFLOAT3A vThrust;
-		XMStoreFloat3A(&vThrust, xmThrust);
+		XMVECTOR const xmThruster = XMVector3Cross(xmThrust, XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f));
+		XMFLOAT3A vThruster;
+		XMStoreFloat3A(&vThruster, xmThruster);
+
 
 		// instant start thruster, with linear cool-down after last instaneous thrust
-		if (0.0f != vThrust.x) {
-			if (vThrust.x > 0.0f) {
+		if (0.0f != vThruster.x) {
+			if (vThruster.x > 0.0f) {
 				_thrusters |= X_MAX_BIT;
 				_thruster[5].On(xmThrust);
 			}
@@ -250,8 +252,8 @@ namespace world
 				_thruster[4].On(xmThrust);
 			}
 		}
-		if (0.0f != vThrust.y) {
-			if (vThrust.y > 0.0f) {
+		if (0.0f != vThruster.y) {
+			if (vThruster.y > 0.0f) {
 				_thrusters |= Y_MAX_BIT;
 				_thruster[3].On(xmThrust);
 			}
@@ -260,8 +262,8 @@ namespace world
 				_thruster[2].On(xmThrust);
 			}
 		}
-		if (0.0f != vThrust.z) {
-			if (vThrust.z > 0.0f) {
+		if (0.0f != vThruster.z) {
+			if (vThruster.z > 0.0f) {
 				_thrusters |= Z_MAX_BIT;
 				_thruster[1].On(xmThrust);
 			}

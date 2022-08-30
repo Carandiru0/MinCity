@@ -2422,12 +2422,17 @@ namespace // private to this file (anonymous)
 
 				bool const emission_only(FoundModelInstance->isEmissionOnly());
 
-				if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmVoxelOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
+				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation3D()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
+				XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
+
+				xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
+
+				if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
 					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
 					bVisible = false; // voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
-				FoundModelInstance->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
+				FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
 
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 
