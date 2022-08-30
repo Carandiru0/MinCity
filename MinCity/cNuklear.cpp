@@ -2689,8 +2689,9 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 			enableWindow<eWindowType::IMPORT>(false);
 
+			MinCity::VoxelWorld->clearImporting();
 			MinCity::VoxelWorld->resetCamera();
-						
+				
 			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
 			nk_input.skip_click = true; // bugfix for main window being closed shortly thereafter
 		}

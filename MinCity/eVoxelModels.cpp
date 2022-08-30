@@ -207,9 +207,9 @@ namespace Volumetric
 
 		LoadModelGroup<STATIC, SINGLE_VOX>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
 		
-		LoadModelGroup<STATIC>(FOLDER_BUILDING_RESIDENTIAL, isolated_group::Residential);
-		LoadModelGroup<STATIC>(FOLDER_BUILDING_COMMERCIAL, isolated_group::Commercial);
-		LoadModelGroup<STATIC>(FOLDER_BUILDING_INDUSTRIAL, isolated_group::Industrial);
+		//LoadModelGroup<STATIC>(FOLDER_BUILDING_RESIDENTIAL, isolated_group::Residential);
+		//LoadModelGroup<STATIC>(FOLDER_BUILDING_COMMERCIAL, isolated_group::Commercial);
+		//LoadModelGroup<STATIC>(FOLDER_BUILDING_INDUSTRIAL, isolated_group::Industrial);
 
 #ifdef GIF_MODE
 		LoadModelNamed<STATIC>("rock_stage/rock_stage");
@@ -230,7 +230,7 @@ namespace Volumetric
 
 		LoadModelGroup<DYNAMIC, SINGLE_VOX>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
 		
-		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
+		//LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_CARS, isolated_group::DynamicCars);
 
 		// Loading Order Matters for Named Models/Sequences, index is defined by order in which they are loaded.
 		LoadModelNamed<DYNAMIC>("yxi");

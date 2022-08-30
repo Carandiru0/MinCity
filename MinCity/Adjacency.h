@@ -72,12 +72,12 @@ namespace world
 namespace Volumetric
 {
 	BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to the below bit shift values
-		below  = 5, // not used for adjacency in voxel desc, but needed for automata or any neighbourhood search that requires "below"
-		left   = 4,
-		right  = 3,
-		front  = 2,
-		back   = 1,
-		above  = 0
+		left   = 5,
+		right  = 4,
+		front  = 3,
+		back   = 2,
+		above  = 1,
+		below  = 0
 	);
 
 	// for voxelModel.h
@@ -85,13 +85,13 @@ namespace Volumetric
 	{
 		// USED DURING RUNTIME TO CULL FACES
 		// 
-		// match inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
 		static constexpr uint32_t const
 			BIT_ADJ_LEFT  = (1 << adjacency::left),				
 			BIT_ADJ_RIGHT = (1 << adjacency::right),			
 			BIT_ADJ_FRONT = (1 << adjacency::front),				
-			BIT_ADJ_BACK  = (1 << adjacency::back),				
-			BIT_ADJ_ABOVE = (1 << adjacency::above);				
+			BIT_ADJ_BACK  = (1 << adjacency::back),
+			BIT_ADJ_ABOVE = (1 << adjacency::above),
+			BIT_ADJ_BELOW = (1 << adjacency::below);				
 	} // end ns
 
 } // end ns

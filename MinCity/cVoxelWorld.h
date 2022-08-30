@@ -286,7 +286,7 @@ namespace world
 #endif
 #endif
 		uvec4_v const __vectorcall blackbody(float const norm) const;
-
+		void clearImporting() { _importing = false; }
 		// [[deprecated]] void makeTextureShaderOutputsReadOnly(vk::CommandBuffer const& __restrict cb);
 	private:
 		// [[deprecated]] void createTextureShader(uint32_t const shader, std::wstring_view const szInputTexture);
@@ -375,8 +375,7 @@ namespace world
 		bool						_bIsEdgeScrolling = false;
 		bool						_bCameraTurntable = false;
 		bool						_onLoadedRequired;
-
-		sRainInstance*				_activeRain;
+		bool						_importing = false;
 
 		std::array<float, 30> const	_sequence;
 	private:

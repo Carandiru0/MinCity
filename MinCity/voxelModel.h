@@ -98,12 +98,12 @@ namespace voxB
 		// bit 3: BIT_ADJ_RIGHT
 		// bit 4: BIT_ADJ_LEFT
 		inline voxelNormal(uint32_t const Adjacency)				// absolute part, 0 if both are present (cancel out), otherwise if either (XOR) are present 1
-			: Nx((0 != (BIT_ADJ_LEFT & Adjacency)) ^ (0 != (BIT_ADJ_RIGHT & Adjacency))),
-			  Ny(0 != (BIT_ADJ_ABOVE & Adjacency) /* no need */),
+			: Nx((0 != (BIT_ADJ_LEFT & Adjacency))  ^ (0 != (BIT_ADJ_RIGHT & Adjacency))),
+			  Ny((0 != (BIT_ADJ_ABOVE & Adjacency)) ^ (0 != (BIT_ADJ_BELOW & Adjacency))),
 			  Nz((0 != (BIT_ADJ_FRONT & Adjacency)) ^ (0 != (BIT_ADJ_BACK & Adjacency))),
 																	// (sign part, point in direction opposite of adjacency
 			  SNx(0 != (BIT_ADJ_LEFT & Adjacency)),	// left occupied, point right (+1) , else point left (-1)	(dependent on absolute part Nx == 1, if Nx == 0 this is a don't care)				
-			  SNy(0),
+			  SNy(0 != (BIT_ADJ_BELOW & Adjacency)),
 			  SNz(0 != (BIT_ADJ_FRONT & Adjacency)),	// front occupied, point back (+1) , else point front (-1)	(dependent on absolute part Nz == 1, if Nz == 0 this is a don't care)
 			  Padding{ 0 }
 
@@ -141,14 +141,14 @@ namespace voxB
 					x : 8,							// bits 1 : 24, Position (0 - 255) 256 Values per Component
 					y : 8,
 					z : 8,
-					Left : 1,						// bits 25 : 29, Adjacency
+					Left : 1,						// bits 25 : 30, Adjacency
 					Right : 1,
 					Front : 1,
 					Back : 1,
 					Above : 1,
-					Hidden : 1,						// bit 30, Visibility
-					Reserved_0 : 1,					// bit 31, Unused
-					Reserved_1 : 1;					// bit 32, Unused
+					Below : 1,
+					Hidden : 1,						// bit 31, Visibility
+					Reserved : 1;					// bit 32, Unused
 			};
 			
 			uint32_t Data; // union "mask" of above
@@ -175,13 +175,14 @@ namespace voxB
 		
 		inline uint32_t const 			  getColor() const { return(Color); }
 
-		inline uint32_t const			  getAdjacency() const { return((Left << 4U) | (Right << 3U) | (Front << 2U) | (Back << 1U) | (Above)); }
+		inline uint32_t const			  getAdjacency() const { return((Left << 5U) | (Right << 4U) | (Front << 3U) | (Back << 2U) | (Above << 1U) | (Below)); }
 		inline void						  setAdjacency(uint32_t const Adj) { 
 			Left	= (0 != (BIT_ADJ_LEFT & Adj));
 			Right	= (0 != (BIT_ADJ_RIGHT & Adj));
 			Front	= (0 != (BIT_ADJ_FRONT & Adj));
 			Back	= (0 != (BIT_ADJ_BACK & Adj));
 			Above	= (0 != (BIT_ADJ_ABOVE & Adj));
+			Below	= (0 != (BIT_ADJ_BELOW & Adj));
 		}
 
 		// Material (8 bits)
@@ -219,8 +220,8 @@ namespace voxB
 		inline voxelDescPacked(voxCoord const Coord, uint8_t const Adj, uint32_t const inColor)
 			: x(Coord.x), y(Coord.y), z(Coord.z),
 				Left(0 != (BIT_ADJ_LEFT & Adj)), Right(0 != (BIT_ADJ_RIGHT & Adj)), Front(0 != (BIT_ADJ_FRONT & Adj)),
-			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)),
-				Hidden(0), Reserved_0(0), Reserved_1(0),
+			    Back(0 != (BIT_ADJ_BACK & Adj)), Above(0 != (BIT_ADJ_ABOVE & Adj)), Below(0 != (BIT_ADJ_BELOW & Adj)),
+				Hidden(0), Reserved(0),
 				Color(inColor), Video(0), Emissive(0), Transparent(0), Metallic(0), Roughness(0)
 		{}
 		voxelDescPacked() = default;
@@ -254,13 +255,6 @@ namespace voxB
 		ivec4_t iIndex;
 		ivec4_v(xmIndex).xyzw(iIndex);
 
-		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
-		//	left = voxB::BIT_ADJ_LEFT,
-		//	right = voxB::BIT_ADJ_RIGHT,
-		//	front = voxB::BIT_ADJ_FRONT,
-		//	back = voxB::BIT_ADJ_BACK,
-		//	above = voxB::BIT_ADJ_ABOVE
-
 		uint32_t adjacent(0);
 
 		if (iIndex.x - 1 >= 0) {
@@ -274,6 +268,9 @@ namespace voxB
 		}
 		if (iIndex.z + 1 < model_volume::depth()) {
 			adjacent |= bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+		}
+		if (iIndex.y - 1 >= 0) {
+			adjacent |= bits->read_bit(iIndex.x, iIndex.y - 1, iIndex.z) << Volumetric::adjacency::below;
 		}
 		if (iIndex.y + 1 < model_volume::height()) {
 			adjacent |= bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
@@ -558,10 +555,10 @@ namespace voxB
 							uint32_t hash(0);
 							// ** see uniforms.vert for definition of constants used here **
 
-							hash |= voxel.getAdjacency();						//           0000 0000 0001 1111
-							hash |= (Emissive << 5);							//           0000 0000 001x xxxx
-							hash |= (voxel.Metallic << 6);						// 0000 0000 0000 xxxx x1xx xxxx
-							hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 Uxxx xxxx
+							hash |= voxel.getAdjacency();						//           0000 0000 0011 1111
+							hash |= (Emissive << 6);							//           0000 0000 01xx xxxx
+							hash |= (voxel.Metallic << 7);						// 0000 0000 0000 xxxx 1xxx xxxx
+							hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 xxxx xxxx
 
 							// Make All voxels relative to voxel root origin // inversion neccessary //
 							// srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu

@@ -53,13 +53,6 @@ namespace world
 		ivec4_t iIndex;
 		ivec4_v(xmIndex).xyzw(iIndex);
 
-		//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
-		//	left = voxB::BIT_ADJ_LEFT,
-		//	right = voxB::BIT_ADJ_RIGHT,
-		//	front = voxB::BIT_ADJ_FRONT,
-		//	back = voxB::BIT_ADJ_BACK,
-		//	above = voxB::BIT_ADJ_ABOVE
-
 		uint32_t adjacent(0);
 
 		if (iIndex.x - 1 >= 0) {
@@ -73,6 +66,9 @@ namespace world
 		}
 		if (iIndex.z + 1 < Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ) {
 			adjacent |= _bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+		}
+		if (iIndex.y - 1 >= 0) {
+			adjacent |= _bits->read_bit(iIndex.x, iIndex.y - 1, iIndex.z) << Volumetric::adjacency::below;
 		}
 		if (iIndex.y + 1 < Volumetric::LEVELSET_MAX_DIMENSIONS_XYZ) {
 			adjacent |= _bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;

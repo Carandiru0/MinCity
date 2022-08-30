@@ -560,7 +560,7 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 
 		tbb::parallel_for(uint32_t(0), numVoxels, [&p](uint32_t const i) {
 
-			static constexpr uint32_t const all(BIT_ADJ_LEFT | BIT_ADJ_RIGHT | BIT_ADJ_FRONT | BIT_ADJ_BACK | BIT_ADJ_ABOVE);
+			static constexpr uint32_t const all(BIT_ADJ_LEFT | BIT_ADJ_RIGHT | BIT_ADJ_FRONT | BIT_ADJ_BACK | BIT_ADJ_ABOVE | BIT_ADJ_BELOW);
 
 			uint32_t const adjacency(p.pVoxels[i].getAdjacency());
 			if (0 != adjacency && all != adjacency) {	// 0 - cull all voxels that are "alone" with nothing adjacent.

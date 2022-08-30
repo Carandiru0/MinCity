@@ -33,7 +33,10 @@ cUser::cUser()
 
 void cUser::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
-	MinCity::VoxelWorld->updateCameraFollow(_ship->getModelInstance()->getLocation3D());
+	auto instance(_ship->getModelInstance());
+	if (instance) {
+		MinCity::VoxelWorld->updateCameraFollow(instance->getLocation3D());
+	}
 }
 void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)
 {

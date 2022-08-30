@@ -94,11 +94,12 @@ layout (constant_id = 8) const float ROAD_WIDTH = 0.0f;
 #endif
 
 #ifndef ROAD
-const uint BIT_ADJ_ABOVE = (1<<0),				
-		   BIT_ADJ_BACK = (1<<1),				
-		   BIT_ADJ_FRONT = (1<<2),				
-		   BIT_ADJ_RIGHT = (1<<3),				
-		   BIT_ADJ_LEFT = (1<<4);
+const uint BIT_ADJ_BELOW = (1<<0),
+		   BIT_ADJ_ABOVE = (1<<1),
+		   BIT_ADJ_BACK  = (1<<2),				
+		   BIT_ADJ_FRONT = (1<<3),				
+		   BIT_ADJ_RIGHT = (1<<4),				
+		   BIT_ADJ_LEFT  = (1<<5);
 #endif
 
 #if defined(ROAD)
@@ -376,7 +377,16 @@ void main() {
 #undef _normal
 	} // else
 
-	//// not rendering (bottom)
+	// DOWN
+	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BELOW) ) {
+#define _normal up
+		const vec3 normal = normalize(_normal);
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
+			BeginQuad(center + _normal, forward, right, normal);			
+		}
+#undef _normal
+	}
 
 #endif // #### not road
 

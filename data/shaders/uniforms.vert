@@ -114,8 +114,8 @@ layout (constant_id = 4) const int MINIVOXEL_FACTOR = 1;
 
 #define SHIFT_EMISSION 8U
 #define SHIFT_HEIGHTSTEP 12U
-const uint MASK_ADJACENCY = 0x1FU;		/*			 0000 0000 0001 1111 */
-const uint MASK_RESERVED = 0xE0U;		/*           0000 0000 RRRx xxxx */ // free to use
+const uint MASK_ADJACENCY = 0x3FU;		/*			 0000 0000 0011 1111 */
+const uint MASK_RESERVED = 0xC0U;		/*           0000 0000 RRxx xxxx */ // free to use
 const uint MASK_EMISSION = 0x100U;		/*           0000 0001 xxxx xxxx */
 const uint MASK_HEIGHTSTEP = 0xF000U;	/*			 1111 000x xxxx xxxx */
 #if defined(DYNAMIC) && defined(TRANS)  
@@ -150,13 +150,13 @@ const uint  NORTH = 0U,
 
 #else // not HEIGHT/ROAD
 
-#define SHIFT_EMISSION 5U
-#define SHIFT_METALLIC 6U
+#define SHIFT_EMISSION 6U
+#define SHIFT_METALLIC 7U
 #define SHIFT_ROUGHNESS 8U
-const uint MASK_ADJACENCY =  0x1FU;		/*           0000 0000 0001 1111 */
-const uint MASK_EMISSION = 0x20U;		/*           0000 0000 001x xxxx */
-const uint MASK_METALLIC = 0x40U;		/*           0000 0000 01xx xxxx */
-const uint MASK_ROUGHNESS = 0xF00U;		/*			 0000 1111 Uxxx xxxx */ 
+const uint MASK_ADJACENCY =  0x3FU;		/*           0000 0000 0011 1111 */
+const uint MASK_EMISSION = 0x40U;		/*           0000 0000 01xx xxxx */
+const uint MASK_METALLIC = 0x80U;		/*           0000 0000 1xxx xxxx */
+const uint MASK_ROUGHNESS = 0xF00U;		/*			 0000 1111 xxxx xxxx */ 
 
 #if defined(DYNAMIC) && defined(TRANS) 
 #define SHIFT_TRANSPARENCY 13U

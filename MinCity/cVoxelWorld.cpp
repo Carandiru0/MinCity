@@ -2177,17 +2177,10 @@ namespace // private to this file (anonymous)
 
 		static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
 
-		STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex)
+		STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex)  // for mini voxels
 		{
 			ivec4_t iIndex;
 			ivec4_v(xmIndex).xyzw(iIndex);
-
-			//BETTER_ENUM(adjacency, uint32_t const,  // matching the same values to voxelModel.h values
-			//	left = voxB::BIT_ADJ_LEFT,
-			//	right = voxB::BIT_ADJ_RIGHT,
-			//	front = voxB::BIT_ADJ_FRONT,
-			//	back = voxB::BIT_ADJ_BACK,
-			//	above = voxB::BIT_ADJ_ABOVE
 
 			uint32_t adjacent(0);
 
@@ -2202,6 +2195,9 @@ namespace // private to this file (anonymous)
 			}
 			if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
 				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
+			}
+			if (iIndex.y - 1 >= 0) {
+				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y - 1, iIndex.z) << Volumetric::adjacency::below;
 			}
 			if (iIndex.y + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y) {
 				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
@@ -2234,10 +2230,10 @@ namespace // private to this file (anonymous)
 				uint32_t hash(0);
 				// ** see uniforms.vert for definition of constants used here **
 
-				hash |= adjacency;									//           0000 0000 0001 1111
-				hash |= (emissive << 5);							//           0000 0000 001x xxxx
-				// unsupported hash |= (voxel.Metallic << 6);		// 0000 0000 0000 xxxx x1xx xxxx
-				// unsupported hash |= (voxel.Roughness << 8);		// 0000 0000 0000 1111 Uxxx xxxx
+				hash |= adjacency;									//           0000 0000 0011 1111
+				hash |= (emissive << 6);							//           0000 0000 01xx xxxx
+				// unsupported hash |= (voxel.Metallic << 7);		// 0000 0000 0000 xxxx 1xxx xxxx
+				// unsupported hash |= (voxel.Roughness << 8);		// 0000 0000 0000 1111 xxxx xxxx
 				hash |= (uint32_t(alpha >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
 
 				XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
@@ -2333,8 +2329,8 @@ namespace // private to this file (anonymous)
 								
 				// Build hash //
 				uint32_t groundHash(0);
-				groundHash |= Iso::getAdjacency(oVoxel);			//				0001 1111
-																	//				RRRx xxxx
+				groundHash |= Iso::getAdjacency(oVoxel);			//				0011 1111
+																	//				RRxx xxxx
 				groundHash |= (emissive << 8);						// 0000 0001	xxxx xxxx
 				groundHash |= (Iso::getHeightStep(oVoxel) << 12);	// 1111 RRRx	xxxx xxxx
 
@@ -2742,7 +2738,6 @@ namespace world
 		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
-		_activeRain(nullptr),
 		_AsyncClearTaskID(0)
 #ifdef DEBUG_STORAGE_BUFFER
 		, DebugStorageBuffer(nullptr)
@@ -2905,6 +2900,7 @@ namespace world
 
 		if (!Volumetric::isNewModelQueueEmpty()) {
 			MinCity::DispatchEvent(eEvent::SHOW_IMPORT_WINDOW);
+			_importing = true;
 		}
 		else {
 			MinCity::DispatchEvent(eEvent::SHOW_MAIN_WINDOW);
@@ -3234,12 +3230,6 @@ namespace world
 
 		SAFE_DELETE(_sim);
 		_sim = new cSimulation();
-
-		// rain!!!
-#ifndef DEBUG_NO_RAIN
-		SAFE_DELETE(_activeRain);
-		_activeRain = new sRainInstance(XMVectorZero(), 128.0f);
-#endif
 
 #ifdef GIF_MODE
 
@@ -3715,6 +3705,7 @@ namespace world
 			// ########### only use [Volumetric::eVoxelType::opaque] even if the child is a transparent pipeline
 			// ########### the [Volumetric::eVoxelType::trans] is reserved for voxels belong to model instances on the grid and is soley for PARENT_TRANS usage
 
+			/* do not delete, required reference for custom voxel fragment shader implementation details
 			if (_activeRain) {
 
 				RenderRain(_activeRain, MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque]);
@@ -3738,6 +3729,7 @@ namespace world
 #endif
 
 			}
+			*/
 			// todo add other children here for added partitions of dynamic voxel parent
 
 
@@ -4477,7 +4469,7 @@ namespace world
 	{
 		bool const bJustLoaded(_onLoadedRequired);
 		
-		[[unlikely]]  if (bJustLoaded) {
+		[[unlikely]]  if (bJustLoaded && !_importing) { // defers onloaded event @ startup in case of importing.
 			// ### ONLOADED EVENT must be triggered here !! //
 			OnLoaded(tNow);
 		}
@@ -4485,7 +4477,9 @@ namespace world
 			
 			updateMouseOcclusion(bPaused);
 
-			_sim->run(tNow, tDelta, the::grid);
+			if (_sim) {
+				_sim->run(tNow, tDelta, the::grid);
+			}
 
 			{ // static instance validation
 
@@ -4645,10 +4639,6 @@ namespace world
 			}
 
 			// last etc.
-			if (!UpdateRain(tNow, _activeRain)) {  // ### todo - rain pours while paused if rain is not updated while paused
-				SAFE_DELETE(_activeRain);
-			}
-
 			if (oCamera.ZoomToExtents) {
 
 				// auto zoom to AABB extents feature
@@ -5560,11 +5550,8 @@ namespace world
 	{
 		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears"); // ensure the async clears are done
 
-		SAFE_DELETE(_sim);
-
 		// cleanup special instances
-		SAFE_DELETE(_activeRain);
-		
+		SAFE_DELETE(_sim);
 
 		// _currentVoxelIndexPixMap is released auto-magically - virtual memory
 
