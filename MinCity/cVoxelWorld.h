@@ -114,6 +114,7 @@ namespace world
 		void resetCameraAngleZoom(); // gradual over time
 		void resetCamera(); // immediatte
 		void setCameraTurnTable(bool const enable);
+		void __vectorcall updateCameraFollow(FXMVECTOR xmLocation);
 
 		// Main Methods //
 		void LoadTextures(); // 1st

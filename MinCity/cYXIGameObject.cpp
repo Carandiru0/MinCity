@@ -27,7 +27,10 @@ namespace world
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
 
+		_thruster = std::move(_thruster);
 		_body = std::move(src._body);
+		_mainthruster = std::move(src._mainthruster);
+
 	}
 	cYXIGameObject& cYXIGameObject::operator=(cYXIGameObject&& src) noexcept
 	{
@@ -46,13 +49,15 @@ namespace world
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
 
+		_thruster = std::move(_thruster);
 		_body = std::move(src._body);
+		_mainthruster = std::move(src._mainthruster);
 
 		return(*this);
 	}
 
 	cYXIGameObject::cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _body{}
+		: tUpdateableGameObject(instance_), _thruster{}, _body{}, _mainthruster(false)
 	{
 		instance_->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
@@ -70,19 +75,34 @@ namespace world
 	{
 		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
 
-#ifdef GIF_MODE
+		XMVECTOR xmColor;
 
-		if (MASK_GLASS_COLOR == voxel.Color) {
-			voxel.Color = _glass_color;
+		uvec4_v vColor;
+		uvec4_t rgba;
+		float luma(0.0f);
+
+		switch (voxel.Color) {
+			case MASK_THRUSTER_CORE:
+			case MASK_THRUSTER_GRADIENT1:
+			case MASK_THRUSTER_GRADIENT2:
+			case MASK_THRUSTER_GRADIENT3:
+				voxel.Emissive = _mainthruster;
+				if (voxel.Emissive) {
+					vColor = MinCity::VoxelWorld->blackbody(_thruster.tOn); // linear thruster to temperature
+					luma = SFM::luminance(vColor);
+
+					SFM::unpack_rgba(voxel.Color, rgba);
+					xmColor = XMVectorScale(uvec4_v(rgba).v4f(), luma); // no need to normalize, scale by luma, then denormalize as they all multiply together and the two cancel out (so it remains in [0-255] range
+					uvec4_v(xmColor).rgba(rgba);
+
+					voxel.Color = SFM::pack_rgba(rgba); // uses the gradient color times the luminance of the blackbody linear color for the main thruster temperature
+				}
+				else {
+					voxel.Color = 0;
+				}
+				break;
 		}
-		else if (MASK_BULB_COLOR == voxel.Color) {
-			voxel.Color = _bulb_color;
-		}
 
-#else
-
-
-#endif
 		return(voxel);
 	}
 
@@ -91,9 +111,33 @@ namespace world
 		auto instance(*Instance);
 		float const t(time_to_float(tDelta));
 
-		// Linear //
 		{
-			XMVECTOR const xmThrust(XMLoadFloat3A(&_body.thrust));
+			// existing main thruster finished?
+			if (0.0f != _thruster.tOn || 0.0 != _thruster.cooldown.count()) {
+
+				_thruster.cooldown -= tDelta;
+
+				if (_thruster.cooldown.count() <= 0.0) {
+					_thruster.Off();
+					_mainthruster = false;
+				}
+				else {
+					float const t = time_to_float(_thruster.cooldown / THRUSTER_COOL_DOWN);
+
+					XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster.thrust), t);
+					_thruster.tOn = t;
+
+					XMStoreFloat3A(&_body.thrust, XMVectorAdd(XMLoadFloat3A(&_body.thrust), xmThrust)); // apply linealy decaying thruster to main thrust force tracking for this update
+				}
+			}
+		}
+
+		// Linear // Main Thruster //
+		{
+			XMVECTOR xmThrust(XMLoadFloat3A(&_body.thrust));
+
+			// main thruster is always in the direction of heading or however the ship is rotated, this works continously in the current direction. //
+			xmThrust = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmThrust, instance->getPitch()), instance->getYaw()), instance->getRoll());
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.velocity));
 
@@ -114,7 +158,7 @@ namespace world
 			XMStoreFloat3A(&_body.thrust, XMVectorZero()); // reset required
 		}
 
-		// Angular //
+		// Angular // Sphere Thruster Engines //
 		{
 			XMVECTOR const xmThrust(XMLoadFloat3A(&_body.angular_thrust));
 
@@ -150,6 +194,15 @@ namespace world
 
 	void __vectorcall cYXIGameObject::applyThrust(FXMVECTOR xmThrust)
 	{
+		XMFLOAT3A vThrust;
+		XMStoreFloat3A(&vThrust, xmThrust);
+
+		// main thruster ?
+		if (0.0f != vThrust.z) {
+			_thruster.On(xmThrust);
+			_mainthruster = true;
+		}
+		
 		XMStoreFloat3A(&_body.thrust, XMVectorAdd(XMLoadFloat3A(&_body.thrust), xmThrust));
 	}
 	void __vectorcall cYXIGameObject::applyAngularThrust(FXMVECTOR xmThrust)

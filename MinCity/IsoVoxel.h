@@ -23,7 +23,7 @@ namespace Iso
 
 	// cONSTANTS/*****************
 	static constexpr size_t const
-		WORLD_GRID_SIZE_BITS = 11;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. 
+		WORLD_GRID_SIZE_BITS = 12;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
 	static constexpr uint32_t const				//                                          recommend using 2^13 = 8192x8192 or less, map is still extremely large
 		WORLD_GRID_SIZE = (1U << WORLD_GRID_SIZE_BITS),
 		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);

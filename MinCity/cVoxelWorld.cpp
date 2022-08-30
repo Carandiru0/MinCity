@@ -390,28 +390,6 @@ void cVoxelWorld::GenerateGround()
 	ComputeGroundAdjacency();
 }
 
-static void UpdateFollow(tTime const& __restrict tNow)
-{
-	/*
-	static constexpr float const FOLLOW_SPEED = 0.0003f,
-								 FOLLOW_DAMPING = 0.01f;
-
-	// sample target position only every n ms defined by user in follow func
-	if ((tNow - oCamera.tLastFollowUpdate) > oCamera.tFollowUpdateInterval) {
-		oCamera.vTarget = *oCamera.FollowTarget;
-		oCamera.tLastFollowUpdate = tNow;
-	}
-	XMVECTOR const xmOrigin(XMLoadFloat2A(&oCamera.Origin));
-	XMVECTOR const xmDelta = XMVectorSubtract(XMLoadFloat2A(&oCamera.vTarget), xmOrigin);
-
-	XMVECTOR xmVelocity = XMVectorMultiplyAdd(_mm_set1_ps(FOLLOW_SPEED), xmDelta, XMLoadFloat2A(&oCamera.vFollowVelocity));
-
-	xmVelocity = XMVectorScale(xmVelocity, 1.0f - FOLLOW_DAMPING);
-
-	XMStoreFloat2A(&oCamera.Origin, XMVectorAdd(xmOrigin, xmVelocity));
-	*/
-}
-
 XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	static constexpr milliseconds const
@@ -621,6 +599,20 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 void cVoxelWorld::setCameraTurnTable(bool const enable)
 {
 	_bCameraTurntable = enable;
+}
+void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmLocation)
+{
+	static constexpr float const FOLLOW_SPEED = 0.03f,
+								 FOLLOW_DAMPING = 0.01f;
+
+	XMVECTOR const xmOrigin(XMLoadFloat3A(&oCamera.Origin));
+	XMVECTOR const xmDelta = XMVectorSubtract(xmLocation, xmOrigin);
+
+	XMVECTOR xmVelocity = XMVectorMultiplyAdd(XMVectorSet(FOLLOW_SPEED, FOLLOW_SPEED * 0.0f, FOLLOW_SPEED, 0.0f), xmDelta, XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f));
+
+	xmVelocity = XMVectorScale(xmVelocity, 1.0f - FOLLOW_DAMPING);
+
+	XMStoreFloat3A(&oCamera.Origin, XMVectorAdd(xmOrigin, xmVelocity));
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -4543,9 +4535,7 @@ namespace world
 
 		// any operations that do not need to execute while paused should not
 		if (!bPaused) {
-			// update user game objects *after* user is updated
-			MinCity::UserInterface->Update(tNow, tDelta);
-
+			// update user game objects *before* user is updated
 			{
 				auto it = cYXIGameObject::begin();
 				while (cYXIGameObject::end() != it) {
@@ -4562,6 +4552,7 @@ namespace world
 					++it;
 				}
 			}
+			MinCity::UserInterface->Update(tNow, tDelta);
 
 			MinCity::Physics->Update(tNow, tDelta); // improving latency apply physics update after all user, user game object updates
 			

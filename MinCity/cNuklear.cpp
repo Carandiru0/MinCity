@@ -160,7 +160,7 @@ typedef struct key_event
 
 static inline struct // double clicking is purposely not supported for ease of use (touch tablet or touch screen)
 {
-	static constexpr uint32_t const MAX_TYPED = 24; // lots of room for multiple key actions / frame
+	static constexpr uint32_t const MAX_TYPED = 8; // n multiple key actions / frame
 
 	bool input_focused;
 		 
@@ -184,9 +184,42 @@ static inline struct // double clicking is purposely not supported for ease of u
 		characters_count = 0;
 		memset(characters, 0, sizeof(uint32_t) * MAX_TYPED);
 
+		// repeat down keys every frame while they are down. *bugfix - major this redefines input control handling - so responsive now! *do not change*
+		key_event keys_down[MAX_TYPED];
+		uint32_t keys_down_count(0);
+
+		for (uint32_t i = 0; i < keys_count; ++i) {
+			bool const down(((GLFW_PRESS & keys[i].action) | (GLFW_REPEAT & keys[i].action)));
+
+			if (down) {
+				// ensure only unique/distinct keys are copied
+				bool bExists(false);
+				for (uint32_t j = 0; j < keys_down_count; ++j) {
+					bExists |= (keys_down[j].key == keys[i].key);
+				}
+				// ensure that no later existing "up" event exists for same key
+				for (uint32_t j = i + 1; j < keys_count; ++j) {
+
+					bool const up(!((GLFW_PRESS & keys[j].action) | (GLFW_REPEAT & keys[j].action)) && (GLFW_RELEASE & keys[j].action));
+
+					bExists |= (up && (keys[j].key == keys[i].key));
+				}
+
+				if (!bExists) {
+					keys_down[keys_down_count++] = keys[i];
+				}
+			
+			}
+		}
 		key_mod = 0;
 		keys_count = 0;
 		memset(keys, 0, sizeof(key_event) * MAX_TYPED);
+
+		// previously downed keys persist until up key event
+		if (keys_down_count) {
+			memcpy(keys, keys_down, sizeof(key_event) * keys_down_count);
+			keys_count = keys_down_count;
+		}
 	}
 
 } nk_input = {};
@@ -915,6 +948,24 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 
 			bool const down(((GLFW_PRESS & nk_input.keys[i].action) | (GLFW_REPEAT & nk_input.keys[i].action)));
 			
+			// remove any persistant down keys that match this key (only earlier keys, so if a later down event then this event still persists as it's newer) *bugfix - major this redefines input control handling - so responsive now! *do not change*
+			bool bSkip(false);
+			if (!down) {
+				for (uint32_t j = 0; j < i; ++j) {
+
+					bool const persistant_down(((GLFW_PRESS & nk_input.keys[j].action) | (GLFW_REPEAT & nk_input.keys[j].action)));
+
+					bSkip |= (persistant_down & (nk_input.keys[j].key == nk_input.keys[i].key));
+					if (bSkip) {
+						nk_input.keys[j].action = GLFW_RELEASE; // change to "up" event, will effectively be removed in reset of keyboard state next frame, skipping this key for this fram is to avoid doubled "up" events.
+					}
+				}
+			}
+
+			if (bSkip) {
+				continue;
+			}
+
 			// ** only gui related actions here ** //
 			switch (nk_input.keys[i].key)
 			{

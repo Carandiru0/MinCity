@@ -33,7 +33,7 @@ cUser::cUser()
 
 void cUser::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
-
+	MinCity::VoxelWorld->updateCameraFollow(_ship->getModelInstance()->getLocation3D());
 }
 void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)
 {
@@ -43,17 +43,17 @@ void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)
 
 		switch (key) // keys are filtered before this function in cUserInterface, which is good as here a known key and down event means there is no conditional needed on the forces applied after - it is always the case.
 		{
-		case GLFW_KEY_LEFT:  // Joystick
-			xmAngularThrust = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+		case GLFW_KEY_LEFT:
+			xmAngularThrust = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // yaw - sphere thruster engines
 			break;
 		case GLFW_KEY_RIGHT:
-			xmAngularThrust = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+			xmAngularThrust = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f); // yaw - sphere thruster engines
 			break;
-		case GLFW_KEY_UP: // Throttle
-			xmThrust = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+		case GLFW_KEY_UP:
+			xmThrust = XMVectorSet(0.0f, 0.0f, 4.0f, 0.0f); // main thruster
 			break;
 		case GLFW_KEY_DOWN:
-			xmThrust = XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f);
+			xmThrust = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // thrust up, defy gravity, uses sphere thruster engines @TODO
 			break;
 		}
 
