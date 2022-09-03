@@ -602,17 +602,30 @@ void cVoxelWorld::setCameraTurnTable(bool const enable)
 }
 void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmLocation)
 {
+	/*
 	static constexpr float const FOLLOW_SPEED = 0.03f,
 								 FOLLOW_DAMPING = 0.01f;
 
-	XMVECTOR const xmOrigin(XMLoadFloat3A(&oCamera.Origin));
+	XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
+
 	XMVECTOR const xmDelta = XMVectorSubtract(xmLocation, xmOrigin);
 
-	XMVECTOR xmVelocity = XMVectorMultiplyAdd(XMVectorSet(FOLLOW_SPEED, FOLLOW_SPEED * 0.0f, FOLLOW_SPEED, 0.0f), xmDelta, XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f));
+	XMVECTOR xmVelocity = XMVectorScale(xmDelta, FOLLOW_SPEED);
 
 	xmVelocity = XMVectorScale(xmVelocity, 1.0f - FOLLOW_DAMPING);
 
-	XMStoreFloat3A(&oCamera.Origin, XMVectorAdd(xmOrigin, xmVelocity));
+	// Target Position = xmOrigin + xmVelocity, only want displacement which is xmDisplacement = Target Position - xmOrigin
+	XMVECTOR const xmTargetPosition(XMVectorAdd(xmOrigin, xmVelocity));
+
+	
+	XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmTargetPosition)); // always a clean integral number on completion
+	XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
+	
+	// signal transition
+	oCamera.tTranslateStart = now();  // closer to exact now results in the lerp not being skipped right to target position
+	*/
+		
+	//XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation));
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -632,11 +645,11 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 			resetCameraAngleZoom();
 		}
 		break;
-	case GLFW_KEY_S:
-		if (!down) { // on released
-			cMinCity::UserInterface->setActivatedTool(eTools::SELECT);
-		}
-		break;
+	//case GLFW_KEY_S:
+	//	if (!down) { // on released
+	//		cMinCity::UserInterface->setActivatedTool(eTools::SELECT);
+	//	}
+	//	break;
 	default: // further processing delegated to user interface and the tools it consists of
 		cMinCity::UserInterface->KeyAction(key, down, ctrl);
 		break;
@@ -2414,6 +2427,7 @@ namespace // private to this file (anonymous)
 				XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
 
 				xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
+				xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -FoundModelInstance->getElevation()); // *bugfix - yaxis (elevation) is now correctly included with fractional component
 
 				if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
 					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
@@ -4212,7 +4226,7 @@ namespace world
 			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 		}
 		else {
-			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir)) * cMinCity::getFramebufferAspect()));
+			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))) * cMinCity::getFramebufferAspect());
 		}
 			
 		::translateCameraOrient(xmIso); // this then scrolls in direction camera is currently facing correctly

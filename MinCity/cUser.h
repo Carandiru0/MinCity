@@ -11,6 +11,11 @@ namespace world {
 
 class cUser : no_copy
 {
+	static constexpr uint32_t const
+		LEFT_ENGINE = 0,
+		RIGHT_ENGINE = 1,
+		ENGINE_COUNT = 2;
+
 public:
 	void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
@@ -26,7 +31,7 @@ public:
 
 private:
 	world::cYXIGameObject*				_ship;
-	world::cYXISphereGameObject			*_shipSphereLeft, *_shipSphereRight;
+	world::cYXISphereGameObject			*_shipRingX[ENGINE_COUNT], *_shipRingY[ENGINE_COUNT], *_shipRingZ[ENGINE_COUNT];
 public:
 	cUser();
 	~cUser();

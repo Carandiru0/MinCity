@@ -55,10 +55,22 @@ void cUserInterface::KeyAction(int32_t const key, bool const down, bool const ct
 
 	switch (key)
 	{
+	case GLFW_KEY_DELETE:
+	case GLFW_KEY_Q:
+	case GLFW_KEY_PAGE_DOWN:
+	case GLFW_KEY_E:
+	case GLFW_KEY_HOME:
+	case GLFW_KEY_R:
+	case GLFW_KEY_END:
+	case GLFW_KEY_F:
 	case GLFW_KEY_LEFT:
 	case GLFW_KEY_RIGHT:
 	case GLFW_KEY_UP:
 	case GLFW_KEY_DOWN:
+	case GLFW_KEY_W:
+	case GLFW_KEY_A:
+	case GLFW_KEY_S:
+	case GLFW_KEY_D:
 		if (_user) {
 			_user->KeyAction(key, down, ctrl);
 		}

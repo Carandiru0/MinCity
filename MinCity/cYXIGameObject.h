@@ -9,10 +9,11 @@ namespace world
 	class cYXIGameObject : public tUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic>, public type_colony<cYXIGameObject>
 	{
 		static constexpr uint32_t const  // bgr
-			MASK_THRUSTER_CORE = 0xff0000,
-			MASK_THRUSTER_GRADIENT1 = 0xf6401f,
-			MASK_THRUSTER_GRADIENT2 = 0xbe7846,
-			MASK_THRUSTER_GRADIENT3 = 0xb08651;
+			COLOR_THRUSTER_CORE = 0xff0000,
+			COLOR_THRUSTER_GRADIENT1 = 0xf6401f,
+			COLOR_THRUSTER_GRADIENT2 = 0xbe7846,
+			COLOR_THRUSTER_GRADIENT3 = 0xb08651,
+			COLOR_ACTIVITY_LIGHTS = 0x3df79f;
 
 		static constexpr fp_seconds const
 			THRUSTER_COOL_DOWN = duration_cast<fp_seconds>(milliseconds(3333));
@@ -27,9 +28,11 @@ namespace world
 
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
-		float const& getMass() const { return(_body.mass); }
+		float const						getMass() const { return(_body.mass); }
+		XMVECTOR const __vectorcall		getAngularVelocity() const { return(XMLoadFloat3A(&_body.angular_velocity)); }
 
-		void __vectorcall applyThrust(FXMVECTOR xmThrust);
+
+		void __vectorcall applyThrust(FXMVECTOR xmThrust, bool const mainthruster = false);
 		void __vectorcall applyAngularThrust(FXMVECTOR xmThrust);
 
 	public:
@@ -59,7 +62,7 @@ namespace world
 		} _thruster;
 
 		bool	_mainthruster;
-
+		
 		struct {
 			XMFLOAT3A	force, thrust, velocity;
 			XMFLOAT3A	angular_force, angular_thrust, angular_velocity;
@@ -67,6 +70,11 @@ namespace world
 
 		} _body;
 
+		struct {
+			static constexpr fp_seconds const interval = duration_cast<fp_seconds>(milliseconds(2 * 1618));
+			fp_seconds						  accumulator;
+
+		} _activity_lights;
 	public:
 		cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
 	};

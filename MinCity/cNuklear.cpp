@@ -185,7 +185,7 @@ static inline struct // double clicking is purposely not supported for ease of u
 		memset(characters, 0, sizeof(uint32_t) * MAX_TYPED);
 
 		// repeat down keys every frame while they are down. *bugfix - major this redefines input control handling - so responsive now! *do not change*
-		key_event keys_down[MAX_TYPED];
+		key_event keys_down[MAX_TYPED]{};
 		uint32_t keys_down_count(0);
 
 		for (uint32_t i = 0; i < keys_count; ++i) {
@@ -949,21 +949,15 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			bool const down(((GLFW_PRESS & nk_input.keys[i].action) | (GLFW_REPEAT & nk_input.keys[i].action)));
 			
 			// remove any persistant down keys that match this key (only earlier keys, so if a later down event then this event still persists as it's newer) *bugfix - major this redefines input control handling - so responsive now! *do not change*
-			bool bSkip(false);
 			if (!down) {
 				for (uint32_t j = 0; j < i; ++j) {
 
 					bool const persistant_down(((GLFW_PRESS & nk_input.keys[j].action) | (GLFW_REPEAT & nk_input.keys[j].action)));
 
-					bSkip |= (persistant_down & (nk_input.keys[j].key == nk_input.keys[i].key));
-					if (bSkip) {
-						nk_input.keys[j].action = GLFW_RELEASE; // change to "up" event, will effectively be removed in reset of keyboard state next frame, skipping this key for this fram is to avoid doubled "up" events.
+					if (persistant_down && (nk_input.keys[j].key == nk_input.keys[i].key)) {
+						nk_input.keys[j].action = GLFW_RELEASE; // change to "up" event, will effectively be removed in reset of keyboard state next frame
 					}
 				}
-			}
-
-			if (bSkip) {
-				continue;
 			}
 
 			// ** only gui related actions here ** //

@@ -377,6 +377,7 @@ void main() {
 #undef _normal
 	} // else
 
+#ifndef HEIGHT // not terrain (also not ROAD from above) - No bottoms on Terrain or Road
 	// DOWN
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BELOW) ) {
 #define _normal up
@@ -387,7 +388,7 @@ void main() {
 		}
 #undef _normal
 	}
-
+#endif // #### not terrain
 #endif // #### not road
 
 	// UP

@@ -30,7 +30,7 @@ namespace world
 		_thruster = std::move(_thruster);
 		_body = std::move(src._body);
 		_mainthruster = std::move(src._mainthruster);
-
+		_activity_lights = std::move(src._activity_lights);
 	}
 	cYXIGameObject& cYXIGameObject::operator=(cYXIGameObject&& src) noexcept
 	{
@@ -52,12 +52,13 @@ namespace world
 		_thruster = std::move(_thruster);
 		_body = std::move(src._body);
 		_mainthruster = std::move(src._mainthruster);
+		_activity_lights = std::move(src._activity_lights);
 
 		return(*this);
 	}
 
 	cYXIGameObject::cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _thruster{}, _body{}, _mainthruster(false)
+		: tUpdateableGameObject(instance_), _thruster{}, _body{}, _mainthruster(false), _activity_lights{}
 	{
 		instance_->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
@@ -75,17 +76,26 @@ namespace world
 	{
 		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
 
-		XMVECTOR xmColor;
-
-		uvec4_v vColor;
-		uvec4_t rgba;
-		float luma(0.0f);
-
 		switch (voxel.Color) {
-			case MASK_THRUSTER_CORE:
-			case MASK_THRUSTER_GRADIENT1:
-			case MASK_THRUSTER_GRADIENT2:
-			case MASK_THRUSTER_GRADIENT3:
+			case COLOR_ACTIVITY_LIGHTS:
+			{
+				float const t = 1.0f - SFM::saturate(time_to_float(_activity_lights.accumulator / _activity_lights.interval));
+				uint32_t const luma = SFM::saturate_to_u8(t * 255.0f);
+				voxel.Color = SFM::pack_rgba(luma);
+				voxel.Emissive = (0 != voxel.Color);
+			}
+			break;
+			case COLOR_THRUSTER_CORE:
+			case COLOR_THRUSTER_GRADIENT1:
+			case COLOR_THRUSTER_GRADIENT2:
+			case COLOR_THRUSTER_GRADIENT3:
+			{
+				XMVECTOR xmColor;
+
+				uvec4_v vColor;
+				uvec4_t rgba;
+				float luma(0.0f);
+
 				voxel.Emissive = _mainthruster;
 				if (voxel.Emissive) {
 					vColor = MinCity::VoxelWorld->blackbody(_thruster.tOn); // linear thruster to temperature
@@ -100,7 +110,8 @@ namespace world
 				else {
 					voxel.Color = 0;
 				}
-				break;
+			}
+			break;
 		}
 
 		return(voxel);
@@ -110,6 +121,11 @@ namespace world
 	{
 		auto instance(*Instance);
 		float const t(time_to_float(tDelta));
+
+		_activity_lights.accumulator += tDelta;
+		if (_activity_lights.accumulator >= _activity_lights.interval) {
+			_activity_lights.accumulator -= _activity_lights.interval;
+		}
 
 		{
 			// existing main thruster finished?
@@ -127,54 +143,31 @@ namespace world
 					XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster.thrust), t);
 					_thruster.tOn = t;
 
-					XMStoreFloat3A(&_body.thrust, XMVectorAdd(XMLoadFloat3A(&_body.thrust), xmThrust)); // apply linealy decaying thruster to main thrust force tracking for this update
+					XMStoreFloat3A(&_body.thrust, xmThrust); // apply linealy decaying thruster to main thrust force tracking for this update
 				}
 			}
 		}
 
-		// Linear // Main Thruster //
-		{
-			XMVECTOR xmThrust(XMLoadFloat3A(&_body.thrust));
-
-			// main thruster is always in the direction of heading or however the ship is rotated, this works continously in the current direction. //
-			xmThrust = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmThrust, instance->getPitch()), instance->getYaw()), instance->getRoll());
-
-			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.velocity));
-
-			XMVECTOR xmVelocity = SFM::__fma(XMVectorDivide(xmThrust, XMVectorReplicate(_body.mass)), XMVectorReplicate(t), xmInitialVelocity);
-
-			XMVECTOR xmPosition(instance->getLocation3D());
-
-			xmPosition = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmPosition);
-
-			instance->setLocation3D(xmPosition);
-
-			// finding the force              v - vi
-			//                     f   = m * --------		(herbie optimized)
-			//									dt
-			XMStoreFloat3A(&_body.force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
-
-			XMStoreFloat3A(&_body.velocity, xmVelocity);
-			XMStoreFloat3A(&_body.thrust, XMVectorZero()); // reset required
-		}
+		v2_rotation_t const& vRoll(instance->getRoll()), vYaw(instance->getYaw()), vPitch(instance->getPitch());
 
 		// Angular // Sphere Thruster Engines //
 		{
-			XMVECTOR const xmThrust(XMLoadFloat3A(&_body.angular_thrust));
+			// Orient angular thrust to ship orientation always. *do not change*
+			XMVECTOR const xmThrust(v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(XMLoadFloat3A(&_body.angular_thrust), vPitch), vYaw), vRoll));
+			//XMVECTOR const xmThrust(XMLoadFloat3A(&_body.angular_thrust));
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.angular_velocity));
 
-			XMVECTOR xmVelocity = SFM::__fma(XMVectorDivide(xmThrust, XMVectorReplicate(_body.mass)), XMVectorReplicate(t), xmInitialVelocity);
-
-			v2_rotation_t const& xmRoll(instance->getRoll()), xmYaw(instance->getYaw()), xmPitch(instance->getPitch());
-			XMVECTOR xmDir(XMVectorSet(xmRoll.angle(), xmYaw.angle(), xmPitch.angle(), 0.0f));
-
-			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmDir);
+			XMVECTOR const xmVelocity = SFM::__fma(XMVectorDivide(xmThrust, XMVectorReplicate(_body.mass)), XMVectorReplicate(t), xmInitialVelocity);
 
 			// finding the force              v - vi
 			//                     f   = m * --------		(herbie optimized)
 			//									dt
 			XMStoreFloat3A(&_body.angular_force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
+
+			XMVECTOR xmDir(XMVectorSet(vRoll.angle(), vYaw.angle(), vPitch.angle(), 0.0f));
+
+			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmDir);
 
 			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
@@ -187,18 +180,38 @@ namespace world
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
 		}
 
+		// Linear // Main Thruster //
+		{
+			// Orient linear thrust to ship orientation always. *do not change*
+			XMVECTOR const xmThrust(v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(XMLoadFloat3A(&_body.thrust), vPitch), vYaw), vRoll));
+
+			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.velocity));
+
+			XMVECTOR const xmVelocity = SFM::__fma(XMVectorDivide(xmThrust, XMVectorReplicate(_body.mass)), XMVectorReplicate(t), xmInitialVelocity);
+
+			// finding the force              v - vi
+			//                     f   = m * --------		(herbie optimized)
+			//									dt
+			XMStoreFloat3A(&_body.force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
+
+			XMVECTOR xmPosition(instance->getLocation3D());
+
+			xmPosition = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmPosition);
+
+			instance->setLocation3D(xmPosition);
+
+			XMStoreFloat3A(&_body.velocity, xmVelocity);
+			XMStoreFloat3A(&_body.thrust, XMVectorZero()); // reset required
+		}
+
 		// temp
 		float const fElevation(Iso::MINI_VOX_SIZE * Iso::WORLD_MAX_HEIGHT * 0.5f);
 		(*Instance)->setElevation(fElevation);
 	}
 
-	void __vectorcall cYXIGameObject::applyThrust(FXMVECTOR xmThrust)
+	void __vectorcall cYXIGameObject::applyThrust(FXMVECTOR xmThrust, bool const mainthruster)
 	{
-		XMFLOAT3A vThrust;
-		XMStoreFloat3A(&vThrust, xmThrust);
-
-		// main thruster ?
-		if (0.0f != vThrust.z) {
+		if (mainthruster && XMVectorGetZ(xmThrust) > 0.0f) { // main forward thruster
 			_thruster.On(xmThrust);
 			_mainthruster = true;
 		}

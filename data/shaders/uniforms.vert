@@ -182,8 +182,8 @@ const float INV_MAX_TRANSPARENCY = (1.0f / 4.0f);	// 4 levels of transparency (0
 #ifdef DYNAMIC
 vec3 v3_rotate_roll(in const vec3 p)
 {
-	return( vec3(p.x,	//^----- *bugfix non-negative here otherwise roll is reversed on faces
-				 fma(p.y, inUV.x, p.z * inUV.y),
+	return( vec3(p.x,
+				 fma(p.y, -inUV.x, p.z * inUV.y),
 				 fma(p.y, inUV.y, p.z * inUV.x) ));
 }
 vec3 v3_rotate_yaw(in const vec3 p)
@@ -195,8 +195,8 @@ vec3 v3_rotate_yaw(in const vec3 p)
 vec3 v3_rotate_pitch(in const vec3 p)
 {
 	return( vec3(fma(p.x, inOrientReserved.x, p.y * inOrientReserved.y),
-				 fma(p.x, inOrientReserved.y, p.y * inOrientReserved.x),
-				 p.z )); //^----- *bugfix non-negative here otherwise pitch is reversed on faces
+				 fma(p.x, -inOrientReserved.y, p.y * inOrientReserved.x),
+				 p.z ));
 }
 
 #endif

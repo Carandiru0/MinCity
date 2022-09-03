@@ -122,12 +122,14 @@ namespace Volumetric
 				static inline uint32_t
 
 					YXI = 0,
-					YXI_SPHERE = 1,
+					YXI_RING_X = 1,
+					YXI_RING_Y = 2,
+					YXI_RING_Z = 3,
 
-					GROUND_EXPLOSION = 2,
-					SPIKE_EXPLOSION = 3,
-					TINY_EXPLOSION = 4,
-					MEDIUM_FIRE = 5;
+					GROUND_EXPLOSION = 4,
+					SPIKE_EXPLOSION = 5,
+					TINY_EXPLOSION = 6,
+					MEDIUM_FIRE = 7;
 
 					
 			};

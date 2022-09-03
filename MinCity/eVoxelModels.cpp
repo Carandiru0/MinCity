@@ -234,7 +234,9 @@ namespace Volumetric
 
 		// Loading Order Matters for Named Models/Sequences, index is defined by order in which they are loaded.
 		LoadModelNamed<DYNAMIC>("yxi");
-		LoadModelNamed<DYNAMIC>("yxi_sphere");
+		LoadModelNamed<DYNAMIC>("yxi_ring_x");
+		LoadModelNamed<DYNAMIC>("yxi_ring_y");
+		LoadModelNamed<DYNAMIC>("yxi_ring_z");
 
 		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("spike_explosion");

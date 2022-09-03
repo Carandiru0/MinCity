@@ -459,9 +459,9 @@ namespace voxB
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceType& PerformanceCounters_
 #endif
-			) // add in ground height from root voxel passed in, total area encompassing the model has been averaged / flat //
+			) 
 				:
-				xmVoxelOrigin(XMVectorSubtract(xmVoxelOrigin_, XMVectorSet(0.0f, instance_.getElevation(), 0.0f, 0.0f))),
+				xmVoxelOrigin(xmVoxelOrigin_),
 				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
 				instance(instance_),
 

@@ -307,7 +307,7 @@ void main() {
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
 		vec3 volume_color = supersample(volumetricMap, In.uv, vdFd);
 
-		//expandAA(volumetricMap, volume_color, In.uv);
+		expandAA(volumetricMap, volume_color, In.uv);
 
 		volume_color *= alphaSumV; // pre-multiply w/ bilateral alpha
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
