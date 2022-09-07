@@ -143,7 +143,7 @@ namespace Volumetric
 		/*
 		int iContainment(1); // default to INSIDE
 		
-		// Load the box.		// used to negate vector, now negation is included in scale
+		// Load the box.		
 		XMVECTOR const vExtents(XMVectorScale(xmExtents, -ERROR_COMPENSATION)); // allow error % over 
 
 		// Test against each plane.
@@ -201,24 +201,26 @@ namespace Volumetric
 			if (XMVectorGetX(dp) >= 0.0f)
 				iContainment = -1; // INTERSECTING
 		}
+	
+		return(iContainment);
 		*/
-		
+
 		// Load the box.		// used to negate vector, now negation is included from ERROR_COMPENSATION
-		XMVECTOR const vExtents(XMVectorScale(xmExtents, ERROR_COMPENSATION)); // allow error % over 
+		XMVECTOR const vExtents(XMVectorScale(xmExtents, -ERROR_COMPENSATION)); // allow error % over 
 
 		// Set w of the center to one so we can dot4 with all consecutive planes.
 		XMVECTOR const vCenter(XMVectorInsert<0, 0, 0, 0, 1>(xmPosition, XMVectorSplatOne()));
 
-		bool Outside(false), Inside(false);
+		bool Outside(false), Inside(false);	
+		bool AnyOutside(false), AllInside(true);
 
-		// Test against each plane.
 		if constexpr (!skip_near_plane) {
 			Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_NEAR]));
 			Outside = !Inside;
+
+			AnyOutside |= Outside;
+			AllInside &= Inside;
 		}
-		
-		bool AnyOutside = Outside;
-		bool AllInside = Inside;
 
 		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_FAR]));
 		Outside = !Inside;
@@ -237,19 +239,19 @@ namespace Volumetric
 		
 		AnyOutside |= Outside;
 		AllInside &= Inside;
-
+		
 		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_TOP]));
 		Outside = !Inside;
 		
 		AnyOutside |= Outside;
 		AllInside &= Inside;
-
+		
 		Inside = FastIntersectAABBPlane(vCenter, vExtents, XMLoadFloat4A(&_Plane[ePlane::P_BOTTOM]));
 		Outside = !Inside;
 		
 		AnyOutside |= Outside;
 		AllInside &= Inside;
-
+		
 		// If the box is outside any plane it is outside.
 		if (AnyOutside)
 			return(0);

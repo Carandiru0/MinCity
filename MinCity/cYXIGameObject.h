@@ -29,6 +29,7 @@ namespace world
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 		float const						getMass() const { return(_body.mass); }
+		XMVECTOR const __vectorcall		getVelocity() const { return(XMLoadFloat3A(&_body.velocity)); }
 		XMVECTOR const __vectorcall		getAngularVelocity() const { return(XMLoadFloat3A(&_body.angular_velocity)); }
 
 

@@ -179,7 +179,7 @@ const float INV_MAX_TRANSPARENCY = (1.0f / 4.0f);	// 4 levels of transparency (0
 //}
 //#endif // not used more accurate way found
 
-#ifdef DYNAMIC
+#ifdef DYNAMIC // *do not change* extremely sensitive to order
 vec3 v3_rotate_roll(in const vec3 p)
 {
 	return( vec3(p.x,
@@ -207,9 +207,9 @@ void main() {
 	const float size = VOX_SIZE;
 
 #ifdef DYNAMIC
-	const vec3 right = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(vec3(1.0f, 0.0f, 0.0f))));
+	const vec3 right = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(vec3(1.0f, 0.0f, 0.0f)))); // *do not change* extremely sensitive to order
 	Out.right = right * size;
-	const vec3 forward = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(vec3(0.0f, 0.0f, 1.0f))));
+	const vec3 forward = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(vec3(0.0f, 0.0f, 1.0f)))); // *do not change* extremely sensitive to order
 	Out.forward	= forward * size;
 	Out.up = cross(forward, right) * size;
 #else

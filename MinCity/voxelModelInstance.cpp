@@ -41,7 +41,7 @@ namespace Volumetric
 		// instance will not be rendered anymore, deletion is managed by World instance cleanup queue
 	}
 
-	void __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vAzi)  // only for dynamic instances
+	void __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw)  // only for dynamic instances
 	{
 		if (hashID) {
 
@@ -53,7 +53,7 @@ namespace Volumetric
 				point2D_t const new_rootVoxel(v2_to_p2D(xmLoc)); // matches getVoxelIndex() method
 
 				// this could be a slight move (fractional) that does not change the voxelindex (integer)
-				if (new_rootVoxel != old_rootVoxel || vAzi != _vYaw) {
+				if (new_rootVoxel != old_rootVoxel || vYaw != _vYaw) {
 
 					Iso::Voxel const* const pVoxelNew = world::getVoxelAt(new_rootVoxel);
 					if (nullptr != pVoxelNew) {
@@ -69,7 +69,7 @@ namespace Volumetric
 						uint32_t const new_index(Iso::getNextAvailableHashIndex<true>(oVoxelNew)); // must capture index here 1st
 
 						// set new area of the hash id only
-						world::setVoxelsHashAt(r2D_add(vLocalArea, new_rootVoxel), hashID, vAzi); // using new location & Yaw
+						world::setVoxelsHashAt(r2D_add(vLocalArea, new_rootVoxel), hashID, vYaw); // using new location & Yaw
 
 						// update the new owner //
 						Iso::setAsOwner(oVoxelNew, new_index);
@@ -93,8 +93,8 @@ namespace Volumetric
 				
 				// this also covers fractional moves only (where voxelIndex does not change)
 				// and updates the location / Yaw for where the above case is true or false
-				XMStoreFloat2A(&vLoc, xmLoc);
-				_vYaw = vAzi;
+				// ** //
+				// ** //
 
 			}
 			else
@@ -113,8 +113,13 @@ namespace Volumetric
 			//      (oriented bounding rect equal in size to the models local area)
 			//      Child (prop) is "gridless", and just for animation
 			//		so model instance only cares about the location & rotation.
-			XMStoreFloat2A(&vLoc, xmLoc);
-			_vYaw = vAzi;
+			// ** //
+			// ** //
 		}
+
+		// ** //
+		// ** //
+		XMStoreFloat2A(&vLoc, xmLoc);
+		_vYaw = vYaw;
 	}
 } //end ns volumetric

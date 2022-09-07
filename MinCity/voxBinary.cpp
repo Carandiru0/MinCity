@@ -1612,7 +1612,9 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 	XMVECTOR xmExtents = p2D_to_v2(p2D_sub(_LocalArea.right_bottom(), _LocalArea.left_top()));
 	xmExtents = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmExtents); // move z to correct position from v2 to v3
 	xmExtents = XMVectorSetY(xmExtents, float(_maxDimensions.y + 1));
-	XMStoreFloat3A(&_Extents, XMVectorScale(xmExtents, 0.5f));
+	xmExtents = XMVectorScale(xmExtents, 0.5f);
+	XMStoreFloat3A(&_Extents, xmExtents);
+	_Radius = XMVectorGetX(XMVector3Length(xmExtents));
 }
 
 voxelModelBase::~voxelModelBase()

@@ -312,6 +312,11 @@ vec3 decompressNormal(in const vec2 compressed_normal)
 	return(normalize(decompressed_normal));
 }
 
+vec3 rotate( in const vec3 p, in const vec4 q) // preferred - rotate a 3d vector by quaternion
+{ 
+  return(fma(cross(q.xyz, cross(q.xyz, p) + q.w * p), vec3(2.0f), p));
+}
+
 vec3 rotate( in const vec3 p, in const vec2 cossin )
 {
 	//return(XMVectorSet(SFM::__fms(p.x, angle.c, p.y * angle.s),

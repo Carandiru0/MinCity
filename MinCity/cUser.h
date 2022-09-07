@@ -32,6 +32,8 @@ public:
 private:
 	world::cYXIGameObject*				_ship;
 	world::cYXISphereGameObject			*_shipRingX[ENGINE_COUNT], *_shipRingY[ENGINE_COUNT], *_shipRingZ[ENGINE_COUNT];
+
+	float const							_sphere_engine_offset;
 public:
 	cUser();
 	~cUser();

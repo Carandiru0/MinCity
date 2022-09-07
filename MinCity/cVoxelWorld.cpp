@@ -600,32 +600,69 @@ void cVoxelWorld::setCameraTurnTable(bool const enable)
 {
 	_bCameraTurntable = enable;
 }
-void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmLocation)
+void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, FXMVECTOR xmExtents, fp_seconds const& __restrict tDelta) // expects 3D coordinates
 {
-	/*
-	static constexpr float const FOLLOW_SPEED = 0.03f,
-								 FOLLOW_DAMPING = 0.01f;
+	XMVECTOR const xmVelocityXZ(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVelocity));
 
-	XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
+	// test 2D (x, z) plane first for scrolling magnitude
+	point2D_t const vVelocity(v2_to_p2D(xmVelocityXZ));
 
-	XMVECTOR const xmDelta = XMVectorSubtract(xmLocation, xmOrigin);
+	if (!vVelocity.isZero()) { // small fractional changes do not move camera
 
-	XMVECTOR xmVelocity = XMVectorScale(xmDelta, FOLLOW_SPEED);
+		XMVECTOR const xmFuturePosition(SFM::__fma(xmVelocity, XMVectorReplicate(tDelta.count()), xmPosition));
 
-	xmVelocity = XMVectorScale(xmVelocity, 1.0f - FOLLOW_DAMPING);
+		/*
+		point2D_t const voxelIndex(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFuturePosition)));
+		point2D_t const displace(32);
+		rect2D_t const rectScreen(p2D_sub(oCamera.voxelIndex_Center, displace), p2D_add(oCamera.voxelIndex_Center, displace));
 
-	// Target Position = xmOrigin + xmVelocity, only want displacement which is xmDisplacement = Target Position - xmOrigin
-	XMVECTOR const xmTargetPosition(XMVectorAdd(xmOrigin, xmVelocity));
+		if (!r2D_contains(rectScreen, voxelIndex)) {
 
-	
-	XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmTargetPosition)); // always a clean integral number on completion
-	XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
-	
-	// signal transition
-	oCamera.tTranslateStart = now();  // closer to exact now results in the lerp not being skipped right to target position
-	*/
+			FMT_NUKLEAR_DEBUG(false, "visible");
+
+			point2D_t const vScroll(v2_to_p2D(XMVectorRound(XMVector2Normalize(xmVelocityXZ))));
+
+			translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
+
+			translateCameraOrient(XMVectorScale(xmVelocityXZ, tDelta.count() * 3.0f));
+		}
+		else {
+
+			FMT_NUKLEAR_DEBUG_OFF();
+		}
+		*/
+
+		XMVECTOR const xmVoxelOrigin(XMVectorAdd(xmFuturePosition, XMLoadFloat3A(&oCamera.Origin))); // make relative to origin
+
+		XMVECTOR xmPreciseOrigin(xmFuturePosition);
+		XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
+
+		xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
+		xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -XMVectorGetY(xmFuturePosition) * 0.0f);
+
+		// test frustum for future position's visibility
 		
-	//XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation));
+		int32_t const visibility = _Visibility.AABBIntersectFrustum(xmPreciseOrigin, xmExtents);
+		
+		if (visibility > 0) { // only proceed with scrolling if future position is inside frustum completely (w/ extents of AABB) - not intersecting, not outside, completely inside}
+
+			//point2D_t const vScroll(v2_to_p2D(XMVectorRound(XMVector2Normalize(xmVelocityXZ))));
+			//translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
+			translateCameraOrient(XMVectorScale(xmVelocityXZ, tDelta.count() * 3.0f));
+			FMT_NUKLEAR_DEBUG(false, "inside");
+		}
+		else if (visibility < 0) {
+
+			FMT_NUKLEAR_DEBUG(true, "intersecting");
+		}
+		else {
+			FMT_NUKLEAR_DEBUG_OFF();
+		}
+		
+	}
+	else {
+		FMT_NUKLEAR_DEBUG_OFF();
+	}
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -4167,22 +4204,31 @@ namespace world
 		::rotateCamera(anglerelative);
 	}
 
+	STATIC_INLINE_PURE bool const XM_CALLCONV stepCameraMotion(XMVECTOR xmDisplacement)
+	{
+		// *bugfix - adapt all motion to step, so there are no glitches with diagonal translation being too fast
+		point2D_t const viDir(p2D_abs(v2_to_p2D_rounded(XMVector2Normalize(xmDisplacement))));
+
+		return(viDir.x != viDir.y);
+	}
+
 	STATIC_INLINE bool const XM_CALLCONV translateCamera(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does not orient in current direction of camera
 	{
 		uint32_t Result;
 		XMVectorEqualR(&Result, XMVectorZero(), xmDisplacement);
-		if (XMComparisonAnyFalse(Result)) {
+		if (XMComparisonAnyFalse(Result) && stepCameraMotion(xmDisplacement)) {
 
 			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition)); // always a clean integral number on completion
+			XMStoreFloat2A(&oCamera.TargetPosition, (xmPosition)); // always a clean integral number on completion
 			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
 			// signal transition
-			oCamera.tTranslateStart = now();  // closer to exact now results in the lerp not being skipped right to target position
-
+			if (zero_time_point == oCamera.tTranslateStart) {
+				oCamera.tTranslateStart = now();
+			}
 			return(true); // translation started
 		}
 
@@ -4195,20 +4241,25 @@ namespace world
 		XMVectorEqualR(&Result, XMVectorZero(), xmDisplacement);
 		if (XMComparisonAnyFalse(Result)) {
 
-			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
-
 			// orient displacement in direction of camera
 			xmDisplacement = v2_rotate(xmDisplacement, oCamera.Yaw);
 
-			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
+			if (stepCameraMotion(xmDisplacement)) {
+				
+				XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
 
-			XMStoreFloat2A(&oCamera.TargetPosition, XMVectorRound(xmPosition)); // always a clean integral number on completion
-			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
+				XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-			// signal transition
-			oCamera.tTranslateStart = now();
+				XMStoreFloat2A(&oCamera.TargetPosition, (xmPosition)); // always a clean integral number on completion
+				XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
-			return(true); // translation started
+				// signal transition
+				if (zero_time_point == oCamera.tTranslateStart) {
+					oCamera.tTranslateStart = now();
+				}
+
+				return(true); // translation started
+			}
 		}
 
 		return(false); // translation cancelled

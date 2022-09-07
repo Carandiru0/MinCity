@@ -201,23 +201,27 @@ namespace Volumetric
 
 	class alignas(16) voxelModelInstance_Dynamic : public voxelModelInstance<voxB::DYNAMIC>
 	{
-	private:
-		v2_rotation_t								 _vRoll, _vPitch, _vYaw;
+	private: // global application convention is the order Roll (x), Yaw (y), Pitch (z)
+		v2_rotation_t								 _vPitch, _vYaw, _vRoll;	//  optimal access order for cache, pitch (z) is accessed first in v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmMiniVox, xmPitch), xmYaw), xmRoll); in voxelModel.h
 
 	public:
 		v2_rotation_t const& __vectorcall getRoll() const { return(_vRoll); }
-		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); }
 		v2_rotation_t const& __vectorcall getYaw() const { return(_vYaw); }
-		
+		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); }
+
 		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc, _vYaw); }			//-ok
 		void __vectorcall setLocation3D(FXMVECTOR const xmLoc) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), _vYaw); }		//-ok
+		
 		void __vectorcall setRoll(v2_rotation_t const vRoll) { _vRoll = vRoll; }						// row doesn't affect synchronization
+		void __vectorcall setYaw(v2_rotation_t const vYaw) { synchronize(getLocation(), vYaw); }		// yaw does affect synchronization
 		void __vectorcall setPitch(v2_rotation_t const vPit) { _vPitch = vPit; }						// pitch doesn't affect synchronization
-		void __vectorcall setYaw(v2_rotation_t const vAzi) { synchronize(getLocation(), vAzi); }	//-ok
-		void __vectorcall setLocationYaw(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { synchronize(xmLoc, vAzi); }  //*best
-		void __vectorcall setLocation3DYaw(FXMVECTOR const xmLoc, v2_rotation_t const vAzi) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), vAzi); }  //*best
+
+		void __vectorcall setRollYawPitch(v2_rotation_t const& vRoll, v2_rotation_t const& vYaw, v2_rotation_t const& vPit) { _vPitch = vPit; _vRoll = vRoll; synchronize(getLocation(), vYaw); }
+
+		void __vectorcall setLocationYaw(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) { synchronize(xmLoc, vYaw); }  //*best
+		void __vectorcall setLocation3DYaw(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), vYaw); }  //*best
 	public:
-		void __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vAzi);	// must be called whenever a change in location/rotation is intended 
+		void __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw);	// must be called whenever a change in location/rotation is intended 
 	private:
 		// model must be loaded b4 any instance creation!
 		explicit voxelModelInstance_Dynamic(voxB::voxelModel<voxB::DYNAMIC> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_);

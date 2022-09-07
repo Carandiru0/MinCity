@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "cYXIGameObject.h"
 #include "voxelModelInstance.h"
+#include <Math/quat_t.h>
 
 namespace world
 {
@@ -148,13 +149,9 @@ namespace world
 			}
 		}
 
-		v2_rotation_t const& vRoll(instance->getRoll()), vYaw(instance->getYaw()), vPitch(instance->getPitch());
-
 		// Angular // Sphere Thruster Engines //
 		{
-			// Orient angular thrust to ship orientation always. *do not change*
-			XMVECTOR const xmThrust(v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(XMLoadFloat3A(&_body.angular_thrust), vPitch), vYaw), vRoll));
-			//XMVECTOR const xmThrust(XMLoadFloat3A(&_body.angular_thrust));
+			XMVECTOR const xmThrust(XMLoadFloat3A(&_body.angular_thrust));
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.angular_velocity));
 
@@ -165,16 +162,14 @@ namespace world
 			//									dt
 			XMStoreFloat3A(&_body.angular_force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
 
-			XMVECTOR xmDir(XMVectorSet(vRoll.angle(), vYaw.angle(), vPitch.angle(), 0.0f));
+			XMVECTOR xmDir(XMVectorSet(instance->getRoll().angle(), instance->getYaw().angle(), instance->getPitch().angle(), 0.0f));
 
 			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmDir);
 
 			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
 
-			instance->setRoll(v2_rotation_t(vAngles.x));
-			instance->setYaw(v2_rotation_t(vAngles.y));
-			instance->setPitch(v2_rotation_t(vAngles.z));
+			instance->setRollYawPitch(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
@@ -183,7 +178,9 @@ namespace world
 		// Linear // Main Thruster //
 		{
 			// Orient linear thrust to ship orientation always. *do not change*
-			XMVECTOR const xmThrust(v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(XMLoadFloat3A(&_body.thrust), vPitch), vYaw), vRoll));
+			quat_t const qOrient(instance->getRoll().angle(), instance->getYaw().angle(), instance->getPitch().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
+
+			XMVECTOR const xmThrust(v3_rotate(XMLoadFloat3A(&_body.thrust), qOrient));
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.velocity));
 

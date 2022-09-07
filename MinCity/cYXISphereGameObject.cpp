@@ -2,6 +2,9 @@
 #include "cYXISphereGameObject.h"
 #include "voxelModelInstance.h"
 #include "cYXIGameObject.h"
+#include <Math/quat_t.h>
+#include "cPhysics.h"
+#include "MinCity.h"
 
 namespace world
 {
@@ -187,7 +190,7 @@ namespace world
 							XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster[i].thrust), t);
 							_thruster[i].tOn = t;
 
-							XMStoreFloat3(&_body.angular_thrust, xmThrust); // apply linealy decaying thrust to main thruster force tracking for this update
+							XMStoreFloat3A(&_body.angular_thrust, xmThrust); // apply linealy decaying thrust to main thruster force tracking for this update
 						}
 					}
 					else {
@@ -213,7 +216,7 @@ namespace world
 						case X_MAX:
 						case X_MIN:
 							autolevelContinue = (vParentAngularVelocity.x - EPSILON) >= 0.0f;
-							angle = _parent->getModelInstance()->getRoll().angle();
+							angle = _parent->getModelInstance()->getPitch().angle();
 							break;
 						case Y_MAX:
 						case Y_MIN:
@@ -223,7 +226,7 @@ namespace world
 						case Z_MAX:
 						case Z_MIN:
 							autolevelContinue = (vParentAngularVelocity.z - EPSILON) >= 0.0f;
-							angle = _parent->getModelInstance()->getPitch().angle();
+							angle = _parent->getModelInstance()->getRoll().angle();
 							break;
 						}
 
@@ -236,13 +239,20 @@ namespace world
 							t = t * 0.5f + 0.5f;
 							// distance from 0.5f to [-1.0f ... 1.0f]
 							t = SFM::abs(2.0f * (t - 0.5f)); // abs
-							t = SFM::saturate(t);
+							t = 1.0f - SFM::saturate(t);
 
 							XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster[i].thrust), t);
 							_thruster[i].tOn = t;
 
-							XMStoreFloat3(&_body.angular_thrust, xmThrust); // keep applying auto-leveling thrust per frame until the condition is satisfied
+							XMStoreFloat3A(&_body.angular_thrust, xmThrust); // keep applying auto-leveling thrust per frame until the condition is satisfied
 						}
+						else {
+
+							// transition to non-auto levelling state smoothly
+							XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster[i].thrust), _thruster[i].tOn);
+							XMStoreFloat3A(&_thruster[i].thrust, xmThrust);
+						}
+
 						_thruster[i].autoleveling = autolevelContinue; // when condition is satisfied continue with the natural cooldown turn off process (when false - turns off auto leveling)
 					}
 				}
@@ -251,7 +261,11 @@ namespace world
 
 		// Angular //
 		{
-			XMVECTOR const xmThrust(XMVectorScale(XMLoadFloat3A(&_body.angular_thrust), _body.mass));
+			// radius (offset from origin to edge is where force is applied, affecting the force directly, greater radius means greater force) 
+			// T = F x r (Torque) [not using cross product, already done, just scale]
+			float const displacement(instance->getModel()._Radius * Iso::MINI_VOX_STEP * cPhysics::TORQUE_OFFSET_SCALAR);
+			
+			XMVECTOR const xmThrust(XMVectorScale(XMLoadFloat3A(&_body.angular_thrust), _body.mass * displacement)); // T = F * r , T = Torque, F = Force, r = Radius/Offset
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.angular_velocity));
 
@@ -260,7 +274,7 @@ namespace world
 			// save the angular force of the sphere for that force acts upon it's parent
 			// finding the force              v - vi
 			//                     f   = m * --------		(herbie optimized)
-			//									dt
+			//								    dt
 			XMStoreFloat3A(&_body.angular_force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
 
 			XMVECTOR xmDir(XMVectorSet(instance->getRoll().angle(), instance->getYaw().angle(), instance->getPitch().angle(), 0.0f));
@@ -270,9 +284,7 @@ namespace world
 			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
 
-			instance->setRoll(v2_rotation_t(vAngles.x));
-			instance->setYaw(v2_rotation_t(vAngles.y));
-			instance->setPitch(v2_rotation_t(vAngles.z));
+			instance->setRollYawPitch(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
@@ -280,13 +292,14 @@ namespace world
 
 		// inherit  
 		{ // parent translation
+			
 			auto const parentInstance(_parent->getModelInstance());
-			v2_rotation_t const& vParentRoll(parentInstance->getRoll()), vParentYaw(parentInstance->getYaw()), vParentPitch(parentInstance->getPitch());
+			quat_t const qOrient(parentInstance->getRoll().angle(), parentInstance->getYaw().angle(), parentInstance->getPitch().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
 
 			XMVECTOR const xmParentLocation(parentInstance->getLocation3D());
 			XMVECTOR xmSphere(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));
 
-			xmSphere = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmSphere, xmParentLocation, vParentPitch), xmParentLocation, vParentYaw), xmParentLocation, vParentRoll);
+			xmSphere = v3_rotate(xmSphere, xmParentLocation, qOrient);
 
 			instance->setLocation3D(xmSphere);
 		}
@@ -294,38 +307,82 @@ namespace world
 
 	void __vectorcall cYXISphereGameObject::startThruster(FXMVECTOR xmThrust, bool const auto_leveling_enable)
 	{
-		XMFLOAT3A vThruster;
+		bool bCancelled(false);
+
+		XMFLOAT3A vParentAngularVelocity, vThruster;
+		XMStoreFloat3A(&vParentAngularVelocity, _parent->getAngularVelocity());
 		XMStoreFloat3A(&vThruster, xmThrust);
 
 		// instant start thruster, with linear cool-down after last instaneous thrust
 		if (0.0f != vThruster.x) {
 			if (vThruster.x > 0.0f) {
-				_thrusters |= X_MAX_BIT;
-				_thruster[5].On(xmThrust, auto_leveling_enable);
+
+				if (auto_leveling_enable) {
+					bCancelled = vParentAngularVelocity.x > 0.0f; // same direction for counter-thrust ?
+				}
+
+				if (!bCancelled) {
+					_thrusters |= X_MAX_BIT;
+					_thruster[5].On(xmThrust, auto_leveling_enable);
+				}
 			}
 			else {
-				_thrusters |= X_MIN_BIT;
-				_thruster[4].On(xmThrust, auto_leveling_enable);
+				if (auto_leveling_enable) {
+					bCancelled = vParentAngularVelocity.x < 0.0f; // same direction for counter-thrust ?
+				}
+
+				if (!bCancelled) {
+					_thrusters |= X_MIN_BIT;
+					_thruster[4].On(xmThrust, auto_leveling_enable);
+				}
 			}
 		}
 		if (0.0f != vThruster.y) {
+
 			if (vThruster.y > 0.0f) {
-				_thrusters |= Y_MAX_BIT;
-				_thruster[3].On(xmThrust, auto_leveling_enable);
+
+				if (auto_leveling_enable) {
+					bCancelled = vParentAngularVelocity.y > 0.0f; // same direction for counter-thrust ?
+				}
+
+				if (!bCancelled) {
+					_thrusters |= Y_MAX_BIT;
+					_thruster[3].On(xmThrust, auto_leveling_enable);
+				}
 			}
 			else {
-				_thrusters |= Y_MIN_BIT;
-				_thruster[2].On(xmThrust, auto_leveling_enable);
+				if (auto_leveling_enable) {
+					bCancelled = vParentAngularVelocity.y < 0.0f; // same direction for counter-thrust ?
+				}
+
+				if (!bCancelled) {
+					_thrusters |= Y_MIN_BIT;
+					_thruster[2].On(xmThrust, auto_leveling_enable);
+				}
 			}
 		}
 		if (0.0f != vThruster.z) {
+			
 			if (vThruster.z > 0.0f) {
-				_thrusters |= Z_MAX_BIT;
-				_thruster[1].On(xmThrust, auto_leveling_enable);
+
+				if (auto_leveling_enable) {
+					bCancelled = vParentAngularVelocity.z > 0.0f; // same direction for counter-thrust ?
+				}
+
+				if (!bCancelled) {
+					_thrusters |= Z_MAX_BIT;
+					_thruster[1].On(xmThrust, auto_leveling_enable);
+				}
 			}
 			else {
-				_thrusters |= Z_MIN_BIT;
-				_thruster[0].On(xmThrust, auto_leveling_enable);
+				if (auto_leveling_enable) {
+					bCancelled = vParentAngularVelocity.z < 0.0f; // same direction for counter-thrust ?
+				}
+
+				if (!bCancelled) {
+					_thrusters |= Z_MIN_BIT;
+					_thruster[0].On(xmThrust, auto_leveling_enable);
+				}
 			}
 		}
 	}
@@ -336,7 +393,7 @@ namespace world
 
 		startThruster(xmThrust, auto_leveling_enable);
 
-		return(XMLoadFloat3(&_body.angular_force)); // the force applied from the angular force in the sphere is returned here to the parent, so that the current accumulated forces are applied to parent.
+		return(XMLoadFloat3A(&_body.angular_force)); // the force applied from the angular force in the sphere is returned here to the parent, so that the current accumulated forces are applied to parent.
 	}
 } // end ns world
 

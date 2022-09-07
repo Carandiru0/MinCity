@@ -322,24 +322,25 @@ namespace voxB
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
 		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis)
+		float			_Radius;						// pre-calculated radius - based directly off of extents
 		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels)
 		
 		voxelModelFeatures _Features;
 		bool			   _Mapped;						// "_Voxels" points to memory mapped file (virtual memory) containing contigous data
 		
 		inline voxelModelBase() 
-			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _Radius{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
 		{}
 
 		voxelModelBase(voxelModelBase&& src)
-			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _LocalArea(src._LocalArea), _Features(std::move(src._Features)), 
+			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _Radius(src._Radius), _LocalArea(src._LocalArea), _Features(std::move(src._Features)),
 			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(src._Mapped)
 		{
 			std::swap<voxelDescPacked const* __restrict>(_Voxels, src._Voxels);
 		}
 
 		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
-			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _Radius{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
 		{
 			vec4_v const maxDimensions(width, height, depth);
 			
@@ -513,16 +514,17 @@ namespace voxB
 					if constexpr (Dynamic) {
 						voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
 
-						XMVECTOR const xmRoll(instance_dynamic.getRoll().v2());
-						XMVECTOR const xmYaw(instance_dynamic.getYaw().v2());
 						XMVECTOR const xmPitch(instance_dynamic.getPitch().v2());
+						XMVECTOR const xmYaw(instance_dynamic.getYaw().v2());
+						XMVECTOR const xmRoll(instance_dynamic.getRoll().v2()); // *do not change* extremely sensitive to order
+						
 						// rotation order is important
 						// in this order, the rotations add together
 						// in the other order, each rotation is independent of each other
 						// no quaternions, no matrices, just vectors - simplest possible solution.
 						xmOrient = XMVectorAdd(XMVectorRotateRight<2>(xmYaw), xmPitch);
 						xmExtra = xmRoll;
-						xmMiniVox = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmMiniVox, xmPitch), xmYaw), xmRoll);
+						xmMiniVox = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmMiniVox, xmPitch), xmYaw), xmRoll); // *do not change* extremely sensitive to order
 					}
 
 					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, SFM::__fms(YDimension, -0.5f, XMVectorGetY(xmMiniVox))), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin, precise height offset for center of model

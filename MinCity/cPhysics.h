@@ -8,7 +8,7 @@ class no_vtable cPhysics : no_copy
 public:
 	static constexpr float const GRAVITY = -9.80665f;	// https://physics.nist.gov/cuu/Constants/index.html (exact value) m/s*s [acceleration]
 	static constexpr float const MIN_FORCE = 1.0f;		// Epsilon for minimum force 1 N [force]	// smallest force to move a voxel, at 1 voxel per second
-
+	static constexpr float const TORQUE_OFFSET_SCALAR = 0.33333333f; // affects how forceful rotation is (torque). compare with linear force. set as desired.
 private:
 	static constexpr uint32_t COHERENT = 1,
 							  STAGING = 0;
