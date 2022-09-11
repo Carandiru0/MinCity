@@ -120,8 +120,8 @@ namespace world
 		_this.angle -= tDelta.count() * 11.0f;
 
 		// inhreit parent location & orientation
-		(*Instance)->setLocationYaw(xmLocation, Yaw + _this.angle);
-		(*Instance)->setElevation(fElevation);
+		//(*Instance)->setLocationYaw(xmLocation, Yaw + _this.angle);
+		//(*Instance)->setElevation(fElevation);
 
 		// chsnging prop light
 		float const fFaster((_this.bLightsOn ? (1.0f/3.0f) : 1.0f));

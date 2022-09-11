@@ -65,6 +65,10 @@ namespace world
 		instance_->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
 
 		_body.mass = (float)getModelInstance()->getVoxelCount();
+
+		// temp @todo
+		float const fElevation(Iso::MINI_VOX_SIZE * Iso::WORLD_MAX_HEIGHT * 0.5f);
+		instance_->setElevation(fElevation);
 	}
 
 	// If currently visible event:
@@ -191,19 +195,15 @@ namespace world
 			//									dt
 			XMStoreFloat3A(&_body.force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
 
-			XMVECTOR xmPosition(instance->getLocation3D());
+			XMVECTOR xmPosition(instance->getLocation());
 
 			xmPosition = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmPosition);
 
-			instance->setLocation3D(xmPosition);
+			instance->setLocation(xmPosition);
 
 			XMStoreFloat3A(&_body.velocity, xmVelocity);
 			XMStoreFloat3A(&_body.thrust, XMVectorZero()); // reset required
 		}
-
-		// temp
-		float const fElevation(Iso::MINI_VOX_SIZE * Iso::WORLD_MAX_HEIGHT * 0.5f);
-		(*Instance)->setElevation(fElevation);
 	}
 
 	void __vectorcall cYXIGameObject::applyThrust(FXMVECTOR xmThrust, bool const mainthruster)

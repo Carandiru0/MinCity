@@ -9,6 +9,7 @@
 #include <Random/superrandom.hpp>
 #include "types.h"
 #include "voxelModel.h"
+#include "Interpolator.h"
 
 namespace Volumetric
 {
@@ -18,16 +19,17 @@ namespace Volumetric
 	{
 	public:
 		uint32_t const											      getHash() const { return(hashID); }
-		XMVECTOR const __vectorcall									  getLocation() const { return(XMLoadFloat2A(&vLoc)); }
-		XMVECTOR const __vectorcall									  getLocation3D() const { return(XMVectorSet(vLoc.x, fElevation, vLoc.y, 0.0f)); }
-		float const __vectorcall									  getElevation() const { return(fElevation); } // additional "height above ground"
-		
-		point2D_t const	__vectorcall								  getVoxelIndex() const { return(v2_to_p2D(getLocation())); }	// returns voxel index occupied by the origin of this instance
-																																	// this is synchronized as the "root voxel" index by the voxel world
-		void __vectorcall											  setElevation(float const fElevation_) { fElevation = fElevation_; }																															// this must use a floor type operation on the floating point vector to be correct
-																																	// which v2_to_p2D does
-		tTime const&												  getCreationTime() const { return(tCreation); }
-		tTime const&												  getDestructionTime() const { return(tDestruction); }
+
+		XMVECTOR const __vectorcall									  getLocation() const { return(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)); } //{ return(Interpolator.get<XMFLOAT3A, XMVECTOR>(vLoc)); }
+
+		float const __vectorcall									  getElevation() const { return(XMVectorGetY(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc))); } // additional "height above ground"
+
+		point2D_t const	__vectorcall								  getVoxelIndex() const { return(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(getLocation()))); }	// returns voxel index occupied by the origin of this instance
+																																																			// this is synchronized as the "root voxel" index by the voxel world
+		void __vectorcall											  setElevation(float const fElevation_) { Interpolator.set_component<COMPONENT_Y>(vLoc, fElevation_); }									// this must use a floor type operation on the floating point vector to be correct
+																																																			// which v2_to_p2D does
+		tTime const& getCreationTime() const { return(tCreation); }
+		tTime const& getDestructionTime() const { return(tDestruction); }
 
 		milliseconds const											  getCreationSequenceLength() const { return(tSequenceLengthCreation); }
 		milliseconds const											  getDestructionSequenceLength() const { return(tSequenceLengthDestruction); }
@@ -36,15 +38,15 @@ namespace Volumetric
 		void														  setDestructionSequenceLength(milliseconds const length) { tSequenceLengthDestruction = length; }
 
 		bool const												      isFadeable() const { return(!(eVoxelModelInstanceFlags::NOT_FADEABLE == (eVoxelModelInstanceFlags::NOT_FADEABLE & flags))); }
-		
-		voxelModelInstanceBase* const __restrict& __restrict getChild() const {	return(child); }
+
+		voxelModelInstanceBase* const __restrict& __restrict getChild() const { return(child); }
 		void setChild(voxelModelInstanceBase* const child_) { child = child_; }	// to simplify state - only *once* can a child be set, and that child then remains a child of this instance until this instance is destroyed, where it is destroyed aswell.
-		
+
 		// The gameobject that uses this instance should setOwnerGameObject in it's ctor
 		// acceptable - gameobject is a leaf/final class, not a base class 
 		template<typename TGameObject>
 		TGameObject* const getOwnerGameObject() const {
-			return( static_cast<TGameObject* const>(owner_gameobject) );
+			return(static_cast<TGameObject* const>(owner_gameobject));
 		}
 		uint32_t const getOwnerGameObjectType() const {
 			return(owner_gameobject_type);
@@ -66,6 +68,7 @@ namespace Volumetric
 		void destroy() { if (zero_time_point == tDestruction) tDestruction = now(); } // instance scheduled for destruction (normally there is a destruction sequence)
 		void destroy(milliseconds const length) { destroy(); if (length != tSequenceLengthDestruction) tSequenceLengthDestruction = length; } // instance scheduled for destruction (normally there is a destruction sequence) definable sequence length override.
 
+
 	protected:
 		void destroyInstance() const;
 		
@@ -77,8 +80,7 @@ namespace Volumetric
 		milliseconds 										tSequenceLengthCreation,
 															tSequenceLengthDestruction;
 
-		XMFLOAT2A											vLoc;
-		alignas(16) float									fElevation;
+		interpolated<XMFLOAT3A>								vLoc;
 
 		voxelModelInstanceBase*								child;
 
@@ -88,6 +90,8 @@ namespace Volumetric
 	protected:
 		explicit voxelModelInstanceBase(uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_);
 		virtual ~voxelModelInstanceBase() {
+
+			Interpolator.remove(vLoc);
 
 			SAFE_DELETE(child); // child instances belong to a parent voxelModelInstance - they are not managed memory outside of parent instance
 								// parent manages memory of child only, where the parent is managed memory 
@@ -209,20 +213,19 @@ namespace Volumetric
 		v2_rotation_t const& __vectorcall getYaw() const { return(_vYaw); }
 		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); }
 
-		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc, _vYaw); }			//-ok
-		void __vectorcall setLocation3D(FXMVECTOR const xmLoc) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), _vYaw); }		//-ok
-		
+		void __vectorcall resetLocation(FXMVECTOR const xmLoc) { Interpolator.reset(vLoc, xmLoc); synchronize(xmLoc); }						
+		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc); }					// location does affect synchronization	
+
 		void __vectorcall setRoll(v2_rotation_t const vRoll) { _vRoll = vRoll; }						// row doesn't affect synchronization
-		void __vectorcall setYaw(v2_rotation_t const vYaw) { synchronize(getLocation(), vYaw); }		// yaw does affect synchronization
+		void __vectorcall setYaw(v2_rotation_t const vYaw) { synchronize(vYaw); }						// yaw does affect synchronization
 		void __vectorcall setPitch(v2_rotation_t const vPit) { _vPitch = vPit; }						// pitch doesn't affect synchronization
 
-		void __vectorcall setRollYawPitch(v2_rotation_t const& vRoll, v2_rotation_t const& vYaw, v2_rotation_t const& vPit) { _vPitch = vPit; _vRoll = vRoll; synchronize(getLocation(), vYaw); }
-
-		void __vectorcall setLocationYaw(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) { synchronize(xmLoc, vYaw); }  //*best
-		void __vectorcall setLocation3DYaw(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) { fElevation = XMVectorGetY(xmLoc); synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLoc), vYaw); }  //*best
-	public:
-		void __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw);	// must be called whenever a change in location/rotation is intended 
+		void __vectorcall setRollYawPitch(v2_rotation_t const& vRoll, v2_rotation_t const& vYaw, v2_rotation_t const& vPit) { _vPitch = vPit; _vRoll = vRoll; synchronize(vYaw); }
 	private:
+		bool const __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) const; // internally used only
+		void __vectorcall synchronize(FXMVECTOR const xmLoc);		// must be called whenever a change in location is intended 
+		void __vectorcall synchronize(v2_rotation_t const vYaw);	// must be called whenever a change in only *yaw* rotation is intended 
+
 		// model must be loaded b4 any instance creation!
 		explicit voxelModelInstance_Dynamic(voxB::voxelModel<voxB::DYNAMIC> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_);
 		

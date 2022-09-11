@@ -329,6 +329,7 @@
     <ClInclude Include="gui.h" />
     <ClInclude Include="ImageAnimation.h" />
     <ClInclude Include="importproxy.h" />
+    <ClInclude Include="Interpolator.h" />
     <ClInclude Include="lightBuffer3D.h" />
     <ClInclude Include="IsoCamera.h" />
     <ClInclude Include="IsoVoxel.h" />

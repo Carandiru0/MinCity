@@ -296,12 +296,12 @@ namespace world
 			auto const parentInstance(_parent->getModelInstance());
 			quat_t const qOrient(parentInstance->getRoll().angle(), parentInstance->getYaw().angle(), parentInstance->getPitch().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
 
-			XMVECTOR const xmParentLocation(parentInstance->getLocation3D());
+			XMVECTOR const xmParentLocation(parentInstance->getLocation());
 			XMVECTOR xmSphere(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));
 
 			xmSphere = v3_rotate(xmSphere, xmParentLocation, qOrient);
 
-			instance->setLocation3D(xmSphere);
+			instance->setLocation(xmSphere);
 		}
 	}
 

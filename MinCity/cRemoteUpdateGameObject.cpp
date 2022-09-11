@@ -57,10 +57,10 @@ namespace world
 	{
 		if (_eOnUpdate) {
 
-			auto const [xmLocation, vYaw] = _eOnUpdate((*Instance)->getLocation3D(), (*Instance)->getYaw(), tNow, tDelta, (*Instance)->getHash());
+			auto const [xmLocation, vYaw] = _eOnUpdate((*Instance)->getLocation(), (*Instance)->getYaw(), tNow, tDelta, (*Instance)->getHash());
 
 			// extract elevation, and swizzle back to 2D vector for function
-			(*Instance)->setLocation3DYaw(xmLocation, vYaw);
+			//(*Instance)->setLocation3DYaw(xmLocation, vYaw);
 		}
 	}
 

@@ -48,6 +48,7 @@ namespace world
 
 	void cCopterGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
+		/*
 		// update child part that inherit the copters main transform
 		if (_body->OnUpdate(tNow, tDelta)) {
 
@@ -56,5 +57,6 @@ namespace world
 			// update
 			_prop->OnUpdate(tNow, tDelta, _body->getModelInstance()->getLocation(), _body->getModelInstance()->getElevation(), _body->getModelInstance()->getYaw());
 		}
+		*/
 	}
 } // end ns

@@ -61,7 +61,7 @@ void cUser::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tD
 			_ship->applyAngularThrust(XMVectorScale(_shipRingZ[i]->getAngularForce(), _sphere_engine_offset));
 		}
 
-		MinCity::VoxelWorld->updateCameraFollow(instance->getLocation3D(), _ship->getVelocity(), XMLoadFloat3A(&instance->getModel()._Extents), tDelta);
+		MinCity::VoxelWorld->updateCameraFollow(instance->getLocation(), _ship->getVelocity(), XMVectorScale(XMLoadFloat3A(&instance->getModel()._Extents), Iso::MINI_VOX_STEP), tDelta);
 	}
 }
 void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)

@@ -89,7 +89,6 @@ namespace world
 				data_rootIndex.emplace_back(hash, iterFind->second); // add to buffer of saved root indices
 
 				// *set additional varying data
-				data_models.back().elevation = iter->second->getElevation();
 
 				// set gameobject specific data
 				if (types::game_object_t::NoOwner != gameobject_type) {
@@ -137,8 +136,7 @@ namespace world
 				data_rootIndex.emplace_back(hash, iterFind->second); // add to buffer of saved root indices
 
 				// *set additional varying data
-				data_models.back().elevation = iter->second->getElevation();
-				XMStoreFloat2(&data_models.back().location, iter->second->getLocation());
+				XMStoreFloat3(&data_models.back().location, iter->second->getLocation());
 				XMStoreFloat3(&data_models.back().roll, iter->second->getRoll().data());
 				XMStoreFloat3(&data_models.back().pitch, iter->second->getPitch().data());
 				XMStoreFloat3(&data_models.back().yaw, iter->second->getYaw().data());

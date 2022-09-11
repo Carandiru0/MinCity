@@ -321,9 +321,9 @@ namespace voxB
 		
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
-		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis)
-		float			_Radius;						// pre-calculated radius - based directly off of extents
-		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels)
+		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis) (unit: voxels)
+		float			_Radius;						// pre-calculated radius - based directly off of extents (unit: voxels)
+		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels) (unit: voxels)
 		
 		voxelModelFeatures _Features;
 		bool			   _Mapped;						// "_Voxels" points to memory mapped file (virtual memory) containing contigous data

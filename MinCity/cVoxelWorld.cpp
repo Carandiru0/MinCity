@@ -15,6 +15,7 @@
 #include "adjacency.h"
 #include "cPhysics.h"
 #include <Utility/async_long_task.h>
+#include "Interpolator.h"
 
 #define V2_ROTATION_IMPLEMENTATION
 #include "voxelAlloc.h"
@@ -63,6 +64,8 @@
 
 using namespace world;
 
+inline interpolator Interpolator; // global singleton instance
+
 // From default point of view (isometric):
 /*
 										      x
@@ -79,7 +82,7 @@ namespace // private to this file (anonymous)
 	{
 		static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
 
-		XMFLOAT3A Origin;  // always stored swizzled to x,z coordinates
+		interpolated<XMFLOAT3A> Origin;  // always stored swizzled to x,z coordinates
 		XMFLOAT3A voxelFractionalGridOffset; // always stored negated and swizzled to x,z coordinates
 
 		float Elevation; // stored seperately from Origin and applied to view matrix in updase method
@@ -112,7 +115,7 @@ namespace // private to this file (anonymous)
 
 		CameraEntity()
 			:
-			Origin(0, 0, 0), // virtual coordinates
+			Origin{}, // virtual coordinates
 			voxelFractionalGridOffset{},
 			Elevation(0.0f),
 			ZoomExtents{},
@@ -123,12 +126,15 @@ namespace // private to this file (anonymous)
 			Motion(false), 
 			ZoomToExtentsInitialDirection(false),
 			ZoomToExtents(false)
-		{}
+		{
+			Interpolator.push(Origin);
+			Interpolator.reset(Origin, XMVectorZero());
+		}
 
 		void reset()
 		{
 			XMStoreFloat3A(&voxelFractionalGridOffset, XMVectorZero());
-			XMStoreFloat3A(&Origin, XMVectorZero());
+			Interpolator.reset(Origin, XMVectorZero());
 			Yaw.zero();
 
 			ZoomFactor = Globals::DEFAULT_ZOOM_SCALAR;
@@ -409,13 +415,13 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 		if (tDelta >= tSmooth) { // reset, finished transition
 			oCamera.tTranslateStart = zero_time_point;
-			XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(targetPosition));
+			Interpolator.set(oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(targetPosition));
 		}
 		else {
 			float const tInvDelta = SFM::saturate(time_to_float(tDelta / tSmooth));
 			XMVECTOR const xmInterpPosition(SFM::lerp(XMLoadFloat2A(&oCamera.PrevPosition), targetPosition, tInvDelta));
-			XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(xmInterpPosition));
-			//oCamera.Yaw = v2_rotation_t(); wth? leaving commented just in case need to revert this change?
+			Interpolator.set(oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(xmInterpPosition));
+			//oCamera.Yaw = v2_rotation_t(); // eliminate any camera rotation ?
 		}
 	}
 
@@ -533,7 +539,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	// range is (-144,-144) TopLeft, to (144,144) BottomRight
 	//
 	// Clamp Camera Origin and update //
-	XMVECTOR const xmOrigin = SFM::clamp(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin)), _mm_set1_ps(Iso::MIN_VOXEL_FCOORD), _mm_set1_ps(Iso::MAX_VOXEL_FCOORD));
+	XMVECTOR const xmOrigin = SFM::clamp(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin)), _mm_set1_ps(Iso::MIN_VOXEL_FCOORD), _mm_set1_ps(Iso::MAX_VOXEL_FCOORD));
 	
 	point2D_t voxelIndex(v2_to_p2D(xmOrigin));
 
@@ -551,11 +557,10 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	oCamera.voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALFSIZE));
 
 	// Convert Fractional component from GridSpace
-	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin)));  // FOR REALLY SMOOTH SCROLLING //
-
+	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin)));  // FOR TRUE SMOOTH SCROLLING //
+	/* important output */
 	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFract)); // store fractional offset always negated and swizzled to x,z components
-	
-	XMStoreFloat3A(&oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin)); // store origin always swizzled to x,z components
+	/* important output */
 
 #ifndef NDEBUG
 	static XMVECTOR DebugVariable;
@@ -566,28 +571,6 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	// MOTION DELTA TRACKING //
 	{
 		oCamera.Motion = (zero_time_point != oCamera.tZoomStart) | (zero_time_point != oCamera.tRotateStart) | (zero_time_point != oCamera.tTranslateStart);
-	}
-
-	// test 
-	{
-		/*
-		static tTime tLast(tNow);
-		static v2_rotation_t vAngle;
-
-		if (tNow - tLast > milliseconds(16)) {
-
-			XMVECTOR xmDisplacement = XMVectorSet(0.1f, 0.1f, 0.0f, 0.0f);
-
-			vAngle += fp_seconds(tNow - tLast).count();
-			xmDisplacement = v2_rotate(xmDisplacement, vAngle);
-
-			//xmDisplacement = XMVectorSetY(xmDisplacement, 0.0f);
-			translateCamera(xmDisplacement, tDelta);
-
-			tLast = tNow;
-		}
-		*/
-		//rotateCamera(tDelta.count() * -4.0f); // *** temporary turntable rotation
 	}
 
 	if ((MinCity::isPaused() | _bCameraTurntable) && MinCity::isFocused()) {
@@ -601,67 +584,44 @@ void cVoxelWorld::setCameraTurnTable(bool const enable)
 	_bCameraTurntable = enable;
 }
 void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, FXMVECTOR xmExtents, fp_seconds const& __restrict tDelta) // expects 3D coordinates
-{
-	XMVECTOR const xmVelocityXZ(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVelocity));
+{	
+	XMVECTOR const xmFuturePosition(SFM::__fma(xmVelocity, XMVectorReplicate(tDelta.count()), xmPosition));
 
-	// test 2D (x, z) plane first for scrolling magnitude
-	point2D_t const vVelocity(v2_to_p2D(xmVelocityXZ));
+	XMVECTOR xmVoxelOrigin, xmPreciseOrigin, xmOffset;
+	int32_t visibility;
 
-	if (!vVelocity.isZero()) { // small fractional changes do not move camera
+	xmVoxelOrigin = XMVectorSubtract(xmFuturePosition, XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin)); // make relative to origin
+	xmPreciseOrigin = xmFuturePosition;
+	xmOffset = XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin);
 
-		XMVECTOR const xmFuturePosition(SFM::__fma(xmVelocity, XMVectorReplicate(tDelta.count()), xmPosition));
+	xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
+	xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -XMVectorGetY(xmFuturePosition));
 
-		/*
-		point2D_t const voxelIndex(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFuturePosition)));
-		point2D_t const displace(32);
-		rect2D_t const rectScreen(p2D_sub(oCamera.voxelIndex_Center, displace), p2D_add(oCamera.voxelIndex_Center, displace));
+	visibility = _Visibility.AABBIntersectFrustum(xmPreciseOrigin, xmExtents);
 
-		if (!r2D_contains(rectScreen, voxelIndex)) {
+	if (visibility > 0 ) { // is the user completely visible ?
 
-			FMT_NUKLEAR_DEBUG(false, "visible");
+		XMVECTOR const xmFutureFocusPosition(SFM::__fma(xmVelocity, XMVectorReplicate(tDelta.count() * 100.0f), xmPosition));
 
-			point2D_t const vScroll(v2_to_p2D(XMVectorRound(XMVector2Normalize(xmVelocityXZ))));
-
-			translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
-
-			translateCameraOrient(XMVectorScale(xmVelocityXZ, tDelta.count() * 3.0f));
-		}
-		else {
-
-			FMT_NUKLEAR_DEBUG_OFF();
-		}
-		*/
-
-		XMVECTOR const xmVoxelOrigin(XMVectorAdd(xmFuturePosition, XMLoadFloat3A(&oCamera.Origin))); // make relative to origin
-
-		XMVECTOR xmPreciseOrigin(xmFuturePosition);
-		XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
+		xmVoxelOrigin = XMVectorSubtract(xmFutureFocusPosition, XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin)); // make relative to origin
+		xmPreciseOrigin = xmFutureFocusPosition;
+		xmOffset = XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin);
 
 		xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
-		xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -XMVectorGetY(xmFuturePosition) * 0.0f);
+		xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -XMVectorGetY(xmFutureFocusPosition));
 
-		// test frustum for future position's visibility
-		
-		int32_t const visibility = _Visibility.AABBIntersectFrustum(xmPreciseOrigin, xmExtents);
-		
-		if (visibility > 0) { // only proceed with scrolling if future position is inside frustum completely (w/ extents of AABB) - not intersecting, not outside, completely inside}
+		visibility = _Visibility.AABBIntersectFrustum(xmPreciseOrigin, xmExtents);
 
-			//point2D_t const vScroll(v2_to_p2D(XMVectorRound(XMVector2Normalize(xmVelocityXZ))));
-			//translateCamera(p2D_shiftl(vScroll, Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER));
-			translateCameraOrient(XMVectorScale(xmVelocityXZ, tDelta.count() * 3.0f));
-			FMT_NUKLEAR_DEBUG(false, "inside");
-		}
-		else if (visibility < 0) {
+		if (visibility <= 0) { // is the focus position intersecting or outside frustum ?
 
-			FMT_NUKLEAR_DEBUG(true, "intersecting");
+			XMVECTOR const xmVelocityXZ(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVelocity));
+
+			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin))); // only care about xz components, make it a 2D vector
+
+			XMVECTOR const xmPosition(XMVectorAdd(xmOrigin, XMVectorScale(xmVelocityXZ, tDelta.count()))); // extremely smooth (working w/ one unit of tDelta)
+
+			Interpolator.set(oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition)); // directly set to interpolated position. translateCamera() only used when edge-scrolling.
 		}
-		else {
-			FMT_NUKLEAR_DEBUG_OFF();
-		}
-		
-	}
-	else {
-		FMT_NUKLEAR_DEBUG_OFF();
 	}
 }
 
@@ -1003,7 +963,7 @@ namespace world
 	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*(
 	XMVECTOR const __vectorcall getOrigin()
 	{
-		return(XMLoadFloat3A(&oCamera.Origin));
+		return(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin));
 	}																										
 	XMVECTOR const __vectorcall getFractionalOffset()
 	{	// voxelFractionalGridOffset is always stored negated, so just add it!
@@ -2363,11 +2323,13 @@ namespace // private to this file (anonymous)
 		static inline VoxelThreadBatch batchedGround, batchedRoad, batchedRoadTrans;
 
 
-		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
+			xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
+
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 			
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
@@ -2410,11 +2372,13 @@ namespace // private to this file (anonymous)
 		}
 
 
-		STATIC_INLINE void XM_CALLCONV RenderRoad(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		STATIC_INLINE void XM_CALLCONV RenderRoad(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
 			VoxelLocalBatch& __restrict localRoad)
 		{
+			xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
+
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
@@ -2451,8 +2415,7 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
 		{
-			bool bVisible(true);
-
+			bool bVisible(false);
 			auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
 			auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
 
@@ -2460,15 +2423,17 @@ namespace // private to this file (anonymous)
 
 				bool const emission_only(FoundModelInstance->isEmissionOnly());
 
-				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation3D()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
+				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
 				XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
 
 				xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
 				xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -FoundModelInstance->getElevation()); // *bugfix - yaxis (elevation) is now correctly included with fractional component
 
-				if (!Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMLoadFloat3A(&FoundModelInstance->getModel()._Extents))) {
+				xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
+
+				if (!(bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::MINI_VOX_STEP)))) {
 					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
-					bVisible = false; // voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
+					// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
 				FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
@@ -3020,7 +2985,7 @@ namespace world
 							create_game_object(hash, data_models_static[i].gameobject_type);
 
 							// set additional varying data
-							pInstance->setElevation(data_models_static[i].elevation);
+
 							// * static location is derived from voxelIndex
 						}
 					}
@@ -3050,10 +3015,10 @@ namespace world
 							create_game_object(hash, data_models_dynamic[i].gameobject_type);
 
 							// set additional varying data
-							pInstance->setElevation(data_models_dynamic[i].elevation);
 							pInstance->setRoll(v2_rotation_t(data_models_dynamic[i].roll.x, data_models_dynamic[i].roll.y, data_models_dynamic[i].roll.z));
+							pInstance->setYaw( v2_rotation_t(data_models_dynamic[i].yaw.x, data_models_dynamic[i].yaw.y, data_models_dynamic[i].yaw.z));
 							pInstance->setPitch(v2_rotation_t(data_models_dynamic[i].pitch.x, data_models_dynamic[i].pitch.y, data_models_dynamic[i].pitch.z));
-							pInstance->setLocationYaw(XMLoadFloat2(&data_models_dynamic[i].location), v2_rotation_t(data_models_dynamic[i].yaw.x, data_models_dynamic[i].yaw.y, data_models_dynamic[i].yaw.z));
+							pInstance->setLocation(XMLoadFloat3(&data_models_dynamic[i].location));
 						}
 					}
 
@@ -4204,21 +4169,13 @@ namespace world
 		::rotateCamera(anglerelative);
 	}
 
-	STATIC_INLINE_PURE bool const XM_CALLCONV stepCameraMotion(XMVECTOR xmDisplacement)
-	{
-		// *bugfix - adapt all motion to step, so there are no glitches with diagonal translation being too fast
-		point2D_t const viDir(p2D_abs(v2_to_p2D_rounded(XMVector2Normalize(xmDisplacement))));
-
-		return(viDir.x != viDir.y);
-	}
-
 	STATIC_INLINE bool const XM_CALLCONV translateCamera(FXMVECTOR const xmDisplacement)  // simpler version for general usage, does not orient in current direction of camera
 	{
 		uint32_t Result;
 		XMVectorEqualR(&Result, XMVectorZero(), xmDisplacement);
-		if (XMComparisonAnyFalse(Result) && stepCameraMotion(xmDisplacement)) {
+		if (XMComparisonAnyFalse(Result)) {
 
-			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
+			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin))); // only care about xz components, make it a 2D vector
 
 			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
@@ -4226,9 +4183,8 @@ namespace world
 			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
 			// signal transition
-			if (zero_time_point == oCamera.tTranslateStart) {
-				oCamera.tTranslateStart = now();
-			}
+			oCamera.tTranslateStart = now();
+
 			return(true); // translation started
 		}
 
@@ -4244,22 +4200,17 @@ namespace world
 			// orient displacement in direction of camera
 			xmDisplacement = v2_rotate(xmDisplacement, oCamera.Yaw);
 
-			if (stepCameraMotion(xmDisplacement)) {
-				
-				XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&oCamera.Origin))); // only care about xz components, make it a 2D vector
+			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin))); // only care about xz components, make it a 2D vector
 
-				XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
+			XMVECTOR const xmPosition = XMVectorAdd(xmOrigin, xmDisplacement);
 
-				XMStoreFloat2A(&oCamera.TargetPosition, (xmPosition)); // always a clean integral number on completion
-				XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
+			XMStoreFloat2A(&oCamera.TargetPosition, (xmPosition)); // always a clean integral number on completion
+			XMStoreFloat2A(&oCamera.PrevPosition, xmOrigin);
 
-				// signal transition
-				if (zero_time_point == oCamera.tTranslateStart) {
-					oCamera.tTranslateStart = now();
-				}
+			// signal transition
+			oCamera.tTranslateStart = now();
 
-				return(true); // translation started
-			}
+			return(true); // translation started
 		}
 
 		return(false); // translation cancelled
@@ -4270,16 +4221,16 @@ namespace world
 		XMVECTOR xmIso = p2D_to_v2(point2D_t(-vDir.y, vDir.x)); // must be swapped and 1st component negated (reflected)
 		xmIso = XMVector2Normalize(xmIso);
 		xmIso = v2_rotate(xmIso, v2_rotation_constants::v225); // 225 degrees is perfect rotation to align isometry to window up/down left/right
-			
+		
 		// this makes scrolling on either axis the same constant step, otherwise scrolling on xaxis is faster than yaxis
 		point2D_t const absDir(p2D_abs(vDir));
-		if (absDir.x > absDir.y) {		 
+		if (absDir.x >= absDir.y) {		 
 			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))));
 		}
 		else {
 			xmIso = XMVectorScale(xmIso, XMVectorGetX(XMVector2Length(p2D_to_v2(absDir))) * cMinCity::getFramebufferAspect());
 		}
-			
+
 		::translateCameraOrient(xmIso); // this then scrolls in direction camera is currently facing correctly
 	}
 
@@ -4508,6 +4459,9 @@ namespace world
 		_currentState.Uniform.proj = _Visibility.getProjectionMatrix();
 		_currentState.Uniform.viewproj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);			// matrices can not be interpolated effectively they must be recalculated
 																										// from there base components
+
+		// should be done last
+		Interpolator.interpolate(0.5f);
 
 	}
 	void __vectorcall cVoxelWorld::UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate) // fixed timestep state

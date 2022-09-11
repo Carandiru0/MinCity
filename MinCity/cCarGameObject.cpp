@@ -829,11 +829,11 @@ void __vectorcall cCarGameObject::OnUpdate(tTime const& __restrict tNow, fp_seco
 				v2_rotation_t vNowR;
 				vNowR = xmNowR;
 
-				(*Instance)->setLocationYaw(xmNow, vNowR);
+			//	(*Instance)->setLocationYaw(xmNow, vNowR);
 			}
 			else {
 
-				(*Instance)->setLocationYaw(xmNow, _this.currentState.vYaw);
+			//	(*Instance)->setLocationYaw(xmNow, _this.currentState.vYaw);
 			}
 
 			_this.brakes_on = false;

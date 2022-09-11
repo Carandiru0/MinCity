@@ -33,14 +33,14 @@ struct model_state_instance {
 	uint32_t									gameobject_type;
 	Volumetric::voxB::voxelModelIdent<Dynamic>	identity;
 	// additional *common* varying model instance data
-	float										elevation;
+	XMFLOAT3									location;
 
 	model_state_instance()
-		: hash(0), gameobject_type(0), identity{}, elevation(0.0f)
+		: hash(0), gameobject_type(0), identity{}, location{}
 	{}
 
 	explicit model_state_instance(uint32_t const hash_, uint32_t const gameobject_type_, Volumetric::voxB::voxelModelIdent<Dynamic> const& identity_)
-		: hash(hash_), gameobject_type(gameobject_type_), identity(identity_)
+		: hash(hash_), gameobject_type(gameobject_type_), identity(identity_), location{}
 	{}
 };
 
@@ -59,14 +59,14 @@ struct model_state_instance_static : model_state_instance<false> {
 struct model_state_instance_dynamic : model_state_instance<true> {
 
 	// additional varying dynamic model instance data
-	XMFLOAT2 location;
-	XMFLOAT3 roll, pitch, yaw;
+	
+	XMFLOAT3 roll, yaw, pitch;
 
 	model_state_instance_dynamic()
-		: location{}
+		: roll{}, yaw{}, pitch{}
 	{}
 
 	explicit model_state_instance_dynamic(uint32_t const hash_, uint32_t const gameobject_type_, Volumetric::voxB::voxelModelIdent<true> const& identity_)
-		: model_state_instance(hash_, gameobject_type_, identity_), location{}
+		: model_state_instance(hash_, gameobject_type_, identity_)
 	{}
 };

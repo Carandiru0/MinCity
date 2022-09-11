@@ -111,6 +111,7 @@ namespace world
 
 	bool const __vectorcall cCopterBodyGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
+		/*
 		rect2D_t const visibleArea(MinCity::VoxelWorld->getVisibleGridBoundsClamped());
 
 		//rect2D_t const focusArae(-128,-128,128,128);
@@ -182,7 +183,7 @@ namespace world
 				}
 			}
 		}
-
+		*/
 		return(true);
 	}
 

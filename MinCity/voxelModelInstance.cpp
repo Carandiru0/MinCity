@@ -7,19 +7,19 @@ namespace Volumetric
 	voxelModelInstanceBase::voxelModelInstanceBase(uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
 		: hashID(hash), flags(flags_),
 		tCreation(now()), tDestruction{},
-		vLoc{}, fElevation(0.0f),
-		child(nullptr), 
+		child(nullptr), vLoc{},
 		owner_gameobject_type{}, owner_gameobject(nullptr), eOnRelease(nullptr),
 		tSequenceLengthCreation(Konstants::CREATION_SEQUENCE_LENGTH), tSequenceLengthDestruction(Konstants::DESTRUCTION_SEQUENCE_LENGTH)  // sequence length for destruction is scaled by height of voxel model
 	{
-		XMStoreFloat2A(&vLoc, p2D_to_v2(voxelIndex));
+		Interpolator.push(vLoc);
+		Interpolator.reset(vLoc, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(voxelIndex)));
 
 		// by default all instances are brought to elevation that matches the ground. This is only done once on initialization. It is intentionally not updated/frame. 
 		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
 		if (pVoxel) {
 			Iso::Voxel const oVoxel(*pVoxel);
-
-			fElevation = Iso::getRealHeight(oVoxel);
+			Interpolator.reset_component<COMPONENT_Y>(vLoc, Iso::getRealHeight(oVoxel));
+			//vLoc.y = Iso::getRealHeight(oVoxel);
 		}
 	} 
 
@@ -41,7 +41,7 @@ namespace Volumetric
 		// instance will not be rendered anymore, deletion is managed by World instance cleanup queue
 	}
 
-	void __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw)  // only for dynamic instances
+	bool const __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) const // only for dynamic instances, expects 2D vector with x, z components only!!!
 	{
 		if (hashID) {
 
@@ -86,7 +86,7 @@ namespace Volumetric
 #ifndef NDEBUG
 						FMT_LOG_WARN(VOX_LOG, "Possible error - could not synchronize root voxel index of voxel model instance: {:d} at ({:d},{:d}) -> ({:d},{:d}), *voxel model instance new voxel index / location does not exist*", hashID, old_rootVoxel.x, old_rootVoxel.y, new_rootVoxel.x, new_rootVoxel.y);
 #endif
-						destroy(milliseconds(0)); // signalled for destruction //
+						return(false); // signalled for destruction //
 						// bugfix: NOT SAFE to destroyInstance() (DIRECT Deletion) voxelmodel instance here, would be inside of a gameobject's update method, where it expects this voxelmodel instance to exist until its update method is complete 
 					}
 				}
@@ -102,7 +102,7 @@ namespace Volumetric
 #ifndef NDEBUG
 				FMT_LOG_FAIL(VOX_LOG, "Fatal - could not synchronize root voxel index of voxel model instance: {:d}, *voxel model instance hash not registered*", hashID);
 #endif		
-				destroy(milliseconds(0)); // signalled for destruction //
+				return(false); // signalled for destruction //
 				// bugfix: NOT SAFE to destroyInstance() (DIRECT Deletion) voxelmodel instance here, would be inside of a gameobject's update method, where it expects this voxelmodel instance to exist until its update method is complete
 			}
 		}
@@ -119,7 +119,24 @@ namespace Volumetric
 
 		// ** //
 		// ** //
-		XMStoreFloat2A(&vLoc, xmLoc);
-		_vYaw = vYaw;
+		return(true);
+	}
+
+	void __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc)  // only for dynamic instances
+	{
+		Interpolator.set(vLoc, xmLoc); // *must* be set b4 synchro
+
+		if (!synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)), _vYaw)) {
+			destroy(milliseconds(0)); // signalled for destruction //
+		}
+		// Interpolator.get<XMFLOAT3A, XMVECTOR>(vLoc)
+	}
+	void __vectorcall voxelModelInstance_Dynamic::synchronize(v2_rotation_t const vYaw)  // only for dynamic instances
+	{
+		if (!synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)), vYaw)) {
+			destroy(milliseconds(0)); // signalled for destruction //
+		}
+
+		_vYaw = vYaw; // must be last (for now)
 	}
 } //end ns volumetric

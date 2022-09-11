@@ -37,17 +37,17 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 			{
 			case GLFW_KEY_UP:
 				if (down) { // pressed
-					XMVECTOR xmDisplacement = XMVectorSet(0.0f, tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
+					XMVECTOR xmDisplacement = XMVectorSet(0.0f, 0.0f, tDelta * MOVE_SELECTION_SPEED, 0.0f);
 					// orient displacement in direction of camera
-					xmDisplacement = v2_rotate(xmDisplacement, Yaw);
+					xmDisplacement = v3_rotate_yaw(xmDisplacement, Yaw);
 					instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
 				}
 				break;
 			case GLFW_KEY_DOWN:
 				if (down) { // pressed
-					XMVECTOR xmDisplacement = XMVectorSet(0.0f, -tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f);
+					XMVECTOR xmDisplacement = XMVectorSet(0.0f, 0.0f, -tDelta * MOVE_SELECTION_SPEED, 0.0f);
 					// orient displacement in direction of camera
-					xmDisplacement = v2_rotate(xmDisplacement, Yaw);
+					xmDisplacement = v3_rotate_yaw(xmDisplacement, Yaw);
 					instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));;
 				}
 				break;
@@ -60,7 +60,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 					else {
 						XMVECTOR xmDisplacement = XMVectorSet(-tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
 						// orient displacement in direction of camera
-						xmDisplacement = v2_rotate(xmDisplacement, Yaw);
+						xmDisplacement = v3_rotate_yaw(xmDisplacement, Yaw);
 						instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
 					}
 				}
@@ -74,7 +74,7 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 					else {
 						XMVECTOR xmDisplacement = XMVectorSet(tDelta * MOVE_SELECTION_SPEED, 0.0f, 0.0f, 0.0f);
 						// orient displacement in direction of camera
-						xmDisplacement = v2_rotate(xmDisplacement, Yaw);
+						xmDisplacement = v3_rotate_yaw(xmDisplacement, Yaw);
 						instance->setLocation(XMVectorAdd(xmLoc, xmDisplacement));
 					}
 				}
