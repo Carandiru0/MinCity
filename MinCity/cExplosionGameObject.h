@@ -26,6 +26,8 @@ namespace world
 		static VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS);
 		VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
 
+		void setElevation(float const elevation);
+
 		float const			getTemperatureBoost() const { return(_temperatureBoost); }
 		
 		void				setTemperatureBoost(float const temperature) { _temperatureBoost = temperature; }
@@ -48,6 +50,7 @@ namespace world
 		float					    _temperatureBoost, _flameBoost,
 									_emission_threshold[2];
 		uint32_t					_emission_samples;
+		bool						_destroyed;
 	public:
 		cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
 	};

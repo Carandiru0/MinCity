@@ -33,7 +33,7 @@ namespace Volumetric
 		NOT_FADEABLE = (1 << 7),
 
 		//
-		CHILD_ONLY = (1 << 30),
+		
 		// Last
 		EMPTY_INSTANCE = (1u << 31u)
 	);

@@ -16,7 +16,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 layout(early_fragment_tests) in;  // required for proper checkerboard stencil buffer usage
 
 #define fragment_shader
-//#define subgroup_quad_enabled
+#define subgroup_quad_enabled
 
 #include "screendimensions.glsl"
 #include "common.glsl"
@@ -25,12 +25,11 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
 #define FOG_AMOUNT GOLDEN_RATIO_ZERO
 #define BLUE_NOISE_SCALAR dt
-#define BOUNCE_EPSILON 0.25f
+#define BOUNCE_EPSILON 0.49f
 
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
-#define MAX_STEPS 512.0f
+#define MAX_STEPS 1024.0f
 
-const float INV_MAX_STEPS = 1.0f/MAX_STEPS;
 const float PHASE_FUNCTION = 1.0 / (GOLDEN_RATIO * PI); // Isotropic
 
 #define EPSILON 0.000000001f
@@ -56,6 +55,7 @@ layout(location = 0) in streamIn
 	readonly noperspective vec3	rd;
 	readonly noperspective vec3	eyePos;
 	readonly flat vec3			eyeDir;
+	readonly flat float			slice;
 } In;
 
 #define OUT_REFLECT 0
@@ -85,32 +85,27 @@ layout (constant_id = 6) const float VolumeLength = 0.0f;
 layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume
 layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 
-layout (constant_id = 9) const float ZFar = 0.0f;
-layout (constant_id = 10) const float ZNear = 0.0f;
+layout (constant_id = 9) precise const float ZFar = 0.0f;
+layout (constant_id = 10) precise const float ZNear = 0.0f;
 
 #define FAST_LIGHTMAP
 #include "lightmap.glsl"
 
-vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
+precise vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
 
-	const vec3 inv_dir = 1.0f / dir;
-	const vec3 tmin_tmp = (0.0f - orig) * inv_dir;
-	const vec3 tmax_tmp = (1.0f - orig) * inv_dir;
-	const vec3 tmin = min(tmin_tmp, tmax_tmp);
-	const vec3 tmax = max(tmin_tmp, tmax_tmp);
+	precise const vec3 tmin_tmp = (0.0f - orig) / dir;
+	precise const vec3 tmax_tmp = (1.0f - orig) / dir;
+	precise const vec3 tmin = min(tmin_tmp, tmax_tmp);
+	precise const vec3 tmax = max(tmin_tmp, tmax_tmp);
 
 	return vec2(max(tmin.x, max(tmin.y, max(0.0f, tmin.z))), min(tmax.x, min(tmax.y, max(0.0f, tmax.z)))); // *bugfix - max(0.0f, tmin.z), max(0.0f, tmax.z) additionally limit the interval to the "lowest" ground height. Nothing exists below this height.
 }
 
 vec3 offset(in const vec3 uvw)
 {
-	return(uvw); // linear interpolation (best)
+	//return(uvw); // linear interpolation (best)
+	return(((uvw * VolumeDimensions) + 0.5f) * InvVolumeDimensions);
 	//return((floor(uvw * VolumeDimensions)) * InvVolumeDimensions); // exact to the voxel but has banding
-}
-vec2 offset(in const vec2 uv)
-{
-	return(uv); // linear interpolation (best)
-	//return((floor(uv * VolumeDimensions)) * InvVolumeDimensions); // exact to the voxel but has banding
 }
 
 float fetch_opacity_emission( in const vec3 uvw) { // interpolates opacity & emission
@@ -205,21 +200,21 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	return(Ld.att); // returns lightAmount  
 }
 
-vec2 fetch_bluenoise(in const vec2 pixel)
+float fetch_bluenoise(in const vec2 pixel)
 {																// *bugfix - animated blue noise in raymarch step offset randomization does not look good. too noisy, have to scale it well below dt (a step) - animated blue noise suitable more for dithering and reconstruction - can't see any noisy movement)
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, 0.0f), 0).rg ); // *bluenoise RED channel used* // *bugfix - single frame/slice is better for raymarch.
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).r ); // *bluenoise RED channel used* // *bugfix - single frame/slice is better for raymarch.
 }
-float fetch_depth()
+precise float fetch_depth()
 {
 	// sample & convert to linear depth
-	const float ZLength = ZFar - ZNear;
+	precise const float ZLength = ZFar - ZNear;
 
 	return( fma(subpassLoad(inputDepth).r, ZLength, ZNear) / ZLength );
 }
-vec3 reconstruct_depth(in const vec3 rd, in const float linear_depth)	// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
+precise vec3 reconstruct_depth(in const vec3 rd, in const float linear_depth)	// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 {	
 	// Project the view ray onto the camera's z-axis (eyeDirection)    xyz -> xzy
-	const float viewZDist = abs(dot(In.eyeDir, rd));		
+	precise const float viewZDist = abs(dot(In.eyeDir, rd));		
 
 	// Scale the view ray by the ratio of the linear z value to the projected view ray
 	return( /*In.eyePos +*/ rd * (linear_depth/viewZDist) );	// eye relative position (skipping redundant add and subtraction of eyePos to obtain yltimately interval //
@@ -338,9 +333,8 @@ float fetch_opacity_reflection( in const vec3 p ) { // hit test for reflections 
 }
 
 // all in parameters is important
-void traceReflection(inout vec4 voxel, in vec3 rd, in vec3 p, in const float dt, in float interval_remaining, in const float bn)
+vec4 traceReflection(in vec4 voxel, in vec3 rd, in vec3 p, in const float dt, in float interval_remaining)
 {								
-	interval_remaining = (interval_remaining * (7.0f + bn * BLUE_NOISE_SCALAR)); // *bugfix - 7 is a good number suprisingly reflections are not tanking performance, no longer the current shader bound (gpu bound elsewhere)
 	interval_remaining = interval_remaining + subgroupQuadSwapHorizontal(interval_remaining);
 	interval_remaining = interval_remaining + subgroupQuadSwapVertical(interval_remaining);
 	interval_remaining = interval_remaining * 0.25f; // less divergence with reflections
@@ -373,16 +367,17 @@ void traceReflection(inout vec4 voxel, in vec3 rd, in vec3 p, in const float dt,
 
 	} // end raymarch
 	
+	return(voxel);
 }
 
 void main() {
   
 	// Step 1: Normalize the view ray
-	/*const*/ vec3 rd = normalize(In.rd);
+	/*const*/ precise vec3 rd = normalize(In.rd);
 
 	// Step 2: Intersect the ray with the volume bounds to find the interval
 	// along the ray overlapped by the volume.
-	vec2 t_hit = intersect_box(In.eyePos, rd);
+	precise vec2 t_hit = intersect_box(In.eyePos, rd);
 	if (t_hit.x > t_hit.y) {
 		return;
 	}
@@ -399,7 +394,7 @@ void main() {
 	// interval and dt
 	{
 		// depth_eye_relative_position = reconstruct_depth(rd, linear_depth)/*- In.eyePos*/;	// see reconstruct_depth, eyePos redundancy removed, higher precision results
-		const float t_depth = length(reconstruct_depth(rd, fetch_depth()));
+		precise const float t_depth = length(reconstruct_depth(rd, fetch_depth()));
 
 #ifdef DEBUG_VOLUMETRIC
 	b.numbers.x = t_hit.x;
@@ -414,12 +409,12 @@ void main() {
 #endif
 	}
 
-	const float interval_length = (t_hit.y - t_hit.x);
-	const float inv_num_steps = 1.0f / length(VolumeDimensions * abs(rd)); // number of steps for full volume
-	float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
-	pre_dt = max(pre_dt, interval_length*INV_MAX_STEPS);
+	precise const float interval_length = (t_hit.y - t_hit.x);
+	precise const float inv_num_steps = 1.0f / length(VolumeDimensions * abs(rd)); // number of steps for full volume
+	precise float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
+	pre_dt = max(pre_dt, interval_length/MAX_STEPS);
 	// ----------------------------------- //
-	const float dt = max(pre_dt, MIN_STEP) * GOLDEN_RATIO_ZERO; // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
+	precise const float dt = max(pre_dt, MIN_STEP) * GOLDEN_RATIO_ZERO; // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth
@@ -435,8 +430,15 @@ void main() {
 	// without modifying interval variables start position
 	
 	// adjust start position by "bluenoise step"	
-	const vec2 bn = fetch_bluenoise(gl_FragCoord.xy);
-	const float jittered_interval = dt * bn.x; // jittered offset should be scaled by golden ratio zero (hides some noise)
+	float jittered_interval;
+	{
+		const float bn = fetch_bluenoise(gl_FragCoord.xy);
+		jittered_interval = dt * bn; // jittered offset should be scaled by golden ratio zero (hides some noise)
+		jittered_interval = jittered_interval + subgroupQuadSwapHorizontal(jittered_interval);
+		jittered_interval = jittered_interval + subgroupQuadSwapVertical(jittered_interval);
+		jittered_interval = jittered_interval * 0.25f; // less divergence
+		jittered_interval *= GOLDEN_RATIO;
+	}
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -490,6 +492,11 @@ void main() {
 
 			// ------------------------------------ end two steps ---------------------------------------------------
 		} // end for
+
+		// store reflection 
+		imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), traceReflection(voxel, rd, 
+																				  p, dt, interval_remaining));
+
 	/*
 		// refine volumetric raymarch //
 		[[dont_unroll]] for( ; interval_remaining >= 0.0f ; ) {  // fast sign test
@@ -540,15 +547,6 @@ void main() {
 		
 		// store volumetrics
 		imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
-
-		traceReflection(voxel, rd, 
-						p, dt, interval_remaining, bn.y);
-		
-		//voxel.xyz = vec3(0);
-		//voxel.w = 1.0f;
-		
-		// store reflection 
-		imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), voxel);
 
 	} // end volumetric scope
 }

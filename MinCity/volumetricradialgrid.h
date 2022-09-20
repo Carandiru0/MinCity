@@ -8,6 +8,8 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
+// DEPRECATED - OBSOLETE - USE VDB's instead w/custom shader @todo //
+/*
 #ifndef VOLUMETRICRADIALGRID_H
 #define VOLUMETRICRADIALGRID_H
 
@@ -341,7 +343,7 @@ STATIC_INLINE bool const __vectorcall renderVoxel(FXMVECTOR const xmDisplacement
 			// take 2D (x,z) (in XMFLOAT2A form so residing in x,y) coordinates and add height, swizzle to correct form of x,y,z result
 			XMVECTOR xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMVectorSetZ(xmObjectGridSpace, fVoxelHeight)));
 			// *************** make relative to world origin (gridspace to worldspace transform) *****************************
-			xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, world::getOrigin() /* plus fractional offset to remove*/); // this is ultimately multiplied by view matrix which already has the fractional offset translation
+			xmVoxelOrigin = XMVectorSubtract(xmVoxelOrigin, world::getOrigin()); // this is ultimately multiplied by view matrix which already has the fractional offset translation
 
 			// UV's swizzled to x,z,y form
 			// a more accurate index, based on position which has fractional component, vs old usage of arrayIndex (these voxels are not affected by gridoffset) - they may need to be***
@@ -674,7 +676,7 @@ namespace Volumetric
 			
 		// approximation, floored location while radius is ceiled, overcompensated, to use interger based visibility test
 		return( OLED::TestStrict_Not_OnScreen( v2_to_p2D(vOrigin), int32::__ceilf(DistanceSquared) ) );
-		*/
+		
 		return(false); // todo proper
 	}
 
@@ -730,5 +732,6 @@ namespace Volumetric
 } // end namespace
 
 #endif
+*/
 
 

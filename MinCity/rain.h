@@ -8,6 +8,8 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
+// DEPRECATED - OBSOLETE - USE VDB's w/ custom shader //
+/*
 #ifndef RAIN_H
 #define RAIN_H
 
@@ -48,4 +50,4 @@ void RenderRain(RainInstance const* const __restrict Instance, tbb::atomic<Verte
 
 #endif
 
-
+*/

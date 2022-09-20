@@ -207,7 +207,7 @@ namespace Volumetric
 
 		LoadModelGroup<STATIC, SINGLE_VOX>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
 		
-		//LoadModelGroup<STATIC>(FOLDER_BUILDING_RESIDENTIAL, isolated_group::Residential);
+		LoadModelGroup<STATIC>(FOLDER_BUILDING_RESIDENTIAL, isolated_group::Residential);
 		//LoadModelGroup<STATIC>(FOLDER_BUILDING_COMMERCIAL, isolated_group::Commercial);
 		//LoadModelGroup<STATIC>(FOLDER_BUILDING_INDUSTRIAL, isolated_group::Industrial);
 
@@ -237,6 +237,8 @@ namespace Volumetric
 		LoadModelNamed<DYNAMIC>("yxi_ring_x");
 		LoadModelNamed<DYNAMIC>("yxi_ring_y");
 		LoadModelNamed<DYNAMIC>("yxi_ring_z");
+
+		LoadModelNamed<DYNAMIC>("light_cone");
 
 		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("spike_explosion");

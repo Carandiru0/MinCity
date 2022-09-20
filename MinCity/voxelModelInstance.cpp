@@ -7,7 +7,7 @@ namespace Volumetric
 	voxelModelInstanceBase::voxelModelInstanceBase(uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)
 		: hashID(hash), flags(flags_),
 		tCreation(now()), tDestruction{},
-		child(nullptr), vLoc{},
+		vLoc{},
 		owner_gameobject_type{}, owner_gameobject(nullptr), eOnRelease(nullptr),
 		tSequenceLengthCreation(Konstants::CREATION_SEQUENCE_LENGTH), tSequenceLengthDestruction(Konstants::DESTRUCTION_SEQUENCE_LENGTH)  // sequence length for destruction is scaled by height of voxel model
 	{
@@ -19,7 +19,6 @@ namespace Volumetric
 		if (pVoxel) {
 			Iso::Voxel const oVoxel(*pVoxel);
 			Interpolator.reset_component<COMPONENT_Y>(vLoc, Iso::getRealHeight(oVoxel));
-			//vLoc.y = Iso::getRealHeight(oVoxel);
 		}
 	} 
 
@@ -95,7 +94,9 @@ namespace Volumetric
 				// and updates the location / Yaw for where the above case is true or false
 				// ** //
 				// ** //
-
+				// ** //
+				// ** //
+				return(true);
 			}
 			else
 			{
@@ -106,20 +107,8 @@ namespace Volumetric
 				// bugfix: NOT SAFE to destroyInstance() (DIRECT Deletion) voxelmodel instance here, would be inside of a gameobject's update method, where it expects this voxelmodel instance to exist until its update method is complete
 			}
 		}
-		else {
-			// *** secondary child attachment voxelmodelinstance ***
-			// ie.) Copter Body -> Copter Prop
-			//      Only parent is included in tracking of its hovered voxels
-			//      (oriented bounding rect equal in size to the models local area)
-			//      Child (prop) is "gridless", and just for animation
-			//		so model instance only cares about the location & rotation.
-			// ** //
-			// ** //
-		}
 
-		// ** //
-		// ** //
-		return(true);
+		return(false); // signalled for destruction //
 	}
 
 	void __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc)  // only for dynamic instances
@@ -129,7 +118,6 @@ namespace Volumetric
 		if (!synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)), _vYaw)) {
 			destroy(milliseconds(0)); // signalled for destruction //
 		}
-		// Interpolator.get<XMFLOAT3A, XMVECTOR>(vLoc)
 	}
 	void __vectorcall voxelModelInstance_Dynamic::synchronize(v2_rotation_t const vYaw)  // only for dynamic instances
 	{
@@ -137,6 +125,6 @@ namespace Volumetric
 			destroy(milliseconds(0)); // signalled for destruction //
 		}
 
-		_vYaw = vYaw; // must be last (for now)
+		_vYaw = vYaw; // must be last
 	}
 } //end ns volumetric

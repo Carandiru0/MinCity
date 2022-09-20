@@ -24,10 +24,10 @@ namespace VertexDecl
 
 	public:
 		XMVECTOR	worldPos;						//xyz = world position , w = hash
-		XMVECTOR	uv_vr;
+		XMVECTOR	uv_color;
 
-		__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, uint32_t const hash) noexcept
-			: worldPos(XMVectorSetW(worldPos_, SFM::uintBitsToFloat(hash))), uv_vr(uv_vr_)
+		__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_color_, uint32_t const hash) noexcept
+			: worldPos(XMVectorSetW(worldPos_, SFM::uintBitsToFloat(hash))), uv_color(uv_color_)
 		{}
 		//__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_vr_) noexcept
 		//	: worldPos(worldPos_), uv_vr(uv_vr_)
@@ -36,7 +36,7 @@ namespace VertexDecl
 		__forceinline __vectorcall VoxelNormal(VoxelNormal&& relegate) noexcept = default;
 		__forceinline void __vectorcall operator=(VoxelNormal&& relegate) noexcept {
 			worldPos = std::move(relegate.worldPos);
-			uv_vr = std::move(relegate.uv_vr);
+			uv_color = std::move(relegate.uv_color);
 		}
 		
 	private:
@@ -45,18 +45,17 @@ namespace VertexDecl
 	};
 	struct no_vtable alignas(16) VoxelDynamic : public VoxelNormal {
 
-		XMVECTOR	orient_reserved;						//x=cos,y=sin for Yaw, z=cos,w=sin for pitch 
+		// same size as normal //
 
-		__forceinline explicit __vectorcall VoxelDynamic(FXMVECTOR worldPos_, FXMVECTOR uv_vr_, FXMVECTOR orient_reserved_, uint32_t const hash) noexcept
-			: VoxelNormal(worldPos_, uv_vr_, hash), orient_reserved(orient_reserved_)
+		__forceinline explicit __vectorcall VoxelDynamic(FXMVECTOR worldPos_, FXMVECTOR orient_color_, uint32_t const hash) noexcept
+			: VoxelNormal(worldPos_, orient_color_, hash)
 		{}
 		VoxelDynamic() = default;
 		__forceinline __vectorcall VoxelDynamic(VoxelDynamic&& relegate) noexcept = default;
 		__forceinline void __vectorcall operator=(VoxelDynamic&& relegate) noexcept {
 
 			worldPos = std::move(relegate.worldPos);
-			uv_vr = std::move(relegate.uv_vr);
-			orient_reserved = std::move(relegate.orient_reserved);
+			uv_color = std::move(relegate.uv_color);
 		}
 		
 	private:
@@ -138,21 +137,17 @@ namespace UniformDecl
 // special functions for declaration streaming
 INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const& __restrict src)
 {
+	// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h [STATIC ALLOCATION SIZE]
+	// 
 	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
-	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_vr, src.worldPos));
+	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_color, src.worldPos));
 }
 INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* const __restrict dest, VertexDecl::VoxelDynamic const& __restrict src)
 {
-	_mm_stream_ps((float* const __restrict)dest, src.worldPos);				// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h
-	_mm_stream_ps(((float* const __restrict)dest) + 4, src.uv_vr);
-	_mm_stream_ps(((float* const __restrict)dest) + 8, src.orient_reserved);
-
-	/* bug, read access violation - not the correct alignment!
-	// Base Class VertexDecl::VoxelNormal works with __m256 (fits size), 8 floats total / element
-	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_vr, src.worldPos));
-	// Derived Class VertexDecl::VoxelDynamic remainder works with __m128 (fits size), 4 floats total / ele
-	_mm_stream_ps(((float* const __restrict)dest) + 8, src.orient_reserved);
-	*/
+	// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h [DYNAMIC ALLOCATION SIZE]
+	// 
+	// VertexDecl::VoxelDyanmic works with _mm256 (fits size), 8 floats total / element
+	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_color, src.worldPos));
 }
 
 

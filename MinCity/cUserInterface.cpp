@@ -2,10 +2,11 @@
 #include "cUserInterface.h"
 #include "cUser.h"
 #include "cToolProvider.h"
+#include "MinCity.h"
 
 
 cUserInterface::cUserInterface()
-	: _user(nullptr), _tools(nullptr)
+	: _user(nullptr), _tools(nullptr), _reset_world_event_sent(false)
 {
 
 }
@@ -19,6 +20,8 @@ void cUserInterface::OnLoaded()
 {
 	SAFE_DELETE(_user);
 	_user = new cUser();
+	_user->create();
+	_reset_world_event_sent = false; // reset
 }
 
 void cUserInterface::Paint()
@@ -45,6 +48,14 @@ void cUserInterface::setActivatedTool(uint32_t const uiToolType, std::optional<u
 void cUserInterface::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	if (_user) {
+
+		if (!_reset_world_event_sent) {
+			if (_user->isDestroyed()) {
+				MinCity::DispatchEvent(eEvent::RESET, new nanoseconds(milliseconds(5000)));
+				_reset_world_event_sent = true;
+			}
+		}
+
 		_user->Update(tNow, tDelta);
 	}
 }

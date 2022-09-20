@@ -366,6 +366,9 @@
     <ClInclude Include="Interpolator.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
+    <ClInclude Include="cAttachableGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -440,9 +443,6 @@
     <ClCompile Include="tbb_fp_env.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="volumetricradialgrid.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="cUserInterface.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
@@ -463,9 +463,6 @@
     </ClCompile>
     <ClCompile Include="cCity.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="rain.cpp">
-      <Filter>Source Files\VulkanCore\voxel effects</Filter>
     </ClCompile>
     <ClCompile Include="cCopterBodyGameObject.cpp">
       <Filter>Source Files\Gameplay\Copter</Filter>
@@ -549,6 +546,9 @@
       <Filter>Source Files\Gameplay\YXI</Filter>
     </ClCompile>
     <ClCompile Include="cUser.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cAttachableGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
   </ItemGroup>

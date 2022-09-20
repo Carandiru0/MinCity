@@ -33,7 +33,9 @@ namespace world
 
 		static constexpr fp_seconds const
 			THRUSTER_COOL_DOWN = duration_cast<fp_seconds>(milliseconds(500));
-
+	public:
+		static constexpr float const
+			MAX_THRUST = 0.5f;
 	public:
 		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::TestGameObject);
@@ -49,7 +51,7 @@ namespace world
 
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
-		void setParent(cYXIGameObject const* const parent, FXMVECTOR const xmOffset) { _parent = parent; XMStoreFloat3A(&_offset, xmOffset); }
+		void setParent(cYXIGameObject* const parent, FXMVECTOR const xmOffset) { _parent = parent; XMStoreFloat3A(&_offset, xmOffset); }
 
 		XMVECTOR const __vectorcall applyAngularThrust(FXMVECTOR xmThrust, bool const auto_leveling_enable = false);
 	
@@ -61,14 +63,14 @@ namespace world
 		cYXISphereGameObject& operator=(cYXISphereGameObject&& src) noexcept;
 
 	private:
-		cYXIGameObject const* _parent;
+		cYXIGameObject *      _parent;
 		XMFLOAT3A			  _offset;
 
 		struct {
 			XMFLOAT3A	thrust;
 			float		tOn;	// linear 0.0f ... 1.0f of how "on" the thruster is
 			fp_seconds	cooldown;
-			bool		autoleveling;
+			bool		autoleveling; // is this the auto-counter thrust? (auto-leveling thrust)
 
 			void __vectorcall On(FXMVECTOR xmThrust, bool const auto_leveling_enable)
 			{
@@ -86,6 +88,14 @@ namespace world
 				autoleveling = false;
 			}
 
+			void CounterOff()
+			{
+				// transition to non-auto levelling state smoothly
+				XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&thrust), tOn);
+				XMStoreFloat3A(&thrust, xmThrust);
+				autoleveling = false;
+
+			}
 		} _thruster[THRUSTER_COUNT];
 
 		uint32_t			  _thrusters;		// active thruster(s) for emission		XxYyZz (6bits)

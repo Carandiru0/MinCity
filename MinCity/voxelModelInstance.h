@@ -25,7 +25,8 @@ namespace Volumetric
 		float const __vectorcall									  getElevation() const { return(XMVectorGetY(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc))); } // additional "height above ground"
 
 		point2D_t const	__vectorcall								  getVoxelIndex() const { return(v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(getLocation()))); }	// returns voxel index occupied by the origin of this instance
-																																																			// this is synchronized as the "root voxel" index by the voxel world
+			
+		void __vectorcall											  resetElevation(float const fElevation_) { Interpolator.reset_component<COMPONENT_Y>(vLoc, fElevation_); }								// this is synchronized as the "root voxel" index by the voxel world
 		void __vectorcall											  setElevation(float const fElevation_) { Interpolator.set_component<COMPONENT_Y>(vLoc, fElevation_); }									// this must use a floor type operation on the floating point vector to be correct
 																																																			// which v2_to_p2D does
 		tTime const& getCreationTime() const { return(tCreation); }
@@ -38,9 +39,6 @@ namespace Volumetric
 		void														  setDestructionSequenceLength(milliseconds const length) { tSequenceLengthDestruction = length; }
 
 		bool const												      isFadeable() const { return(!(eVoxelModelInstanceFlags::NOT_FADEABLE == (eVoxelModelInstanceFlags::NOT_FADEABLE & flags))); }
-
-		voxelModelInstanceBase* const __restrict& __restrict getChild() const { return(child); }
-		void setChild(voxelModelInstanceBase* const child_) { child = child_; }	// to simplify state - only *once* can a child be set, and that child then remains a child of this instance until this instance is destroyed, where it is destroyed aswell.
 
 		// The gameobject that uses this instance should setOwnerGameObject in it's ctor
 		// acceptable - gameobject is a leaf/final class, not a base class 
@@ -82,8 +80,6 @@ namespace Volumetric
 
 		interpolated<XMFLOAT3A>								vLoc;
 
-		voxelModelInstanceBase*								child;
-
 		uint32_t											owner_gameobject_type;
 		void*												owner_gameobject;
 		release_event_function								eOnRelease;
@@ -92,9 +88,6 @@ namespace Volumetric
 		virtual ~voxelModelInstanceBase() {
 
 			Interpolator.remove(vLoc);
-
-			SAFE_DELETE(child); // child instances belong to a parent voxelModelInstance - they are not managed memory outside of parent instance
-								// parent manages memory of child only, where the parent is managed memory 
 
 			if (owner_gameobject && eOnRelease) {
 				eOnRelease(owner_gameobject);
@@ -189,10 +182,6 @@ namespace Volumetric
 		else {
 			model.Render<false, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
 		}
-		if (child) {
-			// safe down cast
-			static_cast<voxelModelInstance<Dynamic> const* const __restrict>(child)->Render(xmVoxelOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
-		}
 	}
 	template<bool const Dynamic>
 	__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall voxelModelInstance<Dynamic>::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
@@ -205,22 +194,22 @@ namespace Volumetric
 
 	class alignas(16) voxelModelInstance_Dynamic : public voxelModelInstance<voxB::DYNAMIC>
 	{
-	private: // global application convention is the order Roll (x), Yaw (y), Pitch (z)
-		v2_rotation_t								 _vPitch, _vYaw, _vRoll;	//  optimal access order for cache, pitch (z) is accessed first in v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmMiniVox, xmPitch), xmYaw), xmRoll); in voxelModel.h
+	private: // global application convention is the order Pitch (x), Yaw (y), Roll (z)
+		v2_rotation_t								 _vPitch, _vYaw, _vRoll;
 
 	public:
-		v2_rotation_t const& __vectorcall getRoll() const { return(_vRoll); }
-		v2_rotation_t const& __vectorcall getYaw() const { return(_vYaw); }
-		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); }
-
+		v2_rotation_t const& __vectorcall getPitch() const { return(_vPitch); } // rotate (x)
+		v2_rotation_t const& __vectorcall getYaw() const { return(_vYaw); }		// rotate (y)
+		v2_rotation_t const& __vectorcall getRoll() const { return(_vRoll); }	// rotate (z)
+		
 		void __vectorcall resetLocation(FXMVECTOR const xmLoc) { Interpolator.reset(vLoc, xmLoc); synchronize(xmLoc); }						
 		void __vectorcall setLocation(FXMVECTOR const xmLoc) { synchronize(xmLoc); }					// location does affect synchronization	
 
-		void __vectorcall setRoll(v2_rotation_t const vRoll) { _vRoll = vRoll; }						// row doesn't affect synchronization
-		void __vectorcall setYaw(v2_rotation_t const vYaw) { synchronize(vYaw); }						// yaw does affect synchronization
-		void __vectorcall setPitch(v2_rotation_t const vPit) { _vPitch = vPit; }						// pitch doesn't affect synchronization
-
-		void __vectorcall setRollYawPitch(v2_rotation_t const& vRoll, v2_rotation_t const& vYaw, v2_rotation_t const& vPit) { _vPitch = vPit; _vRoll = vRoll; synchronize(vYaw); }
+		void __vectorcall setPitch(v2_rotation_t const xPitch) { _vPitch = xPitch; }					// pitch doesn't affect synchronization
+		void __vectorcall setYaw(v2_rotation_t const yYaw) { synchronize(yYaw); }						// yaw does affect synchronization
+		void __vectorcall setRoll(v2_rotation_t const zRoll) { _vRoll = zRoll; }						// row doesn't affect synchronization
+		
+		void __vectorcall setPitchYawRoll(v2_rotation_t const& xPitch, v2_rotation_t const& yYaw, v2_rotation_t const& zRoll) { _vPitch = xPitch; _vRoll = zRoll; synchronize(yYaw); }
 	private:
 		bool const __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) const; // internally used only
 		void __vectorcall synchronize(FXMVECTOR const xmLoc);		// must be called whenever a change in location is intended 
@@ -228,7 +217,6 @@ namespace Volumetric
 
 		// model must be loaded b4 any instance creation!
 		explicit voxelModelInstance_Dynamic(voxB::voxelModel<voxB::DYNAMIC> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_);
-		
 	public:
 		// helper static method //
 		static voxelModelInstance_Dynamic * const __restrict XM_CALLCONV create(voxB::voxelModel<voxB::DYNAMIC> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_ = 0)

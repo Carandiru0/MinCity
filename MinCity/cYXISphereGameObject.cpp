@@ -73,7 +73,7 @@ namespace world
 		instance_->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
 
-		_body.mass = (float)getModelInstance()->getVoxelCount();
+		_body.mass = voxels_to_kg((float)getModelInstance()->getVoxelCount());
 	}
 
 	// If currently visible event:
@@ -159,6 +159,7 @@ namespace world
 			SFM::unpack_rgba(COLOR_THRUSTER_GRADIENT_MIN, rgba[0]);
 			SFM::unpack_rgba(COLOR_THRUSTER_GRADIENT_MAX, rgba[1]);
 			xmColor = SFM::lerp(uvec4_v(rgba[0]).v4f(), uvec4_v(rgba[1]).v4f(), luma); // no need to normalize, scale by luma, then denormalize as they all multiply together and the two cancel out (so it remains in [0-255] range
+			xmColor = XMVectorScale(xmColor, luma);
 			uvec4_v(xmColor).rgba(rgba[0]);
 
 			voxel.Color = SFM::pack_rgba(rgba[0]); // uses the gradient color times the luminance of the blackbody linear color for the main thruster temperature
@@ -169,7 +170,13 @@ namespace world
 	void cYXISphereGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
 		auto instance(*Instance);
-		float const t(time_to_float(tDelta));
+		float const tD(time_to_float(tDelta));
+
+		auto const parentInstance(_parent->getModelInstance());
+		if (nullptr == parentInstance || nullptr == instance || _parent->isDestroyed()) {
+			_parent->destroy();
+			return;
+		}
 
 		{
 			// existing thruster(s) finished?
@@ -190,13 +197,11 @@ namespace world
 							XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster[i].thrust), t);
 							_thruster[i].tOn = t;
 
-							XMStoreFloat3A(&_body.angular_thrust, xmThrust); // apply linealy decaying thrust to main thruster force tracking for this update
+							XMStoreFloat3A(&_body.angular_thrust, XMVectorAdd(xmThrust, XMLoadFloat3A(&_body.angular_thrust))); // apply linealy decaying thrust to thruster force tracking for this update
 						}
 					}
 					else {
 						// auto level this axis
-						static constexpr float const EPSILON = Iso::MINI_VOX_SIZE * 0.5f;
-
 						static constexpr uint32_t const
 							X_MAX = 5,
 							X_MIN = 4,
@@ -215,17 +220,17 @@ namespace world
 						{
 						case X_MAX:
 						case X_MIN:
-							autolevelContinue = (vParentAngularVelocity.x - EPSILON) >= 0.0f;
+							autolevelContinue = (vParentAngularVelocity.x - cPhysics::VELOCITY_EPSILON) >= 0.0f;
 							angle = _parent->getModelInstance()->getPitch().angle();
 							break;
 						case Y_MAX:
 						case Y_MIN:
-							autolevelContinue = (vParentAngularVelocity.y - EPSILON) >= 0.0f;
+							autolevelContinue = (vParentAngularVelocity.y - cPhysics::VELOCITY_EPSILON) >= 0.0f;
 							angle = _parent->getModelInstance()->getYaw().angle();
 							break;
 						case Z_MAX:
 						case Z_MIN:
-							autolevelContinue = (vParentAngularVelocity.z - EPSILON) >= 0.0f;
+							autolevelContinue = (vParentAngularVelocity.z - cPhysics::VELOCITY_EPSILON) >= 0.0f;
 							angle = _parent->getModelInstance()->getRoll().angle();
 							break;
 						}
@@ -244,13 +249,12 @@ namespace world
 							XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster[i].thrust), t);
 							_thruster[i].tOn = t;
 
-							XMStoreFloat3A(&_body.angular_thrust, xmThrust); // keep applying auto-leveling thrust per frame until the condition is satisfied
+							XMStoreFloat3A(&_body.angular_thrust, XMVectorAdd(xmThrust, XMLoadFloat3A(&_body.angular_thrust))); // keep applying auto-leveling thrust per frame until the condition is satisfied
 						}
 						else {
 
 							// transition to non-auto levelling state smoothly
-							XMVECTOR const xmThrust = SFM::lerp(XMVectorZero(), XMLoadFloat3A(&_thruster[i].thrust), _thruster[i].tOn);
-							XMStoreFloat3A(&_thruster[i].thrust, xmThrust);
+							_thruster[i].CounterOff();
 						}
 
 						_thruster[i].autoleveling = autolevelContinue; // when condition is satisfied continue with the natural cooldown turn off process (when false - turns off auto leveling)
@@ -263,38 +267,37 @@ namespace world
 		{
 			// radius (offset from origin to edge is where force is applied, affecting the force directly, greater radius means greater force) 
 			// T = F x r (Torque) [not using cross product, already done, just scale]
-			float const displacement(instance->getModel()._Radius * Iso::MINI_VOX_STEP * cPhysics::TORQUE_OFFSET_SCALAR);
+			float const displacement(voxels_to_meters(instance->getModel()._Radius) * cPhysics::TORQUE_OFFSET_SCALAR);
 			
 			XMVECTOR const xmThrust(XMVectorScale(XMLoadFloat3A(&_body.angular_thrust), _body.mass * displacement)); // T = F * r , T = Torque, F = Force, r = Radius/Offset
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.angular_velocity));
 
-			XMVECTOR const xmVelocity = SFM::__fma(XMVectorDivide(xmThrust, XMVectorReplicate(_body.mass)), XMVectorReplicate(t), xmInitialVelocity);
+			XMVECTOR const xmVelocity = SFM::__fma(XMVectorDivide(xmThrust, XMVectorReplicate(_body.mass)), XMVectorReplicate(tD), xmInitialVelocity);
 
 			// save the angular force of the sphere for that force acts upon it's parent
 			// finding the force              v - vi
 			//                     f   = m * --------		(herbie optimized)
 			//								    dt
-			XMStoreFloat3A(&_body.angular_force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(t)), _body.mass));
+			XMStoreFloat3A(&_body.angular_force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(tD)), _body.mass));
 
-			XMVECTOR xmDir(XMVectorSet(instance->getRoll().angle(), instance->getYaw().angle(), instance->getPitch().angle(), 0.0f));
+			XMVECTOR xmDir(XMVectorSet(instance->getPitch().angle(), instance->getYaw().angle(), instance->getRoll().angle(), 0.0f));
 
-			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(t), xmDir);
+			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmDir);
 
 			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
 
-			instance->setRollYawPitch(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
+			instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
 		}
 
 		// inherit  
-		{ // parent translation
+		{ // parent translation (which includes all forces that are applied to parent) (rotation is not inherited - these are "gyro" sphere engines)
 			
-			auto const parentInstance(_parent->getModelInstance());
-			quat_t const qOrient(parentInstance->getRoll().angle(), parentInstance->getYaw().angle(), parentInstance->getPitch().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
+			quat_t const qOrient(parentInstance->getPitch().angle(), parentInstance->getYaw().angle(), parentInstance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
 
 			XMVECTOR const xmParentLocation(parentInstance->getLocation());
 			XMVECTOR xmSphere(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));
@@ -320,6 +323,10 @@ namespace world
 				if (auto_leveling_enable) {
 					bCancelled = vParentAngularVelocity.x > 0.0f; // same direction for counter-thrust ?
 				}
+				else { // user-controlled thrust
+					_thruster[4].CounterOff();
+					_thruster[5].CounterOff(); // turn off any currently countering thrust (same axis)
+				}
 
 				if (!bCancelled) {
 					_thrusters |= X_MAX_BIT;
@@ -329,6 +336,10 @@ namespace world
 			else {
 				if (auto_leveling_enable) {
 					bCancelled = vParentAngularVelocity.x < 0.0f; // same direction for counter-thrust ?
+				}
+				else { // user-controlled thrust
+					_thruster[4].CounterOff();
+					_thruster[5].CounterOff(); // turn off any currently countering thrust (same axis)
 				}
 
 				if (!bCancelled) {
@@ -344,6 +355,10 @@ namespace world
 				if (auto_leveling_enable) {
 					bCancelled = vParentAngularVelocity.y > 0.0f; // same direction for counter-thrust ?
 				}
+				else { // user-controlled thrust
+					_thruster[2].CounterOff();
+					_thruster[3].CounterOff(); // turn off if currently countering thrust (same axis)
+				}
 
 				if (!bCancelled) {
 					_thrusters |= Y_MAX_BIT;
@@ -353,6 +368,10 @@ namespace world
 			else {
 				if (auto_leveling_enable) {
 					bCancelled = vParentAngularVelocity.y < 0.0f; // same direction for counter-thrust ?
+				}
+				else { // user-controlled thrust
+					_thruster[2].CounterOff();
+					_thruster[3].CounterOff(); // turn off if currently countering thrust (same axis)
 				}
 
 				if (!bCancelled) {
@@ -368,6 +387,10 @@ namespace world
 				if (auto_leveling_enable) {
 					bCancelled = vParentAngularVelocity.z > 0.0f; // same direction for counter-thrust ?
 				}
+				else { // user-controlled thrust
+					_thruster[0].CounterOff();
+					_thruster[1].CounterOff(); // turn off any currently countering thrust (same axis)
+				}
 
 				if (!bCancelled) {
 					_thrusters |= Z_MAX_BIT;
@@ -377,6 +400,10 @@ namespace world
 			else {
 				if (auto_leveling_enable) {
 					bCancelled = vParentAngularVelocity.z < 0.0f; // same direction for counter-thrust ?
+				}
+				else { // user-controlled thrust
+					_thruster[0].CounterOff();
+					_thruster[1].CounterOff(); // turn off any currently countering thrust (same axis)
 				}
 
 				if (!bCancelled) {

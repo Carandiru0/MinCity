@@ -725,20 +725,18 @@ void cVulkan::CreateVoxelResource(
 
 		}
 	}
+
+	static_assert(sizeof(VertexDecl::VoxelDynamic) == sizeof(VertexDecl::VoxelNormal));
 	if constexpr (isDynamic) {
 		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
-
-		pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
-		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
-		pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
 	}
 	else {
 		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelNormal));
-
-		pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelNormal, worldPos));
-		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelNormal, uv_vr));
 	}
 	
+	pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
+	pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_color));
+
 	pm.depthCompareOp(vk::CompareOp::eLessOrEqual);
 	pm.depthClampEnable(VK_FALSE);
 
@@ -803,8 +801,7 @@ void cVulkan::CreateVoxelChildResource(
 	pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
 
 	pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
-	pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
-	pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
+	pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_color));
 
 	pm.cullMode(vk::CullModeFlagBits::eBack);
 	pm.frontFace(vk::FrontFace::eClockwise);

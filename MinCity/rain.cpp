@@ -163,7 +163,7 @@ __forceinline __declspec(noalias) bool const __vectorcall sRainInstance::op(FXMV
         // v = d/t, t = d/v 
         // d1 = 1.0f, d0 = current distance 
         out.distance = -fnew_drop_distance;     // ** wicked ** unique rotation/rain drop voxel w/o using sincos (quadratic interpolation approximation)
-        out.rotation = v2_rotation_t::lerp(v2_rotation_t(), v2_rotation_constants::v90, (1.0f - fnew_drop_distance) / fdrop_speed);
+        out.rotation = v2_rotation_t::lerp(v2_rotation_t(), v2_rotation_constants::v90, SFM::saturate((1.0f - fnew_drop_distance) / fdrop_speed));
         out.alpha = Volumetric::eVoxelTransparency::ALPHA_50; // rain drop starts @ this transparency level, and fades from that to lowest transparency index on the "tail"
         out.emissive = true;
         out.column_sz = drop_streak + 1;

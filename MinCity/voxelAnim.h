@@ -14,7 +14,7 @@ namespace Volumetric
 		float			 frame_interval;
 		uint32_t		 frame;
 
-		bool const update(voxelModelInstance<Dynamic>* const __restrict instance, fp_seconds const& __restrict tDelta)
+		bool const update(voxelModelInstance<Dynamic>* const __restrict instance, fp_seconds const& __restrict tDelta) // returns true when a single full animation loop has finished
 		{
 			if (instance)
 			{

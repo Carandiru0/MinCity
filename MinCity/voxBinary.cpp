@@ -499,6 +499,22 @@ namespace fs = std::filesystem;
 
 static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxels, uint32_t numVoxels)
 {
+	// accurate counts - now only the culled set of voxels.
+	struct voxelCount {
+		uint32_t const numVoxels,
+			numVoxelsEmissive,
+			numVoxelsTransparent;
+
+		voxelCount(uint32_t const numVoxels_, uint32_t const numVoxelsEmissive_, uint32_t const numVoxelsTransparent_)
+			: numVoxels(numVoxels_), numVoxelsEmissive(numVoxelsEmissive_), numVoxelsTransparent(numVoxelsTransparent_)
+		{}
+	};
+
+	// *bugfix, if model has 1 voxel only
+	[[unlikely]] if (1 == numVoxels) {
+		return(voxelCount{ numVoxels, pVoxels->Emissive, pVoxels->Transparent });
+	}
+
 	{ // redo adjacency, to take transparency into account
 
 		using model_volume = Volumetric::voxB::model_volume;
@@ -616,17 +632,6 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 		}
 
 		tbb::parallel_sort(pVoxels, pVoxel);
-
-		// accurate counts - now only the culled set of voxels.
-		struct voxelCount {
-			uint32_t const numVoxels,
-						   numVoxelsEmissive,
-						   numVoxelsTransparent;
-
-			voxelCount(uint32_t const numVoxels_, uint32_t const numVoxelsEmissive_, uint32_t const numVoxelsTransparent_)
-				: numVoxels(numVoxels_), numVoxelsEmissive(numVoxelsEmissive_), numVoxelsTransparent(numVoxelsTransparent_)
-			{}
-		};
 
 		return( voxelCount{ numVoxels, numVoxelsEmissive, numVoxelsTransparent } ); // returns structured binding
 	}
@@ -1611,7 +1616,7 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 	// Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis
 	XMVECTOR xmExtents = p2D_to_v2(p2D_sub(_LocalArea.right_bottom(), _LocalArea.left_top()));
 	xmExtents = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmExtents); // move z to correct position from v2 to v3
-	xmExtents = XMVectorSetY(xmExtents, float(_maxDimensions.y + 1));
+	xmExtents = XMVectorSetY(xmExtents, float(_maxDimensions.y + 1) / MINIVOXEL_FACTORF);
 	xmExtents = XMVectorScale(xmExtents, 0.5f);
 	XMStoreFloat3A(&_Extents, xmExtents);
 	_Radius = XMVectorGetX(XMVector3Length(xmExtents));

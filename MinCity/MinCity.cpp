@@ -560,6 +560,10 @@ void cMinCity::New()
 {
 	OnNew();
 }
+void cMinCity::Reset()
+{
+	VoxelWorld->ResetWorld();
+}
 void cMinCity::Load()
 {
 	int32_t const load_state(Nuklear->getLastSelectionForWindow<eWindowType::LOAD>());
@@ -824,9 +828,13 @@ void cMinCity::ProcessEvents()
 
 	std::pair<uint32_t, void*> new_event;
 
+	tbb::concurrent_queue<std::pair<uint32_t, void*>> stillPendingEvents;
+
 	while (!m_events.empty()) {
 		while (m_events.try_pop(new_event))
 		{
+			bool stillPending(false); // if event should still be pending, or was not handled (perhaps there is a delay) set stillPending to true so that the event persists until such condition is met for the event where it is pending no more.
+
 			switch (new_event.first) {
 			case eEvent::PAUSE:
 				if (new_event.second) {
@@ -864,6 +872,14 @@ void cMinCity::ProcessEvents()
 			case eEvent::NEW:
 				New();
 				break;
+			case eEvent::RESET:
+				if ((*((nanoseconds*)new_event.second) -= critical_delta()) < nanoseconds(0)) {
+					Reset();
+				}
+				else {
+					stillPending = true;
+				}
+				break;
 			case eEvent::SHOW_IMPORT_WINDOW:
 				Pause(true); // always
 				Nuklear->enableWindow<eWindowType::IMPORT>(true);
@@ -887,7 +903,20 @@ void cMinCity::ProcessEvents()
 				break;
 			}
 
-			SAFE_DELETE(new_event.second);
+			if (!stillPending) {
+				SAFE_DELETE(new_event.second);
+			}
+			else {
+				stillPendingEvents.emplace(new_event); // note any data paired with event is still valid
+			}
+		}
+	}
+
+	// append all still pending events to main queue
+	while (!stillPendingEvents.empty()) {
+		while (stillPendingEvents.try_pop(new_event))
+		{
+			m_events.push(std::move(new_event));
 		}
 	}
 }

@@ -109,12 +109,11 @@ namespace world
 		void __vectorcall translateCamera(point2D_t const vDir);
 		void XM_CALLCONV translateCamera(FXMVECTOR const xmDisplacement);
 		void XM_CALLCONV translateCameraOrient(FXMVECTOR const xmDisplacement);
-		void setCameraElevation(float const fElevation);
 
 		void resetCameraAngleZoom(); // gradual over time
 		void resetCamera(); // immediatte
 		void setCameraTurnTable(bool const enable);
-		void __vectorcall updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, FXMVECTOR xmExtents, fp_seconds const& __restrict tDelta); // expects 3D coordinates
+		void __vectorcall updateCameraFollow(XMVECTOR xmPosition, XMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta); // expects 3D coordinates
 
 		// Main Methods //
 		void LoadTextures(); // 1st
@@ -140,6 +139,7 @@ namespace world
 
 		// #################
 		void NewWorld();
+		void ResetWorld();
 		void SaveWorld();
 		void LoadWorld();
 		bool const PreviewWorld(std::string_view const szCityName, CityInfo&& __restrict info, ImagingMemoryInstance* const __restrict load_thumbnail) const; // load_thumbnail is expected to be created already, of BGRA format and equal to thumbnail dimensions
@@ -514,11 +514,6 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 			destroyExistingHashTypes |= Iso::STATIC_HASH;
 		}
 
-		if (Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY == (Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY & flags))
-		{
-			destroyExistingHashTypes = 0; // force destruction off for any "child only" instance
-		}
-
 		bool bDestroyed(false);
 		if (destroyExistingHashTypes) {
 			rect2D_t const vWorldArea = r2D_add(voxelModel->_LocalArea, voxelIndex);
@@ -528,102 +523,86 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 
 		if ( !bDestroyed || Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING == (Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING & flags)) // only if destruction is not neccessary
 		{
-			uint32_t index(0);
+			uint32_t const index = Iso::getNextAvailableHashIndex<Dynamic>(*pVoxelRoot);
 
-			// if CHILD_ONLY, hash is always equal to zero
-			if (!(Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY & flags)) // only non-children instances past this point - children only require instance and newHash
-			{
-				index = Iso::getNextAvailableHashIndex<Dynamic>(*pVoxelRoot); // only applies to non-children
-
-				if (0 == index) {
-					// not available, no free hash indices
-					FMT_LOG_WARN(GAME_LOG, "Voxel is full, {:s} instance cannot be added to world. Destroy first.", (Dynamic ? "Dynamic" : "Static"));
-					return(binding);
-				}
-
-				// Generate *unique* (not already existing/used) 32 bit random number
-				uint32_t newHash(0);
-				do {
-					newHash = PsuedoRandomNumber32(1); // avoiding zero
-				} while (nullptr != lookupVoxelModelInstanceRootIndex(newHash));
-
-				binding.hash = newHash;
+			if (0 == index) {
+				// not available, no free hash indices
+				FMT_LOG_WARN(GAME_LOG, "Voxel is full, {:s} instance cannot be added to world. Destroy first.", (Dynamic ? "Dynamic" : "Static"));
+				return(binding);
 			}
+
+			// Generate *unique* (not already existing/used) 32 bit random number
+			uint32_t newHash(0);
+			do {
+				newHash = PsuedoRandomNumber32(1); // avoiding zero
+			} while (nullptr != lookupVoxelModelInstanceRootIndex(newHash));
+
+			binding.hash = newHash;
 
 			// create actual instance
 			if constexpr (Dynamic)
 			{
 				binding.instance = Volumetric::voxelModelInstance_Dynamic::create(*voxelModel, binding.hash, voxelIndex, flags);
+				_hshVoxelModelInstances_Dynamic[binding.hash] = binding.instance;
 			}
 			else
 			{
 				binding.instance = Volumetric::voxelModelInstance_Static::create(*voxelModel, binding.hash, voxelIndex, flags);// = modelID;
+				_hshVoxelModelInstances_Static[binding.hash] = binding.instance;
 			}
 
-			if (!(Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY & flags)) // only non-children instances past this point - children only require instance and newHash
+			rect2D_t const vLocalArea(voxelModel->_LocalArea);
+			rect2D_t vWorldArea = r2D_add(vLocalArea, voxelIndex);
+
+			Iso::Voxel oVoxelRoot(*pVoxelRoot);
+
+			// will be root voxel at end
+			Iso::clearAsOwner(oVoxelRoot, index); // cleared temporarily
+
+			// set as hash for this models instance on root voxel + voxels in area (below)
+			if constexpr (Dynamic) {
+				setVoxelsHashAt(vWorldArea, binding.hash, v2_rotation_t());
+			}
+			else {
+				setVoxelsHashAt(vWorldArea, binding.hash);
+			}
+
+			Iso::setHash(oVoxelRoot, index, binding.hash); // ensure root/owner is also set
+
+			Iso::clearEmissive(oVoxelRoot); // fix: "hovered" voxel is emissive - don't want the whole model area to be emissive too
+
+			if (Volumetric::eVoxelModelInstanceFlags::GROUND_CONDITIONING == (Volumetric::eVoxelModelInstanceFlags::GROUND_CONDITIONING & flags))
 			{
-				if constexpr (Dynamic)
-				{
-					_hshVoxelModelInstances_Dynamic[binding.hash] = binding.instance;
-				}
-				else
-				{
-					_hshVoxelModelInstances_Static[binding.hash] = binding.instance;
-				}
+				// Get average height for area //
+				uint32_t const uiAverageHeightStep = getVoxelsAt_AverageHeight(vWorldArea);
 
-				rect2D_t const vLocalArea(voxelModel->_LocalArea);
-				rect2D_t vWorldArea = r2D_add(vLocalArea, voxelIndex);
+				// all voxels in this area will be set to this average
+				setVoxelsHeightAt(vWorldArea, uiAverageHeightStep);
+				Iso::setHeightStep(oVoxelRoot, uiAverageHeightStep);
 
-				Iso::Voxel oVoxelRoot(*pVoxelRoot);
+				// update elevation offset of instance
+				binding.instance->setElevation(Iso::getRealHeight(oVoxelRoot));
 
-				// will be root voxel at end
-				Iso::clearAsOwner(oVoxelRoot, index); // cleared temporarily
+				// leave a border of terrain around model
+				vWorldArea = voxelArea_grow(vWorldArea, point2D_t(1, 1));
 
-				// set as hash for this models instance on root voxel + voxels in area (below)
-				if constexpr (Dynamic) {
-					setVoxelsHashAt(vWorldArea, binding.hash, v2_rotation_t());
-				}
-				else {
-					setVoxelsHashAt(vWorldArea, binding.hash);
-				}
+				// smooth border of model area with surrounding terrain
+				smoothRect(vWorldArea);
 
-				Iso::setHash(oVoxelRoot, index, binding.hash); // ensure root/owner is also set
-
-				Iso::clearEmissive(oVoxelRoot); // fix: "hovered" voxel is emissive - don't want the whole model area to be emissive too
-
-				if (Volumetric::eVoxelModelInstanceFlags::GROUND_CONDITIONING == (Volumetric::eVoxelModelInstanceFlags::GROUND_CONDITIONING & flags))
-				{
-					// Get average height for area //
-					uint32_t const uiAverageHeightStep = getVoxelsAt_AverageHeight(vWorldArea);
-
-					// all voxels in this area will be set to this average
-					setVoxelsHeightAt(vWorldArea, uiAverageHeightStep);
-					Iso::setHeightStep(oVoxelRoot, uiAverageHeightStep);
-
-					// update elevation offset of instance
-					binding.instance->setElevation(Iso::getRealHeight(oVoxelRoot));
-
-					// leave a border of terrain around model
-					vWorldArea = voxelArea_grow(vWorldArea, point2D_t(1, 1));
-
-					// smooth border of model area with surrounding terrain
-					smoothRect(vWorldArea);
-
-					// go around perimeter doing lerp between border
-					// *required* recompute adjacency for area as height of voxels has changed
-					recomputeGroundAdjacency(vWorldArea);
-				}
-				// root is special
-
-				// now flag as root (so that we did not set all voxels in area as roots before)
-				if (!(Volumetric::eVoxelModelInstanceFlags::EMPTY_INSTANCE & flags)) {
-					Iso::setAsOwner(oVoxelRoot, index);
-				}
-				setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxelRoot));
-
-				// register hash for root voxel location lookup ( no child instances allowed in this hashmap )
-				_hshVoxelModelRootIndex[binding.hash].v = voxelIndex.v;
+				// go around perimeter doing lerp between border
+				// *required* recompute adjacency for area as height of voxels has changed
+				recomputeGroundAdjacency(vWorldArea);
 			}
+			// root is special
+
+			// now flag as root (so that we did not set all voxels in area as roots before)
+			if (!(Volumetric::eVoxelModelInstanceFlags::EMPTY_INSTANCE & flags)) {
+				Iso::setAsOwner(oVoxelRoot, index);
+			}
+			setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxelRoot));
+
+			// register hash for root voxel location lookup
+			_hshVoxelModelRootIndex[binding.hash].v = voxelIndex.v;
 		}
 	}
 	return(binding);
@@ -679,7 +658,7 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 
 	if (instance) {
 
-		if (hash) { // normal instance, need actual reference to managed memory
+		if (hash) {
 			if constexpr (Dynamic) {
 
 				return(&TNonUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]));
@@ -688,9 +667,6 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 
 				return(&TNonUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]));
 			}
-		}
-		else { // child instance
-			return(&TNonUpdateableGameObject::emplace_back(instance));
 		}
 	}
 #ifndef NDEBUG
@@ -708,7 +684,7 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 
 	if (instance) {
 
-		if (hash) { // normal instance, need actual reference to managed memory
+		if (hash) {
 			if constexpr (eVoxelModelGrpID < 0) {
 
 				return(&TNonUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]));
@@ -717,9 +693,6 @@ TNonUpdateableGameObject* const cVoxelWorld::placeNonUpdateableInstanceAt(point2
 
 				return(&TNonUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]));
 			}
-		}
-		else { // child instance
-			return(&TNonUpdateableGameObject::emplace_back(instance));
 		}
 	}
 #ifndef NDEBUG
@@ -751,7 +724,7 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 
 	if (instance) {
 
-		if (hash) { // normal instance, need actual reference to managed memory
+		if (hash) {
 			if constexpr (Dynamic) {
 
 				return(&TUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]));
@@ -760,9 +733,6 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 
 				return(&TUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]));
 			}
-		}
-		else { // child instance
-			return(&TUpdateableGameObject::emplace_back(instance));
 		}
 	}
 #ifndef NDEBUG
@@ -780,7 +750,7 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 
 	if (instance) {
 
-		if (hash) { // normal instance, need actual reference to managed memory
+		if (hash) {
 			if constexpr (eVoxelModelGrpID < 0) {
 
 				return(&TUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]));
@@ -789,9 +759,6 @@ TUpdateableGameObject* const cVoxelWorld::placeUpdateableInstanceAt(point2D_t co
 
 				return(&TUpdateableGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]));
 			}
-		}
-		else { // child instance
-			return(&TUpdateableGameObject::emplace_back(instance));
 		}
 	}
 #ifndef NDEBUG
@@ -822,7 +789,7 @@ TProceduralGameObject* const cVoxelWorld::placeProceduralInstanceAt(point2D_t co
 
 	if (instance && model) {
 
-		if (hash) { // normal instance, need actual reference to managed memory
+		if (hash) {
 			if constexpr (Dynamic) {
 
 				return(&TProceduralGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash], model));
@@ -831,9 +798,6 @@ TProceduralGameObject* const cVoxelWorld::placeProceduralInstanceAt(point2D_t co
 
 				return(&TProceduralGameObject::emplace_back(_hshVoxelModelInstances_Static[hash], model));
 			}
-		}
-		else { // child instance
-			return(&TProceduralGameObject::emplace_back(instance, model));
 		}
 	}
 #ifndef NDEBUG

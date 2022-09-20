@@ -126,10 +126,12 @@ namespace Volumetric
 					YXI_RING_Y = 2,
 					YXI_RING_Z = 3,
 
-					GROUND_EXPLOSION = 4,
-					SPIKE_EXPLOSION = 5,
-					TINY_EXPLOSION = 6,
-					MEDIUM_FIRE = 7;
+					LIGHT_CONE = 4, 
+
+					GROUND_EXPLOSION = 5,
+					SPIKE_EXPLOSION = 6,
+					TINY_EXPLOSION = 7,
+					MEDIUM_FIRE = 8;
 
 					
 			};

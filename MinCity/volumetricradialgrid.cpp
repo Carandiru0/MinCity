@@ -7,6 +7,9 @@ This work is licensed under the Creative Commons Attribution-NonCommercial-Share
 To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
+
+/* DEPRECATED - OBSOLETE - Use VDB's w/ custom shader instead
+* 
 #include "pch.h"
 #include "globals.h"
 #include "IsoVoxel.h"
@@ -75,4 +78,4 @@ NO_INLINE void radialgrid_generate(float const radius, vector<xRow>& __restrict 
 
 } // end namespace
 
-
+*/

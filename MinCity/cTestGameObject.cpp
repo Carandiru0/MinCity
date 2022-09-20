@@ -171,11 +171,6 @@ namespace world
 			(*Instance)->setRoll(vOrient);
 		}*/
 
-		float const fElevation(Iso::MINI_VOX_SIZE * Iso::WORLD_MAX_HEIGHT * abs(sin(time_to_float(tNow - start()) * 0.1f)));
-
-		(*Instance)->setElevation(fElevation);
-		MinCity::VoxelWorld->setCameraElevation(fElevation);
-
 		/* some displacement on depth cube 
 		static v2_rotation_t vAngle;
 

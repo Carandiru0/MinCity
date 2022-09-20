@@ -27,17 +27,13 @@
 
 #include "cYXIGameObject.h"
 #include "cYXISphereGameObject.h"
+#include "cAttachableGameObject.h"
 
 #include "rain.h"
 #include "cLightGameObject.h"
 #include "cImportGameObject.h"
 #include "cLevelSetGameObject.h"
 #include "cExplosionGameObject.h"
-
-#ifdef GIF_MODE
-#include "cVideoScreenGameObject.h"
-#include "cRockStageGameObject.h"
-#endif
 
 #include "cImportGameObject.h"
 #include "cRemoteUpdateGameObject.h"
@@ -78,14 +74,12 @@ inline interpolator Interpolator; // global singleton instance
 
 namespace // private to this file (anonymous)
 {
-	static inline struct CameraEntity
+	static inline struct CameraEntity /* note - changing camera elevation (y) fucks up the raymarch and causes strange behaviour, be warned. */
 	{
 		static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
 
 		interpolated<XMFLOAT3A> Origin;  // always stored swizzled to x,z coordinates
 		XMFLOAT3A voxelFractionalGridOffset; // always stored negated and swizzled to x,z coordinates
-
-		float Elevation; // stored seperately from Origin and applied to view matrix in updase method
 
 		point2D_t
 			voxelIndex_TopLeft,
@@ -117,7 +111,6 @@ namespace // private to this file (anonymous)
 			:
 			Origin{}, // virtual coordinates
 			voxelFractionalGridOffset{},
-			Elevation(0.0f),
 			ZoomExtents{},
 			ZoomFactor(Globals::DEFAULT_ZOOM_SCALAR),
 			tTranslateStart{ zero_time_point },
@@ -583,46 +576,28 @@ void cVoxelWorld::setCameraTurnTable(bool const enable)
 {
 	_bCameraTurntable = enable;
 }
-void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, FXMVECTOR xmExtents, fp_seconds const& __restrict tDelta) // expects 3D coordinates
+
+// Camera follow always keeps user ship in view, never offscreen even if ship changes elevation! Follows elevation too.
+void __vectorcall cVoxelWorld::updateCameraFollow(XMVECTOR xmPosition, XMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta) // expects 3D coordinates
 {	
-	XMVECTOR const xmFuturePosition(SFM::__fma(xmVelocity, XMVectorReplicate(tDelta.count()), xmPosition));
+	rect2D_t const vLocalArea(instance->getModel()._LocalArea);			   // convert to voxel index
+	int32_t volume_visible = world::testVoxelsAt(r2D_add(vLocalArea, v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition))), instance->getYaw()); // *major* prevents ship passing outside the "visible volume", which at high heights can be very near to the center of the screen. Glitches, missing rasterization vs raymarch is now gone for camera followed ship!
 
-	XMVECTOR xmVoxelOrigin, xmPreciseOrigin, xmOffset;
-	int32_t visibility;
+	xmVelocity = XMVectorSetY(xmVelocity, 0.0f); // only xz
 
-	xmVoxelOrigin = XMVectorSubtract(xmFuturePosition, XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin)); // make relative to origin
-	xmPreciseOrigin = xmFuturePosition;
-	xmOffset = XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin);
+	float const max_speed(time_to_float(tDelta * 1.0 / duration_cast<fp_seconds>(critical_delta())));
 
-	xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
-	xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -XMVectorGetY(xmFuturePosition));
+	float const elevation(SFM::max(0.0f, XMVectorGetY(xmPosition)));
+	XMVECTOR const xmElevationOffset(XMVectorSet(elevation, 0.0f, elevation, 0.0f));
 
-	visibility = _Visibility.AABBIntersectFrustum(xmPreciseOrigin, xmExtents);
+	xmPosition = XMVectorAdd(xmPosition, xmElevationOffset);
+	XMVECTOR const xmFutureFocusPosition(SFM::__fma(xmVelocity, XMVectorReplicate(max_speed), xmPosition));
 
-	if (visibility > 0 ) { // is the user completely visible ?
+	float const current_speed(XMVectorGetX(XMVector3Length(xmVelocity)) * time_to_float(tDelta));
+	float const t = SFM::__exp(-10.0f * (current_speed / max_speed + (float)(volume_visible <= 0)));
 
-		XMVECTOR const xmFutureFocusPosition(SFM::__fma(xmVelocity, XMVectorReplicate(tDelta.count() * 100.0f), xmPosition));
-
-		xmVoxelOrigin = XMVectorSubtract(xmFutureFocusPosition, XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin)); // make relative to origin
-		xmPreciseOrigin = xmFutureFocusPosition;
-		xmOffset = XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin);
-
-		xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
-		xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -XMVectorGetY(xmFutureFocusPosition));
-
-		visibility = _Visibility.AABBIntersectFrustum(xmPreciseOrigin, xmExtents);
-
-		if (visibility <= 0) { // is the focus position intersecting or outside frustum ?
-
-			XMVECTOR const xmVelocityXZ(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmVelocity));
-
-			XMVECTOR const xmOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin))); // only care about xz components, make it a 2D vector
-
-			XMVECTOR const xmPosition(XMVectorAdd(xmOrigin, XMVectorScale(xmVelocityXZ, tDelta.count()))); // extremely smooth (working w/ one unit of tDelta)
-
-			Interpolator.set(oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition)); // directly set to interpolated position. translateCamera() only used when edge-scrolling.
-		}
-	}
+	Interpolator.set(oCamera.Origin, XMVectorSetY(SFM::lerp(xmPosition, xmFutureFocusPosition, t), 0.0f)); // only xz for camera store
+	//Interpolator very smooth :)
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -1391,7 +1366,7 @@ namespace world
 			while (voxelIterate.x <= voxelEnd.x) {
 
 				point2D_t const p0(p);
-				p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
+				p = p2D_rotate(voxelIterate, voxelArea.center(), -vR);
 
 				// back
 				if (0 == (SFM::abs(p.y - p0.y) - 1)) {
@@ -1404,6 +1379,7 @@ namespace world
 						Iso::Voxel oVoxel(*pVoxel);
 						if (!Iso::isRoad(oVoxel)) // not accidentally highlighting roads
 						{
+							Iso::setColor(oVoxel, 0x00ff0000); // bgr
 							Iso::setEmissive(oVoxel);
 							setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
 						}
@@ -1422,6 +1398,7 @@ namespace world
 					Iso::Voxel oVoxel(*pVoxel);
 					if (!Iso::isRoad(oVoxel)) // not accidentally highlighting roads
 					{
+						Iso::setColor(oVoxel, 0x00ff0000); // bgr
 						Iso::setEmissive(oVoxel);
 						setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
 					}
@@ -1434,6 +1411,55 @@ namespace world
 
 			++voxelIterate.y;
 		}
+	}
+
+	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR)
+	{
+		rect2D_t const visible_area(MinCity::VoxelWorld->getVisibleGridBounds());
+
+		point2D_t voxelIterate(voxelArea.left_top());
+		point2D_t const voxelEnd(voxelArea.right_bottom());
+		point2D_t p;
+
+		uint32_t visible_count(0);
+		uint32_t voxel_count(0);
+
+		// oriented rect filling algorithm, see processing sketch "rotation" for reference (using revised version)
+		while (voxelIterate.y <= voxelEnd.y) {
+
+			voxelIterate.x = voxelArea.left;
+			while (voxelIterate.x <= voxelEnd.x) {
+
+				point2D_t const p0(p);
+				p = p2D_rotate(voxelIterate, voxelArea.center(), -vR);
+
+				// back
+				if (0 == (SFM::abs(p.y - p0.y) - 1)) {
+					
+					visible_count += r2D_contains(visible_area, point2D_t(p.x, p0.y));
+					++voxel_count;
+				}
+
+				// center 
+				visible_count += r2D_contains(visible_area, p);
+				++voxel_count;
+
+				++voxelIterate.x;
+			}
+
+			++voxelIterate.y;
+		}
+
+		if (0 == visible_count) { // completely outside
+			return(0);
+		}
+		else if (visible_count != voxel_count) { // intersecting, some outside some inside
+			return(-1);
+		}
+		
+		// else, completely inside
+		return(1);
+		
 	}
 
 	static void __vectorcall clearVoxelsAt(rect2D_t voxelArea) // resets to "ground only"
@@ -1505,7 +1531,7 @@ namespace world
 			while (voxelIterate.x <= voxelEnd.x) {
 
 				point2D_t const p0(p);
-				p = p2D_rotate(voxelIterate, voxelArea.center(), vR);
+				p = p2D_rotate(voxelIterate, voxelArea.center(), -vR);
 
 				// back
 				if (0 == (SFM::abs(p.y - p0.y) - 1)) {
@@ -1516,6 +1542,7 @@ namespace world
 					Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
 					if (pVoxel) {
 						Iso::Voxel oVoxel(*pVoxel);
+						Iso::setColor(oVoxel, 0); // bgr
 						Iso::clearEmissive(oVoxel);
 						setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
 					}
@@ -1531,6 +1558,7 @@ namespace world
 				Iso::Voxel const* const pVoxel = getVoxelAt(p);
 				if (pVoxel) {
 					Iso::Voxel oVoxel(*pVoxel);
+					Iso::setColor(oVoxel, 0); // bgr
 					Iso::clearEmissive(oVoxel);
 					setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
 				}
@@ -2246,15 +2274,14 @@ namespace // private to this file (anonymous)
 				// unsupported hash |= (voxel.Roughness << 8);		// 0000 0000 0000 1111 xxxx xxxx
 				hash |= (uint32_t(alpha >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
 
-				XMVECTOR const xmUV(XMVectorScale(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmIndex), Iso::INVERSE_WORLD_GRID_FSIZE)); // in format xzy (optional, now that us are deried soley in shader
-				XMVECTOR const xmUVs(XMVectorSetW(xmUV, (float)(alpha_color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+				XMVECTOR const xmOrientColor(XMVectorSetW(XMVectorZero(), (float)(alpha_color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 
 				if (transparent) {
 
 					localMiniTrans.emplace_back(
 						voxels_trans,
 
-						xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
+						xmLocation, xmOrientColor, hash
 					);
 				}
 				else {
@@ -2262,7 +2289,7 @@ namespace // private to this file (anonymous)
 					localMini.emplace_back(
 						voxels_dynamic,
 
-						xmLocation, xmUVs, XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f), hash
+						xmLocation, xmOrientColor, hash
 					);
 				}
 
@@ -2431,7 +2458,7 @@ namespace // private to this file (anonymous)
 
 				xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
 
-				if (!(bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::MINI_VOX_STEP)))) {
+				if (!(bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP)))) {
 					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
 					// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
@@ -2590,7 +2617,7 @@ namespace // private to this file (anonymous)
 							Iso::Voxel const oVoxel(*pVoxel);
 							++pVoxel; // sequentially access for best cache prediction
 
-							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work. skip all children
+							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
 								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
@@ -3037,13 +3064,13 @@ namespace world
 
 		if (instance_parent) {
 
-			auto const [hash_prop, instance_prop] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_PROP, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY);
+			//auto const [hash_prop, instance_prop] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_PROP, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY);
 
-			if (instance_prop) {
-				instance_parent->setChild(instance_prop);
+			//if (instance_prop) {
+				//instance_parent->setChild(instance_prop);
 
 				return(&cCopterGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash_parent]));
-			}
+			//}
 		}
 
 #ifndef NDEBUG
@@ -3235,8 +3262,15 @@ namespace world
 		_onLoadedRequired = true; // trigger onloaded() inside Update of VoxelWorld
 	}
 
+	void cVoxelWorld::ResetWorld()
+	{
+		Clear();
+		_onLoadedRequired = true;
+	}
+
 	void cVoxelWorld::OnLoaded(tTime const& __restrict tNow)
 	{
+		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
 
 		if (_terrainTempImage) {
@@ -3550,10 +3584,7 @@ namespace world
 	}
 	rect2D_t const __vectorcall cVoxelWorld::getVisibleGridBoundsClamped() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
-		point2D_t const gridBounds(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z);
-		rect2D_t area(r2D_set_by_width_height(point2D_t{}, gridBounds));
-
-		area = r2D_add(area, p2D_sub(oCamera.voxelIndex_Center, p2D_half(gridBounds)));
+		rect2D_t area(getVisibleGridBounds());
 
 		// clamp to world grid
 		area = r2D_min(area, Iso::MAX_VOXEL_COORD);
@@ -4244,11 +4275,6 @@ namespace world
 		::translateCameraOrient(xmDisplacement);
 	}
 
-	void cVoxelWorld::setCameraElevation(float const fElevation)
-	{
-		oCamera.Elevation = fElevation; // straight in units 0.0f - 256.0f or the max height of the main volume, no interpolation done here.
-	}
-
 	void cVoxelWorld::resetCameraAngleZoom()
 	{
 		// rotation //
@@ -4434,16 +4460,15 @@ namespace world
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
 		// view matrix derived from eyePos
-		XMVECTOR const xmEyeElevation(XMVectorSet(0.0f, -oCamera.Elevation, 0.0f, 0.0f));
 		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
 
 		// In the ening these must be w/o fractional offset - no jitter on lighting and everything else that uses these uniform variables (normal usage via uniform buffer in shader)
 		_currentState.Uniform.eyePos = xmEyePos;
 		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		
-		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset MUST be added here for jitter free movement of camera -in a matrix. does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
+		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
-		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(xmEyePos, xmEyeElevation), xmEyeElevation, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		// *bugfix - ***do not change***
 		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
@@ -4569,6 +4594,15 @@ namespace world
 
 			MinCity::Physics->Update(tNow, tDelta); // improving latency apply physics update after all user, user game object updates
 			
+			{
+				auto it = cAttachableGameObject::begin();
+				while (cAttachableGameObject::end() != it) {
+
+					it->OnUpdate(tNow, tDelta);
+					++it;
+				}
+			}
+
 			// update all image animations //
 			{
 				auto it = ImageAnimation::begin();

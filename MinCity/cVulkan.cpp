@@ -1263,7 +1263,7 @@ void cVulkan::CreateVoxelResources()
 			// special effects voxel shaders :
 
 			// VOXEL_SHADER_RAIN
-			{	
+			/*{	// for reference do not delete
 				// rain specializes voxel size
 				std::vector< vku::SpecializationConstant > constants_voxel_rain_vs;
 				MinCity::VoxelWorld->SetSpecializationConstants_VoxelRain_VS(constants_voxel_rain_vs);
@@ -1278,7 +1278,7 @@ void cVulkan::CreateVoxelResources()
 				CreateVoxelChildResource<eVoxelPipelineCustomized::VOXEL_CLEAR_RAIN>( // renderpass and subpass set appropriastely in CreateSharedPipeline_VoxelClear()
 					_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR], std::forward<vku::double_buffer<vku::VertexBufferPartition const*>&&>(_rtDataChild[eVoxelPipelineCustomized::VOXEL_SHADER_RAIN].vbo_partition_info));
 
-			}
+			}*/
 
 			// todo:
 			// VOXEL_SHADER_WATER
@@ -1384,8 +1384,7 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
 
 		pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
-		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
-		pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
+		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_color));
 
 		// ###***###
 		// alpha must be cleared to 1.0f on main rendertarget / color attachment
@@ -1439,8 +1438,7 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
 
 		pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, worldPos));
-		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_vr));
-		pm.vertexAttribute(2, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, orient_reserved));
+		pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelDynamic, uv_color));
 
 		// ###***###
 		// alpha must be cleared to 1.0f on main rendertarget / color attachment
@@ -1501,7 +1499,7 @@ void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they 
 	pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelNormal));
 
 	pm.vertexAttribute(0, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelNormal, worldPos));
-	pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelNormal, uv_vr));
+	pm.vertexAttribute(1, 0, vk::Format::eR32G32B32A32Sfloat, (uint32_t)offsetof(VertexDecl::VoxelNormal, uv_color));
 
 	// ###***###
 	// alpha must be cleared to 1.0f on main rendertarget / color attachment

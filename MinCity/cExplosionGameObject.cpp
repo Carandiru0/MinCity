@@ -14,8 +14,7 @@ namespace world
 	}
 
 	cExplosionGameObject::cExplosionGameObject(cExplosionGameObject&& src) noexcept
-		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src)), _animation(std::move(src._animation)),
-		_temperatureBoost(std::move(src._temperatureBoost)), _flameBoost(std::move(src._flameBoost)), _emission_threshold{ std::move(src._emission_threshold[0]), std::move(src._emission_threshold[1]) }, _emission_samples(src._emission_samples)
+		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src)), _animation(std::move(src._animation))
 	{
 		src.free_ownership();
 
@@ -29,6 +28,13 @@ namespace world
 			(*src.Instance)->setOwnerGameObject<cExplosionGameObject>(nullptr, nullptr);
 			(*src.Instance)->setVoxelEventFunction(nullptr);
 		}
+
+		_temperatureBoost = std::move(src._temperatureBoost);
+		_flameBoost = std::move(src._flameBoost);
+		_emission_threshold[0] = std::move(src._emission_threshold[0]);
+		_emission_threshold[1] = std::move(src._emission_threshold[1]);
+		_emission_samples = std::move(src._emission_samples);
+		_destroyed = std::move(src._destroyed);
 	}
 	cExplosionGameObject& cExplosionGameObject::operator=(cExplosionGameObject&& src) noexcept
 	{
@@ -53,12 +59,13 @@ namespace world
 		_emission_threshold[0] = std::move(src._emission_threshold[0]);
 		_emission_threshold[1] = std::move(src._emission_threshold[1]);
 		_emission_samples = std::move(src._emission_samples);
+		_destroyed = std::move(src._destroyed);
 		
 		return(*this);
 	}
 
 	cExplosionGameObject::cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _animation(instance_), _temperatureBoost(DEFAULT_TEMPERATURE_BOOST), _flameBoost(DEFAULT_FLAME_BOOST), _emission_threshold{ DEFAULT_EMISSION_THRESHOLD, 0.0f }, _emission_samples(1)
+		: tUpdateableGameObject(instance_), _animation(instance_), _destroyed(false), _temperatureBoost(DEFAULT_TEMPERATURE_BOOST), _flameBoost(DEFAULT_FLAME_BOOST), _emission_threshold{DEFAULT_EMISSION_THRESHOLD, 0.0f}, _emission_samples(1)
 	{
 		instance_->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
@@ -139,16 +146,26 @@ namespace world
 		return(voxel);
 	}
 
+	void cExplosionGameObject::setElevation(float const elevation)
+	{
+		(*Instance)->setElevation(elevation);
+	}
+
 	void cExplosionGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		if (_animation.update(getModelInstance(), tDelta)) {
+		if (_destroyed)
+			return;
 
-			// random start angle
-			//getModelInstance()->setYaw(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
-			//getModelInstance()->destroy(milliseconds(0));
+		auto instance(*Instance);
+
+		if (_animation.update(instance, tDelta)) {
+
+			instance->destroy(milliseconds(0));
+			_destroyed = true;
+			return;
 		}
 			
-		getModelInstance()->setYaw(getModelInstance()->getYaw() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
+		instance->setYaw(getModelInstance()->getYaw() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
 		
 		// ** stable feedback auto regulating emission threshold. Dependent on both the temperature + flames boost levels/inputs.
 		// ** do not change ** provides some dynamic range to the emission/lighting. also optimizes out dark lights that have ~nil emission.

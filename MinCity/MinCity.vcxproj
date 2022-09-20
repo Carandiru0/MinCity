@@ -278,6 +278,7 @@
     <ClInclude Include="betterenums.h" />
     <ClInclude Include="cAbstractToolMethods.h" />
     <ClInclude Include="cAISkyMover.h" />
+    <ClInclude Include="cAttachableGameObject.h" />
     <ClInclude Include="cAudio.h" />
     <ClInclude Include="cBlueNoise.h" />
     <ClInclude Include="cBuildingGameObject.h" />
@@ -377,6 +378,7 @@
     <ClCompile Include="cAbstractToolMethods.cpp" />
     <ClCompile Include="cAIMover.cpp" />
     <ClCompile Include="cAISkyMover.cpp" />
+    <ClCompile Include="cAttachableGameObject.cpp" />
     <ClCompile Include="cAudio.cpp" />
     <ClCompile Include="cBlueNoise.cpp" />
     <ClCompile Include="cBuildingGameObject.cpp" />
@@ -430,7 +432,6 @@
     </ClCompile>
     <ClCompile Include="performance.cpp" />
     <ClCompile Include="private_implementations.cpp" />
-    <ClCompile Include="rain.cpp" />
     <ClCompile Include="RedirectIO.cpp" />
     <ClCompile Include="saveworld.cpp" />
     <ClCompile Include="tbb_fp_env.cpp">
@@ -440,7 +441,6 @@
       <FloatingPointModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Precise</FloatingPointModel>
     </ClCompile>
     <ClCompile Include="types.cpp" />
-    <ClCompile Include="volumetricradialgrid.cpp" />
     <ClCompile Include="volumetricVisibility.cpp" />
     <ClCompile Include="voxBinary.cpp">
       <RuntimeTypeInfo Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</RuntimeTypeInfo>
@@ -834,7 +834,7 @@
     </CustomBuild>
     <None Include="..\Data\Shaders\text.glsl" />
     <CustomBuild Include="..\Data\Shaders\voxel_rain.frag">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

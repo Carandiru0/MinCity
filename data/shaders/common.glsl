@@ -312,15 +312,27 @@ vec3 decompressNormal(in const vec2 compressed_normal)
 	return(normalize(decompressed_normal));
 }
 
-vec3 rotate( in const vec3 p, in const vec4 q) // preferred - rotate a 3d vector by quaternion
+// rotation quaternions only
+vec4 qmul(in const vec4 q0, in const vec4 q1)
+{
+    vec4 qq;
+    
+    qq.xyz = cross(q0.xyz, q1.xyz) + q0.w*q1.xyz + q1.w*q0.xyz;
+    qq.w = q0.w*q1.w - dot(q0.xyz, q1.xyz);
+    return(qq);
+}
+vec4 qinv(in const vec4 q0)
+{
+	return(vec4(-q0.xyz,q0.w));
+}
+
+vec3 v3_rotate( in const vec3 p, in const vec4 q) // preferred - rotate a 3d vector by quaternion
 { 
-  return(fma(cross(q.xyz, cross(q.xyz, p) + q.w * p), vec3(2.0f), p));
+  return(qmul(qinv(q), qmul(vec4(p, 0.0f), q)).xyz);
 }
 
 vec3 rotate( in const vec3 p, in const vec2 cossin )
 {
-	//return(XMVectorSet(SFM::__fms(p.x, angle.c, p.y * angle.s),
-	//				     SFM::__fma(p.x, angle.s, p.y * angle.c), p.z, p.w));
 	#define c_ x
 	#define s_ y
 
@@ -331,8 +343,6 @@ vec3 rotate( in const vec3 p, in const vec2 cossin )
 }
 vec3 rotate( in const vec3 p, in const float angle )
 {
-	//return(XMVectorSet(SFM::__fms(p.x, angle.c, p.y * angle.s),
-	//				     SFM::__fma(p.x, angle.s, p.y * angle.c), p.z, p.w));
 	#define c_ x
 	#define s_ y
 	const vec2 cossin = vec2(cos(angle), sin(angle));
@@ -343,8 +353,6 @@ vec3 rotate( in const vec3 p, in const float angle )
 }
 vec2 rotate( in const vec2 p, in const vec2 cossin )
 {
-	//return(XMVectorSet(SFM::__fms(p.x, angle.c, p.y * angle.s),
-	//				     SFM::__fma(p.x, angle.s, p.y * angle.c), p.z, p.w));
 	#define c_ x
 	#define s_ y
 
@@ -355,8 +363,6 @@ vec2 rotate( in const vec2 p, in const vec2 cossin )
 }
 vec2 rotate( in const vec2 p, in const float angle )
 {
-	//return(XMVectorSet(SFM::__fms(p.x, angle.c, p.y * angle.s),
-	//				     SFM::__fma(p.x, angle.s, p.y * angle.c), p.z, p.w));
 	#define c_ x
 	#define s_ y
 	const vec2 cossin = vec2(cos(angle), sin(angle));

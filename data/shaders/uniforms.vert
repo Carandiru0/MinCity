@@ -28,9 +28,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 layout(location = 0) in vec4 inWorldPos;
 layout(location = 1) in vec4 inUV;
-#ifdef DYNAMIC
-layout(location = 2) in vec4 inOrientReserved;
-#endif
 
 layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 
@@ -95,7 +92,6 @@ writeonly layout(location = 0) out streamOut
 	flat float	 color;
 	flat vec4    material;
 	flat vec4    extra;
-	flat float	 passthru;
 #endif
 } Out;
 #endif
@@ -172,31 +168,17 @@ const float INV_MAX_TRANSPARENCY = (1.0f / 4.0f);	// 4 levels of transparency (0
 
 #endif
 
-//#ifdef ROAD
-//float getRealHeight(in const float heightstep)
-//{
-//	return fma(heightstep, (INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE * 0.5f), VOX_SIZE * 0.5f);
-//}
-//#endif // not used more accurate way found
+#if defined(DYNAMIC)
 
-#ifdef DYNAMIC // *do not change* extremely sensitive to order
-vec3 v3_rotate_roll(in const vec3 p)
+// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
+vec4 decode_quaternion(in const vec3 xyz, in const float sgn)
 {
-	return( vec3(p.x,
-				 fma(p.y, -inUV.x, p.z * inUV.y),
-				 fma(p.y, inUV.y, p.z * inUV.x) ));
-}
-vec3 v3_rotate_yaw(in const vec3 p)
-{											  
-	return( vec3(fma(p.x, inOrientReserved.z, -p.z * inOrientReserved.w),
-				 p.y,
-				 fma(p.x, inOrientReserved.w, p.z * inOrientReserved.z) ));
-}
-vec3 v3_rotate_pitch(in const vec3 p)
-{
-	return( vec3(fma(p.x, inOrientReserved.x, p.y * inOrientReserved.y),
-				 fma(p.x, -inOrientReserved.y, p.y * inOrientReserved.x),
-				 p.z ));
+	// 1.0 = x^2 + y^2 + z^2 + w^2
+	// w^2 = 1.0 - x^2 + y^2 + z^2
+	// w = sqrt(1.0 - x^2 + y^2 + z^2)
+
+	const float norm = dot(xyz,xyz); // *bugfix - y must be flipped for vulkan coord system
+	return(normalize(vec4(vec3(xyz.x,-xyz.y,xyz.z), sgn * sqrt(1.0f - abs(norm)))));
 }
 
 #endif
@@ -207,9 +189,12 @@ void main() {
 	const float size = VOX_SIZE;
 
 #ifdef DYNAMIC
-	const vec3 right = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(vec3(1.0f, 0.0f, 0.0f)))); // *do not change* extremely sensitive to order
+	// only DYNAMIC
+	const vec4 quaternion = decode_quaternion(inUV.xyz, sign(inUV.w));
+
+	const vec3 right = v3_rotate(vec3(1.0f, 0.0f, 0.0f), quaternion); //v3_rotate_pitch(v3_rotate_yaw(v3_rotate_roll(vec3(1.0f, 0.0f, 0.0f), sin_angles.z, cos_angles.z), sin_angles.y, cos_angles.y), sin_angles.x, cos_angles.x); // *do not change* extremely sensitive to order
 	Out.right = right * size;
-	const vec3 forward = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(vec3(0.0f, 0.0f, 1.0f)))); // *do not change* extremely sensitive to order
+	const vec3 forward = v3_rotate(vec3(0.0f, 0.0f, 1.0f), quaternion); //v3_rotate_pitch(v3_rotate_yaw(v3_rotate_roll(vec3(0.0f, 0.0f, 1.0f), sin_angles.z, cos_angles.z), sin_angles.y, cos_angles.y), sin_angles.x, cos_angles.x); // *do not change* extremely sensitive to order
 	Out.forward	= forward * size;
 	Out.up = cross(forward, right) * size;
 #else
@@ -239,10 +224,6 @@ void main() {
   Out.world_uv.xy = inUV.xy; //  - mousebuffer voxelindex ID
 #elif defined(BASIC)
   Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
-#endif
-
-#if !(defined(HEIGHT) || defined(ROAD) || defined(BASIC)) // voxels only
-  Out.passthru = inUV.w; // pass-thru - important as .w component is customizable dependent on fragment shader used (normally a packed color, but for ie.) shockwaves it's uniform distance)
 #endif
 
 #ifndef BASIC
@@ -350,7 +331,7 @@ void main() {
 	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
 #endif
 #else
-	Out.color = packColor(toLinear(unpackColor(inUV.w))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
+	Out.color = packColor(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
 #endif
 #endif
 
@@ -360,7 +341,7 @@ void main() {
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
 #if !defined(HEIGHT)
-const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions).xzy);
+  const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions).xzy);
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
 #if defined(CLEAR) // erase

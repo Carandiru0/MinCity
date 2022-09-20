@@ -32,16 +32,32 @@ void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 l
 	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
 	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
+	light_direction_distance = light_direction_distance + subgroupQuadSwapHorizontal(light_direction_distance);
+	light_direction_distance = light_direction_distance + subgroupQuadSwapVertical(light_direction_distance);
+	light_direction_distance = light_direction_distance * 0.25f; // less divergence
+
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
+
+	light_color = light_color + subgroupQuadSwapHorizontal(light_color);
+	light_color = light_color + subgroupQuadSwapVertical(light_color);
+	light_color = light_color * 0.25f; // less divergence
 }
 void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
-
+	
 	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
 	light_distance = light_distance * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
+	light_distance = light_distance + subgroupQuadSwapHorizontal(light_distance);
+	light_distance = light_distance + subgroupQuadSwapVertical(light_distance);
+	light_distance = light_distance * 0.25f; // less divergence
+
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
+
+	light_color = light_color + subgroupQuadSwapHorizontal(light_color);
+	light_color = light_color + subgroupQuadSwapVertical(light_color);
+	light_color = light_color * 0.25f; // less divergence
 }
 #ifdef FAST_LIGHTMAP
 void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
@@ -51,7 +67,15 @@ void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance,
 	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
 	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
+	light_direction_distance = light_direction_distance + subgroupQuadSwapHorizontal(light_direction_distance);
+	light_direction_distance = light_direction_distance + subgroupQuadSwapVertical(light_direction_distance);
+	light_direction_distance = light_direction_distance * 0.25f; // less divergence
+
 	light_color = textureLod(volumeMap[REFLECT], voxel_coord, 0).rgb;
+
+	light_color = light_color + subgroupQuadSwapHorizontal(light_color);
+	light_color = light_color + subgroupQuadSwapVertical(light_color);
+	light_color = light_color * 0.25f; // less divergence
 }
 #endif
 // natural neighbour sampling of light volume

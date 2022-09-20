@@ -24,6 +24,7 @@ BETTER_ENUM(eEvent, uint32_t const,
 	AUTO_SAVE,
 	LOAD,
 	NEW,
+	RESET,
 	SHOW_IMPORT_WINDOW,
 	SHOW_MAIN_WINDOW,
 
@@ -109,6 +110,7 @@ public:
 	static void Load();
 	static void Save(bool const bShutdownAfter = false);
 	static int32_t const Quit(bool const bQueryStateOnly = false); // prompts user to quit, returns user selection (eWindowQuit)
+	static void Reset();
 	
 	// Callbacks / Events //
 	static void OnFocusLost();

@@ -26,10 +26,13 @@ public:
 	void __vectorcall LeftMouseClickAction(FXMVECTOR const xmMousePos);
 	void __vectorcall LeftMouseDragAction(FXMVECTOR const xmMousePos, FXMVECTOR const xmLastDragPos, tTime const& __restrict tDragStart);
 	void __vectorcall MouseMoveAction(FXMVECTOR const xmMousePos);
+
+private:
+
 private:
 	cUser*				_user;
 	cToolProvider*		_tools;
-
+	bool				_reset_world_event_sent;
 public:
 	cUserInterface();
 	~cUserInterface();

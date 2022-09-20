@@ -1,4 +1,18 @@
 #pragma once
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+
+- attempted interpolation on v2_rotation_t, does not work due to way vector interpolations work - not worth it
+- only one Interpolator.set(xxx, value) can occur for xxx per frame, otherwise the last value is overwritten incorrectly and last becomes target rather than the current value. Only SET once / frame the interpolated<> value thru Interpolator.set()
+
+*/
+
 #include "globals.h"
 #include <tbb/tbb.h>
 #include <Math/superfastmath.h>
@@ -29,7 +43,7 @@ public: // only constant access
 };
 
 // if it crashes, there was no removal of the interpolator before or during the objects destruction. Any object or usage of an interpolator requires the owner to remove the interpolator when it is destroyed. 
-class interpolator
+class alignas(CACHE_LINE_BYTES) interpolator
 {
 private:
 	template<typename T> // type must be compatible with SFM::lerp, float or XMFLOAT4A, 3A, etc
@@ -54,36 +68,27 @@ private:
 		}
 
 		void set(T const& target_) {
-
-			if (target_ != target) {
-				last = current->value;			// last becomes what is current
-				current->value = target;		// current always transitions to target
-				target = target_;				// set new target
-			}
+			last = current->value;			// last becomes what is current
+			current->value = target;		// current always transitions to target
+			target = target_;				// set new target
 		}
 
 		void __vectorcall set(FXMVECTOR target_) {
 
 			if constexpr (std::is_same<T, XMFLOAT4A>::value) {
-				//if (XMVector4NotEqual(target_, XMLoadFloat4A(&target))) {
-					XMStoreFloat4A(&last, XMLoadFloat4A(&current->value));
-					XMStoreFloat4A(&current->value, XMLoadFloat4A(&target));
-					XMStoreFloat4A(&target, target_);
-				//}
+				XMStoreFloat4A(&last, XMLoadFloat4A(&current->value));
+				XMStoreFloat4A(&current->value, XMLoadFloat4A(&target));
+				XMStoreFloat4A(&target, target_);
 			}
 			else if constexpr (std::is_same<T, XMFLOAT3A>::value) {
-				//if (XMVector3NotEqual(target_, XMLoadFloat3A(&target))) {
-					XMStoreFloat3A(&last, XMLoadFloat3A(&current->value));
-					XMStoreFloat3A(&current->value, XMLoadFloat3A(&target));
-					XMStoreFloat3A(&target, target_);
-				//}
+				XMStoreFloat3A(&last, XMLoadFloat3A(&current->value));
+				XMStoreFloat3A(&current->value, XMLoadFloat3A(&target));
+				XMStoreFloat3A(&target, target_);
 			}
 			else if constexpr (std::is_same<T, XMFLOAT2A>::value) {
-				//if (XMVector2NotEqual(target_, XMLoadFloat2A(&target))) {
-					XMStoreFloat2A(&last, XMLoadFloat2A(&current->value));
-					XMStoreFloat2A(&current->value, XMLoadFloat2A(&target));
-					XMStoreFloat2A(&target, target_);
-				//}
+				XMStoreFloat2A(&last, XMLoadFloat2A(&current->value));
+				XMStoreFloat2A(&current->value, XMLoadFloat2A(&target));
+				XMStoreFloat2A(&target, target_);
 			}
 
 		 	// last becomes what is current
@@ -95,32 +100,24 @@ private:
 		void set_component(float const target_)
 		{
 			if constexpr (COMPONENT_X == component) {
-				//if (target_ != target.x) {
-					last.x = current->value.x;
-					current->value.x = target.x;
-					target.x = target_;
-				//}
+				last.x = current->value.x;
+				current->value.x = target.x;
+				target.x = target_;
 			}
 			else if constexpr (COMPONENT_Y == component) {
-				//if (target_ != target.y) {
-					last.y = current->value.y;
-					current->value.y = target.y;
-					target.y = target_;
-				//}
+				last.y = current->value.y;
+				current->value.y = target.y;
+				target.y = target_;
 			}
 			else if constexpr (COMPONENT_Z == component) {
-				//if (target_ != target.z) {
-					last.z = current->value.z;
-					current->value.z = target.z;
-					target.z = target_;
-				//}
+				last.z = current->value.z;
+				current->value.z = target.z;
+				target.z = target_;
 			}
 			else if constexpr (COMPONENT_W == component) {
-				//if (target_ != target.w) {
-					last.w = current->value.w;
-					current->value.w = target.w;
-					target.w = target_;
-				//}
+				last.w = current->value.w;
+				current->value.w = target.w;
+				target.w = target_;
 			}
 		}
 
@@ -144,10 +141,6 @@ private:
 				XMStoreFloat2A(&current->value, all_);
 				XMStoreFloat2A(&target, all_);
 			}
-
-			// last becomes what is current
-			// current always transitions to target
-			// set new target
 		}
 
 		template<uint32_t component>
@@ -176,7 +169,7 @@ private:
 public:
 	template <typename T>
 	void set(interpolated<T> const& source, T const target) { _finterpolators[source.index].set(target); } // index must always be within bounds of vector
-		
+	
 	template <typename T>
 	void __vectorcall set(interpolated<T> const& source, XMVECTOR const target) {
 
@@ -266,7 +259,9 @@ public:
 	}
 
 	template <typename T, typename U = T>
-	U const get(interpolated<T> const& source) { return(_finterpolators[source.index].target); } // index must always be within bounds of vector
+	U const get(interpolated<T> const& source) { 
+		return(_finterpolators[source.index].target); 
+	} // index must always be within bounds of vector
 
 	template <>
 	XMVECTOR const __vectorcall get<XMFLOAT4A, XMVECTOR>(interpolated<XMFLOAT4A> const& source) {
@@ -297,11 +292,11 @@ private:
 
 				std::swap(*it, this->back());
 
-				this->pop_back();
-
 				if (this->end() != it) {
 					it->current->index = index; // update the index of the moved instance
 				}
+
+				this->pop_back();
 			}
 		}
 	};

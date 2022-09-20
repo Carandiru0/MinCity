@@ -59,7 +59,8 @@ namespace world
 	template<bool const Dynamic>
 	STATIC_INLINE bool const __vectorcall setVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
 	void __vectorcall setVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
-	void __vectorcall setVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR); // for dynamic only
+	void __vectorcall setVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR);			// for dynamic only
+	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR); // ""  dynamic ""
 
 	template<bool const Dynamic>
 	STATIC_INLINE bool const __vectorcall resetVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
@@ -67,6 +68,7 @@ namespace world
 	void __vectorcall resetVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR); // for dynamic only
 
 	uint32_t const getVoxelsAt_AverageHeight(rect2D_t voxelArea);
+
 	void setVoxelHeightAt(point2D_t const voxelIndex, uint32_t const heightstep);
 	void setVoxelsHeightAt(rect2D_t voxelArea, uint32_t const heightstep);
 	rect2D_t const voxelArea_grow(rect2D_t const voxelArea, point2D_t const grow);

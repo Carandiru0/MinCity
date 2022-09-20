@@ -5,10 +5,23 @@
 
 class no_vtable cPhysics : no_copy
 {
+	static constexpr float const GRAVITY_EARTH = -9.80665f;	// https://physics.nist.gov/cuu/Constants/index.html (exact value) m/s*s [acceleration]
+	static constexpr float const GRAVITY_MOON = -1.625f;	// (exact value) m/s*s [acceleration]
 public:
-	static constexpr float const GRAVITY = -9.80665f;	// https://physics.nist.gov/cuu/Constants/index.html (exact value) m/s*s [acceleration]
+	static constexpr float const GRAVITY = GRAVITY_MOON;
 	static constexpr float const MIN_FORCE = 1.0f;		// Epsilon for minimum force 1 N [force]	// smallest force to move a voxel, at 1 voxel per second
 	static constexpr float const TORQUE_OFFSET_SCALAR = 0.33333333f; // affects how forceful rotation is (torque). compare with linear force. set as desired.
+	static constexpr float const VELOCITY_EPSILON = Iso::MINI_VOX_SIZE * 0.5f;
+	static constexpr float const FORCE_EPSILON = 0.1f;
+
+	// convert # of voxels to meters
+	static constexpr float const voxels_to_meters(float const voxel_count) {
+		return(voxel_count * Iso::VOX_STEP * 0.92f); // adjustment factor to more closely match an accurate rate of acceleration. [within ~250ms of a real fall of equivalent time and gravity]
+	}
+	// convert # of voxels to mass
+	static constexpr float const voxels_to_kg(float const voxel_count) {
+		return(voxels_to_meters(voxel_count)); // same scale
+	}
 private:
 	static constexpr uint32_t COHERENT = 1,
 							  STAGING = 0;
@@ -43,3 +56,6 @@ public:
 	~cPhysics() = default;  // uses CleanUp instead
 	void CleanUp();
 };
+
+#define voxels_to_meters cPhysics::voxels_to_meters
+#define voxels_to_kg cPhysics::voxels_to_kg

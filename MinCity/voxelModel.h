@@ -14,6 +14,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "globals.h"
 #include <Math/superfastmath.h>
 #include <Math/v2_rotation_t.h>
+#include <Math/quat_t.h>
 #include "IsoVoxel.h"
 #include "Declarations.h"
 #include "voxelScreen.h"
@@ -321,9 +322,9 @@ namespace voxB
 		
 		uvec4_t 		_maxDimensions;					// actual used size of voxel model
 		XMFLOAT3A 		_maxDimensionsInv;
-		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis) (unit: voxels)
-		float			_Radius;						// pre-calculated radius - based directly off of extents (unit: voxels)
-		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels) (unit: voxels)
+		XMFLOAT3A		_Extents;						// xz = localarea bounds, y = maxdimensions.y (Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis) (unit: voxels) *note this is not in minivoxels
+		float			_Radius;						// pre-calculated radius - based directly off of extents (unit: voxels) *note this is not in minivoxels
+		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels) (unit: voxels) *note this is not in minivoxels
 		
 		voxelModelFeatures _Features;
 		bool			   _Mapped;						// "_Voxels" points to memory mapped file (virtual memory) containing contigous data
@@ -441,6 +442,8 @@ namespace voxB
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_trans;
 			voxelModelInstance<Dynamic> const& __restrict			instance;
 
+			quat_t const& orientation;
+
 			XMVECTOR const  maxDimensionsInv, maxDimensions;
 			float const		YDimension;
 			uint32_t const	Transparency;
@@ -456,7 +459,8 @@ namespace voxB
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans_,
-				voxelModelInstance<Dynamic> const& __restrict instance_
+				voxelModelInstance<Dynamic> const& __restrict instance_,
+				quat_t const& orientation_
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceType& PerformanceCounters_
 #endif
@@ -465,7 +469,7 @@ namespace voxB
 				xmVoxelOrigin(xmVoxelOrigin_),
 				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
 				instance(instance_),
-
+				orientation(orientation_),
 				maxDimensionsInv(XMLoadFloat3A(&instance_.getModel()._maxDimensionsInv)), 
 				maxDimensions(uvec4_v(instance_.getModel()._maxDimensions).v4f()),
 				YDimension(XMVectorGetY(maxDimensions)),
@@ -509,22 +513,18 @@ namespace voxB
 
 					XMVECTOR xmMiniVox = getMiniVoxelGridIndex(maxDimensions, maxDimensionsInv, _mm_cvtepi32_ps(voxel.getPosition()));
 
-					[[maybe_unused]] XMVECTOR xmOrient, xmExtra;  // combined rotation vectors (optimized out depending on "Dynamic")
+					[[maybe_unused]] XMVECTOR xmOrient;  // rotation quaternion (optimized out depending on "Dynamic")
+					[[maybe_unused]] float Sign(1.0f);
 
 					if constexpr (Dynamic) {
-						voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
+						// orient voxel by quaternion
+						xmMiniVox = v3_rotate(xmMiniVox, orientation); // *do not change* extremely sensitive to order
 
-						XMVECTOR const xmPitch(instance_dynamic.getPitch().v2());
-						XMVECTOR const xmYaw(instance_dynamic.getYaw().v2());
-						XMVECTOR const xmRoll(instance_dynamic.getRoll().v2()); // *do not change* extremely sensitive to order
-						
-						// rotation order is important
-						// in this order, the rotations add together
-						// in the other order, each rotation is independent of each other
-						// no quaternions, no matrices, just vectors - simplest possible solution.
-						xmOrient = XMVectorAdd(XMVectorRotateRight<2>(xmYaw), xmPitch);
-						xmExtra = xmRoll;
-						xmMiniVox = v3_rotate_roll(v3_rotate_yaw(v3_rotate_pitch(xmMiniVox, xmPitch), xmYaw), xmRoll); // *do not change* extremely sensitive to order
+						// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
+						xmOrient = orientation.v4();
+
+						if (XMVectorGetW(xmOrient) < 0.0f)
+							Sign = -Sign; // default is positive. the sign is packed into color. *color* must not equal zero for sign to be preserved
 					}
 
 					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, SFM::__fms(YDimension, -0.5f, XMVectorGetY(xmMiniVox))), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin, precise height offset for center of model
@@ -539,7 +539,7 @@ namespace voxB
 						if (voxel.Hidden)
 							continue;
 
-						uint32_t const color(voxel.getColor() & 0x00FFFFFF); // remove alpha
+						uint32_t const color(SFM::max(1u, voxel.getColor()) & 0x00FFFFFFu); // ensure not equal to zero so packed sign is valid & remove alpha
 						bool const Emissive((voxel.Emissive & !Faded) & (bool)color); // if color is true black it's not emissive
 						
 						if constexpr (!EmissionOnly)
@@ -572,8 +572,7 @@ namespace voxB
 									local::voxels_dynamic.emplace_back(
 										voxels_dynamic,
 										xmStreamOut,
-										XMVectorSetW(xmExtra, (float)color), // dynamic uses extra vector
-										xmOrient,
+										XMVectorSetW(xmOrient, Sign * (float)color),
 										hash
 									);
 								}
@@ -581,7 +580,7 @@ namespace voxB
 									local::voxels_static.emplace_back(
 										voxels_static,
 										xmStreamOut,
-										XMVectorSet(0.0f, 0.0f, 0.0f, (float)color), // static does not use extra vector except color (.w)
+										XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
 										hash
 									);
 								}
@@ -596,8 +595,7 @@ namespace voxB
 									local::voxels_trans.emplace_back(
 										voxels_trans,
 										xmStreamOut,
-										XMVectorSetW(xmExtra, (float)color), // dynamic uses extra vector
-										xmOrient,
+										XMVectorSetW(xmOrient, Sign * (float)color),
 										hash
 									);
 								}
@@ -606,8 +604,7 @@ namespace voxB
 									local::voxels_trans.emplace_back(
 										voxels_trans,
 										xmStreamOut,
-										XMVectorSet(1.0f, 0.0f, 0.0f, (float)color), // static does not use extra vector except color (.w) --- *bugfix since this is actualy upgraded to dynamic voxel, make rotation values correct for no rotation in the extra vector
-										XMVectorSet(1.0f, 0.0f, 1.0f, 0.0f),  // bugfix: BIG bug: (first paramete must be equal to 1.0f, second 0.0f) - was rotated, now transparency adjacency works & solves problem with hidden voxels at 0.0f rotation
+										XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
 										hash
 									);
 								}
@@ -671,6 +668,12 @@ namespace voxB
 			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(vxl_count);
 		}
 
+		quat_t orientation; // only applies to dynamic model instances, otherwise this is ignored
+		if constexpr (Dynamic) {
+			voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
+
+			orientation = quat_t(instance_dynamic.getPitch(), instance_dynamic.getYaw(), instance_dynamic.getRoll()); // replace with actual orientation
+		}
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceType PerformanceCounters;
 #endif
@@ -690,7 +693,8 @@ namespace voxB
 			RenderFuncBlockChunk(xmVoxelOrigin,
 				_Voxels, 
 				pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
-				instance
+				instance,
+				orientation // dynamic only
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceCounters
 #endif

@@ -42,7 +42,7 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 
 
-#define i_extra_00 uv.w			// *                          -special case careful this is also reserved entire uv vector (uv.xyzw) pass thru to fragment shader
+#define i_extra_00 uv.w			// *                          - free (unused)
 #define i_extra_0 N.w			// *						  - ambient (only used when road or terrain, normal voxels have material)
 #define i_extra_1 V.w			// *						  - emission (only used when road or terrain, normal voxels have material)
 #define f_extra_0 extra.x		// *						  - packed color
@@ -54,7 +54,7 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 // f_ = flat, not interpolated ""   ""
 
 // defaults //
-#define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
+// free not used anymore #define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
 #define _ambient i_extra_0
 #define _emission i_extra_1
 #define _color f_extra_0

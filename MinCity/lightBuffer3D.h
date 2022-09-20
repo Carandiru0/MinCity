@@ -139,16 +139,15 @@ public:
 		// reset bounds
 		_maximum = std::move<Bounds&&>(Bounds{});
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
-	}
-
-	__declspec(safebuffers) void __vectorcall map() {
-		_staging[_active_resource_index] = (XMFLOAT4A* const __restrict)_stagingBuffer[_active_resource_index].map(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
 
 		// clear internal memory
 		___memset_threaded<CACHE_LINE_BYTES>(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), _block_size_atomic); // 700KB / thread (12 cores)
 		// clear internal cache
 		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
+	}
 
+	__declspec(safebuffers) void __vectorcall map() {
+		_staging[_active_resource_index] = (XMFLOAT4A* const __restrict)_stagingBuffer[_active_resource_index].map(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
 		// clear staging buffer (right before usage)
 		___memset_threaded<16>(_staging[_active_resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
 	}

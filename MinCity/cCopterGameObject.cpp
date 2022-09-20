@@ -8,12 +8,12 @@ namespace world
 {
 
 	cCopterGameObject::cCopterGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_body)
-		: 
-		_body(&cCopterBodyGameObject::emplace_back(instance_body)),
-		_prop(&cCopterPropGameObject::emplace_back((Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict)instance_body->getChild()))
+		//: 
+		//_body(&cCopterBodyGameObject::emplace_back(instance_body)),
+		//_prop(&cCopterPropGameObject::emplace_back((Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict)instance_body->getChild()))
 	{
-		_body->SetOwnerCopter(this);
-		_prop->SetOwnerCopter(this);
+		//_body->SetOwnerCopter(this);
+		//_prop->SetOwnerCopter(this);
 	}
 
 	//cCopterGameObject::iterator cCopterGameObject::Validate(cCopterGameObject::iterator const& it) {
