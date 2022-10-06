@@ -42,7 +42,7 @@ namespace Volumetric
 
 	bool const __vectorcall voxelModelInstance_Dynamic::synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) const // only for dynamic instances, expects 2D vector with x, z components only!!!
 	{
-		if (hashID) {
+		if (hashID && !destroyPending()) {
 
 			point2D_t* const __restrict pRootVoxel(Volumetric::VolumetricLink->World.acquireVoxelModelInstanceRootIndex(hashID));
 

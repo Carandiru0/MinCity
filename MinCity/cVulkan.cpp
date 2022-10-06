@@ -426,8 +426,9 @@ void cVulkan::CreateVolumetricResources()
 	dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex, 1);
 	dslm.image(1U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);  // half-res depth
 	dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // blue noise
-	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
-	dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
+	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());  // view space normals	
+	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
+	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
 #ifdef DEBUG_VOLUMETRIC
 	dslm.buffer(10U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 #endif	
@@ -1067,78 +1068,6 @@ void cVulkan::CreateVoxelResources()
 		}
 	}
 
-	{ // road voxels //
-
-		std::vector< vku::SpecializationConstant > constants_road_basic_vs, constants_road_vs, constants_road_gs, constants_road_fs;
-		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_Basic_VS(constants_road_basic_vs);
-		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_VS(constants_road_vs);
-		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_GS(constants_road_gs);
-		MinCity::VoxelWorld->SetSpecializationConstants_VoxelRoad_FS(constants_road_fs);
-
-		vk::DeviceSize gpuSize{};
-
-		// main vertex buffer for road
-		gpuSize = Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(VertexDecl::VoxelNormal); 
-		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
-			totalSize += gpuSize;
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]) = new vku::DynamicVertexBuffer(gpuSize, true);
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC_ZONLY]._vbo[resource_index]) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]); // basic refers to vertex buffer
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC]._vbo[resource_index]) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]); // basic refers to vertex buffer
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS]._vbo[resource_index]) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]); // trans refers to vertex buffer
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD_CLEARMASK]._vbo[resource_index]) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]); // clearmask refers to vertex buffer
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD_OFFSCREEN]._vbo[resource_index]) = (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]); // clearmask refers to vertex buffer
-
-			// partition the shared vertex buffer *first*
-			(*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index])->createPartitions((uint32_t)eVoxelRoadVertexBufferPartition::_size());
-
-			VKU_SET_OBJECT_NAME(vk::ObjectType::eBuffer, (VkBuffer)(*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index])->buffer(), vkNames::Buffer::ROAD);
-		}
-		
-		// opaque road
-		{
-			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_road.vert.bin", constants_road_vs };
-			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_road.geom.bin", constants_road_gs };
-			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_road.frag.bin", constants_road_fs };
-			CreateVoxelResource<false, false, false, false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD],  // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
-				_window->midPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_, geom_, frag_, 0U);
-
-			CreateVoxelResource<false, false, false, false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_OFFSCREEN], // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
-				_window->offscreenPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_, geom_, frag_, 0U);
-
-			{ // specialization for static road
-				vku::ShaderModule const vert_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.vert.bin", constants_road_basic_vs };
-				vku::ShaderModule const geom_basic_road_{ _device, SHADER_BINARY_DIR "uniforms_basic_road.geom.bin" };
-
-				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC_ZONLY],
-					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_road_, geom_basic_road_, frag_null_, 0U);
-
-				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC],
-					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_road_, geom_basic_road_, frag_basic_, 0U);
-			}
-		}
-		// transparent road
-		{
-			vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.vert.bin", constants_road_vs };
-			vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.geom.bin", constants_road_gs };
-			vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms_trans_road.frag.bin", constants_road_fs };
-			CreateVoxelResource<false, false, false, true, true>(_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS], // *bugfix - sample shading enabled for roads only. combats texture/shader aliasing.
-				_window->transPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_, geom_, frag_, 0U);
-
-			{ // specialization for static road
-				vku::ShaderModule const vert_basic_road_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_road.vert.bin", constants_road_basic_vs };
-				vku::ShaderModule const geom_basic_road_trans_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_road.geom.bin" };
-
-				CreatePipeline_VoxelClear_Static(_rtData[eVoxelPipeline::VOXEL_ROAD_CLEARMASK],
-					vert_basic_road_trans_, geom_basic_road_trans_);
-			}
-		}
-	}
-
 	{ // static & dynamic voxels //
 
 		std::vector< vku::SpecializationConstant > constants_voxel_basic_vs, constants_voxel_vs, constants_voxel_gs, constants_voxel_fs;
@@ -1306,7 +1235,6 @@ void cVulkan::CreateSharedVoxelResources()
 		TEX_BLUE_NOISE_SAMPLER,
 		TEX_TERRAIN_SAMPLER, 
 		TEX_GRID_SAMPLER,
-		TEX_ROAD_SAMPLER,
 		TEX_BLACKBODY_SAMPLER
 	};// first texture always has repeat addressing, and is a mix of noises on each channel (see textureboy)
 	
@@ -1325,7 +1253,6 @@ void cVulkan::CreateSharedVoxelResources()
 		dslm.image(4U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);											// 2d texture(ambient light reflection)
 		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, TEXTURE_ARRAY_LENGTH, samplers_tex_array);			// 2d texture array
 		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &samplers_common[0]);					// 2d texture (last color backbuffer)
-
 		_rtSharedData.descLayout[eVoxelDescSharedLayout::VOXEL_COMMON] = dslm.createUnique(_device);
 	}
 
@@ -1413,6 +1340,10 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 		pm.blendBegin(VK_FALSE);
 		pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
 
+		// no output to third color attachment
+		pm.blendBegin(VK_FALSE);
+		pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
+
 		// Create a pipeline using a renderPass built for our window.
 		// transparent dynamic voxels in overlay renderpass, subpass 0
 		// transparent "mask" dynamic voxels in zpass, subpass 0
@@ -1468,6 +1399,12 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 		typedef vk::ColorComponentFlagBits ccbf;
 		pm.blendBegin(VK_FALSE);
 		pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA);
+
+		// no output to third color attachment
+		// normal buffer
+		typedef vk::ColorComponentFlagBits ccbf;
+		pm.blendBegin(VK_FALSE);
+		pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
 
 		// Create a pipeline using a renderPass built for our window.
 		// transparent dynamic voxels in overlay renderpass, subpass 0
@@ -1526,6 +1463,10 @@ void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they 
 
 	// static transparents (roads currently) does not modify the mouse buffer
 	typedef vk::ColorComponentFlagBits ccbf;
+	pm.blendBegin(VK_FALSE);
+	pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
+
+	// static transparents do not output to normal buffer
 	pm.blendBegin(VK_FALSE);
 	pm.blendColorWriteMask((vk::ColorComponentFlagBits)0);
 
@@ -1607,9 +1548,6 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 
 		// VOXEL_TERRAIN
 		{ (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>(), 1, 0, 0 },
-
-		// VOXEL_ROAD
-		{ (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>(), 1, 0, 0 },
 
 		// VOXEL_STATIC
 		{ (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>(), 1, 0, 0 },
@@ -1705,7 +1643,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->normalImageView(), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
 
 		}
 	}
@@ -1847,27 +1785,6 @@ void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CH
 {
 	uint32_t const resource_index(s.resource_index);
 	// ***** descriptor set must be set outside of this function ***** //
-
-	{ // clearmask transparent roads
-		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_CLEARMASK;
-
-		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
-		if (0 != ActiveVertexCount) {
-
-			s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-
-			// trans partition
-			{
-				auto const& partition_info((*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_TRANS]);
-				uint32_t const partition_vertex_count = partition_info.active_vertex_count;
-				if (0 != partition_vertex_count) {
-					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-					uint32_t const partition_start_vertex = partition_info.vertex_start_offset;
-					s.cb.draw(partition_vertex_count, 1, partition_start_vertex, 0);
-				}
-			}
-		}
-	}
 
 	// ## deferred mask dynamic children "Transparent Mask" voxels
 	//    has to be last as the depth buffer must be complete by this point for correct masking
@@ -2121,24 +2038,6 @@ void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s)
 		}
 	}
 
-	{ // roads
-		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_OFFSCREEN;
-
-		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
-		if (0 != ActiveVertexCount) {
-
-			s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-
-			// main partition (always starts at vertex position 0)
-			{
-				uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_MAIN].active_vertex_count;
-				if (0 != partition_vertex_count) {
-					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-					s.cb.draw(partition_vertex_count, 1, 0, 0);
-				}
-			}
-		}
-	}
 }
 
 inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
@@ -2159,8 +2058,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// transfer queue ownership of vertex buffers *required* see voxelworld.cpp Transfer() function
 	{
-		static constexpr size_t const buffer_count(4ULL);
-		std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index]), (*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]), (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index]), (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index]) };
+		static constexpr size_t const buffer_count(3ULL);
+		std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index]), (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index]), (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index]) };
 		vku::GenericBuffer::barrier(buffers, // ## ACQUIRE ## // batched 
 			s.cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexInput,
 			vk::DependencyFlagBits::eByRegion,
@@ -2353,10 +2252,8 @@ inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __res
 
 	vku::DynamicVertexBuffer* const __restrict vbos[] = {
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index]),
-		(*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index]),
 		(*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index]),
-		(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index]),
-		
+		(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])
 	};
 
 	MinCity::VoxelWorld->Transfer(resource_index, d.cb, vbos);
@@ -2551,7 +2448,6 @@ void cVulkan::checkStaticCommandsDirty(uint32_t const resource_index)
 		switch (index) {
 
 		case eVoxelPipeline::VOXEL_TERRAIN:
-		case eVoxelPipeline::VOXEL_ROAD:
 		case eVoxelPipeline::VOXEL_STATIC:
 		case eVoxelPipeline::VOXEL_DYNAMIC:
 			if ((*_rtData[index]._vbo[resource_index])->isBufferActiveSizeDelta()) {
@@ -2696,11 +2592,6 @@ void cVulkan::Cleanup(GLFWwindow* const glfwwindow)
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_ZONLY]._vbo[resource_index]) = nullptr;
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC]._vbo[resource_index]) = nullptr;
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR]._vbo[resource_index]) = nullptr;
-		(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC_ZONLY]._vbo[resource_index]) = nullptr;
-		(*_rtData[eVoxelPipeline::VOXEL_ROAD_BASIC]._vbo[resource_index]) = nullptr;
-		(*_rtData[eVoxelPipeline::VOXEL_ROAD_TRANS]._vbo[resource_index]) = nullptr;
-		(*_rtData[eVoxelPipeline::VOXEL_ROAD_CLEARMASK]._vbo[resource_index]) = nullptr;
-		(*_rtData[eVoxelPipeline::VOXEL_ROAD_OFFSCREEN]._vbo[resource_index]) = nullptr;
 		(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_ZONLY]._vbo[resource_index]) = nullptr;
 		(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC]._vbo[resource_index]) = nullptr;
 		(*_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR]._vbo[resource_index]) = nullptr;

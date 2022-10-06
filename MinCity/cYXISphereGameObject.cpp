@@ -32,6 +32,7 @@ namespace world
 		}
 
 		_parent = std::move(src._parent); src._parent = nullptr;
+		_thrusterFire = std::move(src._thrusterFire); src._thrusterFire = nullptr;
 		_offset = std::move(src._offset);
 		_thrusters = std::move(src._thrusters);
 		for (uint32_t i = 0; i < THRUSTER_COUNT; ++i) {
@@ -57,6 +58,7 @@ namespace world
 		}
 
 		_parent = std::move(src._parent); src._parent = nullptr;
+		_thrusterFire = std::move(src._thrusterFire); src._thrusterFire = nullptr;
 		_offset = std::move(src._offset);
 		_thrusters = std::move(src._thrusters);
 		for (uint32_t i = 0; i < THRUSTER_COUNT; ++i) {
@@ -68,7 +70,7 @@ namespace world
 	}
 
 	cYXISphereGameObject::cYXISphereGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _parent(nullptr), _offset{}, _thrusters{}, _thruster{}, _body{}
+		: tUpdateableGameObject(instance_), _parent(nullptr), _thrusterFire(nullptr), _offset{}, _thrusters{}, _thruster{}, _body{}
 	{
 		instance_->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
@@ -76,6 +78,33 @@ namespace world
 		_body.mass = voxels_to_kg((float)getModelInstance()->getVoxelCount());
 	}
 
+	void cYXISphereGameObject::enableThrusterFire(float const power)
+	{
+		auto instance(*Instance);
+
+		if (nullptr == _thrusterFire) {
+			_thrusterFire = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cThrusterFireGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(instance->getVoxelIndex(),
+				Volumetric::eVoxelModel::DYNAMIC::NAMED::UP_THRUST, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+
+			if (_thrusterFire) {
+				_thrusterFire->setParent(this, XMVectorSet(0.0f, -12.0f, 0.0f, 0.0f));
+				_thrusterFire->setCharacteristics(0.5f, 0.5f, 0.01f);
+			}
+		}
+
+		if (_thrusterFire->getIntensity() <= 0.0f) {
+			_thrusterFire->resetAnimation();
+		}
+		_thrusterFire->setIntensity(power);
+	}
+	void cYXISphereGameObject::updateThrusterFire(float const power)
+	{
+		_thrusterFire->setIntensity(power);
+	}
+	void cYXISphereGameObject::disableThrusterFire()
+	{
+		_thrusterFire->setIntensity(0.0f);
+	}
 	// If currently visible event:
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cYXISphereGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_PARAMETERS)
 	{

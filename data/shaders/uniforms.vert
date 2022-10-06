@@ -197,12 +197,10 @@ void main() {
 	const vec3 forward = v3_rotate(vec3(0.0f, 0.0f, 1.0f), quaternion); //v3_rotate_pitch(v3_rotate_yaw(v3_rotate_roll(vec3(0.0f, 0.0f, 1.0f), sin_angles.z, cos_angles.z), sin_angles.y, cos_angles.y), sin_angles.x, cos_angles.x); // *do not change* extremely sensitive to order
 	Out.forward	= forward * size;
 	Out.up = cross(forward, right) * size;
-#else
+#elif !defined(HEIGHT) // not terrain (done below)
 	Out.right   = vec3(size, 0.0f, 0.0f);
 	Out.forward	= vec3(0.0f, 0.0f, size);
-#if !defined(HEIGHT) // not terrain (done below)
 	Out.up      = vec3(0.0f, size, 0.0f);
-#endif
 #endif
   }
 
@@ -210,10 +208,13 @@ void main() {
 
 #if defined(HEIGHT) // terrain only
 
-  const float heightstep = max(VOX_SIZE, float(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP)));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
-  const float real_height = heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE;
-  Out.up      = vec3(0.0f, real_height, 0.0f);
-  const float voxel_height = real_height * float(MINIVOXEL_FACTOR);  // range [0.0f ... VolumeDimensions_Y]
+	Out.right   = vec3(VOX_SIZE * 0.5f, 0.0f, 0.0f);
+	Out.forward	= vec3(0.0f, 0.0f, VOX_SIZE * 0.5f); 
+
+  const float heightstep = float(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
+  const float real_height = max(VOX_SIZE * 0.5f, heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE);
+  Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
+  const float voxel_height = real_height * 0.5f; // range [0.0f ... VolumeDimensions_Y]  *do not change* *bugfix - matches up volumetric computed normals with full resolution normal map.
 #endif
 
 #if !(defined(ROAD)) // not road

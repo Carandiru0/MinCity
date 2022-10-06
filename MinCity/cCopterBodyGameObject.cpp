@@ -24,7 +24,7 @@ namespace world
 		}
 	}
 
-	cCopterBodyGameObject::cCopterBodyGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cCopterBodyGameObject::cCopterBodyGameObject(Volumetric::voxelModelInstance_Dynamic* const&& instance_)
 		: tUpdateableGameObject(instance_)
 	{
 		instance_->setOwnerGameObject<cCopterBodyGameObject>(this, &OnRelease);
@@ -39,18 +39,18 @@ namespace world
 	{
 		// important 
 		src.free_ownership();
-
+		/*
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cCopterBodyGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cCopterBodyGameObject::OnVoxel);
+		if (check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterBodyGameObject>(this, &OnRelease);
+			getModelInstance()->setVoxelEventFunction(&cCopterBodyGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cCopterBodyGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterBodyGameObject>(nullptr, nullptr);
+			getModelInstance()->setVoxelEventFunction(nullptr);
 		}
-
+		*/
 		_this = std::move(src._this);
 	}
 	cCopterBodyGameObject& cCopterBodyGameObject::operator=(cCopterBodyGameObject&& src) noexcept
@@ -58,18 +58,18 @@ namespace world
 		tUpdateableGameObject::operator=(std::forward<tUpdateableGameObject&&>(src));
 		// important 
 		src.free_ownership();
-
+		/*
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cCopterBodyGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cCopterBodyGameObject::OnVoxel);
+		if (check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterBodyGameObject>(this, &OnRelease);
+			getModelInstance()->setVoxelEventFunction(&cCopterBodyGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cCopterBodyGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterBodyGameObject>(nullptr, nullptr);
+			getModelInstance()->setVoxelEventFunction(nullptr);
 		}
-
+		*/
 		_this = std::move(src._this);
 
 		return(*this);
@@ -122,15 +122,15 @@ namespace world
 		_this.ai.setAngularSpeed(2.0f);
 
 		bool bNewRoute(false);
-		XMVECTOR xmLocation((*Instance)->getLocation());
-		XMVECTOR xmR((*Instance)->getYaw().v2());
+		XMVECTOR xmLocation(getModelInstance()->getLocation());
+		XMVECTOR xmR(getModelInstance()->getYaw().v2());
 
 		auto const [xmNewLocation, xmNewR] = _this.ai.OnUpdate(xmLocation, xmR, tNow, tDelta, &bNewRoute);
 
-		v2_rotation_t vR((*Instance)->getYaw());
+		v2_rotation_t vR(getModelInstance()->getYaw());
 		vR = xmNewR;
-		(*Instance)->setLocationYaw(xmNewLocation, vR);
-		(*Instance)->setElevation(_this.ai.getElevation());
+		getModelInstance()->setLocationYaw(xmNewLocation, vR);
+		getModelInstance()->setElevation(_this.ai.getElevation());
 
 		// lights switching
 		if (bNewRoute) {

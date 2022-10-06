@@ -5,7 +5,7 @@
 #include "nk_custom.h"
 
 cToolProvider::cToolProvider()
-	: _ActivatedTool(&_RoadTool)
+	: _ActivatedTool(&_ZoningTool)
 {
 
 }
@@ -29,11 +29,8 @@ void cToolProvider::setActivatedTool(uint32_t const uiToolType, std::optional<ui
 		_ActivatedTool = &_SelectTool;
 		break;
 	case eTools::ZONING:
-		_ActivatedTool = &_ZoningTool;
-		break;
-	case eTools::ROADS:
 	default:
-		_ActivatedTool = &_RoadTool; // always default to road tool.
+		_ActivatedTool = &_ZoningTool;
 		break;
 	}
 

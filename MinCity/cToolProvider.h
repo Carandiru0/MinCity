@@ -18,7 +18,6 @@ public:
 
 private:
 	cAbstractToolMethods*		_ActivatedTool;
-	cRoadTool					_RoadTool;
 	cZoningTool					_ZoningTool;
 	cSelectTool					_SelectTool;
 public:

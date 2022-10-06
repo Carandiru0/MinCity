@@ -2,6 +2,7 @@
 
 #include "cUpdateableGameObject.h"
 #include <Utility/type_colony.h>
+#include "cThrusterFireGameObject.h"
 
 namespace world
 {
@@ -20,8 +21,8 @@ namespace world
 			MASK_Y_MAX = 0x00ff00,
 			MASK_Z_MIN = 0x7f0000,
 			MASK_Z_MAX = 0xff0000,
-			COLOR_THRUSTER_GRADIENT_MIN = 0xff0000,
-			COLOR_THRUSTER_GRADIENT_MAX = 0xb08651;
+			COLOR_THRUSTER_GRADIENT_MIN = cThrusterFireGameObject::COLOR_THRUSTER_GRADIENT_MIN,
+			COLOR_THRUSTER_GRADIENT_MAX = cThrusterFireGameObject::COLOR_THRUSTER_GRADIENT_MAX;
 
 		static constexpr uint32_t const // XxYyZz(6bits)
 			X_MAX_BIT = (1 << 5),
@@ -46,12 +47,15 @@ namespace world
 
 		float const						getMass() const { return(_body.mass); }
 		XMVECTOR const __vectorcall		getAngularForce() const { return(XMLoadFloat3A(&_body.angular_force)); }
-
+		
 
 
 		void OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 		void setParent(cYXIGameObject* const parent, FXMVECTOR const xmOffset) { _parent = parent; XMStoreFloat3A(&_offset, xmOffset); }
+		void enableThrusterFire(float const power);
+		void updateThrusterFire(float const power);
+		void disableThrusterFire();
 
 		XMVECTOR const __vectorcall applyAngularThrust(FXMVECTOR xmThrust, bool const auto_leveling_enable = false);
 	
@@ -63,8 +67,10 @@ namespace world
 		cYXISphereGameObject& operator=(cYXISphereGameObject&& src) noexcept;
 
 	private:
-		cYXIGameObject *      _parent;
-		XMFLOAT3A			  _offset;
+		cYXIGameObject*               _parent;
+		cThrusterFireGameObject*      _thrusterFire;
+
+		XMFLOAT3A _offset;
 
 		struct {
 			XMFLOAT3A	thrust;

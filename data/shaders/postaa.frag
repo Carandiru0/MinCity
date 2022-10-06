@@ -126,13 +126,13 @@ vec4 temporal_aa(in const vec2 uv)
    	const vec3 preclamping = antialiased;
     antialiased = clamp(antialiased, minColor, maxColor);
     
-    mixRate = 1.0 / (1.0 / mixRate + 1.0);
+    mixRate = 1.0 / (1.0 / mixRate + 1.0f);
     
     const vec3 diff = antialiased - preclamping;
     const float clampAmount = dot(diff, diff);
     
-    mixRate += clampAmount * 4.0;
-    mixRate = clamp(mixRate, 0.05, 0.5);
+    mixRate += clampAmount * 4.0f;
+    mixRate = clamp(mixRate, 0.05f, 0.5f);
     
     antialiased = decodePalYuv(antialiased);
         
@@ -317,7 +317,8 @@ void main() {
 	// very happy, backup!
 	// save last color for temporal usuage - do not want dithering to add random aliasing
 	outLastFrame = vec4(color, temporal_color.a); // must preserve temporal alpha channel in output
-	
+	// motion vectors ? color = vec3(normalize(vec2(dFdxFine(temporal_color.a), dFdyFine(temporal_color.a))) * 0.5f + 0.5f, 0.0f);
+
 	{ // 1.) LUT & add in the finalized bloom
 	
 		// ############# Final Post Processing Pass ###################### //

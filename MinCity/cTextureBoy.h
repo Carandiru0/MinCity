@@ -20,7 +20,7 @@ class no_vtable cTextureBoy : no_copy
 {
 	static constexpr uint32_t const NOISE_TEXTURE_SIZE = 128; // should be a power of 2
 private:
-	template<typename T, bool const WorkaroundLayerSizeDoubledInFileBug = false>
+	template<typename T>
 	bool const LoadKTXTexture(T*& __restrict texture, std::wstring_view const path);
 public:
 	// ######################################################################################
@@ -39,9 +39,9 @@ public:
 	// ### LOADING ### //
 	bool const KTXFileExists(std::wstring_view const path) const;
 	// format inside of KTX file, make sure to save in the correct format! (srgb vs unorm) 
+	bool const LoadKTXTexture(vku::TextureImageCube*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path);
-	template<bool const WorkaroundLayerSizeDoubledInFileBug = false>
 	bool const LoadKTXTexture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path);
 
 	// simplest way to create a blank placeholder texture is to leverage the ImagingToTexture functions, with image initialized to blank memory
@@ -413,7 +413,7 @@ __inline void cTextureBoy::ImagingToTexture(ImagingLUT const* const image, vku::
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 
-template<typename T, bool const WorkaroundLayerSizeDoubledInFileBug>
+template<typename T>
 bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view const path)
 {
 	std::error_code error{};
@@ -426,7 +426,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 
 			uint8_t const* const pReadPointer((uint8_t*)mmap.data());
 
-			vku::KTXFileLayout<WorkaroundLayerSizeDoubledInFileBug> const ktxFile(pReadPointer, pReadPointer + mmap.length());
+			vku::KTXFileLayout const ktxFile(pReadPointer, pReadPointer + mmap.length());
 
 			if (ktxFile.ok()) {
 
@@ -450,11 +450,11 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 						commandPool = &dmaTransferPool();
 						queue = &transferQueue();
 					}
-
+					
 					if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
 						texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.format());
 					}
-					else { // vku::TextureImage2D
+					else { // vku::TextureImage2D or vku::TextureImageCube
 						texture = new T(_device, width, height, ktxFile.mipLevels(), ktxFile.format());
 					}
 				}
@@ -476,13 +476,6 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 
 	return(false);
 }
-
-template<bool const WorkaroundLayerSizeDoubledInFileBug> // placed in header file to support Workaround
-bool const cTextureBoy::LoadKTXTexture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path)
-{
-	return(LoadKTXTexture<vku::TextureImage2DArray, WorkaroundLayerSizeDoubledInFileBug>(texture, path));
-}
-
 
 template <typename T>
 void cTextureBoy::UpdateTexture(T const* const __restrict bytes, vku::TextureImage3D*& __restrict texture) const // todo currently assuming 4 components rgba in size calculation below

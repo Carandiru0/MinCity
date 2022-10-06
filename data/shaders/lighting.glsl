@@ -108,11 +108,13 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 }
 #endif
 
-vec3 reflection() 
+vec3 reflection(inout float emission) 
 {
-	// no aliasing
-	// pre-multiplied in
-	return(subpassLoad(ambientLightMap).rgb);
+	const vec3 ambient_reflection = subpassLoad(ambientLightMap).rgb;
+
+	emission += dot(ambient_reflection, LUMA);
+
+	return(ambient_reflection * 2.0f);
 }
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
@@ -160,7 +162,7 @@ float fresnel(in const vec3 N, in const vec3 V)
 #endif
 
 // Albedo = straight color no shading or artificial lighting (voxel color in)
-vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_color, in const float occlusion, in const float attenuation,
+vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in const float occlusion, in const float attenuation,
           in const vec3 L, in const vec3 N, in const vec3 V // L = light direction, N = normal, V = eye direction   all expected to be normalized
 #ifdef OUT_REFLECTION
 		  , out vec3 ambient_reflection
@@ -173,7 +175,7 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 #endif
 		)
 { 
-	const float NdotL = max(0.0f, dot(N, L)); // **bugfix for correct lighting. Only invert L here, and yes 1.0 - the dp
+	const float NdotL = max(0.0f, dot(N, L));
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
 	
 #ifdef OUT_FRESNEL
@@ -186,15 +188,15 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in const vec3 light_colo
 
 	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 
-	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 	
-	#ifndef OUT_REFLECTION
-	const vec3 ambient_reflection = reflection();
+#ifndef OUT_REFLECTION
+	const vec3 ambient_reflection = reflection(material.emission);
 #else
-	ambient_reflection = reflection();
+	ambient_reflection = reflection(material.emission);
 #endif
+	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
 	const vec3 ambient_reflection_term = (unpackColor(material.ambient) + ambient_reflection) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
 	
 			// ambient

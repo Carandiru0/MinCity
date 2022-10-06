@@ -19,14 +19,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cRockStageGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cRockStageGameObject::OnVoxel);
+		if (check_instance()) {
+			getModelInstance()->setOwnerGameObject<cRockStageGameObject>(this, &OnRelease);
+			getModelInstance()->setVoxelEventFunction(&cRockStageGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cRockStageGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.check_instance()) {
+			getModelInstance()->setOwnerGameObject<cRockStageGameObject>(nullptr, nullptr);
+			getModelInstance()->setVoxelEventFunction(nullptr);
 		}
 	}
 	cRockStageGameObject& cRockStageGameObject::operator=(cRockStageGameObject&& src) noexcept
@@ -36,14 +36,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cRockStageGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cRockStageGameObject::OnVoxel);
+		if (check_instance()) {
+			getModelInstance()->setOwnerGameObject<cRockStageGameObject>(this, &OnRelease);
+			getModelInstance()->setVoxelEventFunction(&cRockStageGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cRockStageGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.check_instance()) {
+			getModelInstance()->setOwnerGameObject<cRockStageGameObject>(nullptr, nullptr);
+			getModelInstance()->setVoxelEventFunction(nullptr);
 		}
 
 		return(*this);

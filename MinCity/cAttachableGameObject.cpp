@@ -5,27 +5,9 @@
 
 namespace world
 {
-	static void OnRelease(void const* const __restrict _this) // private to this file
-	{
-		if (_this) {
-			cAttachableGameObject::remove(static_cast<cAttachableGameObject const* const>(_this));
-		}
-	}
-
 	cAttachableGameObject::cAttachableGameObject(cAttachableGameObject&& src) noexcept
 		: tUpdateableGameObject(std::forward<tUpdateableGameObject&&>(src))
 	{
-		src.free_ownership();
-
-		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cAttachableGameObject>(this, &OnRelease);
-		}
-		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cAttachableGameObject>(nullptr, nullptr);
-		}
-
 		_parent = std::move(src._parent); src._parent = nullptr;
 		_offset = std::move(src._offset);
 		_vPitch = std::move(src._vPitch);
@@ -35,17 +17,6 @@ namespace world
 	cAttachableGameObject& cAttachableGameObject::operator=(cAttachableGameObject&& src) noexcept
 	{
 		tUpdateableGameObject::operator=(std::forward<tUpdateableGameObject&&>(src));
-
-		src.free_ownership();
-
-		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cAttachableGameObject>(this, &OnRelease);
-		}
-		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cAttachableGameObject>(nullptr, nullptr);
-		}
 
 		_parent = std::move(src._parent); src._parent = nullptr;
 		_offset = std::move(src._offset);
@@ -59,7 +30,6 @@ namespace world
 	cAttachableGameObject::cAttachableGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
 		: tUpdateableGameObject(instance_), _parent(nullptr), _offset{}
 	{
-		instance_->setOwnerGameObject<cAttachableGameObject>(this, &OnRelease);
 	}
 
 	void cAttachableGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)

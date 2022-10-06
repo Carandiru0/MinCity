@@ -8,7 +8,7 @@
 #define LUMA vec3(0.2126f, 0.7152f, 0.0722f)
 
 #define BLUE_NOISE_UV_SCALER (1.0f/128.0f)
-#define BLUE_NOISE_DITHER_SCALAR (7.0f/255.0f)
+#define BLUE_NOISE_DITHER_SCALAR (17.0f/255.0f)
 
 // USAGE :
 // define subgroup_quad_enabled, subgroup_xxx_enabled if required common function needs it, enable said extension in the root shader file,

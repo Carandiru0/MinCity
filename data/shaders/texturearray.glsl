@@ -18,8 +18,7 @@
 #define TEX_BLUE_NOISE 1
 #define TEX_TERRAIN 2
 #define TEX_GRID 3
-#define TEX_ROAD 4
-#define TEX_BLACKBODY 5
+#define TEX_BLACKBODY 4
 
 // ### here:
 #ifdef __cplusplus
@@ -30,13 +29,12 @@
 #define TEX_BLUE_NOISE_SAMPLER (MinCity::Vulkan->getNearestSampler<eSamplerAddressing::REPEAT>())
 #define TEX_TERRAIN_SAMPLER (MinCity::Vulkan->getAnisotropicSampler<eSamplerAddressing::REPEAT>())
 #define TEX_GRID_SAMPLER (MinCity::Vulkan->getAnisotropicSampler<eSamplerAddressing::REPEAT>())
-#define TEX_ROAD_SAMPLER (MinCity::Vulkan->getAnisotropicSampler<eSamplerAddressing::REPEAT>())
 #define TEX_BLACKBODY_SAMPLER SAMPLER_DEFAULT
 
 #endif
 
 // update this            _____
-#define NUM_BASE_TEXTURES ( 5 )
+#define NUM_BASE_TEXTURES ( 4 )
 //                        -----
 
 // don't touch this

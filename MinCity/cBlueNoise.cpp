@@ -9,21 +9,18 @@
 namespace supernoise
 {
 	cBlueNoise::cBlueNoise()
-		: _blueNoise1D(nullptr), _blueNoiseTexture(nullptr), _blueNoiseTextures{}
+		: _blueNoise1D(nullptr), _blueNoiseTextures{}
 	{
 
 	}
 
 	void cBlueNoise::Load(std::wstring_view const blueNoiseFile)
 	{
-		MinCity::TextureBoy->LoadKTXTexture<false>(_blueNoiseTextures, blueNoiseFile); // this loads the bluenoise in to the gpu texture. it should be linear (non-srgb) colorspace.
+		MinCity::TextureBoy->LoadKTXTexture(_blueNoiseTextures, blueNoiseFile); // this loads the bluenoise in to the gpu texture. it should be linear (non-srgb) colorspace.
 
 		ImagingMemoryInstance const* imgBlueNoise = ImagingLoadKTX(blueNoiseFile); // this temporarily loads the blue noise into a LA Imaging Instance (linear)
 
 		if (imgBlueNoise) {
-
-			// save first slice of 2D bluenoise layered image, to gpu RG texture. In some cases only a static 2D bluenoise texture is desirable. generated texture is in linear colorspace
-			MinCity::TextureBoy->ImagingToTexture_RG<false, false>(imgBlueNoise, _blueNoiseTexture);
 
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX // SAVED from FILE
@@ -64,7 +61,6 @@ namespace supernoise
 		if (nullptr != _blueNoise1D) {
 			scalable_aligned_free(_blueNoise1D); _blueNoise1D = nullptr;
 		}
-		SAFE_RELEASE_DELETE(_blueNoiseTexture);
 		SAFE_RELEASE_DELETE(_blueNoiseTextures);
 	}
 

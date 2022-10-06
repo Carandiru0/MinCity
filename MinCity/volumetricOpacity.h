@@ -66,7 +66,7 @@ namespace Volumetric
 	{
 	public:
 		static constexpr uint32_t const // "uniform light volume size"
-			LightSize = (Size >> ComputeLightConstants::LIGHT_MOD_BITS);
+			LightSize = ComputeLightConstants::LIGHT_RESOLUTION;
 
 	private:
 		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightSize, LightSize, LightSize, Size>;

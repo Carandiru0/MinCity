@@ -121,7 +121,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__AVX2__;__AVX__;__FMA__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_HAS_EXCEPTIONS=0;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__AVX2__;__AVX__;__FMA__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_HAS_EXCEPTIONS=0;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;BOOST_NO_RTTI;BOOST_TYPE_INDEX_FORCE_NO_RTTI_COMPATIBILITY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -144,6 +144,7 @@
       <SupportJustMyCode>false</SupportJustMyCode>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <OmitFramePointers>false</OmitFramePointers>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -203,7 +204,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>
       </SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__x86_64__;__AVX2__;__AVX__;__FMA__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_HAS_EXCEPTIONS=0;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;WIN32_LEAN_AND_MEAN;VC_EXTRALEAN;__x86_64__;__AVX2__;__AVX__;__FMA__;_XM_AVX2_INTRINSICS_;_XM_AVX_INTRINSICS_;_XM_SSE4_INTRINSICS_;VK_USE_PLATFORM_WIN32_KHR;VK_NO_PROTOTYPES;_ENABLE_EXTENDED_ALIGNED_STORAGE;_ENABLE_ATOMIC_ALIGNMENT_FIX;_HAS_EXCEPTIONS=0;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;_STD_ATOMIC_ALWAYS_USE_CMPXCHG16B=1;BOOST_NO_RTTI;BOOST_TYPE_INDEX_FORCE_NO_RTTI_COMPATIBILITY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>X:\nuklear-master;X:\Vulkan\glfw\include;$(VULKAN_SDK)\Include;X:\Vulkan\Vookoo\include;X:\fmt;X:\FMOD\api\core\inc;C:\Documents\Visual Studio 2017\Projects;X:\density-master\src;X:\openvdb\openvdb;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -280,15 +281,14 @@
     <ClInclude Include="cAISkyMover.h" />
     <ClInclude Include="cAttachableGameObject.h" />
     <ClInclude Include="cAudio.h" />
+    <ClInclude Include="cBeaconGameObject.h" />
     <ClInclude Include="cBlueNoise.h" />
     <ClInclude Include="cBuildingGameObject.h" />
-    <ClInclude Include="cCarGameObject.h" />
     <ClInclude Include="cCity.h" />
-    <ClInclude Include="cCopterBodyGameObject.h" />
-    <ClInclude Include="cCopterGameObject.h" />
-    <ClInclude Include="cCopterPropGameObject.h" />
     <ClInclude Include="cExplosionGameObject.h" />
+    <ClInclude Include="cHeliumGasGameObject.h" />
     <ClInclude Include="cLevelSetGameObject.h" />
+    <ClInclude Include="cLightConeGameObject.h" />
     <ClInclude Include="cLightGameObject.h" />
     <ClInclude Include="cImportGameObject.h" />
     <ClInclude Include="CityInfo.h" />
@@ -296,21 +296,16 @@
     <ClInclude Include="cNuklear.h" />
     <ClInclude Include="ComputeLightConstants.h" />
     <ClInclude Include="cPhysics.h" />
-    <ClInclude Include="cPoliceCarGameObject.h" />
     <ClInclude Include="cPostProcess.h" />
     <ClInclude Include="cProcedural.h" />
     <ClInclude Include="cProceduralGameObject.h" />
     <ClInclude Include="cRemoteUpdateGameObject.h" />
-    <ClInclude Include="cRoadTool.h" />
     <ClInclude Include="cRockStageGameObject.h" />
     <ClInclude Include="cSelectTool.h" />
-    <ClInclude Include="cSignageGameObject.h" />
-    <ClInclude Include="cSimulation.h" />
     <ClInclude Include="cTestGameObject.h" />
     <ClInclude Include="cTextureBoy.h" />
+    <ClInclude Include="cThrusterFireGameObject.h" />
     <ClInclude Include="cToolProvider.h" />
-    <ClInclude Include="cTrafficControlGameObject.h" />
-    <ClInclude Include="cTrafficSignGameObject.h" />
     <ClInclude Include="cUpdateableGameObject.h" />
     <ClInclude Include="cUser.h" />
     <ClInclude Include="cUserInterface.h" />
@@ -327,7 +322,6 @@
     <ClInclude Include="eInputEnabledBits.h" />
     <ClInclude Include="eVoxelModels.h" />
     <ClInclude Include="globals.h" />
-    <ClInclude Include="gui.h" />
     <ClInclude Include="ImageAnimation.h" />
     <ClInclude Include="importproxy.h" />
     <ClInclude Include="Interpolator.h" />
@@ -380,34 +374,28 @@
     <ClCompile Include="cAISkyMover.cpp" />
     <ClCompile Include="cAttachableGameObject.cpp" />
     <ClCompile Include="cAudio.cpp" />
+    <ClCompile Include="cBeaconGameObject.cpp" />
     <ClCompile Include="cBlueNoise.cpp" />
     <ClCompile Include="cBuildingGameObject.cpp" />
-    <ClCompile Include="cCarGameObject.cpp" />
     <ClCompile Include="cCity.cpp" />
-    <ClCompile Include="cCopterBodyGameObject.cpp" />
-    <ClCompile Include="cCopterGameObject.cpp" />
-    <ClCompile Include="cCopterPropGameObject.cpp" />
     <ClCompile Include="cExplosionGameObject.cpp" />
+    <ClCompile Include="cHeliumGasGameObject.cpp" />
     <ClCompile Include="cLevelSetGameObject.cpp" />
+    <ClCompile Include="cLightConeGameObject.cpp" />
     <ClCompile Include="cLightGameObject.cpp" />
     <ClCompile Include="cImportGameObject.cpp" />
     <ClCompile Include="cNuklear.cpp" />
     <ClCompile Include="cPhysics.cpp" />
-    <ClCompile Include="cPoliceCarGameObject.cpp" />
     <ClCompile Include="cPostProcess.cpp" />
     <ClCompile Include="cProcedural.cpp" />
     <ClCompile Include="cProceduralGameObject.cpp" />
     <ClCompile Include="cRemoteUpdateGameObject.cpp" />
-    <ClCompile Include="cRoadTool.cpp" />
     <ClCompile Include="cRockStageGameObject.cpp" />
     <ClCompile Include="cSelectTool.cpp" />
-    <ClCompile Include="cSignageGameObject.cpp" />
-    <ClCompile Include="cSimulation.cpp" />
     <ClCompile Include="cTestGameObject.cpp" />
     <ClCompile Include="cTextureBoy.cpp" />
+    <ClCompile Include="cThrusterFireGameObject.cpp" />
     <ClCompile Include="cToolProvider.cpp" />
-    <ClCompile Include="cTrafficControlGameObject.cpp" />
-    <ClCompile Include="cTrafficSignGameObject.cpp" />
     <ClCompile Include="cUpdateableGameObject.cpp" />
     <ClCompile Include="cUser.cpp" />
     <ClCompile Include="cUserInterface.cpp" />
@@ -443,9 +431,10 @@
     <ClCompile Include="types.cpp" />
     <ClCompile Include="volumetricVisibility.cpp" />
     <ClCompile Include="voxBinary.cpp">
-      <RuntimeTypeInfo Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</RuntimeTypeInfo>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="voxelModelInstance.cpp" />
+    <ClCompile Include="world.cpp" />
     <ClCompile Include="X:\Vulkan\Vookoo\include\vku\volk\volk.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
@@ -836,7 +825,7 @@
     <CustomBuild Include="..\Data\Shaders\voxel_rain.frag">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <FileType>Document</FileType>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
 "$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

@@ -28,14 +28,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cCopterPropGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cCopterPropGameObject::OnVoxel);
+		if (check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterPropGameObject>(this, &OnRelease);
+			getModelInstance()->setVoxelEventFunction(&cCopterPropGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cCopterPropGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterPropGameObject>(nullptr, nullptr);
+			getModelInstance()->setVoxelEventFunction(nullptr);
 		}
 
 		_this = std::move(src._this);
@@ -47,14 +47,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cCopterPropGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cCopterPropGameObject::OnVoxel);
+		if (check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterPropGameObject>(this, &OnRelease);
+			getModelInstance()->setVoxelEventFunction(&cCopterPropGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cCopterPropGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.check_instance()) {
+			getModelInstance()->setOwnerGameObject<cCopterPropGameObject>(nullptr, nullptr);
+			getModelInstance()->setVoxelEventFunction(nullptr);
 		}
 
 		_this = std::move(src._this);
@@ -120,8 +120,8 @@ namespace world
 		_this.angle -= tDelta.count() * 11.0f;
 
 		// inhreit parent location & orientation
-		//(*Instance)->setLocationYaw(xmLocation, Yaw + _this.angle);
-		//(*Instance)->setElevation(fElevation);
+		//getModelInstance()->setLocationYaw(xmLocation, Yaw + _this.angle);
+		//getModelInstance()->setElevation(fElevation);
 
 		// chsnging prop light
 		float const fFaster((_this.bLightsOn ? (1.0f/3.0f) : 1.0f));

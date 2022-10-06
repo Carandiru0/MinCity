@@ -4,8 +4,8 @@ namespace Volumetric
 {
 	namespace ComputeLightConstants
 	{
-		static constexpr uint32_t const		// constants to determine index x,y,z of light in light probe map
-			LIGHT_MOD_BITS = 2U;
+		static constexpr uint32_t const		
+			LIGHT_RESOLUTION = 128U;
 
 		using memLayoutV = XMFLOAT4A;
 

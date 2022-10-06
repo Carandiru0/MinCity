@@ -8,7 +8,7 @@
 
 // define BLUENOISE_DIMENSION_SZ before inclusion of this header file
 #ifndef BLUENOISE_DIMENSION_SZ
-#define BLUENOISE_DIMENSION_SZ 128	// Default 128x128 Texture Size		// todo: BLUENOISE_DIMENSION_SZ can now be pulled from the file, should be dynamic and non hard-coded.
+#define BLUENOISE_DIMENSION_SZ 128	// Default (128x128x64) Texture Size		// todo: BLUENOISE_DIMENSION_SZ can now be pulled from the file, should be dynamic and non hard-coded.
 #endif
 
 // forward decl
@@ -38,14 +38,12 @@ namespace supernoise
 
 		// **both channels are available in texture form
 		vku::TextureImage2DArray* const& __restrict		getTexture2DArray() const { return(_blueNoiseTextures); }	// 2D Layered Texture (w/ bluenoise over time) [RG]
-		vku::TextureImage2D* const& __restrict			getTexture2D() const { return(_blueNoiseTexture); }			// 2D Texture [RG]
 
 		// initialize //
 		void Load(std::wstring_view const blueNoiseFile);
 
 		void Release();
 	private:
-		vku::TextureImage2D*	  _blueNoiseTexture;
 		vku::TextureImage2DArray* _blueNoiseTextures;
 
 		float* _blueNoise1D;

@@ -12,7 +12,6 @@
 #include "cPostProcess.h"
 #include "cCity.h"
 #include "data.h"
-#include "gui.h"
 #include <Utility/async_long_task.h>
 #include <filesystem>
 #include <algorithm>
@@ -20,7 +19,7 @@
 #include "cImportGameObject.h"
 #include <Imaging/Imaging/Imaging.h>
 #include "importproxy.h"
-
+#include "gui.h"
 
 #define NK_IMPLEMENTATION  // the only place this is defined
 #include "nk_include.h"
@@ -2409,6 +2408,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 				static constexpr fp_seconds const interval(1.0f);
 
+				constinit static bool bApplyRemaining(false);
 				constinit static uint32_t scramble_index(1);
 				constinit static bool bBlink(false);
 				constinit static tTime tLast(zero_time_point);
@@ -2448,6 +2448,8 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 
 						nk_layout_row_static(_ctx, 48, 48, colors.size());
 						
+						bool bSingleActiveColor(false);
+
 						for (auto i = colors.begin(); i != colors.end(); ++i) {
 
 							uvec4_t rgba;
@@ -2457,14 +2459,29 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 								SFM::unpack_rgba(SFM::lerp(0, i->color, t), rgba);
 							}
 
-							if (nk_button_color(_ctx, nk_rgb(rgba.r, rgba.g, rgba.b))) {
+							if (nk_button_color(_ctx, nk_rgb(rgba.r, rgba.g, rgba.b)) || bApplyRemaining) {
 
-								if (world::cImportGameObject::getProxy().active_color.material.Color) {
-									// "schedule" remove previous color, its done
-									previous = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color);
+								if (!bSingleActiveColor) {
+									if (world::cImportGameObject::getProxy().active_color.material.Color) {
+										// "schedule" remove previous color, its done
+										previous = std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color);
+
+										if (bApplyRemaining) {
+											auto const& material_in(previous->material);
+											auto& material_out(i->material);
+											// copy material but not color
+											material_out.Transparent = material_in.Transparent;
+											material_out.Metallic = material_in.Metallic;
+											material_out.Emissive = material_in.Emissive;
+											material_out.Roughness = material_in.Roughness;
+											material_out.Video = material_in.Video;
+											bApplyMaterial = true;
+										}
+									}
+									// set new active color
+									world::cImportGameObject::getProxy().active_color = *i;
+									bSingleActiveColor = true;
 								}
-								// set new active color
-								world::cImportGameObject::getProxy().active_color = *i;
 							}
 						}
 
@@ -2484,19 +2501,31 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 								world::cImportGameObject::getProxy().active_color.color = 0;
 								world::cImportGameObject::getProxy().active_color.count = 0;
 
+								bApplyRemaining = false; // reset
 								voxelModel.model = nullptr; // clear
 							}
 						}
 
 						nk_group_end(_ctx);
 					}
-					nk_layout_row_dynamic(_ctx, 40, 4);
+					nk_layout_row_dynamic(_ctx, 40, 5);
 
-					// binarch search for selected color in colormap
+					// binary search for selected color in colormap
 					// access the ImportColor field n for current status, update on option selected.
 					// require current color
 					colormap::iterator iter_color(std::lower_bound(colors.begin(), colors.end(), world::cImportGameObject::getProxy().active_color));
 
+					if (bApplyRemaining) {
+						auto const& material_in(world::cImportGameObject::getProxy().active_color.material);
+						auto& material_out(iter_color->material);
+						// copy material but not color
+						material_out.Transparent = material_in.Transparent;
+						material_out.Metallic = material_in.Metallic;
+						material_out.Emissive = material_in.Emissive;
+						material_out.Roughness = material_in.Roughness;
+						material_out.Video = material_in.Video;
+						bApplyMaterial = true;
+					}
 					// ***now working on material*** access to color member forbidden.
 					if (colors.end() != iter_color) {
 
@@ -2519,7 +2548,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						}
 						{
 							nk_bool checked(iter_color->material.Transparent);
-							if (nk_checkbox_label(_ctx, "TRANSPARENCY", &checked)) {
+							if (nk_checkbox_label(_ctx, "TRANSPARENT", &checked)) {
 								iter_color->material.Transparent = checked;
 								bApplyMaterial = true;
 							}
@@ -2533,6 +2562,13 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 							}
 						}
 						
+						{
+							if (nk_button_label(_ctx, "ALL")) {
+								bApplyRemaining = true;
+								bApplyMaterial = true;
+							}
+						}
+
 						nk_layout_row_dynamic(_ctx, 40, 1);
 						
 						{
@@ -2567,6 +2603,7 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						model_static = nullptr;
 					}
 
+					bApplyRemaining = false; // reset
 					_bModalPrompted = true; // this will either start an import for the next voxel model, or exit the import window
 					nk_window_close(_ctx, windowName._to_string()); // hides the import window
 				}

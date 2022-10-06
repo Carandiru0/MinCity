@@ -16,7 +16,6 @@
 #include <optional>
 #include "volumetricOpacity.h"
 #include "volumetricVisibility.h"
-#include "cSimulation.h"
 #include "cBlueNoise.h"
 
 // forward decls:
@@ -181,11 +180,6 @@ namespace world
 		void SetSpecializationConstants_VoxelTerrain_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_VoxelTerrain_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
-		void SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
-		void SetSpecializationConstants_VoxelRoad_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
-		void SetSpecializationConstants_VoxelRoad_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
-		void SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
-
 		void SetSpecializationConstants_Voxel_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_Voxel_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
@@ -206,7 +200,7 @@ namespace world
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder);
 		//[[deprecated]] void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
 
-		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
+		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict fullnormalImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, vk::ImageView const& __restrict fullvolumetricImageView, vk::ImageView const& __restrict fullreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		void UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT);
 		
@@ -270,7 +264,6 @@ namespace world
 		void destroyImmediatelyVoxelModelInstance(uint32_t const hash);  // not concurrency safe *** (public) // typically instances destroy themselves asynchronously, this is for special purposes
 
 		void AsyncClears(uint32_t const resource_index);
-		void clearMiniVoxels(bool const bPaused);
 		void CleanUp();
 
 		size_t const numRootIndices() const { return(_hshVoxelModelRootIndex.size()); }
@@ -293,7 +286,6 @@ namespace world
 		// [[deprecated]] void createTextureShader(uint32_t const shader, vku::GenericImage* const& __restrict input, bool const referenced = false, point2D_t const shader_dimensions = point2D_t{}, vk::Format const format = vk::Format::eB8G8R8A8Unorm);
 
 		// placeXXXInstanceAt specializations
-		cCopterGameObject* const placeCopterInstanceAt(point2D_t const voxelIndex);
 
 		// mouse occlusion
 		void clearOcclusionInstances();
@@ -324,9 +316,10 @@ namespace world
 		UniformState						  _lastState, _currentState, _targetState;
 
 		Imaging						_terrainTempImage;
+
 		vku::TextureImage2D			*_terrainTexture,
 									* _gridTexture;
-		vku::TextureImage2DArray*	_roadTexture;
+
 		vku::TextureImage2D*		_blackbodyTexture;
 
 		/*
@@ -357,8 +350,6 @@ namespace world
 			int32_t					state;
 			fp_seconds				tToOcclude;
 		} _occlusion;
-
-		cSimulation*				_sim;
 
 		task_id_t					_AsyncClearTaskID;
 		uint32_t					_mouseState;

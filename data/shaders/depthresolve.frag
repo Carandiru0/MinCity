@@ -15,7 +15,8 @@ layout(location = 0) in streamIn /*not used, required for validation*/
 void main() {
 	
 	// multisampled depth resolve
-	float depth = 0.25f * (subpassLoad(inputFullDepth, 0).r + subpassLoad(inputFullDepth, 1).r + subpassLoad(inputFullDepth, 2).r + subpassLoad(inputFullDepth, 3).r);
+	const float samp[4] = { subpassLoad(inputFullDepth, 0).r, subpassLoad(inputFullDepth, 1).r, subpassLoad(inputFullDepth, 2).r, subpassLoad(inputFullDepth, 3).r };
+	float depth = min(min(min(samp[0], samp[1]), samp[2]), samp[3]);
 
 	outFullDepth = depth;
 

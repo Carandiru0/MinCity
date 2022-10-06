@@ -7,10 +7,10 @@
 #include "cSignageGameObject.h"
 #include "cTrafficSignGameObject.h"
 #include "cTrafficControlGameObject.h"
-#include "gui.h"
 #include "prices.h"
 
 #include "cNuklear.h"
+#include "gui.h"
 
 //#define SNAP_TO_ROAD_SIZE
 
@@ -2073,9 +2073,6 @@ void __vectorcall cRoadTool::DragAction(FXMVECTOR const xmMousePos, FXMVECTOR co
 void cRoadTool::paint()
 {
 	cAbstractToolMethods::paint();
-
-	// make relative to world origin (gridspace to worldspace transform)
-	XMVECTOR const xmWorldOrigin(world::getOrigin());
 }
 
 // these functions should be defined last

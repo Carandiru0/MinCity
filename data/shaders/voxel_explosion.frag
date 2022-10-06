@@ -92,7 +92,7 @@ void main() {
 	float fresnelTerm;
 	vec3 lit_color = lit( light_color, make_material(In._emission, 0.0f, ROUGHNESS), light_color,
 						 1.0f, getAttenuation(Ld.dist, VolumeLength),
-						 Ld.dir, N, V, reflect_color, fresnelTerm );
+						 -Ld.dir, N, V, reflect_color, fresnelTerm );
 
 	//float luminance = 1.0f - dot(lit_color.rgb, LUMA) * lit_color.r;
 	// shockwave dynamic density - working do not change // In._extra_data = distance

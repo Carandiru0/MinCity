@@ -130,7 +130,7 @@ namespace world
 
 		voxel.Emissive = luma > _emission_threshold[1]; // some light does not need to be added (optimization)
 		if (voxel.Emissive) {
-			const_cast<cExplosionGameObject* const>(this)->_emission_threshold[0] += luma;
+			const_cast<cExplosionGameObject* const>(this)->_emission_threshold[0] += luma;     // @todo this breaks the rules with parallel execution of onVoxel (read-only access is safe, nothing else)
 			++const_cast<cExplosionGameObject* const>(this)->_emission_samples;
 		}
 		
@@ -161,7 +161,7 @@ namespace world
 		if (_animation.update(instance, tDelta)) {
 
 			instance->destroy(milliseconds(0));
-			_destroyed = true;
+			_destroyed = true; 
 			return;
 		}
 			

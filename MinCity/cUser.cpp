@@ -5,10 +5,11 @@
 
 #include "cYXIGameObject.h"
 #include "cYXISphereGameObject.h"
-#include "cAttachableGameObject.h"
+#include "cLightConeGameObject.h"
 #include "cPhysics.h"
 
 #include "cExplosionGameObject.h"
+#include "cBeaconGameObject.h"
 
 static constexpr float const
 	SPHERE_ORIGIN_OFFSET_X = 34.0f, // in minivoxels
@@ -16,8 +17,8 @@ static constexpr float const
 	SPHERE_ORIGIN_OFFSET_Z = -7.0f,
 
 	LIGHT_CONE_ORIGIN_OFFSET_X = 0.5f,
-	LIGHT_CONE_ORIGIN_OFFSET_Y = -49.0f,
-	LIGHT_CONE_ORIGIN_OFFSET_Z = 62.0f;
+	LIGHT_CONE_ORIGIN_OFFSET_Y = -100.0f,
+	LIGHT_CONE_ORIGIN_OFFSET_Z = 124.0f;
 
 static constexpr uint64_t const USER_ID_CATEGORY{ 0xFEEDFEEDFEEDFEED }; // always hash these type of constants before usage
 constinit uint64_t cUser::user_count(0);
@@ -25,7 +26,7 @@ constinit uint64_t cUser::user_count(0);
 cUser::cUser()
 	: _ship(nullptr), _shipRingX{}, _shipRingY{}, _shipRingZ{}, _light_cone(nullptr), _destroyed(true),
 	_sphere_engine_offset(XMVectorGetX(XMVector3Length(XMVectorScale(XMVectorSet(SPHERE_ORIGIN_OFFSET_X, SPHERE_ORIGIN_OFFSET_Y, SPHERE_ORIGIN_OFFSET_Z, 0.0f), Iso::MINI_VOX_STEP * cPhysics::TORQUE_OFFSET_SCALAR)))),
-	_total_mass(0.0f)
+	_total_mass(0.0f), _beacon_accumulator{}, _beacon_loaded(false)
 {
 	// this method is called during new construction of a user which happens on any main onloaded event of voxelworld.
 	// it is safe therefore to interact with the world (place instances etc) at this point (new map ready)
@@ -60,6 +61,7 @@ void cUser::create()
 			Volumetric::eVoxelModel::DYNAMIC::NAMED::YXI_RING_Y, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 		_shipRingY[i]->setParent(_ship, XMVectorSet(offset_to_engine, SPHERE_ORIGIN_OFFSET_Y, SPHERE_ORIGIN_OFFSET_Z, 0.0f));
 		_shipRingYAlias[i] = Hash((int64_t)(uintptr_t)_shipRingY[i]->getModelInstance(), key);
+		_shipRingY[i]->enableThrusterFire(_ship->getThrusterPower(1));
 
 		_shipRingZ[i] = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cYXISphereGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(spawnOriginOffset,
 			Volumetric::eVoxelModel::DYNAMIC::NAMED::YXI_RING_Z, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
@@ -67,7 +69,7 @@ void cUser::create()
 		_shipRingZAlias[i] = Hash((int64_t)(uintptr_t)_shipRingZ[i]->getModelInstance(), key);
 	}
 
-	_light_cone = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cAttachableGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(spawnOrigin,
+	_light_cone = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cLightConeGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(spawnOrigin,
 		Volumetric::eVoxelModel::DYNAMIC::NAMED::LIGHT_CONE, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 	_light_cone->setParent(_ship, XMVectorSet(LIGHT_CONE_ORIGIN_OFFSET_X, LIGHT_CONE_ORIGIN_OFFSET_Y, LIGHT_CONE_ORIGIN_OFFSET_Z, 0.0f));
 	_light_cone_alias = Hash((int64_t)(uintptr_t)_light_cone->getModelInstance(), key);
@@ -238,14 +240,30 @@ void cUser::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tD
 			_ship->applyAngularThrust(XMVectorScale(_shipRingX[i]->getAngularForce(), _sphere_engine_offset));
 			_ship->applyAngularThrust(XMVectorScale(_shipRingY[i]->getAngularForce(), _sphere_engine_offset));
 			_ship->applyAngularThrust(XMVectorScale(_shipRingZ[i]->getAngularForce(), _sphere_engine_offset));
+
+			_shipRingY[i]->updateThrusterFire(_ship->getThrusterPower(1));
 		}
 
 		// gravity
 		_ship->applyForce(XMVectorSet(0.0f, _total_mass * cPhysics::GRAVITY, 0.0f, 0.0f));
 
+		_beacon_accumulator += tDelta;
+		if (_beacon_accumulator >= BEACON_LAUNCH_INTERVAL) {
+			_beacon_accumulator -= BEACON_LAUNCH_INTERVAL;
+			_beacon_loaded = true;
+		}
+
 		MinCity::VoxelWorld->updateCameraFollow(instance->getLocation(), _ship->getVelocity(), instance, tDelta);
 	}
 }
+
+void cUser::Paint()
+{
+	
+
+}
+
+
 void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)
 {
 	if (_destroyed) {
@@ -315,8 +333,25 @@ void cUser::KeyAction(int32_t const key, bool const down, bool const ctrl)
 	case GLFW_KEY_DOWN:
 	case GLFW_KEY_S: // up thrust
 		_ship->applyThrust(XMVectorScale(XMVectorSet(0.0f, UP_THRUST, 0.0f, 0.0f), _ship->getMass())); // up thruster
+		for (uint32_t i = 0; i < ENGINE_COUNT; ++i) {
+			if (_ship->getThrusterPower(1) <= 0.0f) {}
+			_shipRingY[i]->enableThrusterFire(_ship->getThrusterPower(1));
+		}
 		break;
 	case GLFW_KEY_SPACE:
+		break;
+	case GLFW_KEY_B: // beacon
+		{
+		    if (_beacon_loaded) {
+
+				auto instance = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cBeaconGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(_ship->getModelInstance()->getVoxelIndex(),
+					Volumetric::eVoxelModel::DYNAMIC::NAMED::BEACON, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING | Volumetric::eVoxelModelInstanceFlags::GROUND_CONDITIONING);
+				if (instance) {
+					_beacon_loaded = false;
+					_beacon_accumulator = zero_time_duration;
+				}
+			}
+		}
 		break;
 	}
 }

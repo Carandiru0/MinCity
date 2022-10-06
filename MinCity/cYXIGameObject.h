@@ -3,6 +3,7 @@
 #include "cUpdateableGameObject.h"
 #include <Utility/type_colony.h>
 #include "cPhysics.h"
+#include "cThrusterFireGameObject.h"
 
 // forward dcl
 class cUser;
@@ -37,7 +38,7 @@ namespace world
 	public:
 		static constexpr float const     // total thrust available to main thruster is shared with up thruster, with up thruster always taking priority. However the main thruster has a much higher peak thrust.
 			MAX_MAIN_THRUST = 4.0f,      // maximum = MAX_MAIN_THRUST , minimum = MAX_MAIN_THRUST - MAX_UP_THRUST (when up thruster is on fully)
-			MAX_UP_THRUST = -cPhysics::GRAVITY * SFM::GOLDEN_RATIO; // needs to be greater than gravity, higher = less efficient and steals more thrust from main thruster when on.
+			MAX_UP_THRUST = -cPhysics::GRAVITY * SFM::GOLDEN_RATIO * 1.5f; // needs to be greater than gravity, higher = less efficient and steals more thrust from main thruster when on.
 	public:
 		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::TestGameObject);
@@ -59,6 +60,9 @@ namespace world
 		void __vectorcall applyAngularThrust(FXMVECTOR xmThrust);							// T = F x r
 
 		void setParent(cUser* const);
+		void enableThrusterFire(float const power);
+		void updateThrusterFire(float const power);
+		void disableThrusterFire();
 
 		bool const isDestroyed() const;
 		void destroy();
@@ -101,7 +105,6 @@ namespace world
 		} _thruster[THRUSTER_COUNT];
 	
 		struct {
-			XMFLOAT3A	future_position;
 			XMFLOAT3A	force[2], thrust, velocity;
 			XMFLOAT3A	angular_force[2], angular_thrust, angular_velocity;
 			float		mass;
@@ -114,8 +117,12 @@ namespace world
 
 		} _activity_lights;
 
+		cThrusterFireGameObject* _thrusterFire;
 		cUser* _parent;
 	public:
+
+		float const                     getThrusterPower(uint32_t const index) { return(_thruster[index].tOn); }
+
 		cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
 	};
 

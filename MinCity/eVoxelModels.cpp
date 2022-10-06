@@ -203,7 +203,7 @@ namespace Volumetric
 
 		bool Success(true);
 
-		_staticModels.reserve(999);
+		_staticModels.reserve(100);
 
 		LoadModelGroup<STATIC, SINGLE_VOX>(FILE_STATIC_EMPTY, isolated_group::StaticEmpty);
 		
@@ -226,7 +226,7 @@ namespace Volumetric
 
 		bool Success(true);
 
-		_dynamicModels.reserve(999);
+		_dynamicModels.reserve(100);
 
 		LoadModelGroup<DYNAMIC, SINGLE_VOX>(FILE_DYNAMIC_EMPTY, isolated_group::DynamicEmpty);
 		
@@ -237,13 +237,15 @@ namespace Volumetric
 		LoadModelNamed<DYNAMIC>("yxi_ring_x");
 		LoadModelNamed<DYNAMIC>("yxi_ring_y");
 		LoadModelNamed<DYNAMIC>("yxi_ring_z");
-
+		                                                                                                                                                                                                                                                                
 		LoadModelNamed<DYNAMIC>("light_cone");
+		LoadModelNamed<DYNAMIC>("beacon");
 
+		LoadModelSequenceNamed<DYNAMIC>("main_thrust");
+		LoadModelSequenceNamed<DYNAMIC>("up_thrust");
+		LoadModelSequenceNamed<DYNAMIC>("helium_gas");
 		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
-		LoadModelSequenceNamed<DYNAMIC>("spike_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("tiny_explosion");
-		LoadModelSequenceNamed<DYNAMIC>("medium_fire");
 
 		// last!
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last

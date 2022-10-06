@@ -75,7 +75,7 @@ namespace world
 
 		// verify good
 		// exists
-		if (iter->second) {
+		if (nullptr != iter->second) {
 
 			uint32_t const gameobject_type = iter->second->getOwnerGameObjectType();
 			// all filtered types *even NoOwner types (eg.) lampposts)
@@ -122,7 +122,7 @@ namespace world
 
 		// verify good
 		// exists
-		if (iter->second) {
+		if (nullptr != iter->second) {
 
 			uint32_t const gameobject_type = iter->second->getOwnerGameObjectType();
 			// all filtered types *even NoOwner types (eg.) lampposts)

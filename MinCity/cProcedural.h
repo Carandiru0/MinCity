@@ -6,9 +6,11 @@
 #include <Imaging/Imaging/RBFilter_AVX2.h>
 // required forward declarations //
 struct ImagingMemoryInstance;
-
+//                                               +-------------------------------------+
+//                                               | normalized [0.0f ... 1.0f]          | 
+//                                               | u,           v,           in        |
+typedef const uint32_t (* const NoiseRenderPassthruFunc_t)(float const, float const, float const, supernoise::interpolator::functor const&);
 typedef const uint32_t (* const NoiseRenderFunc_t)(float const, float const, supernoise::interpolator::functor const&);
-#define NOISERENDERFUNC_T NoiseRenderFunc_t 
 
 namespace world
 {
@@ -23,7 +25,8 @@ namespace world
 	{
 	public:
 		ImagingMemoryInstance* const __restrict GenerateNoiseImageMixed(uint32_t const size, supernoise::interpolator::functor const& interp);// for permutation of value in red channel, perlin in green channel, simplex in blue channel
-		ImagingMemoryInstance* const __restrict GenerateNoiseImage(NoiseRenderFunc_t noiseRenderfunc, uint32_t const size, supernoise::interpolator::functor const& interp);// for custom noise
+		ImagingMemoryInstance* const __restrict GenerateNoiseImage(NoiseRenderPassthruFunc_t noiseRenderfunc, uint32_t const size, supernoise::interpolator::functor const& interp, ImagingMemoryInstance const* const pPassthru);// for custom noise [required - single channel/grayscale], (non-optional) passthru image must be of equal dimensions and single channel. callback recieves current "in" grayscale pixel value normalized in the [0.0f ... 1.0f] range. 
+		ImagingMemoryInstance* const __restrict GenerateNoiseImage(NoiseRenderFunc_t noiseRenderfunc, uint32_t const size, supernoise::interpolator::functor const& interp);// for custom noise [required - single channel/grayscale] 
 		ImagingMemoryInstance* const __restrict GenerateNoiseImage(uint32_t const noiseType, uint32_t const size, supernoise::interpolator::functor const& interp); // for permutation of value, perlin, or simplex noise
 																																						// Input image must be a pow of 2 in dimensions for b-filter
 		template<uint32_t const edge_detection = EDGE_COLOR_USE_MAXIMUM, uint32_t const thread_count = RBF_MAX_THREADS>

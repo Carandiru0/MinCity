@@ -32,15 +32,7 @@ void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 l
 	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
 	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
-	light_direction_distance = light_direction_distance + subgroupQuadSwapHorizontal(light_direction_distance);
-	light_direction_distance = light_direction_distance + subgroupQuadSwapVertical(light_direction_distance);
-	light_direction_distance = light_direction_distance * 0.25f; // less divergence
-
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
-
-	light_color = light_color + subgroupQuadSwapHorizontal(light_color);
-	light_color = light_color + subgroupQuadSwapVertical(light_color);
-	light_color = light_color * 0.25f; // less divergence
 }
 void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
@@ -49,17 +41,9 @@ void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_colo
 	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
 	light_distance = light_distance * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
-	light_distance = light_distance + subgroupQuadSwapHorizontal(light_distance);
-	light_distance = light_distance + subgroupQuadSwapVertical(light_distance);
-	light_distance = light_distance * 0.25f; // less divergence
-
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
-
-	light_color = light_color + subgroupQuadSwapHorizontal(light_color);
-	light_color = light_color + subgroupQuadSwapVertical(light_color);
-	light_color = light_color * 0.25f; // less divergence
 }
-#ifdef FAST_LIGHTMAP
+
 void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
 	
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
@@ -67,17 +51,9 @@ void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance,
 	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
 	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
-	light_direction_distance = light_direction_distance + subgroupQuadSwapHorizontal(light_direction_distance);
-	light_direction_distance = light_direction_distance + subgroupQuadSwapVertical(light_direction_distance);
-	light_direction_distance = light_direction_distance * 0.25f; // less divergence
-
 	light_color = textureLod(volumeMap[REFLECT], voxel_coord, 0).rgb;
-
-	light_color = light_color + subgroupQuadSwapHorizontal(light_color);
-	light_color = light_color + subgroupQuadSwapVertical(light_color);
-	light_color = light_color * 0.25f; // less divergence
 }
-#endif
+
 // natural neighbour sampling of light volume
 
 // Natural Neighbour Interpolation for regular grid
@@ -177,7 +153,6 @@ void lightmap_internal_sampleNaturalNeighbour(out float light_distance, inout ve
 
 // ********************************************* public usage : //
 
-#ifdef FAST_LIGHTMAP
 void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
@@ -193,7 +168,6 @@ void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 ligh
 	// linear sampling
 	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
-#endif
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
@@ -244,7 +218,6 @@ void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw)
 }
 // getAttenuation(normalized_distance, volume_length); to get attenuation from normalized distance returned from getLight
 
-#ifdef FAST_LIGHTMAP
 // less preferred, but when required (fast hw-trilinear sampling)
 void getLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
@@ -266,6 +239,5 @@ void getReflectionLightFast(out vec3 light_color, out vec4 light_direction_dista
 	light_direction_distance.xyz = normalize(light_direction_distance.xyz); // light direction is stored in view space natively in xzy form
 	// light_direction_distance.a = normalized [0...1] distance
 }
-#endif
 
 #endif // _LIGHTMAP_GLSL

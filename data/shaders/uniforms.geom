@@ -158,20 +158,20 @@ void PerVoxel()
 #endif
 #else // basic
 
-	Out._voxelIndex = In[0].world_uv.xy; // normalized world grid uv coords
+	Out.voxelIndex = In[0].world_uv.xy; // normalized world grid uv coords
 
 #endif  // basic
 }
 
-vec3 PerQuad(in vec3 normal)
+void PerQuad(in vec3 normal)
 {
-#if !defined(BASIC)
-	// final output must be xzy and transformed to eye/view space for fragment shader
-	Out.N.xzy = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
+	//normal.y = -normal.y; // vulkan coordinate system is flipped on yaxis (up)
+	
+#ifndef BASIC // final output must be xzy and transformed to eye/view space for fragment shader
+	normal = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
 #endif
 	
-	return normal;	// normal at this point is still xyz, but used internally for calculating offset / corner of worldPos
-					// this is fixed later for fragment output of xzy
+	Out.N.xzy = normal; // require world space normal for normal map output. (negating whole normal matches up with computed normal in volumetric shader)
 }
 
 void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
@@ -180,7 +180,7 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	// on nvidia, it's strict to the spec that all output values must be set on every vertex emission -like they are reset every EmitVertex()
 	// must re-initialize all output values for next vertex
 	PerVoxel();
-	PerQuad(normal);
+	PerQuad(normal);  
 	
 #if defined(HEIGHT)
 	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
@@ -190,18 +190,17 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 #if !defined(BASIC)
 	
 	// main uvw coord for light, common to terrain, road & normal voxels
-#if defined(HEIGHT)
-	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex; // bugged, -2.0 on y axis required?
-#else
-	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex; /*+ vec3(0,1.0f/128.0f,0)*/; //*** @todo - this needs to be found and fixed properly, off by one error on y axis.
-#endif
+															// *bugfix - half-voxel offset required to sample center of voxel
+	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
+
 	// final output must be xzy and transformed to eye/view space for fragment shader
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
 	// so no need for eyePos
 
-	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
-#endif																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
-	
+	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(worldPos - u._eyePos.xyz));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
+																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
+#endif
+
 	EmitVertex();
 }
 

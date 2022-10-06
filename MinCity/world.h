@@ -3,13 +3,20 @@
 #include <Math/v2_rotation_t.h>
 #include "IsoVoxel.h"
 
+// forward decl's
+namespace Volumetric
+{
+	class voxelModelInstance_Static;
+	class voxelModelInstance_Dynamic;
+}
+
 namespace world
 {
 	static constexpr uint32_t const NUM_DISTINCT_GROUND_HEIGHTS = Iso::NUM_HEIGHT_STEPS - 1; // ***not including / forget about zero***
-	static constexpr uint32_t const GROUND_HEIGHT_NOISE_STEP = (UINT8_MAX - 100) / NUM_DISTINCT_GROUND_HEIGHTS;			// is a good value for more "flat" landmass		
+	static constexpr uint32_t const GROUND_HEIGHT_NOISE_STEP = (UINT8_MAX - 0) / NUM_DISTINCT_GROUND_HEIGHTS;			// 100 is a good value for more "flat" landmass (by raising the minimum),  use 0 to capture the full range of the data (default).	
 
-	static constexpr uint32_t const TERRAIN_TEXTURE_SZ = Iso::WORLD_GRID_SIZE;		// ** must be a multiple of world grid, 
-																					// ** power of 2 and not exceeding 16384
+	static constexpr uint32_t const TERRAIN_TEXTURE_SZ = (Iso::WORLD_GRID_SIZE > 16384 ? 16384 : Iso::WORLD_GRID_SIZE);		// ** must be a multiple of world grid, (ideally equal to world grid size)
+	                                                                                                                        // ** power of 2 and not exceeding 16384
 
 	static constexpr uint32_t const RESIDENTIAL = 0,
 									COMMERCIAL = 1,
@@ -60,14 +67,16 @@ namespace world
 	STATIC_INLINE bool const __vectorcall setVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
 	void __vectorcall setVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
 	void __vectorcall setVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR);			// for dynamic only
-	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR); // ""  dynamic ""
-
+	
 	template<bool const Dynamic>
 	STATIC_INLINE bool const __vectorcall resetVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
 	void __vectorcall resetVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
 	void __vectorcall resetVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR); // for dynamic only
 
+	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR); // ""  dynamic ""
+
 	uint32_t const getVoxelsAt_AverageHeight(rect2D_t voxelArea);
+	uint32_t const __vectorcall getVoxelsAt_MaximumHeight(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR); // ""  dynamic ""
 
 	void setVoxelHeightAt(point2D_t const voxelIndex, uint32_t const heightstep);
 	void setVoxelsHeightAt(rect2D_t voxelArea, uint32_t const heightstep);
@@ -77,17 +86,8 @@ namespace world
 	void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea);
 	void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex);
 
-	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius = Iso::VOX_RADIUS); // y (height) coordinate is required, otherwise it's 0.0f    [Iso::VOX_RADIUS] or Iso::MINI_VOX_RADIUS
-	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex); // y (height) coordinate *not* required, automattically set to ground height.  only [Iso::VOX_RADIUS]
-
-	// mini voxels:
-	
-	// *voxel painting ONLY* (minivoxels)  ***** addVoxel/addLight can only be called with UserInterface->Paint(), or methods invoked inside UserInterface->Paint() *****
-	// voxel / light will not persist more than one frame! using these methods
-	// *voxel painting ONLY* (minivoxels)  *****
-	bool const __vectorcall addVoxel(FXMVECTOR const location, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags = 0);	// color is abgr (rgba backwards)
-	bool const __vectorcall addLight(point2D_t const voxelIndex, uint32_t const color, float const height = 0.0f);
-
+	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius); // y (height) coordinate is required, otherwise it's 0.0f    Volumetric::volumetricVisibility::getVoxelRadius() or Volumetric::volumetricVisibility::getMiniVoxelRadius()
+	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex); // y (height) coordinate *not* required, automattically set to ground height. only Volumetric::volumetricVisibility::getVoxelRadius()
 
 	// zoning
 	namespace zoning
@@ -102,20 +102,17 @@ namespace world
 	rect2D_t const __vectorcall  getRandomNonVisibleAreaNear(); // only a step in width/height of visible rect, surrounding non visible area
 	point2D_t const __vectorcall getRandomNonVisibleVoxelIndexNear();
 
-	// Roads //
-	namespace roads
+	// intended for private usage by cVoxelWorld
+	using mapVoxelModelInstancesStatic = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
+	using mapVoxelModelInstancesDynamic = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
+
+	namespace access
 	{
-		bool const __vectorcall searchForClosestRoadNode(rect2D_t const area, point2D_t const voxelIndexStart, point2D_t&& voxelIndexFound);
-		bool const __vectorcall searchForClosestRoadEdge(rect2D_t const area, point2D_t const voxelIndexStart, point2D_t&& voxelIndexFound);
+		void create_game_object(uint32_t const hash, uint32_t const gameobject_type, mapVoxelModelInstancesStatic&& __restrict static_instances, mapVoxelModelInstancesDynamic&& __restrict dynamic_instances);
+		void update_game_objects(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
+		void release_game_objects();
+	} // ends ns
 
-		bool const directions_are_perpindicular(uint32_t const encoded_direction_a, uint32_t const encoded_direction_b);
-		bool const __vectorcall search_point_for_road(point2D_t const origin);
-		bool const __vectorcall search_neighbour_for_road(point2D_t& __restrict found_road_point, point2D_t const origin, point2D_t const offset);
-		bool const __vectorcall search_neighbour_for_road(point2D_t const origin, point2D_t const offset);
-		point2D_t const __vectorcall search_road_intersect(point2D_t const origin, point2D_t const axis,
-														   int32_t const begin, int32_t const end); // begin / end are offsets from origin
-
-	} // end ns world::roads
 
 
 

@@ -68,23 +68,6 @@ vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location )
 #ifdef SEED
 vec4 sampleInputVolume( in const vec3 read_location )
 {
-/*
-	// temporal interpolation (last frames output is always the opposite index of this frames output so writes and reads never overlap)
-	warp_local now = sampleInputVolume(seedMap, read_location);
-	now.xyz = transformPositionToViewSpace(u._view, now.xzy).xzy;
-
-	warp_local last = sampleInputVolume(pingpongTexture[pc.index_input], read_location);
-	last.xyz = transformPositionToViewSpace(u._view, last.xzy).xzy;
-
-	// interpolate only lit positions
-	if ( all(notEqual(vec2(now.packed_color, last.packed_color), vec2(0))) ) {	// new
-		now.xyz = mix(last.xyz, now.xyz, 0.95f);
-		now.packed_color = packColor(mix(unpackColor(last.packed_color), unpackColor(now.packed_color), 0.95f));
-	} 
-	
-	return( now );
-*/	
-
 	return(sampleInputVolume(seedMap, read_location));
 }
 #else
@@ -387,7 +370,7 @@ void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout
 
 	// 1 center
 	current_color = current_color * attenuation(current_direction_distance.w);
-		
+	
 	// 26 neighbours
 	
 	// 1

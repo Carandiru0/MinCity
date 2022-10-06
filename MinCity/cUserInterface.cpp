@@ -30,6 +30,10 @@ void cUserInterface::Paint()
 
 		_tools->Paint();
 	}
+	if (_user) {
+
+		_user->Paint();
+	}
 }
 
 uint32_t const cUserInterface::getActivatedToolType() const
@@ -82,6 +86,7 @@ void cUserInterface::KeyAction(int32_t const key, bool const down, bool const ct
 	case GLFW_KEY_A:
 	case GLFW_KEY_S:
 	case GLFW_KEY_D:
+	case GLFW_KEY_B: // beacon
 		if (_user) {
 			_user->KeyAction(key, down, ctrl);
 		}

@@ -18,10 +18,9 @@ void cSelectTool::KeyAction(int32_t const key, bool const down, bool const ctrl)
 
 	if (_selectedDynamic && 0 != _selectedInstanceHash) {
 
-		auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(_selectedInstanceHash);
-
-		if (instance) {
-
+		auto instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(_selectedInstanceHash);
+		if (nullptr != instance)
+		{
 			v2_rotation_t Yaw(world::getYaw());
 			XMVECTOR vR(Yaw.v2());
 			vR = SFM::sgn(vR);

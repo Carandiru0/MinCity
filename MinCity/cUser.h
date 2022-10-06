@@ -6,7 +6,7 @@ namespace world {
 
 	class cYXIGameObject;
 	class cYXISphereGameObject;
-	class cAttachableGameObject;
+	class cLightConeGameObject;
 
 } // end ns
 
@@ -14,6 +14,8 @@ class cUser : no_copy
 {
 	constinit static uint64_t user_count;
 
+	static constexpr fp_seconds const
+		BEACON_LAUNCH_INTERVAL = fp_seconds(milliseconds(3333));
 
 	static constexpr uint32_t const
 		LEFT_ENGINE = 0,
@@ -27,6 +29,7 @@ public:
 
 	// methods
 	void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
+	void Paint();
 
 	void KeyAction(int32_t const key, bool const down, bool const ctrl);
 
@@ -46,7 +49,7 @@ private:
 private:
 	world::cYXIGameObject*				_ship;
 	world::cYXISphereGameObject			*_shipRingX[ENGINE_COUNT], *_shipRingY[ENGINE_COUNT], *_shipRingZ[ENGINE_COUNT];
-	world::cAttachableGameObject*		_light_cone;
+	world::cLightConeGameObject*		_light_cone;
 
 	// security //
 	uintptr_t							_shipAlias;
@@ -56,10 +59,12 @@ private:
 
 	// end security //
 
+	fp_seconds                          _beacon_accumulator;
 	float const							_sphere_engine_offset;
 	float								_total_mass;
 
-	bool								_destroyed;
+	bool								_destroyed,
+		                                _beacon_loaded;
 public:
 	cUser();
 	~cUser();

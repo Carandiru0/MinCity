@@ -23,7 +23,7 @@ namespace Iso
 
 	// cONSTANTS/*****************
 	static constexpr size_t const
-		WORLD_GRID_SIZE_BITS = 11;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
+		WORLD_GRID_SIZE_BITS = 12;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
 	static constexpr uint32_t const				//                                          recommend using 2^13 = 8192x8192 or less, map is still extremely large
 		WORLD_GRID_SIZE = (1U << WORLD_GRID_SIZE_BITS),
 		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);
@@ -55,14 +55,13 @@ namespace Iso
 	// uniforms.vert   ,  isovoxel.h   ,    globals.h
 	static constexpr uint32_t const
 		VOXELS_GRID_SLOT_XZ_BITS_2N = 1,						 // modify to get desired voxel size, uniforms.vert must equal
-		VOXELS_GRID_SLOT_XZ = (1 << VOXELS_GRID_SLOT_XZ_BITS_2N);// max num voxels in x or z direction for a single slot / square on "minigrid" : "grid"
+		VOXELS_GRID_SLOT_XZ = (1 << VOXELS_GRID_SLOT_XZ_BITS_2N) + 1;// max num voxels in x or z direction for a single slot / square on "minigrid" : "grid"
 			// 2^3 bits = 8
 	static constexpr float const
 		VOXELS_GRID_SLOT_XZ_FP = ((float)(VOXELS_GRID_SLOT_XZ));
 
 #define MINIVOXEL_FACTOR Iso::VOXELS_GRID_SLOT_XZ
 #define MINIVOXEL_FACTORF Iso::VOXELS_GRID_SLOT_XZ_FP
-#define MINIVOXEL_FACTOR_BITS Iso::VOXELS_GRID_SLOT_XZ_BITS_2N
 
 	static constexpr uint32_t const
 		SCREEN_VOXELS_XZ = 256,
@@ -76,20 +75,21 @@ namespace Iso
 		OVER_SCREEN_VOXELS_Z = OVER_SCREEN_VOXELS_XZ;
 
 	static constexpr float const
-		HEIGHT_SCALE = 16.0f,		// this value and shader value for height need to always match (uniforms.vert)
-		VOX_SIZE = 0.25f,			// this value and shader value for normal vox size need to always match
+		VOX_SIZE = 1.0f / VOXELS_GRID_SLOT_XZ_FP,			// this value and shader value for normal vox size need to always match
 		VOX_STEP = VOX_SIZE * 2.0f,
-		VOX_RADIUS = 866.025403784438646764e-3f, // calculated from usage of 0.5f
 
 		MINI_VOX_SIZE = VOX_SIZE / MINIVOXEL_FACTORF,	// this value and shader value for mini-vox size need to always match
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
-		MINI_VOX_RADIUS = VOX_RADIUS / MINIVOXEL_FACTORF, // calculated "" ""
+		HEIGHT_SCALE = 256.0f * 0.75f, // this value and shader value for height need to always match (uniforms.vert)
 
-		WORLD_MAX_HEIGHT = (float)SCREEN_VOXELS_Y * 0.5f, // unit: voxels  ** not minivoxels
+		WORLD_MAX_HEIGHT = (float)SCREEN_VOXELS_Y * 0.75f, // unit: voxels  ** not minivoxels
 		WORLD_GRID_FSIZE = (float)WORLD_GRID_SIZE,
 		WORLD_GRID_FHALFSIZE = (float)WORLD_GRID_HALFSIZE,
 		INVERSE_WORLD_GRID_FSIZE = 1.0f / WORLD_GRID_FSIZE,
 		INVERSE_MAX_VOXEL_COORD = 1.0f / (MAX_VOXEL_FCOORD);		// -- good for normalization in range -1.0f...1.0f
+
+	static constexpr double const
+		VOX_MINZ_SCALAR = ((double)Iso::MINI_VOX_SIZE) * SFM::GOLDEN_RATIO_ZERO;
 
 	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD, (float)SCREEN_VOXELS_Y, MAX_VOXEL_FCOORD }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
@@ -121,11 +121,12 @@ namespace Iso
 		TYPE_EDGE = 0,
 		TYPE_NODE = 1;
 
-	// 0011 1100 ### HEIGHT ###
-	static constexpr uint8_t const MASK_HEIGHT_BITS = 0b00111100;
-	static constexpr uint8_t const DESC_HEIGHT_STEP_0 = 0;	// 16 Values (0-15 4bits)
-	static constexpr uint8_t const MAX_HEIGHT_STEP = 0x0F;	// 16 Values (0-15 4bits)
-	static constexpr uint8_t const NUM_HEIGHT_STEPS = MAX_HEIGHT_STEP + 1;	// 16 Values (0-15 4bits)	
+	// 0011 1100 ### UNUSED ###
+	static constexpr uint8_t const MASK_UNUSED_BITS = 0b00111100;
+	// Height moved to dedicated member
+	static constexpr uint32_t const DESC_HEIGHT_STEP_0 = 0;
+	static constexpr uint32_t const MAX_HEIGHT_STEP = 0xFF;	
+	static constexpr uint32_t const NUM_HEIGHT_STEPS = MAX_HEIGHT_STEP + 1;	// 256 Values (0-255 8bits)	
 	static constexpr float const   INV_MAX_HEIGHT_STEP = 1.0f / (float)MAX_HEIGHT_STEP;
 
 	// 1100 0000 ### SPECIAL ###
@@ -144,10 +145,10 @@ namespace Iso
 	// ** Only valid if extended type is type in .Desc ** //
 	static constexpr uint8_t const MASK_EXTENDED_TYPE_BITS = 0b11000000;
 	static constexpr uint8_t const
-		EXTENDED_TYPE_ROAD = 0,
-		EXTENDED_TYPE_WATER = 1,
-		EXTENDED_TYPE_RESERVED0 = 2,
-		EXTENDED_TYPE_RESERVED1 = 3;
+		EXTENDED_TYPE_RESERVED0 = 0,
+		EXTENDED_TYPE_RESERVED1 = 1,
+		EXTENDED_TYPE_RESERVED2 = 2,
+		EXTENDED_TYPE_RESERVED3 = 3;
 
 	// ######### Hash bits:
 
@@ -156,69 +157,18 @@ namespace Iso
 	static constexpr uint32_t const MASK_RESERVED = 0xFC;		//								 1111 11xx	// ground specific bits not used yet (reserved)
 	static constexpr uint32_t const MASK_COLOR = 0xFFFFFF00;	// 1111 1111 1111 1111 1111 1111 xxxx xxxx	// ground coloring BGR
 
-	// road hash bits //
-	static constexpr uint32_t const ROAD_SEGMENT_WIDTH = 15;  // must be an odd number that is divisible by some number. critical constant tied to road tile data!
-	static constexpr float const	ROAD_SEGMENT_RADIUS = float(ROAD_SEGMENT_WIDTH) * 0.5f;
-	static constexpr int32_t const  SEGMENT_SIDE_WIDTH(ROAD_SEGMENT_WIDTH >> 1),
-									SEGMENT_SNAP_WIDTH(ROAD_SEGMENT_WIDTH + 1);
-	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_BEGIN = 0x0F;													//	                1111
-	static constexpr uint32_t const MASK_ROAD_HEIGHTSTEP_END = 0xF0;													//             1111 xxxx
-	static constexpr uint32_t const MASK_ROAD_DIRECTION = 0x300;														//        0011 xxxx xxxx
-	static constexpr uint32_t const MASK_ROAD_TILE = 0xFC00;															//   1111 11xx xxxx xxxx
-	static constexpr uint32_t const MASK_ROAD_NODE_TYPE = 0xF0000;												 //     1111 xxxx xxxx xxxx xxxx
-	static constexpr uint32_t const MASK_ROAD_NODE_CENTER = 0x100000;											 //0001 xxxx xxxx xxxx xxxx xxxx   
-																
-	// road specific //
-	namespace ROAD_DIRECTION { // 2 bits - 0 = 0b00 = N,   1 = 0b01 = S,   2 = 0b10 = E,   3 = 0b11 = W
-		static constexpr uint32_t const
-			N = 0,
-			S = 1,
-			E = 2,
-			W = 3;
-	} // end ns
-	namespace ROAD_TILE { // 6 bits (64 values maximum)
-		static constexpr uint32_t const
-			STRAIGHT = 0,
-			XING = 1,
-			FLAT = 2,
-			SELECT = 3,
-			// n curved layers per curve direction, where n is equal to road segment width. 
-			CURVED_0 = 4;			// TL
-									// TR
-									// BR
-									// BL
-	} // end ns
-	namespace ROAD_NODE_TYPE {
-		static constexpr uint32_t const
-			XING_ALL = 0,
-			XING_RTL = 1,
-			XING_TLB = 2,
-			XING_LBR = 3,
-			XING_BRT = 4,
-			XING = 4, // for testing <= XING = any XING_XXX type
-
-			CORNER_TL = 5,
-			CORNER_BL = 6,
-			CORNER_BR = 7,
-			CORNER_TR = 8,
-			CORNER = 8, // for testing <= CORNER = any CORNER_XX type
-
-			INVALID = 9;
-
-	} // end ns
-
-
 	// "Owner" Voxel & Hashes
 	static constexpr uint8_t const
 		GROUND_HASH = 0,
 		STATIC_HASH = (1 << 0),
 		DYNAMIC_HASH = (1 << 1);
 	static constexpr uint8_t const
-		HASH_COUNT = 8;
+		HASH_COUNT = 15;  // 60 bytes + 4bytes = 64bytes/voxel
 
 
 	typedef struct sVoxel
 	{
+		uint8_t Height;                             // Heightstep
 		uint8_t Desc;								// Type of Voxel + Attributes
 		uint8_t MaterialDesc;						// Deterministic SubType and Adjacency
 		uint8_t Owner;								// Owner Indices
@@ -403,22 +353,16 @@ namespace Iso
 
 	STATIC_INLINE_PURE uint32_t const getHeightStep(Voxel const& oVoxel)
 	{
-		// Mask off height bits
-		// Shift to realize number
-		return((MASK_HEIGHT_BITS & oVoxel.Desc) >> 2);
+		return(oVoxel.Height);
 	}
 	STATIC_INLINE void setHeightStep(Voxel& oVoxel, uint8_t const HeightStep)
 	{
-		// Clear height bits
-		oVoxel.Desc &= (~MASK_HEIGHT_BITS);
-		// Set new height bits safetly truncating passed parameter HeightStep
-		oVoxel.Desc |= (MASK_HEIGHT_BITS & (HeightStep << 2));
+		oVoxel.Height = HeightStep;
 	}
 	STATIC_INLINE_PURE float const getRealHeight(float const fHeightStep)
 	{
-		static constexpr float const INV_MAX_HEIGHT_STEP = 1.0f / (float)MAX_HEIGHT_STEP;
-
-		return(SFM::__fma(fHeightStep, (INV_MAX_HEIGHT_STEP * HEIGHT_SCALE * VOX_SIZE), VOX_SIZE * 0.5f));  // half-voxel offset is exact
+		// max(VOX_SIZE * 0.5f, heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE)
+		return(SFM::max(VOX_SIZE, SFM::__fma(fHeightStep, INV_MAX_HEIGHT_STEP * HEIGHT_SCALE * VOX_SIZE * MINIVOXEL_FACTORF, VOX_SIZE * MINIVOXEL_FACTORF * 0.5f)));  // half-voxel offset is exact
 	}
 	STATIC_INLINE_PURE float const getRealHeight(Voxel const& oVoxel)
 	{
@@ -489,133 +433,6 @@ namespace Iso
 
 		oVoxel.Hash[GROUND_HASH] &= ~MASK_ZONING; // clear zoning bits
 	}
-
-	// #### Roads
-	template<bool const owner_only = true>					    // middle of road is owner voxel of road segment, otherwise it's not the middle of the road.
-	STATIC_INLINE_PURE bool const isRoad(Voxel const& oVoxel);	// default is to test if road and is the owner voxel. 
-
-	template<> // only the actual road describing owner voxel.
-	STATIC_INLINE_PURE bool const isRoad<true>(Voxel const& oVoxel) { return(isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel)) && isOwner(oVoxel, GROUND_HASH)); }
-	template<> // if voxel is road.
-	STATIC_INLINE_PURE bool const isRoad<false>(Voxel const& oVoxel) { return(isExtended(oVoxel) && (Iso::EXTENDED_TYPE_ROAD == Iso::getExtendedType(oVoxel))); }
-
-	STATIC_INLINE_PURE bool const isRoadNode(Voxel const& oVoxel) { return((MASK_NODE_BIT & oVoxel.Desc)); } // Only used if current voxel is of extended type road
-	STATIC_INLINE_PURE bool const isRoadEdge(Voxel const& oVoxel) { return(!(MASK_NODE_BIT & oVoxel.Desc)); } // Only used if current voxel is of extended type road
-	STATIC_INLINE_PURE bool const isRoadNodeCenter(Voxel const& oVoxel) { return(MASK_ROAD_NODE_CENTER == (oVoxel.Hash[GROUND_HASH] & MASK_ROAD_NODE_CENTER)); } // Only used if current voxel is of extended type road and is a node
-
-	STATIC_INLINE_PURE uint32_t const getRoadNodeType(Voxel const& oVoxel) // returns Iso::ROAD_NODE_TYPE::INVALID if current voxel is not a node
-	{																	   // Only use if current voxel is of extended type road
-		// Mask off road node type bits
-		// Shift to realize number
-		return((MASK_ROAD_NODE_TYPE & oVoxel.Hash[GROUND_HASH]) >> 16);
-	}
-	STATIC_INLINE void setAsRoadEdge(Voxel& oVoxel) // Only use if current voxel is of extended type road
-	{
-		// Clear node bit
-		clearAsNode(oVoxel);
-		// clear node center
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_NODE_CENTER);
-		// clear node type
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_NODE_TYPE);
-		// set road type bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_NODE_TYPE & (Iso::ROAD_NODE_TYPE::INVALID << 16));
-	}
-	STATIC_INLINE void setAsRoadNode(Voxel& oVoxel, uint32_t const type, bool const centered) // Only use if current voxel is of extended type road
-	{
-		// clear node type
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_NODE_TYPE);
-		// set road type bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_NODE_TYPE & (type << 16));
-
-		// clear node center
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_NODE_CENTER);
-		// set road node center bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_NODE_CENTER & (((uint32_t)centered) << 20));
-
-		// Set new node bit safetly
-		setAsNode(oVoxel);
-	}
-
-	STATIC_INLINE_PURE uint32_t const getRoadDirection(Voxel const& oVoxel) { // Iso::ROAD_DIRECTION:: N,S,E,W (2 bits - 0 = 0b00 = N,   1 = 0b01 = S,   2 = 0b10 = E,   3 = 0b11 = W)
-		return(((MASK_ROAD_DIRECTION & oVoxel.Hash[GROUND_HASH]) >> 8));
-	}
-
-	STATIC_INLINE void setRoadDirection(Voxel& oVoxel, uint32_t const direction) { // Iso::ROAD_DIRECTION:: N,S,E,W (2 bits - 0 = 0b00 = N,   1 = 0b01 = S,   2 = 0b10 = E,   3 = 0b11 = W)
-		// clear road direction bits
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_DIRECTION);
-		// set road direction bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_DIRECTION & (direction << 8));
-	}
-
-	STATIC_INLINE_PURE uint32_t const getRoadTile(Voxel const& oVoxel) {
-		return(((MASK_ROAD_TILE & oVoxel.Hash[GROUND_HASH]) >> 10));
-	}
-
-	STATIC_INLINE void setRoadTile(Voxel& oVoxel, uint32_t const tile_index) {
-		// clear road direction bits
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_TILE);
-		// set road direction bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_TILE & (tile_index << 10));
-	}
-
-	STATIC_INLINE_PURE uint32_t const getRoadHeightStepBegin(Voxel const& oVoxel) {
-		return(MASK_ROAD_HEIGHTSTEP_BEGIN & oVoxel.Hash[GROUND_HASH]);
-	}
-	STATIC_INLINE_PURE uint32_t const getRoadHeightStepEnd(Voxel const& oVoxel) {
-		return((MASK_ROAD_HEIGHTSTEP_END & oVoxel.Hash[GROUND_HASH]) >> 4);
-	}
-
-	STATIC_INLINE void setRoadHeightStepBegin(Voxel& oVoxel, uint32_t const heightstep) {
-		// clear road heightstep begin bits
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_HEIGHTSTEP_BEGIN);
-		// set road heightstep begin bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_HEIGHTSTEP_BEGIN & heightstep);
-	}
-	STATIC_INLINE void setRoadHeightStepEnd(Voxel& oVoxel, uint32_t const heightstep) {
-		// clear road heightstep end bits
-		oVoxel.Hash[GROUND_HASH] &= (~MASK_ROAD_HEIGHTSTEP_END);
-		// set road heightstep end bits
-		oVoxel.Hash[GROUND_HASH] |= (MASK_ROAD_HEIGHTSTEP_END & (heightstep << 4));
-	}
-
-	STATIC_INLINE_PURE float const getRealRoadHeight(Voxel const& oVoxel) // *** if called when there is infact no road, results are undefined. Validate road exists b4 calling this function.
-	{
-		uint32_t const uiMaxHeightStep(SFM::max(Iso::getRoadHeightStepBegin(oVoxel), Iso::getRoadHeightStepEnd(oVoxel)));
-
-		return(getRealHeight((float)uiMaxHeightStep));  // half-voxel offset is exact
-	}
-
-	// for voxel painting //
-	namespace mini
-	{
-		static constexpr uint8_t const // *these numbers are the mask
-			emissive = (1 << 0),
-			hidden = (1 << 1);
-
-		typedef struct Voxel
-		{
-			uvec4_t					index; // .w = color
-			XMFLOAT3A				position;
-			Voxel const* __restrict next;
-			uint8_t					flags;
-
-			Voxel()
-				: position{}, index{}, next{ nullptr }, flags{}
-			{}
-			__forceinline explicit __vectorcall Voxel(FXMVECTOR worldPos_, uvec4_v const index_, uint32_t const color_, uint8_t const flags_, Voxel const* __restrict next_) noexcept
-				: flags(flags_), next(next_)
-			{
-				XMStoreFloat3A(&position, worldPos_);
-				index_.xyzw(index);
-				index.w = color_;
-			}
-			Voxel(Voxel const&) = default;
-			Voxel& operator=(Voxel const&) = default;
-			Voxel(Voxel&&) noexcept = default;
-			Voxel& operator=(Voxel&&) noexcept = default;
-		} voxel;
-
-	} // end ns
 
 	// helper struct (last) //
 	typedef struct sVoxelIndexHashPair // for general usage of associating a voxel (index) with an instance (hash)

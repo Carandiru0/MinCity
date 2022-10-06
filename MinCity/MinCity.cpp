@@ -716,10 +716,8 @@ void cMinCity::UpdateWorld()
 		bWasPaused = false;
 	}
 
-	Audio->Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
-	
 	// *first*
-	VoxelWorld->clearMiniVoxels(bPaused | !MinCity::Vulkan->isRenderingEnabled()); // clearing voxel queue required b4 any voxels are added by addVoxel() method (which is only allowed in paint metods of UserInterface) *bugfix - DEBUG_DISALLOW_PAUSE_FOCUS_LOST causes major issue. To still allow debugging of normal (unpaused) state, isRenderingEnabled is added here to solve the problem with clearing minivoxels properly while window is "inactive" or focus is lost.
+	Audio->Update(); // done 1st as this is asynchronous, other tasks can occur simultaneously
 
 	// *second*
 	bool const bInputDelta = Nuklear->UpdateInput() | ((tCriticalNow - tLastGUI) >= nanoseconds(milliseconds(Globals::INTERVAL_GUI_UPDATE))); // always update *input* everyframe, UpdateInput returns true to flag a gui update is neccesary

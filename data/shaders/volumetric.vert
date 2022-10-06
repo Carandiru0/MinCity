@@ -31,7 +31,7 @@ void main() {
 	gl_Position = u._viewproj * vec4(position, 1.0f);
 
 	// Compute eye position and ray directions in the unit cube space
-
+	
 	precise const vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*
 	Out.rd.xzy = normalize(inPos.xyz - eyePos); // should be renormalized in fragment shader
 	Out.eyePos.xzy = eyePos;

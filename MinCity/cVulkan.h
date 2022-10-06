@@ -64,7 +64,6 @@ BETTER_ENUM(eVoxelSharedPipeline, uint32_t const,
 BETTER_ENUM(eVoxelVertexBuffer, uint32_t const,
 
 	VOXEL_TERRAIN = 0,
-	VOXEL_ROAD,
 	VOXEL_STATIC,
 	VOXEL_DYNAMIC
 );
@@ -74,13 +73,6 @@ BETTER_ENUM(eVoxelPipeline, int32_t const,
 	VOXEL_TERRAIN_BASIC,
 	VOXEL_TERRAIN,
 	VOXEL_TERRAIN_BASIC_CLEAR,
-
-	VOXEL_ROAD_BASIC_ZONLY,
-	VOXEL_ROAD_BASIC,
-	VOXEL_ROAD,
-	VOXEL_ROAD_TRANS,
-	VOXEL_ROAD_CLEARMASK, // ROAD is not written to opacitymap, ground underneath is close enough for raymarch and it uses a zbuffer with the road actually in it
-	VOXEL_ROAD_OFFSCREEN,
 
 	VOXEL_STATIC_BASIC_ZONLY,
 	VOXEL_STATIC_BASIC,
@@ -117,14 +109,6 @@ BETTER_ENUM(eVoxelDynamicVertexBufferPartition, uint32_t const,	// ***** this ha
 
 	// ## shaders //
 	VOXEL_SHADER_RAIN,
-
-	// main transparent only //
-	PARENT_TRANS // #### MUST BE LAST ####
-);
-BETTER_ENUM(eVoxelRoadVertexBufferPartition, uint32_t const,	// ***** this has to always be same as eVoxelPipelineCustomized but + 1 excluding clears
-
-	// main //
-	PARENT_MAIN = 0,
 
 	// main transparent only //
 	PARENT_TRANS // #### MUST BE LAST ####
@@ -233,8 +217,6 @@ public:
 
 	// Dynamic Voxels Partition Info Array //
 	__inline vku::VertexBufferPartition* const __restrict& __restrict    getDynamicPartitionInfo(uint32_t const resource_index) const;
-	// Road        ""   ""   "" //
-	__inline vku::VertexBufferPartition* const __restrict& __restrict    getRoadPartitionInfo(uint32_t const resource_index) const;
 
 	// Main Methods //
 	void setFullScreenExclusiveEnabled(bool const bEnabled);
@@ -647,9 +629,6 @@ private:
 	STATIC_INLINE void renderStaticVoxels(vku::static_renderpass const& s);
 
 	template<int32_t const voxel_pipeline_index>
-	STATIC_INLINE void renderRoadVoxels(vku::static_renderpass const& s);
-
-	template<int32_t const voxel_pipeline_index>
 	STATIC_INLINE void renderTerrainVoxels(vku::static_renderpass const& s);
 
 	template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks = 0>
@@ -712,15 +691,20 @@ void cVulkan::CreateVoxelResource(
 				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (first color attachment)
 				pm.blendBegin(VK_FALSE);
 				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (second color attachment)
+				pm.blendBegin(VK_FALSE);
+				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (third color attachment)
 			}
 			else {
-				// outputs Z and a color to a second color attachment
+				// outputs Z and a color to a second color attachment and a color to a third color attachment
 				pm.shader(vk::ShaderStageFlagBits::eFragment, frag);
 				pm.blendBegin(VK_FALSE);
 				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (first color attachment)
 				typedef vk::ColorComponentFlagBits ccbf;
 				pm.blendBegin(VK_FALSE);
 				pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA); // full writes to second color attachment
+				typedef vk::ColorComponentFlagBits ccbf;
+				pm.blendBegin(VK_FALSE);
+				pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA); // full writes to third color attachment
 			}
 
 		}
@@ -849,9 +833,6 @@ void cVulkan::CreateVoxelChildResource(vk::Pipeline& pipeline, vku::double_buffe
 __inline vku::VertexBufferPartition* const __restrict& __restrict cVulkan::getDynamicPartitionInfo(uint32_t const resource_index) const {
 	return((*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->partitions());
 }
-__inline vku::VertexBufferPartition* const __restrict& __restrict cVulkan::getRoadPartitionInfo(uint32_t const resource_index) const {
-	return((*_rtData[eVoxelPipeline::VOXEL_ROAD]._vbo[resource_index])->partitions());
-}
 
 template<uint32_t const descriptor_set>
 STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(uint32_t const resource_index, vk::CommandBuffer& __restrict cb)
@@ -942,30 +923,6 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 }
 
 template<int32_t const voxel_pipeline_index>
-STATIC_INLINE void cVulkan::renderRoadVoxels(vku::static_renderpass const& s)
-{
-	uint32_t const resource_index(s.resource_index);
-
-	// roads
-	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_BASIC + voxel_pipeline_index;
-
-	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
-	if (0 != ActiveVertexCount) {
-
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-
-		// main partition (always starts at vertex positiob 0)
-		{
-			uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_MAIN].active_vertex_count;
-			if (0 != partition_vertex_count) {
-				s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-				s.cb.draw(partition_vertex_count, 1, 0, 0);
-			}
-		}
-	}
-}
-
-template<int32_t const voxel_pipeline_index>
 STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 {
 	uint32_t const resource_index(s.resource_index);
@@ -995,9 +952,6 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels(vku::static_renderpass con
 	// static voxels //
 	renderStaticVoxels<voxel_pipeline_index>(s);
 
-	// roads //
-	renderRoadVoxels<voxel_pipeline_index>(s);
-
 	// terrain voxels //
 	renderTerrainVoxels<voxel_pipeline_index>(s);
 
@@ -1018,14 +972,11 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 	// terrain voxels //
 	renderTerrainVoxels<MOUSE>(s);	// always output to mouse buffer
 
-	// roads //
-	renderRoadVoxels<MOUSE>(s);  // always output to mouse buffer
-
 	// ***** descriptor set must be set outside of this function ***** //
 
 	uint32_t ActiveMaskCount(0);
 
-	if (0 != s.resource_index)
+	/*if (0 != s.resource_index) //// WHY alternate from ZONLY to MOUSE frame by frame? Is this required for mouse input?
 	{
 		// static voxels //
 		renderStaticVoxels<ZONLY>(s);
@@ -1033,14 +984,14 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 		// dynamic voxels //
 		ActiveMaskCount = renderDynamicVoxels<ZONLY, numChildMasks>(s, deferredChildMasks);
 	}
-	else {
+	else {*/
 
 		// static voxels //
 		renderStaticVoxels<MOUSE>(s);
 		
 		// dynamic voxels //
 		ActiveMaskCount = renderDynamicVoxels<MOUSE, numChildMasks>(s, deferredChildMasks);
-	}
+	//}
 
 	return(ActiveMaskCount);
 }
@@ -1051,26 +1002,6 @@ __inline void cVulkan::renderTransparentVoxels(vku::static_renderpass const& s)
 	
 	// SUBPASS - voxels w/Transparency //
 
-	{ // transparent roads
-		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_ROAD_TRANS;
-
-		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
-		if (0 != ActiveVertexCount) {
-
-			s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-
-			// trans partition
-			{
-				auto const& partition_info((*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelRoadVertexBufferPartition::PARENT_TRANS]);
-				uint32_t const partition_vertex_count = partition_info.active_vertex_count;
-				if (0 != partition_vertex_count) {
-					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-					uint32_t const partition_start_vertex = partition_info.vertex_start_offset;
-					s.cb.draw(partition_vertex_count, 1, partition_start_vertex, 0);
-				}
-			}
-		}
-	}
 	{ // dynamic voxels
 		uint32_t const ActiveVertexCount = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
 		if (0 != ActiveVertexCount) {

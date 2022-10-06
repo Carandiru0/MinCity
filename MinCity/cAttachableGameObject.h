@@ -5,10 +5,10 @@
 
 namespace world
 {
-	class cAttachableGameObject : public tUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic>, public type_colony<cAttachableGameObject>
+	class cAttachableGameObject : public tUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic> // must derive from this class and inherit a type_colony in the child class
 	{
 	public:
-		constexpr virtual types::game_object_t const to_type() const override final {
+		constexpr virtual types::game_object_t const to_type() const override {
 			return(types::game_object_t::TestGameObject);
 		}
 
@@ -47,12 +47,11 @@ namespace world
 		cAttachableGameObject tmp{ std::move(left) };
 		left = std::move(right);
 		right = std::move(tmp);
-
-		left.revert_free_ownership();
-		right.revert_free_ownership();
 	}
 
 
  } // end ns
+
+#undef GAMEOBJECT_T
 
 

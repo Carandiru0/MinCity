@@ -87,14 +87,53 @@ namespace world
 		return(imageNoise);
 	}
 
-	ImagingMemoryInstance* const __restrict cProcedural::GenerateNoiseImage(NoiseRenderFunc_t noiseRenderfunc, 
+	ImagingMemoryInstance* const __restrict cProcedural::GenerateNoiseImage(NoiseRenderPassthruFunc_t noiseRenderfunc, 
 																			uint32_t const size,
-																			supernoise::interpolator::functor const& interp)
+																			supernoise::interpolator::functor const& interp,
+		                                                                    ImagingMemoryInstance const* const pPassthru)
 	{
-		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_BGRX, size, size);
+		static constexpr float const INV_255 = 1.0f / 255.0f;
+
+		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_L, size, size);
 
 		struct { // avoid lambda heap
-			uint8_t* const* const __restrict image;
+			uint8_t const* const* const __restrict image_in;
+			uint8_t* const* const __restrict       image_out;
+			int const size;
+			NoiseRenderPassthruFunc_t const noiseRenderfunc;
+			supernoise::interpolator::functor const& interp;
+		} const p = { pPassthru->image, imageNoise->image, imageNoise->xsize, noiseRenderfunc, interp };
+
+
+		tbb::parallel_for(int(0), imageNoise->ysize, [&p](int const y) {
+
+			float const inv_size(1.0f / float(p.size));
+			float const v((float)y * inv_size);
+			int x = p.size - 1;
+			uint8_t const* __restrict pIn(p.image_in[y]);
+			uint8_t* __restrict pOut(p.image_out[y]);
+			do {
+
+				*pOut = p.noiseRenderfunc((float)x * inv_size, v, INV_255 * ((float)*pIn), p.interp);
+
+				++pOut;
+				++pIn;
+				
+			} while (--x >= 0);
+
+		});
+
+		return(imageNoise);
+	}
+
+	ImagingMemoryInstance* const __restrict cProcedural::GenerateNoiseImage(NoiseRenderFunc_t noiseRenderfunc,
+		                                                                    uint32_t const size,
+		                                                                    supernoise::interpolator::functor const& interp)
+	{
+		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_L, size, size);
+
+		struct { // avoid lambda heap
+			uint8_t* const* const __restrict       image_out;
 			int const size;
 			NoiseRenderFunc_t const noiseRenderfunc;
 			supernoise::interpolator::functor const& interp;
@@ -106,25 +145,24 @@ namespace world
 			float const inv_size(1.0f / float(p.size));
 			float const v((float)y * inv_size);
 			int x = p.size - 1;
-			uint8_t* __restrict pOut(p.image[y]);
+
+			uint8_t* __restrict pOut(p.image_out[y]);
 			do {
 
-				uint32_t const noisePixel = p.noiseRenderfunc((float)x * inv_size, v, p.interp);
+				*pOut = p.noiseRenderfunc((float)x * inv_size, v, p.interp);
 
-				*reinterpret_cast<uint32_t* const>(pOut) = (noisePixel << 24) | (noisePixel << 16) | (noisePixel << 8) | noisePixel;
+				++pOut;
 
-				pOut += 4;
-				
 			} while (--x >= 0);
 
-		});
+			});
 
 		return(imageNoise);
 	}
 
 	ImagingMemoryInstance* const __restrict cProcedural::GenerateNoiseImage(uint32_t const noiseType, uint32_t const size, supernoise::interpolator::functor const& interp)
 	{
-		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_BGRX, size, size);
+		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_L, size, size);
 
 		// unconst
 		typedef const uint32_t (* NoiseRenderFunc_t_unconst)(float const, float const, supernoise::interpolator::functor const&);
@@ -144,33 +182,7 @@ namespace world
 			break;
 		}	
 
-		struct { // avoid lambda heap
-			uint8_t* const* const __restrict image;
-			int const size;
-			NoiseRenderFunc_t const noiseRenderfunc;
-			supernoise::interpolator::functor const& interp;
-		} const p = { imageNoise->image, imageNoise->xsize, noiseRenderfunc, interp };
-
-
-		tbb::parallel_for(int(0), imageNoise->ysize, [&p](int const y) {
-
-			float const inv_size(1.0f / float(p.size));
-			float const v((float)y * inv_size);
-			int x = p.size - 1;
-			uint8_t* __restrict pOut(p.image[y]);
-			do {
-
-				uint32_t const noisePixel = p.noiseRenderfunc((float)x * inv_size, v, p.interp);
-
-				*reinterpret_cast<uint32_t* const>(pOut) = (noisePixel << 24) | (noisePixel << 16) | (noisePixel << 8) | noisePixel;
-
-				pOut += 4;
-
-			} while (--x >= 0);
-
-		});
-
-		return(imageNoise);
+		return(GenerateNoiseImage(noiseRenderfunc, size, interp));
 	}
 
 	ImagingMemoryInstance* const __restrict cProcedural::Colorize_TestPattern(ImagingMemoryInstance* const imageSrc)

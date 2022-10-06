@@ -28,6 +28,7 @@ The VOX File format is Copyright to their respectful owners.
 
 #include <density.h>	// https://github.com/centaurean/density - Density, fastest compression/decompression library out there with simple interface. must reproduce license file. attribution.
 
+// openvdb uses boost, openvdb modified to not use any RTTI
 #define OPENVDB_USE_SSE42
 #define OPENVDB_USE_AVX
 #define OPENVDB_STATICLIB
@@ -1217,7 +1218,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 									ReadData((void* const __restrict) & channel_name_length, pReadPointer, sizeof(channel_name_length));
 									pReadPointer += sizeof(channel_name_length);
 
-									if (channel_name_length <= MAX_BUFFER_SZ) { // validate
+									if (channel_name_length < MAX_BUFFER_SZ) { // validate
 										ReadData((void* const __restrict) & szBuffer, pReadPointer, sizeof(char) * channel_name_length);
 										pReadPointer += sizeof(char) * channel_name_length;
 									}
@@ -1581,13 +1582,18 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 	// only care about x, z axis ... y axis / height is not part of local area 
 
 	// +1 cause maxdimensions is equal to the max index, ie 0 - 31, instead of a size like 32
-	point2D_t vRadii(p2D_half(p2D_half(point2D_t(_maxDimensions.x + 1, _maxDimensions.z + 1))));
-
-	// determine if there is a remainder
-	point2D_t const vRemainder(vRadii.x % MINIVOXEL_FACTOR, vRadii.y % MINIVOXEL_FACTOR);
+	point2D_t vRadii(point2D_t(_maxDimensions.x + 1, _maxDimensions.z + 1));
 
 	// radii factor for mini voxels
-	vRadii = p2D_shiftr(vRadii, MINIVOXEL_FACTOR_BITS);
+	XMVECTOR const xmRadii(XMVectorDivide(p2D_to_v2(vRadii), XMVectorReplicate(MINIVOXEL_FACTORF * 2.0f))); // must be * 2.0f - factored out of needing radius to be half
+
+	vRadii = p2D_half(vRadii);
+
+	// determine if there is a remainder
+	point2D_t const vRemainder(vRadii.x % (MINIVOXEL_FACTOR), vRadii.y % (MINIVOXEL_FACTOR));
+
+	vRadii = v2_to_p2D_rounded(xmRadii); // accuracy increase++
+	vRadii = p2D_shiftr(p2D_add(vRadii, p2D_shiftr(vRadii, 1)), 1);
 
 	// if remainder is odd add 1 at iterative end, otherwise split and add 2
 	point2D_t vSideBegin{}, vSideEnd{};
@@ -1614,7 +1620,7 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 						  p2D_add(vRadii, vSideEnd));
 	
 	// Extents are 0.5f * (width/height/depth) as in origin at very center of model on all 3 axis
-	XMVECTOR xmExtents = p2D_to_v2(p2D_sub(_LocalArea.right_bottom(), _LocalArea.left_top()));
+	XMVECTOR xmExtents = XMVectorAdd(p2D_to_v2(p2D_sub(_LocalArea.right_bottom(), _LocalArea.left_top())), SFM::fract(xmRadii)); // accuracy increase++
 	xmExtents = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmExtents); // move z to correct position from v2 to v3
 	xmExtents = XMVectorSetY(xmExtents, float(_maxDimensions.y + 1) / MINIVOXEL_FACTORF);
 	xmExtents = XMVectorScale(xmExtents, 0.5f);

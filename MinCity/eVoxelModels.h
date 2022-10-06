@@ -84,11 +84,9 @@ namespace Volumetric
 
 					EMPTY = 0;
 			};
-			struct NAMED // ** static named **
+			enum NAMED // ** static named ** (index == order of loading named models)
 			{
-				static inline uint32_t
 
-					RESERVED = 0;
 			};
 		};
 
@@ -117,23 +115,22 @@ namespace Volumetric
 					LIGHT_X9 = 16,
 					LIGHT_X64 = 17;
 			};
-			struct NAMED // ** dynamic named ** (index == order of loading named models/sequences)
+			
+			enum NAMED // ** dynamic named ** (index == order of loading named models/sequences)
 			{
-				static inline uint32_t
+				YXI,
+				YXI_RING_X,
+				YXI_RING_Y,
+				YXI_RING_Z,
 
-					YXI = 0,
-					YXI_RING_X = 1,
-					YXI_RING_Y = 2,
-					YXI_RING_Z = 3,
+				LIGHT_CONE,
+				BEACON,
 
-					LIGHT_CONE = 4, 
-
-					GROUND_EXPLOSION = 5,
-					SPIKE_EXPLOSION = 6,
-					TINY_EXPLOSION = 7,
-					MEDIUM_FIRE = 8;
-
-					
+				MAIN_THRUST,
+				UP_THRUST,
+				HELIUM_GAS,
+				GROUND_EXPLOSION,
+				TINY_EXPLOSION
 			};
 		};
 	};

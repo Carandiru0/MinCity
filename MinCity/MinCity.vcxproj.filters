@@ -34,23 +34,11 @@
     <Filter Include="Header Files\voxel effects">
       <UniqueIdentifier>{53c37bfd-60ba-4421-ace5-546e4616e797}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\Gameplay\Copter">
-      <UniqueIdentifier>{f8371f77-371b-43c7-89db-c9ec9fe6b13b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Gameplay\Copter">
-      <UniqueIdentifier>{6f7891bb-9405-4186-a435-873de6daeecb}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Header Files\Gameplay\AI">
       <UniqueIdentifier>{346740cc-addc-4ebf-9c08-e69d516cf277}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\Gameplay\AI">
       <UniqueIdentifier>{0f1ea8e7-de0c-49bf-bddb-92849217d52c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Gameplay\Cars">
-      <UniqueIdentifier>{9115bfd5-2160-4bbe-9882-efdab6c0619b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\Gameplay\Cars">
-      <UniqueIdentifier>{7ad9fd4f-a249-45ad-b39f-a4248e0bf4f8}</UniqueIdentifier>
     </Filter>
     <Filter Include="Shaders\textureshaders">
       <UniqueIdentifier>{e31b0f6d-6586-4d77-85b8-45ad7ef68e74}</UniqueIdentifier>
@@ -63,6 +51,12 @@
     </Filter>
     <Filter Include="Header Files\Gameplay\YXI">
       <UniqueIdentifier>{ad6eaf07-02b5-4367-8886-7783cd2635d2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay\VDB">
+      <UniqueIdentifier>{318ba19d-b209-4dac-be0e-e8bf1a803ac9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Gameplay\VDB">
+      <UniqueIdentifier>{689548a1-fd7a-439d-a945-79bbf3207c38}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -255,15 +249,6 @@
     <ClInclude Include="rain.h">
       <Filter>Header Files\voxel effects</Filter>
     </ClInclude>
-    <ClInclude Include="cCopterBodyGameObject.h">
-      <Filter>Header Files\Gameplay\Copter</Filter>
-    </ClInclude>
-    <ClInclude Include="cCopterGameObject.h">
-      <Filter>Header Files\Gameplay\Copter</Filter>
-    </ClInclude>
-    <ClInclude Include="cCopterPropGameObject.h">
-      <Filter>Header Files\Gameplay\Copter</Filter>
-    </ClInclude>
     <ClInclude Include="cAIMover.h">
       <Filter>Header Files\Gameplay\AI</Filter>
     </ClInclude>
@@ -276,26 +261,8 @@
     <ClInclude Include="eDirection.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
-    <ClInclude Include="cCarGameObject.h">
-      <Filter>Header Files\Gameplay\Cars</Filter>
-    </ClInclude>
-    <ClInclude Include="cTrafficSignGameObject.h">
-      <Filter>Header Files\Gameplay\Cars</Filter>
-    </ClInclude>
-    <ClInclude Include="cRoadTool.h">
-      <Filter>Header Files\Gameplay\Cars</Filter>
-    </ClInclude>
-    <ClInclude Include="cTrafficControlGameObject.h">
-      <Filter>Header Files\Gameplay\Cars</Filter>
-    </ClInclude>
-    <ClInclude Include="cSignageGameObject.h">
-      <Filter>Header Files\Gameplay\Cars</Filter>
-    </ClInclude>
     <ClInclude Include="world.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="cPoliceCarGameObject.h">
-      <Filter>Header Files\Gameplay\Cars</Filter>
     </ClInclude>
     <ClInclude Include="cVideoScreenGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
@@ -315,9 +282,6 @@
     <ClInclude Include="types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="gui.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="vxlmono.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -325,9 +289,6 @@
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
     <ClInclude Include="prices.h">
-      <Filter>Header Files\Gameplay</Filter>
-    </ClInclude>
-    <ClInclude Include="cSimulation.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
     <ClInclude Include="cProceduralGameObject.h">
@@ -368,6 +329,18 @@
     </ClInclude>
     <ClInclude Include="cAttachableGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cBeaconGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cLightConeGameObject.h">
+      <Filter>Header Files\Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="cHeliumGasGameObject.h">
+      <Filter>Header Files\Gameplay\VDB</Filter>
+    </ClInclude>
+    <ClInclude Include="cThrusterFireGameObject.h">
+      <Filter>Header Files\Gameplay\VDB</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -464,38 +437,11 @@
     <ClCompile Include="cCity.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="cCopterBodyGameObject.cpp">
-      <Filter>Source Files\Gameplay\Copter</Filter>
-    </ClCompile>
-    <ClCompile Include="cCopterGameObject.cpp">
-      <Filter>Source Files\Gameplay\Copter</Filter>
-    </ClCompile>
-    <ClCompile Include="cCopterPropGameObject.cpp">
-      <Filter>Source Files\Gameplay\Copter</Filter>
-    </ClCompile>
     <ClCompile Include="cAIMover.cpp">
       <Filter>Source Files\Gameplay\AI</Filter>
     </ClCompile>
     <ClCompile Include="cAISkyMover.cpp">
       <Filter>Source Files\Gameplay\AI</Filter>
-    </ClCompile>
-    <ClCompile Include="cCarGameObject.cpp">
-      <Filter>Source Files\Gameplay\Cars</Filter>
-    </ClCompile>
-    <ClCompile Include="cSignageGameObject.cpp">
-      <Filter>Source Files\Gameplay\Cars</Filter>
-    </ClCompile>
-    <ClCompile Include="cTrafficSignGameObject.cpp">
-      <Filter>Source Files\Gameplay\Cars</Filter>
-    </ClCompile>
-    <ClCompile Include="cTrafficControlGameObject.cpp">
-      <Filter>Source Files\Gameplay\Cars</Filter>
-    </ClCompile>
-    <ClCompile Include="cRoadTool.cpp">
-      <Filter>Source Files\Gameplay\Cars</Filter>
-    </ClCompile>
-    <ClCompile Include="cPoliceCarGameObject.cpp">
-      <Filter>Source Files\Gameplay\Cars</Filter>
     </ClCompile>
     <ClCompile Include="cVideoScreenGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
@@ -513,9 +459,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="cAbstractToolMethods.cpp">
-      <Filter>Source Files\Gameplay</Filter>
-    </ClCompile>
-    <ClCompile Include="cSimulation.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
     <ClCompile Include="cProceduralGameObject.cpp">
@@ -550,6 +493,21 @@
     </ClCompile>
     <ClCompile Include="cAttachableGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cBeaconGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cLightConeGameObject.cpp">
+      <Filter>Source Files\Gameplay</Filter>
+    </ClCompile>
+    <ClCompile Include="cHeliumGasGameObject.cpp">
+      <Filter>Source Files\Gameplay\VDB</Filter>
+    </ClCompile>
+    <ClCompile Include="cThrusterFireGameObject.cpp">
+      <Filter>Source Files\Gameplay\VDB</Filter>
+    </ClCompile>
+    <ClCompile Include="world.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

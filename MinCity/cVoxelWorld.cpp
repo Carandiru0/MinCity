@@ -25,29 +25,10 @@
 #include "cUserInterface.h"
 #include "cCity.h"
 
-#include "cYXIGameObject.h"
-#include "cYXISphereGameObject.h"
-#include "cAttachableGameObject.h"
-
-#include "rain.h"
-#include "cLightGameObject.h"
-#include "cImportGameObject.h"
-#include "cLevelSetGameObject.h"
-#include "cExplosionGameObject.h"
-
-#include "cImportGameObject.h"
-#include "cRemoteUpdateGameObject.h"
-#include "cBuildingGameObject.h"
-#include "cTrafficSignGameObject.h"
-#include "cTrafficControlGameObject.h"
-#include "cPoliceCarGameObject.h"
-#include "cCarGameObject.h"
-#include "cCopterGameObject.h"
-#include "cTestGameObject.h"
-#include "cSignageGameObject.h"
-#include "ImageAnimation.h"
 #include "Adjacency.h"
 #include "eDirection.h"
+
+#include "cHeliumGasGameObject.h"
 
 #include <queue>
 
@@ -155,32 +136,11 @@ namespace // private to this file (anonymous)
 				return(_protected);
 			}
 		} grid{};
-		static inline constinit struct // purposely anonymous union, protected pointer implementation for the::temp
-		{
-			Iso::mini::Voxel const** __restrict	 _protected = nullptr;
-
-			__declspec(safebuffers) __forceinline operator Iso::mini::Voxel const** const __restrict() const {
-				return(_protected);
-			}
-		} temp{};
-
+		
 	} // end ns
 } // end ns
 
-namespace // private to this file (anonymous)
-{
-	namespace mini
-	{
-		static inline tbb::concurrent_vector<Iso::mini::Voxel> voxels;	// actual memory that is pointed to by a Iso::mini::voxel
-
-		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
-
-		static inline constinit
-			volume* __restrict bits{ nullptr };
-
-	} // end ns
-}
-
+/* deprecated, moved to full 8bit heightstep
 namespace // private to this file (anonymous)
 {
 	static inline uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
@@ -201,7 +161,7 @@ namespace // private to this file (anonymous)
 		GROUND_HEIGHT_NOISE[13] - GROUND_HEIGHT_NOISE_STEP
 	};
 } // end ns
-
+*/
 // ####### Private Init methods
 static void ComputeGroundAdjacency()
 {
@@ -209,24 +169,24 @@ static void ComputeGroundAdjacency()
 	recomputeGroundAdjacency(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
 }
 
-static uint32_t const RenderNoiseImagePixel(float const u, float const v, supernoise::interpolator::functor const& interp)
+
+static uint32_t const RenderNoiseImagePixel(float const u, float const v, float const in, supernoise::interpolator::functor const& interp)
 {
-	static constexpr float const NOISE_SCALAR_HEIGHT = 13.0f * (Iso::WORLD_GRID_FSIZE / 512.0f); // fixed so scale of terrain height is constant irregardless of width/depth of map
+	static constexpr float const NOISE_SCALAR_HEIGHT = 10.0f * (Iso::WORLD_GRID_FSIZE / 512.0f); // fixed so scale of terrain height is constant irregardless of width/depth of map
 																								 // 512 happens to be the right number / base number *do not change*
 																								 // *can change the first number only*
 																								 // less = lower frequency of change in elevation
 																								 // more = higher   ""          ""          ""
 	static constexpr int32_t const EDGE_DETECTION_THRESHOLD = 236;
 
-	// Get perlin noise for this voxel
-	float const fNoiseHeight = 
-		(
-		supernoise::getSimplexNoise2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v)
-		* supernoise::getPerlinNoise(NOISE_SCALAR_HEIGHT * 0.5f * u, NOISE_SCALAR_HEIGHT * 0.5f * v, 0.0f,
-			interp)
-		+ supernoise::blue.get2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v) * (1.0f/float(NUM_DISTINCT_GROUND_HEIGHTS + 1)) // NUM_DISTINCT_GROUND_HEIGHTS does not include the height 0 (for maximizing precision elsewhere) so this should be + 1
+	// noise for this voxel
+	float const fNoiseHeight =
+		SFM::__fma(
+			supernoise::getSimplexNoise2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v),
+			supernoise::getPerlinNoise(NOISE_SCALAR_HEIGHT * 0.5f * u, NOISE_SCALAR_HEIGHT * 0.5f * v, 0.0f, interp),
+			supernoise::blue.get2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v) * (2.0f / 255.0f) 
 		) //^^^^^^^^^ the bluenoise add alot of realism to the terrain countours etc are not so flat and gradual
-		* 2.0f * 255.0f;
+		* 255.0f;
 
 	float const fLog = 255.0f - SFM::lerp(0.0f, 255.0f, logf(fNoiseHeight) / logf(255.0f));
 
@@ -236,62 +196,102 @@ static uint32_t const RenderNoiseImagePixel(float const u, float const v, supern
 	int32_t const opSUB = (int32_t)(fLerp - fLog);
 	int32_t const opEDGES = (opSUB ^ opXOR);
 
-	int32_t const opShadedEDGES = (opEDGES > EDGE_DETECTION_THRESHOLD ? GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS-1] + 1 : opXOR);
+	int32_t const opShadedEDGES = (opEDGES > EDGE_DETECTION_THRESHOLD ? 1 : opXOR);
 
 #ifdef DEBUG_FLAT_GROUND
-	uNoiseHeight = 0;
+	return(SFM::saturate_to_u8(supernoise::blue.get2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v) * (6.0f))); /// perturbed by a small amount of bluenoise to show some details when in the dark moving around.
 #endif
-	return(SFM::saturate_to_u8(opShadedEDGES));
+
+	return(SFM::saturate_to_u8(in * ((float)SFM::saturate_to_u8(opShadedEDGES))));
 }
 
-void cVoxelWorld::GenerateGround()
+void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lunar surface details are weighted into the final terrain generated
 {
 	constinit static bool bInitialRun(true);
 
 	supernoise::NewNoisePermutation();
 
-	// Generate Image
-	Imaging imageNoise = MinCity::Procedural->GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep() );
+	Imaging imageNoise(nullptr);
 
-	MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(15));
+	{
+		// Generate Image
+		Imaging imageTerrain = ImagingLoadKTX(TEXTURE_DIR "moon_map.ktx"); // single channel texture
 
+		// resample terrain image to world grid dimensions
+		if (Iso::WORLD_GRID_SIZE != imageTerrain->xsize || Iso::WORLD_GRID_SIZE != imageTerrain->ysize) {
+			// image in is single channel, however resampling only works with BGRX images, so convert
+			Imaging convertImg = ImagingLToBGRX(imageTerrain);
+			ImagingDelete(imageTerrain); imageTerrain = convertImg;
+			// resample to required dimensions
+			Imaging resampledImg = ImagingResample(imageTerrain, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BICUBIC);
+			ImagingDelete(imageTerrain); imageTerrain = resampledImg;
+			// back to single channel
+			convertImg = ImagingBGRXToL(imageTerrain);
+			ImagingDelete(imageTerrain); imageTerrain = convertImg;
+		}
+
+		imageNoise = MinCity::Procedural->GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep(), imageTerrain); // single channel image
+		ImagingDelete(imageTerrain); imageTerrain = nullptr; // no longer needed
+
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(15));
+	}
 	// Create and Upload Texture //
 	{
-		// must be BGRX into resampling (4 channels)
+		// This now upsamples 2x, applies bilateral filter then downsamples back to original resolution. This anti-aliases and smooths the generated terrain image
+
+		// imagenoise is single channel, however resampling only works with BGRX images, so convert
+		Imaging convertImg = ImagingLToBGRX(imageNoise);
+		ImagingDelete(imageNoise); imageNoise = convertImg;
+		// upsample
 		Imaging resampledImg = ImagingResample(imageNoise, Iso::WORLD_GRID_SIZE << 1, Iso::WORLD_GRID_SIZE << 1, IMAGING_TRANSFORM_BICUBIC);
 		ImagingDelete(imageNoise); imageNoise = resampledImg;
 
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(20));
-
+		// filter
 		Imaging const filteredImg = MinCity::Procedural->BilateralFilter(imageNoise);
 		ImagingDelete(imageNoise); imageNoise = filteredImg;
 
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(30));
-
+		// downsample
 		resampledImg = ImagingResample(imageNoise, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BICUBIC);
 		ImagingDelete(imageNoise); imageNoise = resampledImg;
 
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(35));
+		// imagenoise retained for generation later //
+		{
+			// terrain texture is multiple of voxel grid size, power of 2 and not exceeding 16384
+			// should be placed in dedicated memory on gpu *note if terrain texture is equal to world grid size, this is handled in imagingresample - skipped
+			resampledImg = ImagingResample(imageNoise, world::TERRAIN_TEXTURE_SZ, world::TERRAIN_TEXTURE_SZ, IMAGING_TRANSFORM_BICUBIC);
+		
+			Imaging imageTerrainTexture = resampledImg;
 
-		// terrain teture is multiple of voxel grid size, power of 2 and not exceeding 16384
-		// should be placed in dedicated memory on gpu
-		resampledImg = ImagingResample(imageNoise, world::TERRAIN_TEXTURE_SZ, world::TERRAIN_TEXTURE_SZ, IMAGING_TRANSFORM_BICUBIC);
-		ImagingDelete(imageNoise); imageNoise = resampledImg;
+			MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(40));
 
-		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(40));
+			// back to single channel
+			convertImg = ImagingBGRXToL(imageTerrainTexture);
+			ImagingDelete(imageTerrainTexture); imageTerrainTexture = convertImg;
 
-		if (_terrainTempImage) {
+			if (_terrainTempImage) {
 
-			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr;
+				ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr;
+			}
+
+			_terrainTempImage = imageTerrainTexture; // single channel output
 		}
-
-		_terrainTempImage = ImagingCompressBGRAToBC7(imageNoise);
+#ifndef NDEBUG
+#ifdef DEBUG_EXPORT_TERRAIN_KTX
+		ImagingSaveToKTX(_terrainTempImage, DEBUG_DIR L"last_terrain.ktx");
+#endif
+#endif
+		// back to single channel
+		convertImg = ImagingBGRXToL(imageNoise);
+		ImagingDelete(imageNoise); imageNoise = convertImg; // retained for more generation later in this function. It is single channel and sized to the world grid.
 
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
 
 		if (bInitialRun) { // first run at program load requires these things to be setup for texture array and is always run from the main thread
 
-			MinCity::TextureBoy->ImagingToTexture_BC7<false>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
+			MinCity::TextureBoy->ImagingToTexture_R<false, true>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
 			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
 
 			MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
@@ -301,80 +301,35 @@ void cVoxelWorld::GenerateGround()
 			// terrain grid mipmapped texture
 			MinCity::TextureBoy->LoadKTXTexture(_gridTexture, TEXTURE_DIR L"grid.ktx");
 			MinCity::TextureBoy->AddTextureToTextureArray(_gridTexture, TEX_GRID);
+
 			bInitialRun = false;
 		}
+		// otherwise texture creation from image takes place in onloaded event.
 	}
 
 	// Traverse Grid
 
 	struct { // avoid lambda heap
 		uint8_t* const* const __restrict image;
-	} const p = { imageNoise->image };
+	} const p = { imageNoise->image }; // single channel
 
 	tbb::parallel_for(int(0), imageNoise->ysize, [&p](int yVoxel) {
 
 		int32_t xVoxel(0);
 																							// Y is inverted to match world texture uv
-		uint32_t const* __restrict pIn(reinterpret_cast<uint32_t const* __restrict>(p.image[Iso::WORLD_GRID_SIZE-1-yVoxel]));
+		uint8_t const* __restrict pIn(p.image[Iso::WORLD_GRID_SIZE-1-yVoxel]);
 		do
 		{	
 			
-			uint32_t const uNoiseHeight = ((*pIn & 0xFF000000) >> 24); // height/noise remains in alpha channel
+			uint32_t const uNoiseHeight = *pIn; // single channel, single pixel, single byte
 			++pIn;
 
 			Iso::Voxel oVoxel;
 			oVoxel.Desc = Iso::TYPE_GROUND;
 			oVoxel.MaterialDesc = 0;		// Initially visibility is set off on all voxels until ComputeGroundOcclusion()
 			Iso::clearColor(oVoxel);		// *bugfix - must clear to default color used for ground on generation.
-
-			if (uNoiseHeight > GROUND_HEIGHT_NOISE[0]) {
-				Iso::setHeightStep(oVoxel, 15); 
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[1]) {
-				Iso::setHeightStep(oVoxel, 14);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[2]) {
-				Iso::setHeightStep(oVoxel, 13);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[3]) {
-				Iso::setHeightStep(oVoxel, 12);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[4]) {
-				Iso::setHeightStep(oVoxel, 11);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[5]) {
-				Iso::setHeightStep(oVoxel, 10);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[6]) {
-				Iso::setHeightStep(oVoxel, 9);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[7]) {
-				Iso::setHeightStep(oVoxel, 8);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[8]) {
-				Iso::setHeightStep(oVoxel, 7);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[9]) {
-				Iso::setHeightStep(oVoxel, 6);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[10]) {
-				Iso::setHeightStep(oVoxel, 5);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[11]) {
-				Iso::setHeightStep(oVoxel, 4);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[12]) {
-				Iso::setHeightStep(oVoxel, 3);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[13]) {
-				Iso::setHeightStep(oVoxel, 2);
-			}
-			else if (uNoiseHeight > GROUND_HEIGHT_NOISE[14]) {
-				Iso::setHeightStep(oVoxel, 1);
-			}
-			else {
-				Iso::setHeightStep(oVoxel, Iso::DESC_HEIGHT_STEP_0);
-			}
+			
+			Iso::setHeightStep(oVoxel, uNoiseHeight);
 
 			// Save Voxel to Grid SRAM
 			*(the::grid + ((yVoxel * Iso::WORLD_GRID_SIZE) + xVoxel)) = oVoxel;
@@ -383,10 +338,12 @@ void cVoxelWorld::GenerateGround()
 
 	});
 
-	ImagingDelete(imageNoise);
+	ImagingDelete(imageNoise); // no longer required.
 
 	// Compute adjacency based on neighbour occupancy
 	ComputeGroundAdjacency();
+
+	FMT_LOG_OK(GAME_LOG, "Lunar Surface Synthesized");
 }
 
 XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
@@ -732,8 +689,8 @@ void cVoxelWorld::OnMouseRightClick()
 	if (eInputEnabledBits::MOUSE_BUTTON_RIGHT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_RIGHT))
 		return; // input disabled!
 
-	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::TINY_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+	placeUpdateableInstanceAt<cHeliumGasGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::HELIUM_GAS, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
@@ -948,41 +905,6 @@ namespace world
 	{
 		return(oCamera.Yaw);
 	}
-	
-	static Iso::mini::Voxel const* const __restrict __vectorcall getMiniVoxelAt(point2D_t voxelIndex) // no bounds checking required! (bounds checking is done prior)
-	{
-		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
-
-		// Check bounds
-		if ((voxelIndex.x | voxelIndex.y) >= 0) {
-
-			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
-
-				return(*(the::temp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
-			}
-		}
-
-		return(nullptr);
-	}
-	static bool const __vectorcall setMiniVoxelAt(point2D_t voxelIndex, Iso::mini::Voxel const* const&& __restrict newData)
-	{
-		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
-
-		// Check bounds
-		if ((voxelIndex.x | voxelIndex.y) >= 0) {
-
-			if (voxelIndex.x < Iso::WORLD_GRID_SIZE && voxelIndex.y < Iso::WORLD_GRID_SIZE) {
-
-				// Update Voxel
-				*(the::temp + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
-				return(true);
-			}
-		}
-
-		return(false);
-	}
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex)
@@ -997,7 +919,7 @@ namespace world
 			// need to transform grid space coordinates to world space coordinates
 			xmLocation = XMVectorSubtract(xmLocation, world::getOrigin());
 
-			return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmLocation, Iso::VOX_RADIUS));
+			return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmLocation, Volumetric::volumetricVisibility::getVoxelRadius()));
 		}
 		
 		return(false);
@@ -1007,57 +929,6 @@ namespace world
 	{
 		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmLocation, voxelRadius));
 	}
-
-	bool const __vectorcall addVoxel(FXMVECTOR const xmLocation, point2D_t const voxelIndex, uint32_t const color, uint32_t const flags) // for external usage only. if inside cVoxelWorld.cpp/.h use the member of the volumetricQueue class instead.
-	{
-		XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-
-		[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
-					   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
-		{
-			uvec4_v const uvIndex = SFM::floor_to_u32(XMVectorAdd(xmIndex, _mm_set1_ps(0.5f)));
-			uvec4_t uiIndex;
-			uvIndex.xyzw(uiIndex);
-
-			size_t const index(mini::volume::get_index(uiIndex.x, uiIndex.y, uiIndex.z));
-
-			if (!mini::bits->read_bit(index)) {  // filter out, if already set, nothing get added
-
-				if (Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmLocation, Iso::MINI_VOX_RADIUS)) { // visibility check //
-
-					mini::bits->set_bit(index);
-
-					auto const* const miniVoxel = getMiniVoxelAt(voxelIndex);
-					setMiniVoxelAt(voxelIndex, std::forward<Iso::mini::Voxel const* const&&>(
-						&(*mini::voxels.emplace_back(xmLocation, uvIndex, color, flags, miniVoxel))));
-
-					return(true); // visible
-				}
-			}
-		}
-
-		return(false); // not visible
-	}
-
-	bool const __vectorcall addLight(point2D_t const voxelIndex, uint32_t const color, float const height)
-	{
-		Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
-		if (pVoxel) {
-
-			XMVECTOR xmLocation(p2D_to_v2(voxelIndex));
-			xmLocation = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmLocation);
-			xmLocation = XMVectorSetY(xmLocation, -(Iso::getRealHeight(*pVoxel) + height));
-
-			// need to transform grid space coordinates to world space coordinates
-			xmLocation = XMVectorSubtract(xmLocation, world::getOrigin());
-
-			return(world::addVoxel(xmLocation, voxelIndex, color, Iso::mini::hidden | Iso::mini::emissive)); // light only   - flags this space as occupied, only one light can be added per space (minivoxel scale)
-		}																									 //				 - *will only add light if coordinates are currently visible*
-																											 // returns true (added light, visible), false (not added, not visible)
-
-		return(false); // out of world bounds
-	}
-
 
 	namespace zoning
 	{
@@ -1228,6 +1099,50 @@ namespace world
 		}
 
 		return(SFM::round_to_u32((float)uiSumHeight / (float)uiNumSamples));
+	}
+
+	uint32_t const __vectorcall getVoxelsAt_MaximumHeight(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR)
+	{
+		point2D_t voxelIterate(voxelArea.left_top());
+		point2D_t const voxelEnd(voxelArea.right_bottom());
+		point2D_t p;
+
+		uint32_t maximum_height(0);
+
+		// oriented rect filling algorithm, see processing sketch "rotation" for reference (using revised version)
+		while (voxelIterate.y <= voxelEnd.y) {
+
+			voxelIterate.x = voxelArea.left;
+			while (voxelIterate.x <= voxelEnd.x) {
+
+				point2D_t const p0(p);
+				p = p2D_rotate(voxelIterate, voxelArea.center(), -vR);
+
+				// back
+				if (0 == (SFM::abs(p.y - p0.y) - 1)) {
+
+					Iso::Voxel const* const __restrict pVoxel = getVoxelAt(point2D_t(p0));
+					if (pVoxel) {
+						Iso::Voxel const& oVoxel(*pVoxel);
+						maximum_height = SFM::max(maximum_height, Iso::getHeightStep(oVoxel));
+					}
+				}
+
+				// center 
+				Iso::Voxel const* const __restrict pVoxel = getVoxelAt(point2D_t(p));
+				if (pVoxel) {
+					Iso::Voxel const& oVoxel(*pVoxel);
+					maximum_height = SFM::max(maximum_height, Iso::getHeightStep(oVoxel));
+				}
+
+				++voxelIterate.x;
+			}
+
+			++voxelIterate.y;
+		}
+
+		return(maximum_height);
+
 	}
 
 	void setVoxelHeightAt(point2D_t const voxelIndex, uint32_t const heightstep)
@@ -1945,213 +1860,6 @@ namespace world
 		return(getRandomVoxelIndexInArea(getRandomNonVisibleAreaNear()));
 	}
 
-	// ROADS -------------------------------------------------------------------------------------------------------------------------
-	namespace roads
-	{
-		template<bool const bFindNodeOrEdge> // false = edge, true = node
-		STATIC_INLINE bool const __vectorcall breadthFirstSearchRoad(rect2D_t const area, point2D_t const voxelIndexStart, point2D_t&& voxelIndexFound)
-		{
-			/*
-
-											  [NBR_TR]
-								   [NBR_T]				   [NBR_R]
-						NBR_TL					VOXEL					NBR_BR
-									NBR_L					NBR_B
-												NBR_BL
-			*/
-			vector<point2D_t> history; // this is an optimization, rather than using std::unordered_set and finding "dups" every iteration
-																							// just an iteratable vector to be used when search has finished to reset "discovered" state of any visited voxels
-																							// algorithm complexity is linear in case of vector (no find (due to "discoverable" flag being used, clean up at end of search)
-																							//						is exponential in case of unordered_set (find during search for every iteration + clean up at end of search)
-			if (r2D_contains(area, voxelIndexStart)) { // flag root of search as disovered //
-				Iso::Voxel const* const __restrict pVoxel(world::getVoxelAt(voxelIndexStart));
-				if (pVoxel) {
-					Iso::Voxel oVoxel(*pVoxel);
-
-					Iso::setDiscovered(oVoxel);
-
-					world::setVoxelAt(voxelIndexStart, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-
-					// reserve memory - worst case scenario
-					history.reserve(area.width() * area.height());
-					history.emplace_back(voxelIndexStart);
-				}
-				else {
-#ifndef NDEBUG
-					FMT_LOG_FAIL(GAME_LOG, "Invalid search starting/root voxel index, out of bounds of grid, search cancelled!");
-#endif
-					return(false); // invalid search start voxelIndex, exception case - returns input vopxel index, representing no road node / edge found!
-				}
-			}
-			else {
-#ifndef NDEBUG
-				FMT_LOG_FAIL(GAME_LOG, "Invalid search starting/root voxel index, out of bounds of area, search cancelled!");
-#endif
-				return(false); // invalid search start voxelIndex, exception case - returns input vopxel index, representing no road node / edge found!
-			}
-
-			std::queue<point2D_t> frontier;
-			frontier.emplace(voxelIndexStart);
-
-			bool bFound(false);
-			point2D_t voxelIndex{};
-
-			while (!frontier.empty())
-			{
-				voxelIndex = frontier.front();
-				frontier.pop();
-
-				{ // early exit test
-					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAt(voxelIndex));
-					if (pVoxel) {
-						Iso::Voxel const oVoxel(*pVoxel);
-
-						if (Iso::isRoad(oVoxel)) {
-							if constexpr (bFindNodeOrEdge) {  // node
-								if (Iso::isRoadNode(*pVoxel)) {
-									bFound = true;
-									voxelIndexFound = voxelIndex;
-									break;
-								}
-							}
-							else {  // edge
-								if (Iso::isRoadEdge(*pVoxel)) {
-									bFound = true;
-									voxelIndexFound = voxelIndex;
-									break;
-								}
-							}
-						}
-					}
-				}
-
-				for (uint32_t neighbour = 0; neighbour < ADJACENT_NEIGHBOUR_COUNT; ++neighbour) {
-
-					point2D_t const voxelNeighbour = p2D_add(voxelIndex, ADJACENT[neighbour]);
-
-					if (r2D_contains(area, voxelNeighbour)) {
-
-						Iso::Voxel const* const __restrict pVoxel(world::getVoxelAt(voxelNeighbour));
-						if (pVoxel && !Iso::isDiscovered(*pVoxel)) {
-
-							Iso::Voxel oVoxel(*pVoxel);
-
-							Iso::setDiscovered(oVoxel);
-
-							world::setVoxelAt(voxelNeighbour, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-							history.emplace_back(voxelNeighbour);
-
-							frontier.emplace(voxelNeighbour);
-						}
-					}
-				}
-			}
-
-			// reset all visited voxels back to "undiscovered"
-			size_t history_count(history.size() + 1);
-			point2D_t const* __restrict pVoxelIndexReset = history.data();
-			while (0 != --history_count) {
-				point2D_t const voxelIndexReset(*pVoxelIndexReset);
-
-				Iso::Voxel const* const __restrict pVoxel(world::getVoxelAt(voxelIndexReset));
-				if (pVoxel) {
-					Iso::Voxel oVoxel(*pVoxel);
-
-					Iso::clearDiscovered(oVoxel);
-
-					world::setVoxelAt(voxelIndexReset, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-				}
-
-				++pVoxelIndexReset;
-			}
-
-			return(bFound);
-		}
-
-		bool const __vectorcall searchForClosestRoadNode(rect2D_t const area, point2D_t const voxelIndexStart, point2D_t&& voxelIndexFound)
-		{
-			return(breadthFirstSearchRoad<true>(area, voxelIndexStart, std::forward<point2D_t&&>(voxelIndexFound)));
-		}
-		bool const __vectorcall searchForClosestRoadEdge(rect2D_t const area, point2D_t const voxelIndexStart, point2D_t&& voxelIndexFound)
-		{
-			return(breadthFirstSearchRoad<false>(area, voxelIndexStart, std::forward<point2D_t&&>(voxelIndexFound)));
-		}
-
-		bool const directions_are_perpindicular(uint32_t const encoded_direction_a, uint32_t const encoded_direction_b)
-		{
-			if (encoded_direction_a != encoded_direction_b) {
-				switch (encoded_direction_a)
-				{
-				case Iso::ROAD_DIRECTION::N:
-					return(Iso::ROAD_DIRECTION::S != encoded_direction_b);
-				case Iso::ROAD_DIRECTION::S:
-					return(Iso::ROAD_DIRECTION::N != encoded_direction_b);
-				case Iso::ROAD_DIRECTION::E:
-					return(Iso::ROAD_DIRECTION::W != encoded_direction_b);
-				case Iso::ROAD_DIRECTION::W:
-					return(Iso::ROAD_DIRECTION::E != encoded_direction_b);
-				} // end switch
-			}
-
-			return(false);
-		}
-
-		bool const __vectorcall search_point_for_road(point2D_t const origin)
-		{
-			Iso::Voxel const* const pVoxel = world::getVoxelAt(origin);
-			if (pVoxel) {
-
-				Iso::Voxel const oVoxel(*pVoxel);
-
-				return(Iso::isRoad(oVoxel));
-			}
-			return(false);
-		}
-
-		bool const __vectorcall search_neighbour_for_road(point2D_t& __restrict found_road_point, point2D_t const origin, point2D_t const offset)
-		{
-			Iso::Voxel const* const pVoxel = world::getNeighbour(origin, offset);
-			if (pVoxel) {
-
-				Iso::Voxel const oVoxel(*pVoxel);
-
-				if (Iso::isRoad(oVoxel)) {
-
-					found_road_point = p2D_add(origin, offset);
-					return(true);
-				}
-			}
-			return(false);
-		}
-		bool const __vectorcall search_neighbour_for_road(point2D_t const origin, point2D_t const offset)
-		{
-			Iso::Voxel const* const pVoxel = world::getNeighbour(origin, offset);
-			if (pVoxel) {
-
-				Iso::Voxel const oVoxel(*pVoxel);
-
-				return(Iso::isRoad(oVoxel));
-			}
-			return(false);
-		}
-
-		point2D_t const __vectorcall search_road_intersect(point2D_t const origin, point2D_t const axis,
-														   int32_t const begin, int32_t const end) // begin / end are offsets from origin
-		{
-			point2D_t found_road_point(0);
-			for (int32_t i = begin; i != end; ++i) {
-
-				if (world::roads::search_neighbour_for_road(found_road_point, origin, p2D_muls(axis, i))) {
-
-					return(found_road_point);
-				}
-			}
-
-			return(point2D_t(0));
-		}
-
-	} // end ns world::roads
-
 	/*
 	point2D_t const p2D_GridToScreen(point2D_t thePt)
 	{
@@ -2204,140 +1912,6 @@ namespace // private to this file (anonymous)
 #endif
 #endif
 		} inline render_state{};
-
-		// this construct significantly improves throughput of voxels, by batching the streaming stores //
-		// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
-		using miniVoxelLocalBatch = sBatched<VertexDecl::VoxelDynamic, eStreamingBatchSize::GROUND>;
-		using miniVoxelThreadBatch = tbb::enumerable_thread_specific<
-			miniVoxelLocalBatch,
-			tbb::cache_aligned_allocator<miniVoxelLocalBatch>,
-			tbb::ets_key_per_instance >;
-
-		static inline miniVoxelThreadBatch batchedMini, batchedMiniTrans;
-
-		STATIC_INLINE_PURE uint32_t const __vectorcall encode_adjacency(uvec4_v const xmIndex)  // for mini voxels
-		{
-			ivec4_t iIndex;
-			ivec4_v(xmIndex).xyzw(iIndex);
-
-			uint32_t adjacent(0);
-
-			if (iIndex.x - 1 >= 0) {
-				adjacent |= mini::bits->read_bit(iIndex.x - 1, iIndex.y, iIndex.z) << Volumetric::adjacency::left;
-			}
-			if (iIndex.x + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X) {
-				adjacent |= mini::bits->read_bit(iIndex.x + 1, iIndex.y, iIndex.z) << Volumetric::adjacency::right;
-			}
-			if (iIndex.z - 1 >= 0) {
-				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y, iIndex.z - 1) << Volumetric::adjacency::front;
-			}
-			if (iIndex.z + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z) {
-				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y, iIndex.z + 1) << Volumetric::adjacency::back;
-			}
-			if (iIndex.y - 1 >= 0) {
-				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y - 1, iIndex.z) << Volumetric::adjacency::below;
-			}
-			if (iIndex.y + 1 < Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y) {
-				adjacent |= mini::bits->read_bit(iIndex.x, iIndex.y + 1, iIndex.z) << Volumetric::adjacency::above;
-			}
-			return(adjacent);
-		}
-
-		STATIC_INLINE void XM_CALLCONV RenderMiniVoxel(point2D_t const& __restrict voxelIndex,
-			Iso::mini::Voxel const&& __restrict oVoxel,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-			miniVoxelLocalBatch& __restrict localMini,
-			miniVoxelLocalBatch& __restrict localMiniTrans)
-		{
-			// required for voxels w/light, voxels w/o light & lights (hidden voxel)
-			XMVECTOR const xmLocation(XMLoadFloat3A(&oVoxel.position));
-			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmLocation, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-			uint32_t const alpha_color(oVoxel.index.w);
-
-			bool const emissive(Iso::mini::emissive == ((oVoxel.flags & Iso::mini::emissive) & (bool)alpha_color)); // if color is true black it's not emissive
-
-			if (Iso::mini::hidden != (oVoxel.flags & Iso::mini::hidden)) {
-
-				uint8_t const alpha((alpha_color >> 24) & 0xFF);
-				bool const transparent(0xFF != alpha);
-
-				uint32_t const adjacency(encode_adjacency(uvec4_v(oVoxel.index)));
-
-				// Build hash //
-				uint32_t hash(0);
-				// ** see uniforms.vert for definition of constants used here **
-
-				hash |= adjacency;									//           0000 0000 0011 1111
-				hash |= (emissive << 6);							//           0000 0000 01xx xxxx
-				// unsupported hash |= (voxel.Metallic << 7);		// 0000 0000 0000 xxxx 1xxx xxxx
-				// unsupported hash |= (voxel.Roughness << 8);		// 0000 0000 0000 1111 xxxx xxxx
-				hash |= (uint32_t(alpha >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
-
-				XMVECTOR const xmOrientColor(XMVectorSetW(XMVectorZero(), (float)(alpha_color & 0x00FFFFFF)/*remove alpha*/)); // srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
-
-				if (transparent) {
-
-					localMiniTrans.emplace_back(
-						voxels_trans,
-
-						xmLocation, xmOrientColor, hash
-					);
-				}
-				else {
-
-					localMini.emplace_back(
-						voxels_dynamic,
-
-						xmLocation, xmOrientColor, hash
-					);
-				}
-
-#ifndef NDEBUG
-#ifdef DEBUG_VOXEL_RENDER_COUNTS
-				++render_state.numDynamicVoxelsRendered;
-#endif
-#endif
-			}
-
-			// if voxel is hidden then its just a light
-			if (emissive) {
-
-				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, alpha_color & 0x00FFFFFF);
-
-#ifndef NDEBUG
-#ifdef DEBUG_VOXEL_RENDER_COUNTS
-				++render_state.numLightVoxelsRendered;
-#endif
-#endif
-			}
-		}
-		STATIC_INLINE void XM_CALLCONV RenderMiniVoxels(point2D_t const& __restrict voxelIndex,
-			Iso::mini::Voxel const&& __restrict oVoxel,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans,
-			miniVoxelLocalBatch& __restrict localMini,
-			miniVoxelLocalBatch& __restrict localMiniTrans)
-		{
-			RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(oVoxel), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
-
-			static constexpr uint32_t const MAX_COUNT(Iso::SCREEN_VOXELS_Y);
-			
-			uint32_t count(MAX_COUNT);
-			Iso::mini::Voxel const* next(oVoxel.next);
-			while (next && 0 != --count) {
-
-				RenderMiniVoxel(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*next), voxels_dynamic, voxels_trans, localMini, localMiniTrans);
-
-				next = next->next;
-			}
-
-#ifndef NDEBUG
-			[[unlikely]] if (0 == count) {
-				FMT_LOG_WARN(VOX_LOG, "Performance issue. Too many minivoxels @ ( {:d} , {:d} )", voxelIndex.x, voxelIndex.y);
-			}
-#endif
-		}
 
 		// this construct significantly improves throughput of voxels, by batching the streaming stores //
 		// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
@@ -2398,43 +1972,6 @@ namespace // private to this file (anonymous)
 			}
 		}
 
-
-		STATIC_INLINE void XM_CALLCONV RenderRoad(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
-			Iso::Voxel const& __restrict oVoxel,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
-			VoxelLocalBatch& __restrict localRoad)
-		{
-			xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
-
-			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-
-			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
-						   && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
-			{
-				// **** HASH FORMAT 32bits available //
-
-				// Build hash //
-				uint32_t roadHash(0);
-				// not used roadHash |= Iso::getHeightStep(oVoxel);									//			     	                      000R 1111   // msb is reserved (5th bit)
-				// not used roadHash |= (Iso::getOcclusion(oVoxel) << 5);							//		     		                      111x xxxx
-				roadHash |= (Iso::isEmissive(oVoxel) << 8);											//                           0000 0001	  xxxx xxxx
-				roadHash |= (uint32_t(Iso::getHash(oVoxel, Iso::GROUND_HASH)) << 9);				// 0000 0001    1111 1111    1111 111x    xxxx xxxx 
-
-				XMVECTOR const xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
-
-				localRoad.emplace_back(
-					voxelRoad,
-
-					xmVoxelOrigin,
-					xmUVs,
-					roadHash
-				);
-
-				++render_state.road_tiles_visible; // *this state is only valid when RenderGrid() is complete.
-			}
-		}
-
-
 		template<bool const Dynamic>
 		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint32_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
 			Iso::Voxel const& __restrict oVoxel,
@@ -2493,8 +2030,6 @@ namespace // private to this file (anonymous)
 		template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y>
 		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
@@ -2552,11 +2087,8 @@ namespace // private to this file (anonymous)
 			private:
 				point2D_t const 								voxelStart;
 				Iso::Voxel const* const __restrict				theGrid;
-				Iso::mini::Voxel const** const __restrict		theTemp;
 
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
-				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoad;
-				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelRoadTrans;
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
@@ -2566,27 +2098,19 @@ namespace // private to this file (anonymous)
 				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
 					point2D_t const voxelStart_,
 					Iso::Voxel const* const __restrict theGrid_,
-					Iso::mini::Voxel const** const __restrict theTemp_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
-					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoad_,
-					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelRoadTrans_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
-					: voxelStart(voxelStart_), theGrid(theGrid_), theTemp(theTemp_),
-					voxelGround(voxelGround_), voxelRoad(voxelRoad_), voxelRoadTrans(voxelRoadTrans_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
+					: voxelStart(voxelStart_), theGrid(theGrid_),
+					voxelGround(voxelGround_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
 				{}
 
 				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
 
 					static constexpr size_t const WORLD_GRID_SIZE_BITS = size_t(Iso::WORLD_GRID_SIZE_BITS);
 
-					miniVoxelLocalBatch& __restrict localMini(batchedMini.local());
-					miniVoxelLocalBatch& __restrict localMiniTrans(batchedMiniTrans.local());
-
 					VoxelLocalBatch& __restrict localGround(batchedGround.local());
-					VoxelLocalBatch& __restrict localRoad(batchedRoad.local());
-					VoxelLocalBatch& __restrict localRoadTrans(batchedRoadTrans.local());
 
 					int32_t const	// pull out into registers from memory
 						y_begin(r.rows().begin()),
@@ -2602,8 +2126,6 @@ namespace // private to this file (anonymous)
 
 						Iso::Voxel const* __restrict pVoxel = theGrid + ((voxelIndex.y << WORLD_GRID_SIZE_BITS) + voxelIndex.x);
 						_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
-
-						Iso::mini::Voxel const** __restrict pMiniVoxels = theTemp + ((voxelIndex.y << WORLD_GRID_SIZE_BITS) + voxelIndex.x);
 
 						for (; voxelIndex.x < x_end; ++voxelIndex.x)
 						{
@@ -2633,18 +2155,13 @@ namespace // private to this file (anonymous)
 								}
 							}
 
+							/* @todo (optional)
 							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
 							{
 								switch (getExtendedType(oVoxel))
 								{
 								case Iso::EXTENDED_TYPE_ROAD:
-
-									if (bRenderVisible || (bRenderVisible |= Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmVoxelOrigin, Iso::VOX_RADIUS * Iso::ROAD_SEGMENT_RADIUS))) { // if already visible will skip frustum check
-										if (Iso::isEmissive(oVoxel)) { // any emissive road is transparent
-											RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoadTrans, localRoadTrans); // trans road
-										}
-										RenderRoad(xmVoxelOrigin, voxelIndex, oVoxel, voxelRoad, localRoad); // opaque road
-									}
+									// todo
 									break;
 								case Iso::EXTENDED_TYPE_WATER:
 									// todo
@@ -2652,20 +2169,10 @@ namespace // private to this file (anonymous)
 									// default should not exist //
 								}
 							} // extended
+							*/
 
 							// ***Ground always exists*** // *bugfix: frustum culling ground leaves empty space in an undefined state. for example, raymarched reflections disappear if camera is too close *do not change*
 							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
-
-							Iso::mini::Voxel const* const pMiniVoxel(*pMiniVoxels);
-							
-							if (nullptr != pMiniVoxel) { // mini-voxels, if they exist for this grid cell, must be rendered. The minivoxels are dynamic and cleared / added every frame. The frustum check happens at a different location (addVoxel). All added mini voxels have already benn frustum checked.
-								RenderMiniVoxels(voxelIndex, std::forward<Iso::mini::Voxel const&& __restrict>(*pMiniVoxel), voxelDynamic, voxelTrans, localMini, localMiniTrans);
-								// clear minivoxel after render is complete - saves clearing the whole grid - only clears what is used!
-								const_cast<Iso::mini::Voxel* const>(pMiniVoxel)->next = nullptr; // *bugfix - required to reset linked list, the first next pointer from head of list is set to nullptr, which removes all child elements.
-								*pMiniVoxels = nullptr; // clears a pointer to the data, no need to clear the actual data
-							}
-
-							++pMiniVoxels; // sequentially access for best cache prediction
 						} // for
 
 					} // for
@@ -2685,32 +2192,15 @@ namespace // private to this file (anonymous)
 				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-					RenderFuncBlockChunk(voxelStart, the::grid, the::temp, voxelGround, voxelRoad, voxelRoadTrans, voxelStatic, voxelDynamic, voxelTrans), part
+					RenderFuncBlockChunk(voxelStart, the::grid, voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
 				);
 			}
 			// ####################################################################################################################
 			// ensure all batches are output and cleared for next trip
-			for (auto i = batchedMini.begin(); i != batchedMini.end(); ++i) {
-				i->out(voxelDynamic);
-			}
-			batchedMini.clear();
-			for (auto i = batchedMiniTrans.begin(); i != batchedMiniTrans.end(); ++i) {
-				i->out(voxelTrans);
-			}
-			batchedMiniTrans.clear();
-
 			for (auto i = batchedGround.begin(); i != batchedGround.end(); ++i) {
 				i->out(voxelGround);
 			}
 			batchedGround.clear();
-			for (auto i = batchedRoad.begin(); i != batchedRoad.end(); ++i) {
-				i->out(voxelRoad);
-			}
-			batchedRoad.clear();
-			for (auto i = batchedRoadTrans.begin(); i != batchedRoadTrans.end(); ++i) {
-				i->out(voxelRoadTrans);
-			}
-			batchedRoadTrans.clear();
 			// ####################################################################################################################
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -2753,13 +2243,6 @@ namespace // private to this file (anonymous)
 		voxelBuffer<VertexDecl::VoxelNormal>
 			visibleStatic;
 
-		struct {
-			voxelBuffer<VertexDecl::VoxelNormal>
-				opaque;
-			voxelBuffer<VertexDecl::VoxelNormal>
-				trans;
-		} visibleRoad;
-
 		voxelBuffer<VertexDecl::VoxelNormal>
 			visibleTerrain;
 
@@ -2774,11 +2257,11 @@ namespace world
 {
 	cVoxelWorld::cVoxelWorld()
 		:
-		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, _sim(nullptr),
+		_lastState{}, _currentState{}, _targetState{}, _occlusion{}, 
 		_vMouse{}, _lastOcclusionQueryValid(false), _inputEnabledBits{},
 		_terrainTempImage(nullptr),
 		_onLoadedRequired(true),
-		_terrainTexture(nullptr), _gridTexture(nullptr), _roadTexture(nullptr), _blackbodyTexture(nullptr),
+		_terrainTexture(nullptr), _gridTexture(nullptr), _blackbodyTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
 		_AsyncClearTaskID(0)
@@ -2872,8 +2355,6 @@ namespace world
 		}
 		
 		// other textures:
-		MinCity::TextureBoy->LoadKTXTexture<true>(_roadTexture, TEXTURE_DIR L"road_array.ktx");  // remeber for loading straight from ktx, colorspace is defined by file. In this case the file should have been saved srgb.
-		MinCity::TextureBoy->AddTextureToTextureArray(_roadTexture, TEX_ROAD);
 
 		Imaging const blackbodyImage(ImagingLoadRawBGRA(TEXTURE_DIR "blackbody.data", BLACKBODY_IMAGE_WIDTH, 1));
 		MinCity::TextureBoy->ImagingToTexture<false>(blackbodyImage, _blackbodyTexture);
@@ -2917,18 +2398,10 @@ namespace world
 		// create world grid memory
 		{
 			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
-			the::temp._protected = (Iso::mini::Voxel const** const __restrict)scalable_aligned_malloc(sizeof(Iso::mini::Voxel const* const) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
-			 
-			memset(the::grid._protected, 0, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			memset(the::temp._protected, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			
-			mini::voxels.reserve(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
-			mini::bits = volume::create();
-			clearMiniVoxels(true);
 
+			memset(the::grid._protected, 0, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+			
 			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::grid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
-			FMT_LOG(VOX_LOG, "mini grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::temp[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
 		}
 		
 		GenerateGround();
@@ -2956,29 +2429,7 @@ namespace world
 
 	void cVoxelWorld::create_game_object(uint32_t const hash, uint32_t const gameobject_type)
 	{
-		// safe to mix dynamic and static //
-		switch (gameobject_type)
-		{
-		case types::game_object_t::BuildingGameObject:
-			cBuildingGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]);
-			break;
-		case types::game_object_t::TestGameObject:
-			cTestGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
-			break;
-		case types::game_object_t::TrafficSignGameObject:
-			cTrafficSignGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
-			break;
-		case types::game_object_t::TrafficControlGameObject:
-			cTrafficControlGameObject::emplace_back(_hshVoxelModelInstances_Static[hash]);
-			break;
-		case types::game_object_t::SignageGameObject:
-			cSignageGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
-			break;
-		case types::game_object_t::LightGameObject:
-			cLightGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash]);
-			break;
-		}
-
+		world::access::create_game_object(hash, gameobject_type, std::forward<mapVoxelModelInstancesStatic&& __restrict>(_hshVoxelModelInstances_Static), std::forward<mapVoxelModelInstancesDynamic&& __restrict>(_hshVoxelModelInstances_Dynamic));
 	}
 
 	void cVoxelWorld::upload_model_state(vector<model_root_index> const& __restrict data_rootIndex, vector<model_state_instance_static> const& __restrict data_models_static, vector<model_state_instance_dynamic> const& __restrict data_models_dynamic)
@@ -3054,32 +2505,6 @@ namespace world
 		}
 
 
-	}
-
-	// private specializations of placeXXXInstanceAt
-	cCopterGameObject* const cVoxelWorld::placeCopterInstanceAt(point2D_t const voxelIndex)
-	{
-		// body
-		auto const [hash_parent, instance_parent] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_BODY, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE);
-
-		if (instance_parent) {
-
-			//auto const [hash_prop, instance_prop] = placeVoxelModelInstanceAt<Volumetric::eVoxelModels_Dynamic::MISC>(voxelIndex, Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_PROP, Volumetric::eVoxelModelInstanceFlags::UPDATEABLE | Volumetric::eVoxelModelInstanceFlags::CHILD_ONLY);
-
-			//if (instance_prop) {
-				//instance_parent->setChild(instance_prop);
-
-				return(&cCopterGameObject::emplace_back(_hshVoxelModelInstances_Dynamic[hash_parent]));
-			//}
-		}
-
-#ifndef NDEBUG
-		{
-			FMT_LOG_WARN(VOX_LOG, "placeCopterInstanceAt<{:s}> failed. modelIndex({:d}) of modelGroup({:d}) at voxelIndex({:d},{:d})",
-				"dynamic", Volumetric::eVoxelModel::DYNAMIC::MISC::COPTER_BODY, Volumetric::eVoxelModels_Dynamic::MISC, voxelIndex.x, voxelIndex.y);
-		}
-#endif
-		return(nullptr);
 	}
 
 #ifdef GIF_MODE
@@ -3235,19 +2660,8 @@ namespace world
 		_hshVoxelModelInstances_Dynamic.clear();
 
 		// clear *all* game object colonies
-		cImportGameObject_Dynamic::clear();
-		cImportGameObject_Static::clear();
-		cBuildingGameObject::clear();
-		cCarGameObject::clear();
-		cPoliceCarGameObject::clear();
-		cCopterPropGameObject::clear();
-		cCopterBodyGameObject::clear();
-		cRemoteUpdateGameObject::clear();
-		cTestGameObject::clear();
-		cTrafficControlGameObject::clear();
-		cTrafficSignGameObject::clear();
-		cSignageGameObject::clear();
-
+		world::access::release_game_objects();
+		
 		// reset world / camera *bugfix important
 		resetCamera();
 	}
@@ -3273,13 +2687,10 @@ namespace world
 		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
 
-		if (_terrainTempImage) {
-			MinCity::TextureBoy->ImagingToTexture_BC7<false>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
+		if (_terrainTempImage) { // New pending terrain image to be converted to texture?
+			MinCity::TextureBoy->ImagingToTexture_R<false, true>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
 			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
 		}
-
-		SAFE_DELETE(_sim);
-		_sim = new cSimulation();
 
 #ifdef GIF_MODE
 
@@ -3448,9 +2859,9 @@ namespace world
 						Volumetric::eVoxelModelInstanceFlags::INSTANT_CREATION);
 #endif
 		{ // test dynamics 
-			cTestGameObject* pTstGameObj(nullptr);
-			cExplosionGameObject* pExplosionGameObj(nullptr);
-			cLevelSetGameObject* pSphereGameObj(nullptr);
+			//cTestGameObject* pTstGameObj(nullptr);
+			//cExplosionGameObject* pExplosionGameObj(nullptr);
+			//cLevelSetGameObject* pSphereGameObj(nullptr);
 
 			//pSphereGameObj = placeProceduralInstanceAt<cLevelSetGameObject, true>(p2D_add(getVisibleGridCenter(), point2D_t(10, 10)));
 
@@ -3629,14 +3040,6 @@ namespace world
 			voxels.visibleTerrain.stagingBuffer[i].createAsStagingBuffer(
 				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), vku::eMappedAccess::Random, true, true);
 			voxels.visibleTerrain.stagingBuffer[i].setActiveSizeBytes(0);
-
-			voxels.visibleRoad.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.opaque.type), vku::eMappedAccess::Random, true, true);
-			voxels.visibleRoad.opaque.stagingBuffer[i].setActiveSizeBytes(0);
-
-			voxels.visibleRoad.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleRoad.trans.type), vku::eMappedAccess::Random, true, true);
-			voxels.visibleRoad.trans.stagingBuffer[i].setActiveSizeBytes(0);
 		}
 
 
@@ -3692,15 +3095,6 @@ namespace world
 		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.stagingBuffer[resource_index].map();
 		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Terrain(MappedVoxels_Terrain_Start);
 
-		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Road_Start[Volumetric::eVoxelType::_size()] = {
-			(VertexDecl::VoxelNormal* const __restrict)voxels.visibleRoad.opaque.stagingBuffer[resource_index].map(),
-			(VertexDecl::VoxelNormal* const __restrict)voxels.visibleRoad.trans.stagingBuffer[resource_index].map(),
-		};
-		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Road[Volumetric::eVoxelType::_size()]{
-			MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque],
-			MappedVoxels_Road_Start[Volumetric::eVoxelType::trans]
-		};
-
 		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Static_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleStatic.stagingBuffer[resource_index].map();
 		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Static(MappedVoxels_Static_Start);
 
@@ -3723,7 +3117,6 @@ namespace world
 		voxelRender::RenderGrid<Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z>(
 			oCamera.voxelIndex_TopLeft,
 			MappedVoxels_Terrain,
-			MappedVoxels_Road[Volumetric::eVoxelType::opaque], MappedVoxels_Road[Volumetric::eVoxelType::trans],
 			MappedVoxels_Static,
 			MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque], MappedVoxels_Dynamic[Volumetric::eVoxelType::trans]);
 
@@ -3791,33 +3184,6 @@ namespace world
 				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_TRANS].vertex_start_offset = (uint32_t const)running_offset_size;  // special handling injecting transparents into opaque / main part
 			}
 		}
-
-		{ // roads
-			vku::VertexBufferPartition* const __restrict& __restrict road_partition_info_updater(MinCity::Vulkan->getRoadPartitionInfo(resource_index));
-
-			size_t running_offset_size(0);
-
-			{
-				// begin main (opaques only)
-				VertexDecl::VoxelNormal* const __restrict MappedVoxels_Road_Current = MappedVoxels_Road[Volumetric::eVoxelType::opaque];
-				size_t const current_dynamic_size = MappedVoxels_Road_Current - MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque];
-				// set the parent / main partition info
-				road_partition_info_updater[eVoxelRoadVertexBufferPartition::PARENT_MAIN].active_vertex_count = (uint32_t const)current_dynamic_size;
-				road_partition_info_updater[eVoxelRoadVertexBufferPartition::PARENT_MAIN].vertex_start_offset = (uint32_t const)running_offset_size;
-				running_offset_size += current_dynamic_size;
-			}
-
-			// append "parent" transparents  ***MUST BE LAST***
-			{
-				// this is treated as if the transparents were being added to the opaque buffer the whole time
-				// this must be done LAST after all voxel children partitions as the data is actually appended at the end.
-				VertexDecl::VoxelNormal* const __restrict MappedVoxels_Road_Current = MappedVoxels_Road[Volumetric::eVoxelType::trans];
-				size_t const current_dynamic_size = MappedVoxels_Road_Current - MappedVoxels_Road_Start[Volumetric::eVoxelType::trans];
-				// set the parent / main partition info
-				road_partition_info_updater[eVoxelRoadVertexBufferPartition::PARENT_TRANS].active_vertex_count = (uint32_t const)current_dynamic_size;
-				road_partition_info_updater[eVoxelRoadVertexBufferPartition::PARENT_TRANS].vertex_start_offset = (uint32_t const)running_offset_size;  // special handling injecting transparents into opaque / main part
-			}
-		}
 		
 		_OpacityMap.commit(); // (commits the new bounds, unmaps)
 
@@ -3842,21 +3208,6 @@ namespace world
 			voxels.visibleStatic.stagingBuffer[resource_index].unmap();
 
 			voxels.visibleStatic.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelNormal));
-		}
-
-		{
-			VertexDecl::VoxelNormal* const __restrict MappedVoxels_Road_End = MappedVoxels_Road[Volumetric::eVoxelType::opaque];
-			size_t const activeSize = MappedVoxels_Road_End - MappedVoxels_Road_Start[Volumetric::eVoxelType::opaque];
-			voxels.visibleRoad.opaque.stagingBuffer[resource_index].unmap();
-
-			voxels.visibleRoad.opaque.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelNormal));
-		}
-		{
-			VertexDecl::VoxelNormal* const __restrict MappedVoxels_Road_End = MappedVoxels_Road[Volumetric::eVoxelType::trans];
-			size_t const activeSize = MappedVoxels_Road_End - MappedVoxels_Road_Start[Volumetric::eVoxelType::trans];
-			voxels.visibleRoad.trans.stagingBuffer[resource_index].unmap();
-
-			voxels.visibleRoad.trans.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelNormal));
 		}
 
 		{
@@ -4052,7 +3403,6 @@ namespace world
 		{ // ######################### STAGE 2 - VBO SUBMIT //
 
 			vbo[eVoxelVertexBuffer::VOXEL_TERRAIN]->uploadDeferred(cb, voxels.visibleTerrain.stagingBuffer[resource_index]);
-			vbo[eVoxelVertexBuffer::VOXEL_ROAD]->uploadDeferred(cb, voxels.visibleRoad.opaque.stagingBuffer[resource_index], voxels.visibleRoad.trans.stagingBuffer[resource_index]);
 			vbo[eVoxelVertexBuffer::VOXEL_STATIC]->uploadDeferred(cb, voxels.visibleStatic.stagingBuffer[resource_index]);
 			vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC]->uploadDeferred(cb, voxels.visibleDynamic.opaque.stagingBuffer[resource_index], voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
 		}
@@ -4071,8 +3421,8 @@ namespace world
 
 			{ // ## RELEASE ## //
 				// *Required* - solves a bug with flickering geometry, Vulkan->cpp has the corresponding "acquire" operation in static command buffer operation
-				static constexpr size_t const buffer_count(4ULL);
- 				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ vbo[eVoxelVertexBuffer::VOXEL_TERRAIN], vbo[eVoxelVertexBuffer::VOXEL_ROAD], vbo[eVoxelVertexBuffer::VOXEL_STATIC], vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC] };
+				static constexpr size_t const buffer_count(3ULL);
+ 				std::array<vku::GenericBuffer const* const, buffer_count> const buffers{ vbo[eVoxelVertexBuffer::VOXEL_TERRAIN], vbo[eVoxelVertexBuffer::VOXEL_STATIC], vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC] };
 				vku::GenericBuffer::barrier(buffers, // ## RELEASE ## // batched 
 					cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 					vk::DependencyFlagBits::eByRegion,
@@ -4447,12 +3797,8 @@ namespace world
 		// clamp at the 2x step size, don't care or want spurious spikes of time
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
-		XMFLOAT2A vPush{};
-#ifndef NDEBUG
-		XMStoreFloat2A(&vPush, getDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR));
-#endif
-		//pack into vector for uniform buffer layout				  // z = frame time delta (average of this frame and last frames delta to smooth out large changes between frames)											   
-		_currentState.Uniform.aligned_data0 = XMVectorSet(0.0f, 0.0f, (time_delta + time_delta_last) * 0.5f, _currentState.time); // w = time
+		//pack into vector for uniform buffer layout				                                                              											   
+		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.y, (time_delta + time_delta_last) * 0.5f, _currentState.time);
 		                                                                
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4521,10 +3867,6 @@ namespace world
 			
 			updateMouseOcclusion(bPaused);
 
-			if (_sim) {
-				_sim->run(tNow, tDelta, the::grid);
-			}
-
 			{ // static instance validation
 
 				using static_unordered_map = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
@@ -4573,123 +3915,12 @@ namespace world
 
 		// any operations that do not need to execute while paused should not
 		if (!bPaused) {
-			// update user game objects *before* user is updated
-			{
-				auto it = cYXIGameObject::begin();
-				while (cYXIGameObject::end() != it) {
+			
+			world::access::update_game_objects(tNow, tDelta);
 
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-			{
-				auto it = cYXISphereGameObject::begin();
-				while (cYXISphereGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
 			MinCity::UserInterface->Update(tNow, tDelta);
 
 			MinCity::Physics->Update(tNow, tDelta); // improving latency apply physics update after all user, user game object updates
-			
-			{
-				auto it = cAttachableGameObject::begin();
-				while (cAttachableGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-
-			// update all image animations //
-			{
-				auto it = ImageAnimation::begin();
-				while (ImageAnimation::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-			// update all dynamic/updateable game objects //
-			{
-				{
-					auto it = cExplosionGameObject::begin();
-					while (cExplosionGameObject::end() != it) {
-
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
-				}
-						
-				// import //
-				{
-					auto it = cImportGameObject_Dynamic::begin();
-					while (cImportGameObject_Dynamic::end() != it) {
-
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
-				}
-				{
-					auto it = cImportGameObject_Static::begin();
-					while (cImportGameObject_Static::end() != it) {
-
-						it->OnUpdate(tNow, tDelta);
-						++it;
-					}
-				}
-			}
-			{
-				// select buildings only update
-				::cBuildingGameObject::UpdateAll(tNow, tDelta);
-			}
-			{
-				// traffic controllers - *should be done b4 cars* //
-				auto it = cTrafficControlGameObject::begin();
-				while (cTrafficControlGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-				::cCarGameObject::UpdateAll(tNow, tDelta);
-				::cPoliceCarGameObject::UpdateAll(tNow, tDelta);
-			}
-			{
-				// copter //
-				auto it = cCopterGameObject::begin();
-				while (cCopterGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-			{
-				auto it = cRemoteUpdateGameObject::begin();
-				while (cRemoteUpdateGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-			{
-				auto it = cTestGameObject::begin();
-				while (cTestGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
-
-			{
-				auto it = cLevelSetGameObject::begin();
-				while (cLevelSetGameObject::end() != it) {
-
-					it->OnUpdate(tNow, tDelta);
-					++it;
-				}
-			}
 
 			// last etc.
 			if (oCamera.ZoomToExtents) {
@@ -4711,16 +3942,6 @@ namespace world
 
 			{
 				auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
-			}
-			{
-				auto const& stagingBuffer(voxels.visibleRoad.opaque.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
-			}
-			{
-				auto const& stagingBuffer(voxels.visibleRoad.trans.stagingBuffer[resource_index]);
 				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 				stagingBuffer.unmap();
 			}
@@ -4765,24 +3986,9 @@ namespace world
 		// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
 		getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
 	}
-	
-	// voxel painting
-	void cVoxelWorld::clearMiniVoxels(bool const bPaused)
-	{
-		[[unlikely]] if (bPaused) {
-			// **bugfix - because nothing is rendered while the window is not active (user alt-tabbed, etc) the "reset" that each minivoxel does for it self after being rendered never happens.
-			// this results in an evergrowing linked list, resulting in undefined behaviour. So while paused this works around that by clearing the pointers to the vector of minivoxels.
-			// so there is no separate clear while not paused - which is the normal path.
-			___memset_threaded<CACHE_LINE_BYTES>(the::temp, 0, sizeof(Iso::mini::Voxel const*) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE); // set all pointers to nullptr
-			// clearing the vector must follow
-		}
+		
+	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE; // should be minivox size (affects light attenuation *only*)
 
-		mini::voxels.clear(); // this cleverely only clears the count, not the actual data in the vector. so any pointers to the data, which exist, are invalid and point to undefined data.
-							  // the bug actually still pointed to the old data (not zeroed) and resulted in undefined behaviour. That behaviour resulted in voxels being added to existing voxels every frame, boom was an ~indefinite loop of voxels to traverse in the linked list.
-		mini::bits->clear();
-	}
-	
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE / 2.0f; // should be minivox size
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		_OpacityMap.SetSpecializationConstants_ComputeLight(constants);
@@ -4820,14 +4026,14 @@ namespace world
 
 		// light volume dimensions //																				// xzy
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize()));   // should be 1.0 / light volume size
+		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)(Volumetric::voxelOpacity::getLightSize())));   // should be 1.0 / light volume size
 
 		// For depth reconstruction from hardware depth buffer
 		// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 		constexpr double ZFar = Globals::MAXZ_DEPTH;
-		constexpr double ZNear = Globals::MINZ_DEPTH;
+		constexpr double ZNear = Globals::MINZ_DEPTH * Iso::VOX_MINZ_SCALAR;
 		constants.emplace_back(vku::SpecializationConstant(9, (float)ZFar)); 
-		constants.emplace_back(vku::SpecializationConstant(10, (float)ZNear)); 
+		constants.emplace_back(vku::SpecializationConstant(10, (float)ZNear));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4893,24 +4099,6 @@ namespace world
 
 		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
 	}
-	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		point2D_t const frameBufferSize(MinCity::getFramebufferSize());
-
-		constants.emplace_back(vku::SpecializationConstant(0, (float)frameBufferSize.x));// // frame buffer width
-		constants.emplace_back(vku::SpecializationConstant(1, (float)frameBufferSize.y));// // frame buffer height
-		constants.emplace_back(vku::SpecializationConstant(2, 1.0f / (float)frameBufferSize.x));// // frame buffer width
-		constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)frameBufferSize.y));// // frame buffer height
-
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
-		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
-
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
-
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
-
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
-	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
 	{
@@ -4932,9 +4120,10 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(6, (float)transformInv.y));
 		constants.emplace_back(vku::SpecializationConstant(7, (float)transformInv.z));
 	}
+
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * Iso::VOXELS_GRID_SLOT_XZ_FP); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 
@@ -4942,26 +4131,14 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::HEIGHT_SCALE));
 		constants.emplace_back(vku::SpecializationConstant(10, (int)MINIVOXEL_FACTOR));		
 	}
-	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
-
-		// used for uv -> voxel in vertex shader image store operation for opacity map
-
-		constants.emplace_back(vku::SpecializationConstant(8, (float)1.0f / Iso::MAX_HEIGHT_STEP));
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::HEIGHT_SCALE));
-		constants.emplace_back(vku::SpecializationConstant(10, (int)MINIVOXEL_FACTOR));
-
-		constants.emplace_back(vku::SpecializationConstant(11, (float)Iso::ROAD_SEGMENT_WIDTH));
-	}
-
+	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * Iso::VOXELS_GRID_SLOT_XZ_FP); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
@@ -4969,19 +4146,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::HEIGHT_SCALE));
 		constants.emplace_back(vku::SpecializationConstant(4, (int)MINIVOXEL_FACTOR));
 	}
-	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * 2.0f);
-
-		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
-		constants.emplace_back(vku::SpecializationConstant(2, (float)1.0f / Iso::MAX_HEIGHT_STEP));
-		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::HEIGHT_SCALE));
-		constants.emplace_back(vku::SpecializationConstant(4, (int)MINIVOXEL_FACTOR));
-
-		constants.emplace_back(vku::SpecializationConstant(5, (float)Iso::ROAD_SEGMENT_WIDTH));
-	}
-
+	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE);
@@ -5020,16 +4185,7 @@ namespace world
 		// used for uv creation in geometry shader  // terrain texture is generated (not available yet)
 		constants.emplace_back(vku::SpecializationConstant(6, 0.5f / ((float)world::TERRAIN_TEXTURE_SZ)));// (0.5f / ((float)Volumetric::Allocation::VOXEL_GRID_VISIBLE_XZ)))); // should be width/depth (width==depth)
 	}
-	void cVoxelWorld::SetSpecializationConstants_VoxelRoad_GS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		SetSpecializationConstants_Voxel_GS_Common(constants);
-		
-		// used for uv creation in geometry shader  // texture loaded
-		constants.emplace_back(vku::SpecializationConstant(6, 0.5f / ((float)world::TERRAIN_TEXTURE_SZ)));// (0.5f / ((float)Volumetric::Allocation::VOXEL_GRID_VISIBLE_XZ)))); // should be width/depth (width==depth)
-		constants.emplace_back(vku::SpecializationConstant(7, 0.5f / ((float)world::TERRAIN_TEXTURE_SZ) * (float)Iso::ROAD_SEGMENT_WIDTH));
-		constants.emplace_back(vku::SpecializationConstant(8, (float)Iso::ROAD_SEGMENT_WIDTH));
-	}
-
+	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		point2D_t const frameBufferSize(MinCity::getFramebufferSize());
@@ -5103,26 +4259,28 @@ namespace world
 		dsu.image(nullptr, _textureShader[shader].output->imageView(), vk::ImageLayout::eGeneral); // output texture
 	}
 	*/
-	void cVoxelWorld::UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
+	void cVoxelWorld::UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict fullnormalImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
 	{
 		// Set initial sampler value
 		dsu.beginImages(1U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, halfdepthImageView, vk::ImageLayout::eShaderReadOnlyOptimal);  // depth
 		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerPointRepeat, supernoise::blue.getTexture2DArray()->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);  // raymarch uses 2 channels, all slices of blue noise (*bugfix - raymarch jittered offset now also uses blue noise over time, with no visible noisyness in reflections!)
+		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, fullnormalImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 		//dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
 		//dsu.image(samplerLinearRepeat, _textureShader[eTextureShader::WIND_DIRECTION].output->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal); // too difficult does not allow world origin to have or not have the fractional offset properly, texture shaders no longer in use - deprecated
-		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 2, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 2, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Reflection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 3, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(4U, 3, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
+		dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
 		dsu.image(nullptr, halfreflectionImageView, vk::ImageLayout::eGeneral);
-		dsu.beginImages(4U, 1, vk::DescriptorType::eStorageImage);
+		dsu.beginImages(5U, 1, vk::DescriptorType::eStorageImage);
 		dsu.image(nullptr, halfvolumetricImageView, vk::ImageLayout::eGeneral);
 		
 #ifdef DEBUG_VOLUMETRIC
@@ -5221,9 +4379,6 @@ namespace world
 
 		dsu.beginImages(5U, TEX_GRID, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_GRID_SAMPLER, rTextures[TEX_GRID]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-
-		dsu.beginImages(5U, TEX_ROAD, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(TEX_ROAD_SAMPLER, rTextures[TEX_ROAD]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		dsu.beginImages(5U, TEX_BLACKBODY, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_BLACKBODY_SAMPLER, rTextures[TEX_BLACKBODY]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -5604,8 +4759,7 @@ namespace world
 		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears"); // ensure the async clears are done
 
 		// cleanup special instances
-		SAFE_DELETE(_sim);
-
+		
 		// _currentVoxelIndexPixMap is released auto-magically - virtual memory
 
 		// cleanup all registered instances
@@ -5632,8 +4786,6 @@ namespace world
 			voxels.visibleDynamic.trans.stagingBuffer[i].release();
 			voxels.visibleStatic.stagingBuffer[i].release();
 			voxels.visibleTerrain.stagingBuffer[i].release();
-			voxels.visibleRoad.opaque.stagingBuffer[i].release();
-			voxels.visibleRoad.trans.stagingBuffer[i].release();
 		}
 
 		if (_terrainTempImage) {
@@ -5643,7 +4795,6 @@ namespace world
 
 		SAFE_DELETE(_terrainTexture);
 		SAFE_DELETE(_gridTexture);
-		SAFE_DELETE(_roadTexture);
 		SAFE_DELETE(_blackbodyTexture);
 
 		//[[deprecated]] 
@@ -5673,15 +4824,6 @@ namespace world
 		}
 
 		supernoise::blue.Release();
-
-		using volume = bit_volume<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z>;
-
-		if (mini::bits) {
-			volume::destroy(mini::bits);
-		}
-		if (the::temp._protected) {
-			scalable_aligned_free(the::temp._protected);
-		}
 
 		if (the::grid._protected) {
 			scalable_aligned_free(the::grid._protected);

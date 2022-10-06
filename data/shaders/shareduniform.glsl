@@ -16,6 +16,7 @@ layout (binding = 0) restrict readonly uniform SharedUniform {
 } u;
 
 // aligned data 0
+precise vec2  fractional_offset() { return(u._aligned_data0.xy); }
 precise float time_delta() { return(u._aligned_data0.z); }
 precise float time() { return(u._aligned_data0.w); }
 

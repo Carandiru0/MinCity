@@ -79,3 +79,5 @@ GPUCache/index
 *.ember
 MinCity/x64/Debug/MinCity.ilk
 MinCity/x64/Debug/MinCity.ilk
+data/debug/last_terrain.ktx
+data/debug/last_terrain_grid_sized.ktx

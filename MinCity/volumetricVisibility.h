@@ -20,6 +20,9 @@ namespace Volumetric
 	{
 		static constexpr float const ERROR_COMPENSATION = 1.05; // 5% error removed
 	public:
+		static float const getVoxelRadius();
+		static float const getMiniVoxelRadius();
+
 		// accessors //
 		__inline XMMATRIX const XM_CALLCONV getViewMatrix() const { return(XMLoadFloat4x4A(&_matView)); }
 		__inline XMMATRIX const XM_CALLCONV getProjectionMatrix() const { return(XMLoadFloat4x4A(&_matProj)); } 

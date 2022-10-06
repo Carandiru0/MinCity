@@ -70,7 +70,7 @@ namespace world
 
 		} _this = {};
 	public:
-		cCopterBodyGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cCopterBodyGameObject(Volumetric::voxelModelInstance_Dynamic* const&& instance_);
 		~cCopterBodyGameObject();
 	};
 

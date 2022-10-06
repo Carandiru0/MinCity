@@ -27,14 +27,18 @@ layout(location = 0) out vec4 outColor;
 layout(location = 0) out vec3 outColor;
 #ifdef BASIC
 layout(location = 1) out vec2 outMouse;
+layout(location = 2) out vec4 outNormal;
 #endif
 #endif
 
 #include "voxel_fragment.glsl"
 
 #if defined(BASIC)
+
 void main() {
-	outMouse.rg = In._voxelIndex;
+	outMouse.rg = In.voxelIndex;
+	outNormal.rgb = normalize(In.N); // signed output
+	outNormal.a = 0.0f; // unused - how to use....
 }
 
 #else
@@ -58,10 +62,11 @@ layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 #define COLOR 1
 #define OPACITY 2
 layout (binding = 3) uniform sampler3D volumeMap[3];
+layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
+// binding 5 is the shared common image array bundle
 #if defined(TRANS)
 layout (binding = 6) uniform sampler2D colorMap;
 #endif
-layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
 
 // binding 5:
 // for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
@@ -109,12 +114,6 @@ float opacity( in const float sampling ) {
 // https://www.iquilezles.org/www/articles/voxellines/voxellines.htm
 float getOcclusion(in vec3 uvw) 
 {
-#if defined(T2D) || defined(ROAD) 
-	uvw = uvw + InvVolumeDimensions; // *bugfix - to align the ao properly, the half texel offset is required
-#else									 // since terrain voxels are double the size of a minivoxel, terrain requires 2x the half texel offset to align properly on the same grid, which is defined in minivoxels. 512x512x512
-	uvw = uvw + 0.5f * InvVolumeDimensions; // this was a difficult bug *do not change*
-#endif
-
 	vec4 vc;
 	// sides
 	vc.x = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 0, 1,-1)).r ); // front
@@ -242,16 +241,18 @@ void main() {
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 	
 																						// bugfix: y is flipped. simplest to correct here.
-	const float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
+	float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
+	const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 4.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
+	const float grid = 1.0f - dot(grid_segment.rgb, LUMA);
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 
-	const vec3 grid_color = unpackColor(In._color) * In._emission; // only emissive can have color
-
-	outColor.rgb = lit( terrainHeight + grid_color, make_material(In._emission, 0.0f, ROUGHNESS), light_color,				// regular terrain lighting
-					    getOcclusion(In.uv.xyz), Ld.att,
-					    Ld.dir, N, V);
+	terrainHeight = mix(0.5f, 1.0f, terrainHeight);
+						// only emissive can have color
+	outColor.rgb = lit( grid * mix(vec3(terrainHeight), unpackColor(In._color), In._emission), make_material(In._emission, 1.0f - grid, ROUGHNESS), light_color,				// regular terrain lighting
+					    grid * grid * terrainHeight * getOcclusion(In.uv.xyz), Ld.att,
+					    -Ld.dir, N, V);
 	
 	/*
 	const vec3 N = normalize(In.N.xyz);
@@ -266,6 +267,10 @@ void main() {
 }
 #elif defined(ROAD)  
 
+void main() { 
+}
+
+/*
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
@@ -344,6 +349,8 @@ void main() {
 #endif
 
 }
+*/
+
 #else // voxels, w/lighting 
         
 // FRAGMENT - - - - In = xzy view space
@@ -363,7 +370,7 @@ void main() {
     
 	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
 						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
-						-Ld.dir, N, V );
+						-Ld.dir, N, V);
 
 	//outColor.rgb = vec3(attenuation);
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));

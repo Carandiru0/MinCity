@@ -3,11 +3,11 @@
 #include "cVoxelWorld.h"
 #include "cBuildingGameObject.h"
 #include "MinCity.h"
-#include "gui.h"
 #include "prices.h"
+#include "gui.h"
 
 static constexpr float const MIN_VISIBILITY = 0.95f;
-static constexpr float const GUI_HEIGHT = -10.0f;
+static constexpr float const GUI_HEIGHT = -100.0f;
 static inline v2_rotation_t const _offsetAngle{ v2_rotation_constants::v15 }; // starting offset for text alignment
 
 cZoningTool::cZoningTool()
@@ -44,7 +44,7 @@ void cZoningTool::setCost(int64_t const cost)
 void cZoningTool::paint()
 {
 	cAbstractToolMethods::paint();
-
+	/*
 	static constexpr uint32_t const color(gui::color);  // abgr - rgba backwards
 
 	constinit static bool bFindMaxVisibility(false);
@@ -108,7 +108,7 @@ void cZoningTool::paint()
 		v2_rotation_t const view(world::getYaw() + _offsetAngle); // range is -XM_PI to XM_PI or -180 to 180 // offset angle represents the most optimal "angle" offset to switch the gui text.
 		point2D_t best_origin;
 		uint32_t axis;
-
+		/*
 		if (view.angle() < -v2_rotation_constants::v90.angle()) {  // -180 to -90
 			best_origin = area.right_top();
 			axis = gui::axis::xn;
@@ -125,7 +125,7 @@ void cZoningTool::paint()
 			best_origin = area.left_top();
 			axis = gui::axis::z;
 		}
-
+		*/
 		/*
 		if (bFindMaxVisibility) {
 
@@ -164,7 +164,7 @@ void cZoningTool::paint()
 
 			bFindMaxVisibility = false; // always reset
 		}*/
-
+		/*
 		// actually draw the text
 		origin = best_origin;
 		xmOrigin = p2D_to_v2(origin);
@@ -186,7 +186,7 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSetY(xmOrigin, GUI_HEIGHT - 2.0f);
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin); //green
 		gui::draw_string(gui::axis::x, xmOrigin, color, gui::flags::emissive, "{:.{}f}", quadrant_visibility, 1); // abgr - rgba backwards
-
+		*/
 		/*
 		static constexpr fp_seconds const
 			interval = fp_seconds(1.0f / 24.0f), // seconds = 1/fps; 0.042s, 42ms per frame		
@@ -227,8 +227,8 @@ void cZoningTool::paint()
 		xmOrigin = XMVectorSubtract(xmOrigin, xmWorldOrigin);
 		gui::draw_vertical_progress_bar(gui::axis::x, xmOrigin, origin, color, 20, timing.total_accumulated / total, gui::flags::emissive);
 		*/
-	}
-	else { // tool is active, however the user has not dragged or clicked the mouse to create an area
+	//}
+	//else { // tool is active, however the user has not dragged or clicked the mouse to create an area
 
 		/*
 		XMVECTOR xmOrigin;
@@ -255,7 +255,7 @@ void cZoningTool::paint()
 
 		world::addVoxel(xmVoxelOrigin, hoveredIndex, color, Iso::mini::hidden | Iso::mini::emissive); // light only
 		*/
-	}
+	//}
 }
 
 void cZoningTool::commitZoneHistory() // commits current "zone" to grid
