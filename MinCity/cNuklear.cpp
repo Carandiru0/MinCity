@@ -3593,7 +3593,7 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 		else {
 			bInstancesOpen = false;
 		}
-
+#ifdef DEBUG_VOXEL_RENDER_COUNTS
 		if (nk_tree_push(_ctx, NK_TREE_TAB, "VOXELS", NK_MINIMIZED))
 		{
 			nk_layout_row_dynamic(_ctx, 32, 4);
@@ -3628,13 +3628,14 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				szText.clear();
-		}
+		    }
 			nk_tree_pop(_ctx);
 			bVoxelsOpen = true;
 		}
 		else {
 			bVoxelsOpen = false;
 		}
+#endif
 #endif
 		bMainWindowStartOpen = true;
 		nk_style_pop_font(_ctx);

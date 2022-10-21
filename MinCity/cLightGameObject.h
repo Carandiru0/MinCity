@@ -44,7 +44,7 @@ namespace world
 		uint32_t	_Color;
 		bool		_State; // on/off
 	public:
-		cLightGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cLightGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 		~cLightGameObject();
 	};
 

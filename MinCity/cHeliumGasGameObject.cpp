@@ -19,14 +19,18 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cHeliumGasGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cHeliumGasGameObject::OnVoxel);
+		{
+			if (Validate()) {
+				Instance->setOwnerGameObject<cHeliumGasGameObject>(this, &OnRelease);
+				Instance->setVoxelEventFunction(&cHeliumGasGameObject::OnVoxel);
+			}
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cHeliumGasGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		{
+			if (src.Validate()) {
+				Instance->setOwnerGameObject<cHeliumGasGameObject>(nullptr, nullptr);
+				Instance->setVoxelEventFunction(nullptr);
+			}
 		}
 	}
 	cHeliumGasGameObject& cHeliumGasGameObject::operator=(cHeliumGasGameObject&& src) noexcept
@@ -36,14 +40,18 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cHeliumGasGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cHeliumGasGameObject::OnVoxel);
+		{
+			if (Validate()) {
+				Instance->setOwnerGameObject<cHeliumGasGameObject>(this, &OnRelease);
+				Instance->setVoxelEventFunction(&cHeliumGasGameObject::OnVoxel);
+			}
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cHeliumGasGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		{
+			if (src.Validate()) {
+				Instance->setOwnerGameObject<cHeliumGasGameObject>(nullptr, nullptr);
+				Instance->setVoxelEventFunction(nullptr);
+			}
 		}
 
 		_animation = std::move(src._animation);
@@ -51,7 +59,7 @@ namespace world
 		return(*this);
 	}
 
-	cHeliumGasGameObject::cHeliumGasGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cHeliumGasGameObject::cHeliumGasGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_), _animation(instance_)
 	{
 		instance_->setOwnerGameObject<cHeliumGasGameObject>(this, &OnRelease);
@@ -122,24 +130,25 @@ namespace world
 
 	void cHeliumGasGameObject::setElevation(float const elevation)
 	{
-		(*Instance)->setElevation(elevation);
+		[[unlikely]] if (!Validate())
+			return;
+
+		Instance->setElevation(elevation);
 	}
 
 	void cHeliumGasGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		auto instance(*Instance);
-
-		if (instance->destroyPending())
+		[[unlikely]] if (!Validate())
 			return;
 
-		if (_animation.update(instance, tDelta)) {
+		if (_animation.update(*Instance, tDelta)) {
 
-			instance->setVoxelTransparentCount(instance->getVoxelCount()); // all transparent
-			instance->destroy(milliseconds(0));
+			Instance->setVoxelTransparentCount(Instance->getVoxelCount()); // all transparent
+			Instance->destroy(milliseconds(0));
 			return;
 		}
 		else {
-			instance->setVoxelTransparentCount(instance->getVoxelCount()); // all transparent
+			Instance->setVoxelTransparentCount(Instance->getVoxelCount()); // all transparent
 		}
 	}
 

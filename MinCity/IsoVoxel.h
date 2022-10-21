@@ -17,13 +17,15 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <Utility/unroll.h>
 #include "Declarations.h"
 
+ // forward decl
+struct ImagingMemoryInstance;
 
 namespace Iso
 {
 
 	// cONSTANTS/*****************
 	static constexpr size_t const
-		WORLD_GRID_SIZE_BITS = 12;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
+		WORLD_GRID_SIZE_BITS = 13;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
 	static constexpr uint32_t const				//                                          recommend using 2^13 = 8192x8192 or less, map is still extremely large
 		WORLD_GRID_SIZE = (1U << WORLD_GRID_SIZE_BITS),
 		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);
@@ -80,9 +82,8 @@ namespace Iso
 
 		MINI_VOX_SIZE = VOX_SIZE / MINIVOXEL_FACTORF,	// this value and shader value for mini-vox size need to always match
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
-		HEIGHT_SCALE = 256.0f * 0.75f, // this value and shader value for height need to always match (uniforms.vert)
 
-		WORLD_MAX_HEIGHT = (float)SCREEN_VOXELS_Y * 0.75f, // unit: voxels  ** not minivoxels
+		WORLD_MAX_HEIGHT = (float)SCREEN_VOXELS_Y, // unit: voxels  ** not minivoxels
 		WORLD_GRID_FSIZE = (float)WORLD_GRID_SIZE,
 		WORLD_GRID_FHALFSIZE = (float)WORLD_GRID_HALFSIZE,
 		INVERSE_WORLD_GRID_FSIZE = 1.0f / WORLD_GRID_FSIZE,
@@ -163,26 +164,49 @@ namespace Iso
 		STATIC_HASH = (1 << 0),
 		DYNAMIC_HASH = (1 << 1);
 	static constexpr uint8_t const
-		HASH_COUNT = 15;  // 60 bytes + 4bytes = 64bytes/voxel
+		HASH_COUNT = 7;  // 60 bytes + 4bytes = 64bytes/voxel
 
-
-	typedef struct sVoxel
+	typedef union heightstep
 	{
-		uint8_t Height;                             // Heightstep
+		struct
+		{
+			uint8_t major : 8;
+			uint8_t minor : 8;
+		};
+
+		uint16_t data;
+	} heightstep;  // Heightstep [0 ... 255] major , [0.000 ... 0.999]
+
+	STATIC_INLINE_PURE float const heightstep_query_precise(heightstep const h) {      /// returns in [0 ... 1.0] range 
+		return(SFM::linearstep(0.0f, 65535.0f, h.data));
+	}
+	STATIC_INLINE_PURE uint32_t const heightstep_query(heightstep const h) {           // returns in [0 ... 255] range
+		return(h.major);
+	}
+
+	class no_vtable Voxel
+	{
+	public:
+		static ImagingMemoryInstance* const& __restrict HeightMap();
+		static heightstep const __vectorcall            HeightMap(point2D_t const voxelIndex);
+		static uint16_t* const __restrict __vectorcall HeightMapReference(point2D_t const voxelIndex);
+
 		uint8_t Desc;								// Type of Voxel + Attributes
 		uint8_t MaterialDesc;						// Deterministic SubType and Adjacency
 		uint8_t Owner;								// Owner Indices
-		uint32_t Hash[HASH_COUNT];					// Index 0 = Ground / Extended Hash
+
+		uint32_t Hash[HASH_COUNT];
+		                                            // Index 0 = Ground / Extended Hash
 													// Index 1 = Static Model
 													// Index 2 to 7 = Up to 6 Dynamic Model(s)
-		sVoxel()
+		Voxel()
 			: Desc{}, MaterialDesc{}, Owner{}, Hash{}
 		{}
-		sVoxel(sVoxel const&) = default;
-		sVoxel& operator=(sVoxel const&) = default;  // should not be used as occlusion data will be clobbered only safe in certain init or generation scenarios
-		sVoxel(sVoxel&&) noexcept = default;
-		sVoxel& operator=(sVoxel&&) noexcept = default;
-	} Voxel;
+		Voxel(Voxel const&) = default;
+		Voxel& operator=(Voxel const&) = default;  // should not be used as occlusion data will be clobbered only safe in certain init or generation scenarios
+		Voxel(Voxel&&) noexcept = default;
+		Voxel& operator=(Voxel&&) noexcept = default;
+	};
 
 	// Special case leveraging more of the beginning bits
 	STATIC_INLINE_PURE bool const isGroundOnly(Voxel const& oVoxel) { return(TYPE_GROUND == (MASK_TYPE_BIT & oVoxel.Desc)); }
@@ -351,22 +375,21 @@ namespace Iso
 		setType(oVoxel, Iso::TYPE_GROUND);   // default change type to ground
 	}
 
-	STATIC_INLINE_PURE uint32_t const getHeightStep(Voxel const& oVoxel)
+	STATIC_INLINE uint32_t const __vectorcall getHeightStep(point2D_t const voxelIndex)
 	{
-		return(oVoxel.Height);
+		return(heightstep_query(Voxel::HeightMap(voxelIndex)));
 	}
-	STATIC_INLINE void setHeightStep(Voxel& oVoxel, uint8_t const HeightStep)
+	STATIC_INLINE void __vectorcall setHeightStep(point2D_t const voxelIndex, uint8_t const HeightStep)
 	{
-		oVoxel.Height = HeightStep;
+		*Voxel::HeightMapReference(voxelIndex) = uint16_t(HeightStep) << 8u;
 	}
 	STATIC_INLINE_PURE float const getRealHeight(float const fHeightStep)
 	{
-		// max(VOX_SIZE * 0.5f, heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE)
-		return(SFM::max(VOX_SIZE, SFM::__fma(fHeightStep, INV_MAX_HEIGHT_STEP * HEIGHT_SCALE * VOX_SIZE * MINIVOXEL_FACTORF, VOX_SIZE * MINIVOXEL_FACTORF * 0.5f)));  // half-voxel offset is exact
+		return(SFM::max(VOX_SIZE / MINIVOXEL_FACTORF, WORLD_MAX_HEIGHT / MINIVOXEL_FACTORF * (fHeightStep/255.0f) * VOX_SIZE) * MINIVOXEL_FACTORF);
 	}
-	STATIC_INLINE_PURE float const getRealHeight(Voxel const& oVoxel)
+	STATIC_INLINE float const __vectorcall getRealHeight(point2D_t const voxelIndex)
 	{
-		return(getRealHeight((float)getHeightStep(oVoxel)));  // half-voxel offset is exact
+		return(getRealHeight(255.0f * heightstep_query_precise(Voxel::HeightMap(voxelIndex))));  // half-voxel offset is exact
 	}
 
 	// #defines to ensure one comparison only and compared with zero always (performance)

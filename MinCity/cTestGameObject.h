@@ -41,7 +41,7 @@ namespace world
 		float _accumulator,
 			  _direction;
 	public:
-		cTestGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cTestGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cTestGameObject& __restrict left, cTestGameObject& __restrict right) noexcept

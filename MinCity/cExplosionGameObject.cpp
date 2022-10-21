@@ -19,14 +19,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cExplosionGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cExplosionGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_temperatureBoost = std::move(src._temperatureBoost);
@@ -34,7 +34,6 @@ namespace world
 		_emission_threshold[0] = std::move(src._emission_threshold[0]);
 		_emission_threshold[1] = std::move(src._emission_threshold[1]);
 		_emission_samples = std::move(src._emission_samples);
-		_destroyed = std::move(src._destroyed);
 	}
 	cExplosionGameObject& cExplosionGameObject::operator=(cExplosionGameObject&& src) noexcept
 	{
@@ -43,14 +42,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cExplosionGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cExplosionGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_animation = std::move(src._animation);
@@ -59,13 +58,12 @@ namespace world
 		_emission_threshold[0] = std::move(src._emission_threshold[0]);
 		_emission_threshold[1] = std::move(src._emission_threshold[1]);
 		_emission_samples = std::move(src._emission_samples);
-		_destroyed = std::move(src._destroyed);
 		
 		return(*this);
 	}
 
-	cExplosionGameObject::cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
-		: tUpdateableGameObject(instance_), _animation(instance_), _destroyed(false), _temperatureBoost(DEFAULT_TEMPERATURE_BOOST), _flameBoost(DEFAULT_FLAME_BOOST), _emission_threshold{DEFAULT_EMISSION_THRESHOLD, 0.0f}, _emission_samples(1)
+	cExplosionGameObject::cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
+		: tUpdateableGameObject(instance_), _animation(instance_), _temperatureBoost(DEFAULT_TEMPERATURE_BOOST), _flameBoost(DEFAULT_FLAME_BOOST), _emission_threshold{DEFAULT_EMISSION_THRESHOLD, 0.0f}, _emission_samples(1)
 	{
 		instance_->setOwnerGameObject<cExplosionGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cExplosionGameObject::OnVoxel);
@@ -148,24 +146,24 @@ namespace world
 
 	void cExplosionGameObject::setElevation(float const elevation)
 	{
-		(*Instance)->setElevation(elevation);
+		[[unlikely]] if (!Validate())
+			return;
+
+		Instance->setElevation(elevation);
 	}
 
 	void cExplosionGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		if (_destroyed)
+		[[unlikely]] if (!Validate())
 			return;
 
-		auto instance(*Instance);
+		if (_animation.update(*Instance, tDelta)) {
 
-		if (_animation.update(instance, tDelta)) {
-
-			instance->destroy(milliseconds(0));
-			_destroyed = true; 
+			Instance->destroy(milliseconds(0));
 			return;
 		}
 			
-		instance->setYaw(getModelInstance()->getYaw() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
+		Instance->setYaw(getModelInstance()->getYaw() + v2_rotation_t(tDelta.count() * XM_2PI * 0.05f));
 		
 		// ** stable feedback auto regulating emission threshold. Dependent on both the temperature + flames boost levels/inputs.
 		// ** do not change ** provides some dynamic range to the emission/lighting. also optimizes out dark lights that have ~nil emission.

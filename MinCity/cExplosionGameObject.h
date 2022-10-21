@@ -50,9 +50,9 @@ namespace world
 		float					    _temperatureBoost, _flameBoost,
 									_emission_threshold[2];
 		uint32_t					_emission_samples;
-		bool						_destroyed;
+
 	public:
-		cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cExplosionGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cExplosionGameObject& __restrict left, cExplosionGameObject& __restrict right) noexcept

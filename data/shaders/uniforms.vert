@@ -99,13 +99,9 @@ writeonly layout(location = 0) out streamOut
 
 #if defined(HEIGHT) || defined(ROAD)
 #ifdef BASIC
-layout (constant_id = 8) const float INV_MAX_HEIGHT_STEPS = 0.0f;
-layout (constant_id = 9) const float HEIGHT_SCALE = 0.0f;
-layout (constant_id = 10) const int MINIVOXEL_FACTOR = 1;
+layout (constant_id = 8) const int MINIVOXEL_FACTOR = 1;
 #else
-layout (constant_id = 2) const float INV_MAX_HEIGHT_STEPS = 0.0f;
-layout (constant_id = 3) const float HEIGHT_SCALE = 0.0f;
-layout (constant_id = 4) const int MINIVOXEL_FACTOR = 1;
+layout (constant_id = 2) const int MINIVOXEL_FACTOR = 1;
 #endif
 
 #define SHIFT_EMISSION 8U
@@ -113,7 +109,7 @@ layout (constant_id = 4) const int MINIVOXEL_FACTOR = 1;
 const uint MASK_ADJACENCY = 0x3FU;		/*			 0000 0000 0011 1111 */
 const uint MASK_RESERVED = 0xC0U;		/*           0000 0000 RRxx xxxx */ // free to use
 const uint MASK_EMISSION = 0x100U;		/*           0000 0001 xxxx xxxx */
-const uint MASK_HEIGHTSTEP = 0xF000U;	/*			 1111 000x xxxx xxxx */
+const uint MASK_HEIGHTSTEP = 0x0FFFF000U;	/*			 1111 000x xxxx xxxx */
 #if defined(DYNAMIC) && defined(TRANS)  
 #define SHIFT_TRANSPARENCY 9U
 const uint MASK_TRANSPARENCY = 0x600U;	/*			 xxxx 011x xxxx xxxx */
@@ -210,11 +206,11 @@ void main() {
 
 	Out.right   = vec3(VOX_SIZE * 0.5f, 0.0f, 0.0f);
 	Out.forward	= vec3(0.0f, 0.0f, VOX_SIZE * 0.5f); 
-
-  const float heightstep = float(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));  // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
-  const float real_height = max(VOX_SIZE * 0.5f, heightstep * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE * VOX_SIZE);
+  
+  const uint uheightstep = 0xffff & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
+  const float heightstep = 256.0f / float(MINIVOXEL_FACTOR) * (float(uheightstep) / 65535.0f); // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
+  const float real_height = max(VOX_SIZE / float(MINIVOXEL_FACTOR), heightstep / float(MINIVOXEL_FACTOR) * VOX_SIZE) * float(MINIVOXEL_FACTOR);
   Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
-  const float voxel_height = real_height * 0.5f; // range [0.0f ... VolumeDimensions_Y]  *do not change* *bugfix - matches up volumetric computed normals with full resolution normal map.
 #endif
 
 #if !(defined(ROAD)) // not road
@@ -255,8 +251,8 @@ void main() {
 	Out.extra.x = float((hash & MASK_ROAD_TILE) >> SHIFT_ROAD_TILE);
 #endif
   {
-	const float height_begin = float((hash & MASK_ROAD_HEIGHTSTEP_BEGIN) >> SHIFT_ROAD_HEIGHTSTEP_BEGIN) * VOX_SIZE * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE;
-	const float height_end = float((hash & MASK_ROAD_HEIGHTSTEP_END) >> SHIFT_ROAD_HEIGHTSTEP_END) * VOX_SIZE * INV_MAX_HEIGHT_STEPS * HEIGHT_SCALE;
+	const float height_begin = float((hash & MASK_ROAD_HEIGHTSTEP_BEGIN) >> SHIFT_ROAD_HEIGHTSTEP_BEGIN) * VOX_SIZE;
+	const float height_end = float((hash & MASK_ROAD_HEIGHTSTEP_END) >> SHIFT_ROAD_HEIGHTSTEP_END) * VOX_SIZE;
 
 	const vec2 delta_height = vec2(0, -(height_end - height_begin));
 	
@@ -316,10 +312,10 @@ void main() {
   Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
-  Out.material.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
+  Out.material.ambient = 10.0f * packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
 #else // terrain or road:
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
+  Out.ambient = 10.0f * packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
 #endif
 
 #endif
@@ -362,11 +358,10 @@ void main() {
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
-  const int ivoxel_height = int(floor(voxel_height)) + 1; // *bugfix: +1 yields correct height and the minimum.
-
+  
   ivec3 iminivoxel;
 									
-  [[dependency_infinite]] for( iminivoxel.y = ivoxel_height - 1; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
+  [[dependency_infinite]] for( iminivoxel.y = int(heightstep * float(MINIVOXEL_FACTOR - 1)) - 1; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 

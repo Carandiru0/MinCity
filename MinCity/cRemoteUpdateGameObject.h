@@ -28,7 +28,7 @@ namespace world
 	private:
 		remote_update_function		_eOnUpdate;
 	public:
-		cRemoteUpdateGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cRemoteUpdateGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cRemoteUpdateGameObject& __restrict left, cRemoteUpdateGameObject& __restrict right) noexcept

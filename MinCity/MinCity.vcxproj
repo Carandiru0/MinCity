@@ -148,7 +148,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib</AdditionalDependencies>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <OptimizeReferences>false</OptimizeReferences>
@@ -239,7 +239,7 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
@@ -300,7 +300,6 @@
     <ClInclude Include="cProcedural.h" />
     <ClInclude Include="cProceduralGameObject.h" />
     <ClInclude Include="cRemoteUpdateGameObject.h" />
-    <ClInclude Include="cRockStageGameObject.h" />
     <ClInclude Include="cSelectTool.h" />
     <ClInclude Include="cTestGameObject.h" />
     <ClInclude Include="cTextureBoy.h" />
@@ -390,7 +389,6 @@
     <ClCompile Include="cProcedural.cpp" />
     <ClCompile Include="cProceduralGameObject.cpp" />
     <ClCompile Include="cRemoteUpdateGameObject.cpp" />
-    <ClCompile Include="cRockStageGameObject.cpp" />
     <ClCompile Include="cSelectTool.cpp" />
     <ClCompile Include="cTestGameObject.cpp" />
     <ClCompile Include="cTextureBoy.cpp" />
@@ -791,6 +789,7 @@
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
     </CustomBuild>
+    <None Include="..\data\shaders\light.glsl" />
     <None Include="..\Data\Shaders\lighting.glsl" />
     <None Include="..\data\shaders\lightmap.glsl" />
     <None Include="..\Data\Shaders\random.glsl">

@@ -13,7 +13,7 @@ cAISkyMover::cAISkyMover()
 int32_t const cAISkyMover::conditionOfRouteVoxel(point2D_t const voxelIndex)
 {
 	int32_t condition(eRouteCondition::CLEAR);
-
+	/*
 	Iso::Voxel const* const __restrict pVoxel(world::getVoxelAt(voxelIndex));
 
 	if (pVoxel) {
@@ -67,7 +67,7 @@ int32_t const cAISkyMover::conditionOfRouteVoxel(point2D_t const voxelIndex)
 
 		return(condition); // by default returning CLEAR (not blocked) otherwise BLOCKED
 	}
-
+	*/
 	return(eRouteCondition::CANCEL); // out of bounds or general error if this is reached
 }
 

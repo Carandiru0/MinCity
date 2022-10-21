@@ -15,11 +15,7 @@ namespace Volumetric
 		Interpolator.reset(vLoc, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(voxelIndex)));
 
 		// by default all instances are brought to elevation that matches the ground. This is only done once on initialization. It is intentionally not updated/frame. 
-		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
-		if (pVoxel) {
-			Iso::Voxel const oVoxel(*pVoxel);
-			Interpolator.reset_component<COMPONENT_Y>(vLoc, Iso::getRealHeight(oVoxel));
-		}
+		Interpolator.reset_component<COMPONENT_Y>(vLoc, Iso::getRealHeight(world::getLocalVoxelIndexAt(voxelIndex)));
 	} 
 
 	voxelModelInstance_Dynamic::voxelModelInstance_Dynamic(voxB::voxelModel<voxB::DYNAMIC> const& __restrict refModel, uint32_t const hash, point2D_t const voxelIndex, uint32_t const flags_)

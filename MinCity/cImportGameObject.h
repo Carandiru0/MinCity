@@ -51,7 +51,7 @@ namespace world
 	private:
 		ImageAnimation*						_videoscreen;
 	public:
-		cImportGameObject_Dynamic(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cImportGameObject_Dynamic(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 		~cImportGameObject_Dynamic();
 	};
 
@@ -82,7 +82,7 @@ namespace world
 	private:
 		ImageAnimation*						_videoscreen;
 	public:
-		cImportGameObject_Static(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_);
+		cImportGameObject_Static(Volumetric::voxelModelInstance_Static* const& instance_);
 		~cImportGameObject_Static();
 	};
 

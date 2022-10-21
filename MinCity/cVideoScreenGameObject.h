@@ -38,7 +38,7 @@ namespace world
 		ImageAnimation*											_videoscreen;
 
 	public:
-		cVideoScreenGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_);
+		cVideoScreenGameObject(Volumetric::voxelModelInstance_Static* const& instance_);
 		~cVideoScreenGameObject();
 	};
 

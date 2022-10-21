@@ -19,14 +19,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cThrusterFireGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cThrusterFireGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cThrusterFireGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cThrusterFireGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cThrusterFireGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cThrusterFireGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_intensity = std::move(src._intensity);
@@ -39,14 +39,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cThrusterFireGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cThrusterFireGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cThrusterFireGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cThrusterFireGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cThrusterFireGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cThrusterFireGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_animation = std::move(src._animation);
@@ -56,7 +56,7 @@ namespace world
 		return(*this);
 	}
 
-	cThrusterFireGameObject::cThrusterFireGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cThrusterFireGameObject::cThrusterFireGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: cAttachableGameObject(instance_), _animation(instance_), _characteristics{}, _intensity(0.0f)
 	{
 		instance_->setOwnerGameObject<cThrusterFireGameObject>(this, &OnRelease);
@@ -171,15 +171,14 @@ namespace world
 	{
 		cAttachableGameObject::OnUpdate(tNow, tDelta);
 
-		auto instance(*Instance);
-		if (instance->destroyPending())
+		[[unlikely]] if (!Validate())
 			return;
 
-		if (_animation.update(instance, tDelta)) {
+		if (_animation.update(*Instance, tDelta)) {
 			_animation.setRepeatFrameIndex(20);
 		}
 
-		instance->setVoxelTransparentCount(instance->getVoxelCount()); // all transparent
+		Instance->setVoxelTransparentCount(Instance->getVoxelCount()); // all transparent
 
 		//setYaw(getYaw() + time_to_float(tDelta) * 10.0f);
 	}

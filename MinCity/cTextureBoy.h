@@ -293,7 +293,7 @@ void  cTextureBoy::ImagingToTexture_RG(ImagingMemoryInstance const* const image,
 			format = vk::Format::eR8G8Srgb;
 		}
 		else {
-			format = vk::Format::eR8G8Unorm;
+			format = (image->mode == MODE_LA16) ? vk::Format::eR16G16Unorm : vk::Format::eR8G8Unorm;
 		}
 
 		texture = new vku::TextureImage2D(_device, image->xsize, image->ysize,
@@ -335,7 +335,7 @@ void  cTextureBoy::ImagingToTexture_R(ImagingMemoryInstance const* const image, 
 			format = vk::Format::eR8Srgb;
 		}
 		else {
-			format = vk::Format::eR8Unorm;
+			format = (image->mode == MODE_L16) ? vk::Format::eR16Unorm : vk::Format::eR8Unorm;
 		}
 
 		texture = new vku::TextureImage2D(_device, image->xsize, image->ysize,

@@ -34,7 +34,7 @@ namespace world
 		} _activity_light;
 
 	public:
-		cBeaconGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cBeaconGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cBeaconGameObject& __restrict left, cBeaconGameObject& __restrict right) noexcept

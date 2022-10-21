@@ -19,14 +19,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cLightConeGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cLightConeGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cLightConeGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cLightConeGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cLightConeGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cLightConeGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_activity_lights = std::move(src._activity_lights);
@@ -38,14 +38,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cLightConeGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cLightConeGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cLightConeGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cLightConeGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cLightConeGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cLightConeGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_activity_lights = std::move(src._activity_lights);
@@ -53,7 +53,7 @@ namespace world
 		return(*this);
 	}
 
-	cLightConeGameObject::cLightConeGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cLightConeGameObject::cLightConeGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: cAttachableGameObject(instance_), _activity_lights{}
 	{
 		instance_->setOwnerGameObject<cLightConeGameObject>(this, &OnRelease);

@@ -52,7 +52,7 @@ namespace world
 			bilateral.setSigma(spatial, range);
 
 			// TODO: input image and output image must be multiple of 32 pixels  see optimal pitch function
-			Imaging tmpFiltered = ImagingNew(MODE_BGRX, width, height);  //must be bgrx input to RB filter (*4 channels)
+			Imaging tmpFiltered = ImagingNew(imageSrc->mode, width, height);  //must be bgrx input to RB filter (*4 channels)
 			if (bilateral.filter(tmpFiltered->block, imageSrc->block, width, height, tmpFiltered->linesize)) {
 				return(tmpFiltered);
 			}

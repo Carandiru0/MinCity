@@ -44,6 +44,7 @@ void cUser::create()
 
 	_ship = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cYXIGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(spawnOrigin,
 		Volumetric::eVoxelModel::DYNAMIC::NAMED::YXI, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+
 	_ship->setParent(this);
 	_shipAlias = Hash((int64_t)(uintptr_t)_ship->getModelInstance(), key);
 

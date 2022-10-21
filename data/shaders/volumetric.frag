@@ -20,11 +20,10 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 
 #include "screendimensions.glsl"
 #include "common.glsl"
-
+#include "random.glsl"
 
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
 #define FOG_AMOUNT GOLDEN_RATIO_ZERO
-#define BLUE_NOISE_SCALAR dt
 #define BOUNCE_EPSILON 0.499f
 
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
@@ -32,7 +31,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 
 float PHASE_FUNCTION(in const float emission) // t = max(0.0f, dot(rd, n))    [0.0f .... 1.0f]
 {
-	return((1.0f * emission) / (GOLDEN_RATIO * PI)); // Isotropic
+	return((1.0f + emission) / (GOLDEN_RATIO * PI)); // Isotropic
 }
 
 #define EPSILON 0.000000001f
@@ -73,7 +72,8 @@ layout (input_attachment_index = 0, set = 0, binding = 1) uniform subpassInput i
 layout (binding = 2) uniform sampler2DArray noiseMap;	// bluenoise
 layout (binding = 3) uniform sampler2D normalMap;	// accurate view space xzy normal map
 layout (binding = 4) uniform sampler3D volumeMap[4];	// LightMap (direction & distance), (light color), (color reflection), (opacity)
-layout (binding = 5, rgba8) writeonly restrict uniform image2D outImage[2]; // reflection, volumetric    *writeonly access
+layout (binding = 5) uniform samplerCube reflectionCubeMap; // light coming from the sky/space surrounding the volume
+layout (binding = 6, rgba8) writeonly restrict uniform image2D outImage[2]; // reflection, volumetric    *writeonly access
 
 //layout (constant_id = 0) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 //layout (constant_id = 1) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
@@ -89,8 +89,11 @@ layout (constant_id = 6) const float VolumeLength = 0.0f;
 layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume
 layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 
-layout (constant_id = 9) precise const float ZFar = 0.0f;
-layout (constant_id = 10) precise const float ZNear = 0.0f;
+// "World Volume"
+layout (constant_id = 9) const float WorldDimensions = 0.0f;
+
+layout (constant_id = 10) precise const float ZFar = 0.0f;
+layout (constant_id = 11) precise const float ZNear = 0.0f;
 
 #include "lightmap.glsl"
 
@@ -167,21 +170,18 @@ vec3 computeNormal(in const vec3 uvw)
 
 vec3 getNormal()
 {
-	return( normalize(textureLod(normalMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f).xyz) );
+	return( normalize(textureLod(normalMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f).xyz) ); // these are world space normals in xzy frag shader form
 }
 
 // (intended for reflected light) - returns attenuation and reflection light color
-float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const vec3 n, in const float opacity, in const float dt) { // interpolates light normal/direction & normalized distance
+float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const vec3 n) { // interpolates light normal/direction & normalized distance
 										 
 	vec4 Ld;
 	getReflectionLightFast(light_color, Ld, offset(uvw));
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
-	
-	// directional derivative - equivalent to dot(N,L) operation
-	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
-	
+		
 	// real dot(N,L)
-	Ld.att *= max(0.0f, dot(n, Ld.dir));
+	Ld.att *= max(0.0f, dot(n, -Ld.dir));
 
 	return(Ld.att);  
 }
@@ -193,8 +193,6 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 	vec4 Ld;
 	getLightFast(light_color, Ld, uvw);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
-
-	//Ld.att *= max(0.0f, dot(Ld.dir, normalize(In.rd.xyz + vec3(bn * BLUE_NOISE_SCALAR,-In.rd.z + bn.x * BLUE_NOISE_SCALAR)))); // **bugfix for correct lighting. 
 
 	// directional derivative - equivalent to dot(N,L) operation
 	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -212,8 +210,8 @@ float fetch_light_volumetric( out vec3 light_color, out float scattering, in con
 }
 
 float fetch_bluenoise(in const vec2 pixel)
-{																// *bugfix - animated blue noise in raymarch step offset randomization does not look good. too noisy, have to scale it well below dt (a step) - animated blue noise suitable more for dithering and reconstruction - can't see any noisy movement)
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).r ); // *bluenoise RED channel used* // *bugfix - single frame/slice is better for raymarch.
+{																
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALER, In.slice), 0).r ); // *bluenoise RED channel used* // 
 }
 precise float fetch_depth()
 {
@@ -225,7 +223,7 @@ precise float fetch_depth()
 precise vec3 reconstruct_depth(in const vec3 rd, in const float linear_depth)	// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 {	
 	// Project the view ray onto the camera's z-axis (eyeDirection)    xyz -> xzy
-	precise const float viewZDist = abs(dot(In.eyeDir, rd));		
+	precise const float viewZDist = abs(dot(normalize(In.eyeDir), rd));		
 
 	// Scale the view ray by the ratio of the linear z value to the projected view ray
 	return( /*In.eyePos +*/ rd * (linear_depth/viewZDist) );	// eye relative position (skipping redundant add and subtraction of eyePos to obtain yltimately interval //
@@ -307,13 +305,13 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 
 // reflected light
 void reflect_lit(out vec3 light_color, out float emission, out float attenuation,
-				 in const vec3 p, in const vec3 n, in const float opacity, in const float dt)
+				 in const vec3 p, in const vec3 n)
 {
 	emission = fetch_emission(p);
-	attenuation = fetch_light_reflected(light_color, p, n, opacity, dt);
+	attenuation = fetch_light_reflected(light_color, p, n);
 }
 
-void reflection(inout vec4 voxel, in const float distance_to_bounce, in const vec3 p, in const vec3 n, in const float opacity, in const float dt)
+void reflection(inout vec4 voxel, in const float distance_to_bounce, in const vec3 p, in const vec3 n, in const float opacity)
 {
  	// opacity at this point may be equal to zero
 	// which means a "surface" was not hit after the initial bounce
@@ -327,11 +325,11 @@ void reflection(inout vec4 voxel, in const float distance_to_bounce, in const ve
 	vec3 light_color;
 	float emission, attenuation;
 
-	reflect_lit(light_color, emission, attenuation, p, n, opacity, dt);
+	reflect_lit(light_color, emission, attenuation, p, n);
 	
 	// add ambient light that is reflected																								  
-	voxel.light += light_color * attenuation;
-	voxel.a = 1.0f/fma(distance_to_bounce, distance_to_bounce, 1.0f) * (opacity + emission) * voxel.tran;
+	voxel.light += light_color * attenuation + sq(opacity) * attenuation;
+	voxel.a = getAttenuation(distance_to_bounce) * (1.0f + opacity + emission);
 	// upscaling shader uses these output values uniquely.
 }
 
@@ -340,22 +338,49 @@ float fetch_opacity_reflection( in const vec3 p ) { // hit test for reflections 
 	//const vec3 uvw = fma(p, VolumeDimensions, In.frac);
 	const vec3 uvw = offset(p);
 	// texelfetch first to bring into cache the same result trilinear filtered in following textureLod (potentially)
-	return( max(texelFetch(volumeMap[OPACITY], ivec3(floor(uvw * VolumeDimensions + 0.5f)), 0).r, textureLod(volumeMap[OPACITY], uvw, 0).r) ); // *bugfix - smoother
+	return( texelFetch(volumeMap[OPACITY], ivec3(floor(uvw * VolumeDimensions + 0.5f)), 0).r + textureLod(volumeMap[OPACITY], uvw, 0).r ); // *bugfix - smoother
 }
 
-// all in parameters is important
-vec4 traceReflection(in vec4 voxel, in vec3 rd, in vec3 p, in const vec3 n, in const float dt, in float interval_remaining)
-{								
-	interval_remaining = interval_remaining + subgroupQuadSwapDiagonal(interval_remaining); // less divergence with reflections & needs to be 2x anyways (so not an average, rather a sum)
+///////////////////////////////////////////////////////////////////////////////////////////
+/*
+float pixel_stars(in const vec3 st, in const float t) {
+  float r = rand(round(st));
+  return 0.000001 + smoothstep(0.995*t, 1.0, r);
+}
 
+float stars(in vec3 st, in float t) {
+  return(pixel_stars(st, t));
+}
+
+// background with stars
+float background(in const vec3 dir, in float d, in const float dt)
+{
+    d = 1.0f / (1.0f + d*d);
+    
+    float den = abs(dir.y); den = 1.0-den; den=den*den*den*den; den*=.1;
+    
+    float n = stars(dt * (dir*(1.0f - d)*ScreenResDimensions.y), 1.0f - den);
+    	
+	return d * 1000000000.0f * pow(n*0.95f+den,22.0);
+}
+*/
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// all in parameters is important
+vec4 traceReflection(in vec4 voxel, in vec3 rd, in vec3 p, in const vec3 n, in const float dt, in const float bn, in float interval_remaining, in const float interval_length)
+{								
 	rd = normalize(reflect(rd, n));
 
-	voxel.rgb = voxel.rgb * (1.0f - voxel.a);
-	
-	const vec3 bounce = p;
-		
+	interval_remaining = interval_remaining + subgroupQuadSwapDiagonal(interval_remaining); // less divergence with reflections & needs to be 2x anyways (so not an average, rather a sum)
+	interval_remaining = min(interval_length, interval_remaining * 4.0f);
+
+	const float fresnel_reflection = pow(1.0f - abs(dot(rd, n)), 5.0f);
+	voxel.rgb = voxel.rgb * (1.0f - voxel.tran) + fresnel_reflection * voxel.tran * 2.0f * BLUE_NOISE_DITHER_SCALAR;
+	voxel.a = bn;
+
+	const vec3 bounce = p; // save bounce position
 	p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point - critical to avoid moirre artifacts that this is done with a large enough step (hence scaling by golden ratio) tuned/tweaked.
-	
+
 	float opacity = 0.0f;
 	{ //  begin new reflection raymarch to find reflected surface
 
@@ -365,9 +390,10 @@ vec4 traceReflection(in vec4 voxel, in vec3 rd, in vec3 p, in const vec3 n, in c
 			// hit opaque voxel ?
 			// extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
 			integrate_opacity(opacity, fetch_opacity_reflection(p), dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
+
 			[[branch]] if(bounced(opacity)) { 
 							
-				reflection(voxel, distance(p, bounce), p, n, opacity, dt);
+				reflection(voxel, distance(p, bounce), p, n, opacity);
 				break;	// hit reflected *opaque surface*
 			}
 
@@ -440,11 +466,8 @@ void main() {
 	// without modifying interval variables start position
 	
 	// adjust start position by "bluenoise step"	
-	float jittered_interval;
-	{
-		const float bn = fetch_bluenoise(gl_FragCoord.xy);
-		jittered_interval = dt * GOLDEN_RATIO * bn; // jittered offset should be scaled by golden ratio zero (hides some noise)
-	}
+	const float bn = fetch_bluenoise(gl_FragCoord.xy);
+	const float jittered_interval = dt * bn * GOLDEN_RATIO; // jittered offset should be scaled by golden ratio (hides some noise)
 
 	// ro = eyePos -> volume entry (t_hit.x) + jittered offset
 	vec3 p = In.eyePos + (t_hit.x + jittered_interval) * rd; // jittered offset
@@ -457,8 +480,11 @@ void main() {
 	// however it adds confusion, for instance reconstruction of depth 
 	p.z = 1.0f - p.z;	// invert slice axis (height of volume)
 	rd.z = -rd.z;		// ""		""			""		  ""
+	rd = normalize(rd);
 
-	vec4 voxel = vec4(vec3(0.0f),1.0f);		// accumulated light color w/scattering, // transmittance
+	vec4 voxel;
+	voxel.rgb = vec3(0.0f);
+	voxel.a = 1.0f;
 
 	{ // volumetric scope
 		float opacity = 0.0f;
@@ -509,8 +535,9 @@ void main() {
 		debug_out(voxel);
 #endif
 		// test normals:
-		//voxel.rgb = mix(computeNormal(p), getNormal(), 0.5f) * 0.5f + 0.5f; // test normals
-		//voxel.rgb = getNormal() * 0.5f + 0.5f; // test normals
+		//voxel.rgb = mix(computeNormal(p), -getNormal(), 0.5f) * 0.5f + 0.5f; // test normals
+		//voxel.rgb = -getNormal() * 0.5f + 0.5f;
+		//voxel.rgb = normalize( computeNormal(p) + -getNormal() ) * 0.5f + 0.5f; // test normals
 		//voxel.rgb = vec3(NdotV);
 		//voxel.a = 0.5f;
 
@@ -521,7 +548,7 @@ void main() {
 
 		// store reflection 
 		imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), traceReflection(voxel, rd, p, 
-																				  getNormal(), dt, interval_remaining));
+																				  getNormal(), dt, bn, interval_remaining, interval_length));
 
 	} // end volumetric scope
 }

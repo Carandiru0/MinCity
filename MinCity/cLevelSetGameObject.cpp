@@ -33,14 +33,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cLevelSetGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cLevelSetGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cLevelSetGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cLevelSetGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cLevelSetGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cLevelSetGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		std::swap<local_volume*>(_bits, src._bits);
@@ -51,14 +51,14 @@ namespace world
 		src.free_ownership();
 		
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cLevelSetGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cLevelSetGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cLevelSetGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cLevelSetGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cLevelSetGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cLevelSetGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		std::swap<local_volume*>(_bits, src._bits);
@@ -166,6 +166,9 @@ namespace world
 	}
 	void cLevelSetGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
+		[[unlikely]] if (!Validate())
+			return;
+
 		typedef struct no_vtable sRenderFuncBlockChunk {
 
 		private:

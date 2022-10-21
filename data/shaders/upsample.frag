@@ -55,7 +55,7 @@ layout (binding = 3) uniform sampler2D fullMap[2]; // full resolution checkered 
 
 float fetch_bluenoise_scaled(in const vec2 uv, in const float slice)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, slice), 0).r * 0.5f); // better to use textureLod, point/nearest sampling
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv, in const float scaled_bluenoise )

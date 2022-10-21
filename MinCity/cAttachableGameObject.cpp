@@ -27,30 +27,23 @@ namespace world
 		return(*this);
 	}
 
-	cAttachableGameObject::cAttachableGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cAttachableGameObject::cAttachableGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_), _parent(nullptr), _offset{}
 	{
 	}
 
 	void cAttachableGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		auto instance(*Instance);
+		[[unlikely]] if (!Validate())
+			return;
+		[[unlikely]] if (!_parent->Validate()) {
+			Instance->destroy(milliseconds(0));
+			return;
+		}
+
 		float const tD(time_to_float(tDelta));
 
 		auto const parentInstance(_parent->getModelInstance());
-		if (nullptr == instance) {
-
-			if (nullptr != parentInstance) {
-				parentInstance->destroy(milliseconds(0));
-			}
-			return;
-		}
-		
-		if (nullptr == parentInstance) {
-			instance->destroy(milliseconds(0));
-			return;
-		}
-		
 
 		// inherit  
 		{ // parent translation & rotation
@@ -62,8 +55,8 @@ namespace world
 
 			xmLocation = v3_rotate(xmLocation, xmParentLocation, qOrient);
 
-			instance->setLocation(xmLocation);
-			instance->setPitchYawRoll(parentInstance->getPitch() + _vPitch, parentInstance->getYaw() + _vYaw, parentInstance->getRoll() + _vRoll);
+			Instance->setLocation(xmLocation);
+			Instance->setPitchYawRoll(parentInstance->getPitch() + _vPitch, parentInstance->getYaw() + _vYaw, parentInstance->getRoll() + _vRoll);
 		}
 	}
 

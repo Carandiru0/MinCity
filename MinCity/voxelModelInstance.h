@@ -20,7 +20,7 @@ namespace Volumetric
 	public:
 		uint32_t const											      getHash() const { return(hashID); }
 
-		XMVECTOR const __vectorcall									  getLocation() const { return(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)); } //{ return(Interpolator.get<XMFLOAT3A, XMVECTOR>(vLoc)); }
+		XMVECTOR const __vectorcall									  getLocation() const { return(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)); }
 
 		float const __vectorcall									  getElevation() const { return(XMVectorGetY(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc))); } // additional "height above ground"
 

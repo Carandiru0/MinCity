@@ -13,7 +13,7 @@ namespace world
 		}
 	}
 
-	cVideoScreenGameObject::cVideoScreenGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_)
+	cVideoScreenGameObject::cVideoScreenGameObject(Volumetric::voxelModelInstance_Static* const& instance_)
 		: tNonUpdateableGameObject(instance_),
 		_videoscreen(nullptr)
 	{
@@ -33,14 +33,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cVideoScreenGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cVideoScreenGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cVideoScreenGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cVideoScreenGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cVideoScreenGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cVideoScreenGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -52,14 +52,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cVideoScreenGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cVideoScreenGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cVideoScreenGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cVideoScreenGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cVideoScreenGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cVideoScreenGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;

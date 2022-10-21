@@ -428,7 +428,8 @@ void cVulkan::CreateVolumetricResources()
 	dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // blue noise
 	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());  // view space normals	
 	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
-	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
+	dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());  // reflection cube map
+	dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
 #ifdef DEBUG_VOLUMETRIC
 	dslm.buffer(10U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 #endif	

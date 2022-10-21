@@ -85,7 +85,7 @@ namespace Volumetric
 						else {
 							--frame_next;
 
-							if (frame_next < repeat || frame_next < 0) {
+							if (frame_next < (int32_t)repeat || frame_next < 0) {
 								frame_next = num_frames - 1;
 							}
 						}

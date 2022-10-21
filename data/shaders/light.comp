@@ -21,6 +21,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "common.glsl"
 #include "transform.glsl"
 #include "shareduniform.glsl"
+#include "light.glsl"
 
 #define GROUP_SIZE_XYZ 8
 
@@ -309,36 +310,20 @@ vec3 temporalBlendR( in const restrict sampler3D inputTemporalR, in vec3 color, 
 
 	return(color * (1.0f/7.0f)); // 6 neighbour samples + 1 center sample
 }
-*/
-/*float attenuation(in const float d)
-{
-	return(1.0f / fma(d, d, 1.0f));
-}
-*/
-// final inverse square law equation used:
-// a = 1.0 / sqrt(d*d + 1.0)  [compute shader]   - light color is pre-multiplied by this equation
-// b = 1.0 / sqrt(d*d + 1.0)  [fragment shader]  - the light color is multiplied again by this equation
-// final attenuation is then b*a*color
-// see : https://www.desmos.com/calculator/qlxe8vxuzh
-float attenuation(in float light_distance)  // this is half of the equation, when light volume is sampled, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
-{
-	return( 1.0f / sqrt(fma(light_distance,light_distance,1.0f)) );
-}
-
 /*
 vec3 temporalBlendC( in const restrict sampler3D inputTemporalC, in const restrict sampler3D inputTemporalDD, in vec3 color, in const vec3 uvw, in const float d0 )
 {
 	// this is the correct physical way of blending colors of light, additive blending of adjacent light colors (no mixing)
 	// with additive blending light will accumulate to white in area's of bright mixed colors as it correctly should intensify with nearby lighting
 
-	float emission = attenuation(d0);
+	float emission = getAttenuation(d0);
 
-	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(-1,0,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(1,0,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,-1,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,1,0)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,-1)).a * 0.5f + 0.5f);
-	emission += attenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,1)).a * 0.5f + 0.5f);
+	emission += getAttenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(-1,0,0)).a * 0.5f + 0.5f);
+	emission += getAttenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(1,0,0)).a * 0.5f + 0.5f);
+	emission += getAttenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,-1,0)).a * 0.5f + 0.5f);
+	emission += getAttenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,1,0)).a * 0.5f + 0.5f);
+	emission += getAttenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,-1)).a * 0.5f + 0.5f);
+	emission += getAttenuation(textureLodOffset(inputTemporalDD, uvw, 0, ivec3(0,0,1)).a * 0.5f + 0.5f);
 
 	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(-1,0,0)).rgb;
 	color += textureLodOffset(inputTemporalC, uvw, 0, ivec3(1,0,0)).rgb;
@@ -369,189 +354,189 @@ void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout
 	vec4 neighbour_direction_distance;
 
 	// 1 center
-	current_color = current_color * attenuation(current_direction_distance.w);
+	current_color = current_color * getAttenuation(current_direction_distance.w);
 	
 	// 26 neighbours
 	
 	// 1
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1,-1,-1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 
 	// 2
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, -1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 3
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, -1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 4
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 0, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 5
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 0, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 6
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 0, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 7
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 8
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 9
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 1, -1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 10
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, -1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 11
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, -1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 12
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, -1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 13
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 0, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 14
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 0, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 15
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 16
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 17
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 1, 0)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 18
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, -1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 19
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, -1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 20
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, -1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 21
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 0, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 22
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 0, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 23
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 0, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 24
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(-1, 1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 25
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(0, 1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 	
 	// 26
 	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, ivec3(1, 1, 1)); //
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location);
-	current_color += unpackColor(neighbour_warp.w) * attenuation(neighbour_direction_distance.w);
+	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w);
 	movc(neighbour_direction_distance.w < current_direction_distance.w, current_direction_distance.xyz, neighbour_direction_distance.xyz);
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w);
 }
@@ -591,7 +576,7 @@ void main()
 
 			// d0 is currently normalized to range [0.0f ... 1.0f]
 			//vec3 current_light_color = sampleC(pingpongTexture[pc.index_input], current_color, current_location, d0);
-			//const float att = attenuation(d0);
+			//const float att = getAttenuation(d0);
 			//current_light_color = current_color * att + current_light_color * att; // light color target is 16bpc float so the intensity increases for light nicely based off distance
 			
 			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color.rgb, 1.0f));

@@ -15,116 +15,45 @@ vec2 HammersleyDisk(in const int i, in const int N) {
     return( h * sqrt( 1.0f - 0.5f * h*h ).yx );
 }
 
-
-// 2D Weyl hash 32-bit XOR  - https://www.shadertoy.com/view/4dlcR4 
-
-#define _W0 0x3504f335u   
-#define _W1 0x8fc1ecd5u  
-#define _W2 0xbb67ae85u
-#define _W3 0xf1bbcdcbu
-
-// 741103597u, 1597334677u, 204209821u, 851723965u  // MLCG constants
-#define _M0 741103597u    
-#define _M1 1597334677u
-#define _M2 204209821u
-#define _M3 851723965u
-
-#define _FSCALE 256.0f
-#define _FNORM (1.0f/16777216.0f/_FSCALE)
-
-// private //
-uint base_hash_1D(in uvec2 n)
+// https://www.shadertoy.com/view/NlGBWc   good quality (very low bias) hash
+uint murmur3( in uint u )
 {
-  n.x *= _W0;   // x' = Fx(x)
-  n.y *= _W1;   // y' = Fy(y)
-  n.x ^= n.y;    // combine
-  n.x *= _M0;    // MLCG constant
+  u ^= ( u >> 16 ); u *= 0x85EBCA6Bu;
+  u ^= ( u >> 13 ); u *= 0xC2B2AE35u;
+  u ^= ( u >> 16 );
 
-  return( n.x ^ (n.x >> 16) );
+  return u;
+}
+uvec3 murmur3( in uvec3 u )
+{
+  u ^= ( u >> 16 ); u *= 0x85EBCA6Bu;
+  u ^= ( u >> 13 ); u *= 0xC2B2AE35u;
+  u ^= ( u >> 16 );
+
+  return u;
 }
 
-uvec2 base_hash_2D(in uvec2 n)
-{
-  n.x *= _W0;   // x' = Fx(x)
-  n.y *= _W1;   // y' = Fy(y)
-  n.x ^= n.y;    // combine
+float unorm(in const uint n) { return(fract(float(n) * (1.0 / float(0xffffffffU)))); }
+vec3 unorm(in const uvec3 n) { return(fract(vec3(n) * (1.0 / float(0xffffffffU)))); }
 
-  return( (n.x * uvec2(_M0, _M1)) ^ (n.x >> 16) ); // MLCG constant
+float hash11(in float m) 
+{
+    uint mu = floatBitsToUint(m * GOLDEN_RATIO) | 0x1u;
+
+    return(1.0f - unorm(murmur3(mu)));
+}
+vec3 hash33(in vec3 m) 
+{
+    uvec3 mu = floatBitsToUint(m * GOLDEN_RATIO) | 0x1u;
+
+    return(1.0f - unorm(murmur3(mu)));
 }
 
-uvec3 base_hash_3D(in uvec3 n)
-{
-  n.x *= _W0;   // x' = Fx(x)
-  n.y *= _W1;   // y' = Fy(y)
-  n.z *= _W2;	  // z' = Fz(z)
-  n.x ^= n.y;    // combine
-  n.x ^= n.z;    // combine
-
-  return( (n.x * uvec3(_M0, _M1, _M2)) ^ (n.x >> 16) ); // MLCG constant
+// good random with spatial (3D) distribution
+float rand(in const vec3 st) { 
+  vec3 r = hash33(st) * GOLDEN_RATIO_ZERO;
+  return fract(r.z * 111.111111 * 111.111111 + r.y * 111.111111 + r.x);
 }
-
-uvec4 base_hash_4D(in uvec4 n)
-{
-  n.x *= _W0;   // x' = Fx(x)
-  n.y *= _W1;   // y' = Fy(y)
-  n.z *= _W2;	// z' = Fz(z)
-  n.w *= _W3;	// w' = Fw(w)
-  n.x ^= n.y;    // combine
-  n.x ^= n.z;    // combine
-  n.x ^= n.w;    // combine
-
-  return( (n.x * uvec4(_M0, _M1, _M2, _M3)) ^ (n.x >> 16) ); // MLCG constant
-}
-
-// public //
-
-// ####### hash(out,in)
-
-float hash11(in const float x) 
-{
-	return base_hash_1D(uvec2(uint(_FSCALE * x))) * _FNORM;
-}
-
-float hash12(in const vec2 xy)
-{
-	return base_hash_1D(uvec2(_FSCALE * xy)) * _FNORM;
-}
-
-vec2 hash21(in const float x)
-{
-	return base_hash_2D(uvec2(uint(_FSCALE * x))) * _FNORM;
-}
-
-vec2 hash22(in const vec2 xy)
-{
-	return base_hash_2D(uvec2(_FSCALE * xy)) * _FNORM;
-}
-
-vec3 hash31(in const float x)
-{
-	return base_hash_3D(uvec3(uint(_FSCALE * x))) * _FNORM;
-}
-
-vec3 hash32(in const vec2 x)
-{
-	return base_hash_3D(uvec3(_FSCALE * x, 0)) * _FNORM;
-}
-
-vec3 hash33(in const vec3 x)
-{
-	return base_hash_3D(uvec3(_FSCALE * x)) * _FNORM;
-}
-
-vec4 hash41(in const float x) 
-{
-	return base_hash_4D(uvec4(uint(_FSCALE * x))) * _FNORM;
-}
-
-vec4 hash44(in const vec4 x) 
-{
-	return base_hash_4D(uvec4(_FSCALE * x)) * _FNORM;
-}
-
 
 // noise begins //
 

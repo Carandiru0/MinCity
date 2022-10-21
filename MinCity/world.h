@@ -15,8 +15,8 @@ namespace world
 	static constexpr uint32_t const NUM_DISTINCT_GROUND_HEIGHTS = Iso::NUM_HEIGHT_STEPS - 1; // ***not including / forget about zero***
 	static constexpr uint32_t const GROUND_HEIGHT_NOISE_STEP = (UINT8_MAX - 0) / NUM_DISTINCT_GROUND_HEIGHTS;			// 100 is a good value for more "flat" landmass (by raising the minimum),  use 0 to capture the full range of the data (default).	
 
-	static constexpr uint32_t const TERRAIN_TEXTURE_SZ = (Iso::WORLD_GRID_SIZE > 16384 ? 16384 : Iso::WORLD_GRID_SIZE);		// ** must be a multiple of world grid, (ideally equal to world grid size)
-	                                                                                                                        // ** power of 2 and not exceeding 16384
+	static constexpr uint32_t const TERRAIN_TEXTURE_SZ = 8192;		// ** must be a multiple of world grid, (ideally equal to world grid size)
+	                                                                // ** power of 2 and not exceeding 16384
 
 	static constexpr uint32_t const RESIDENTIAL = 0,
 									COMMERCIAL = 1,
@@ -38,15 +38,20 @@ namespace world
 #undef zERO
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
+	point2D_t const getNeighbourLocalVoxelIndex(point2D_t voxelIndex, point2D_t const relativeOffset);
+	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset);
 	// Grid Space (0,0) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset);
 	
 	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*
 	XMVECTOR const __vectorcall getOrigin();
-	XMVECTOR const __vectorcall getFractionalOffset(); // beware double adding the fractional offset to a transformation that will later be multiplied by the view matrix. the view matrix already contains the fractional offset translation!
+	XMVECTOR const __vectorcall getFractionalOffset(); // beware double adding the fractional offset to a transformation
 
 	v2_rotation_t const& getYaw();
+
+	// Grid Space (-x,-y) to (X, Y) Coordinates Only
+	point2D_t const __vectorcall getLocalVoxelIndexAt(point2D_t voxelIndex);
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const* const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex);
@@ -56,20 +61,23 @@ namespace world
 	Iso::Voxel const* const __restrict __vectorcall getVoxelAtLocal(point2D_t const voxelIndex);
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	bool const __vectorcall setVoxelAt(point2D_t voxelIndex, Iso::Voxel const&& __restrict newData);
-	bool const __vectorcall setVoxelAt(FXMVECTOR const Location, Iso::Voxel const&& __restrict newData);
+	uint32_t const __vectorcall getVoxelHeightAt(point2D_t voxelIndex);
+
+	// Grid Space (-x,-y) to (X, Y) Coordinates Only
+	void __vectorcall setVoxelAt(point2D_t voxelIndex, Iso::Voxel const&& __restrict newData);
+	void __vectorcall setVoxelAt(FXMVECTOR const Location, Iso::Voxel const&& __restrict newData);
 	void __vectorcall setVoxelsAt(rect2D_t voxelArea, Iso::Voxel const&& __restrict voxelReference);
 
 	// Grid Space (0,0) to (X, Y) Coordinates Only
-	bool const __vectorcall setVoxelAtLocal(point2D_t const voxelIndex, Iso::Voxel const&& __restrict newData);
+	void __vectorcall setVoxelAtLocal(point2D_t const voxelIndex, Iso::Voxel const&& __restrict newData);
 
 	template<bool const Dynamic>
-	STATIC_INLINE bool const __vectorcall setVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
+	STATIC_INLINE void __vectorcall setVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
 	void __vectorcall setVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
 	void __vectorcall setVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR);			// for dynamic only
 	
 	template<bool const Dynamic>
-	STATIC_INLINE bool const __vectorcall resetVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
+	STATIC_INLINE void __vectorcall resetVoxelHashAt(point2D_t const voxelIndex, uint32_t const hash);
 	void __vectorcall resetVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash); // for static only
 	void __vectorcall resetVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR); // for dynamic only
 
@@ -118,7 +126,7 @@ namespace world
 
 	// inline functions //
 	template<bool const Dynamic>
-	STATIC_INLINE bool const __vectorcall setVoxelHashAt(point2D_t voxelIndex, uint32_t const hash)
+	STATIC_INLINE void __vectorcall setVoxelHashAt(point2D_t voxelIndex, uint32_t const hash)
 	{
 		Iso::Voxel const* const __restrict pVoxel(getVoxelAt(voxelIndex));
 
@@ -130,15 +138,13 @@ namespace world
 			if (0 != index) {
 				Iso::setHash(oVoxel, index, hash);
 
-				return(setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel)));
+				setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 			}
 		}
-
-		return(false);
 	}
 
 	template<bool const Dynamic>
-	STATIC_INLINE bool const __vectorcall resetVoxelHashAt(point2D_t voxelIndex, uint32_t const hash)
+	STATIC_INLINE void __vectorcall resetVoxelHashAt(point2D_t voxelIndex, uint32_t const hash)
 	{
 		Iso::Voxel const* const __restrict pVoxel(getVoxelAt(voxelIndex));
 
@@ -150,16 +156,14 @@ namespace world
 
 					if (Iso::getHash(oVoxel, i) == hash) {
 						Iso::resetHash(oVoxel, i);
-						return(setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel)));
+						setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 					}
 				}
 			}
 			else {
 				Iso::resetHash(oVoxel, Iso::STATIC_HASH);
-				return(setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel)));
+				setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 			}
 		}
-
-		return(false);
 	}
 } // end ns world

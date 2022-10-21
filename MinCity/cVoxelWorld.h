@@ -38,8 +38,6 @@ BETTER_ENUM(eMouseButtonState, uint32_t const,
 namespace world
 {
 	using mapRootIndex = tbb::concurrent_unordered_map<uint32_t const, point2D_t>;
-	using mapVoxelModelInstancesStatic = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Static*>;
-	using mapVoxelModelInstancesDynamic = tbb::concurrent_unordered_map<uint32_t const, Volumetric::voxelModelInstance_Dynamic*>;
 
 	struct model_state {
 		mapRootIndex const& __restrict					hshVoxelModelRootIndex;
@@ -94,7 +92,7 @@ namespace world
 		// Accessors
 		Volumetric::voxelOpacity const& __restrict				getVolumetricOpacity() const { return(_OpacityMap); }
 		vku::double_buffer<vku::StorageBuffer> const&			getSharedBuffer() const { return(_buffers.shared_buffer); }
-		
+		ImagingMemoryInstance* const& __restrict                getHeightMapImage() const { return(_heightmap); }
 		
 		// Mutators //
 		Volumetric::voxelOpacity& __restrict					getVolumetricOpacity() { return(_OpacityMap); }
@@ -321,7 +319,8 @@ namespace world
 									* _gridTexture;
 
 		vku::TextureImage2D*		_blackbodyTexture;
-
+		vku::TextureImageCube*      _spaceCubemapTexture;
+		
 		/*
 		[[deprecated]] struct {
 			vku::GenericImage*						input;	// can use any texture type as input
@@ -335,8 +334,8 @@ namespace world
 
 		} _textureShader[eTextureShader::_size()];
 		*/
-
-		ImagingMemoryInstance*		_blackbodyImage;
+		Imaging                    _heightmap;
+		Imaging		               _blackbodyImage;
 
 		Buffers						_buffers;
 
@@ -567,12 +566,14 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 				// Get average height for area //
 				uint32_t const uiAverageHeightStep = getVoxelsAt_AverageHeight(vWorldArea);
 
+				auto const localvoxelIndex(getLocalVoxelIndexAt(voxelIndex));
+
 				// all voxels in this area will be set to this average
 				setVoxelsHeightAt(vWorldArea, uiAverageHeightStep);
-				Iso::setHeightStep(oVoxelRoot, uiAverageHeightStep);
+				Iso::setHeightStep(localvoxelIndex, uiAverageHeightStep);
 
 				// update elevation offset of instance
-				binding.instance->setElevation(Iso::getRealHeight(oVoxelRoot));
+				binding.instance->setElevation(Iso::getRealHeight(localvoxelIndex));
 
 				// leave a border of terrain around model
 				vWorldArea = voxelArea_grow(vWorldArea, point2D_t(1, 1));
@@ -583,6 +584,7 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 				// go around perimeter doing lerp between border
 				// *required* recompute adjacency for area as height of voxels has changed
 				recomputeGroundAdjacency(vWorldArea);
+				
 			}
 			// root is special
 

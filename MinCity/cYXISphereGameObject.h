@@ -113,7 +113,7 @@ namespace world
 		} _body;
 
 	public:
-		cYXISphereGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cYXISphereGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cYXISphereGameObject& __restrict left, cYXISphereGameObject& __restrict right) noexcept

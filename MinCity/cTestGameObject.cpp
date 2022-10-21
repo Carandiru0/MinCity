@@ -17,14 +17,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cTestGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cTestGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cTestGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cTestGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 	}
 	cTestGameObject& cTestGameObject::operator=(cTestGameObject&& src) noexcept
@@ -34,20 +34,20 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cTestGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cTestGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cTestGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cTestGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cTestGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		return(*this);
 	}
 
-	cTestGameObject::cTestGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cTestGameObject::cTestGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_), _glass_color(MASK_GLASS_COLOR), _bulb_color(MASK_BULB_COLOR),
 		_accumulator(0.0f), _direction(1.0f)
 	{
@@ -83,6 +83,9 @@ namespace world
 
 	void cTestGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
+		[[unlikely]] if (!Validate())
+			return;
+
 #ifdef GIF_MODE
 
 		_accumulator += tDelta.count() * _direction * 0.333f;
@@ -150,11 +153,11 @@ namespace world
 		}
 #else
 		{
-			v2_rotation_t vOrient((*Instance)->getYaw());
+			v2_rotation_t vOrient(Instance->getYaw());
 
 			vOrient += time_to_float(tDelta) * 0.5f;
 
-			(*Instance)->setYaw(vOrient);
+			Instance->setYaw(vOrient);
 		}
 	    /* {
 			v2_rotation_t vOrient((*Instance)->getPitch());

@@ -17,14 +17,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cBeaconGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cBeaconGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cBeaconGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cBeaconGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cBeaconGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cBeaconGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_activity_light = std::move(src._activity_light);
@@ -36,14 +36,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cBeaconGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cBeaconGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cBeaconGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cBeaconGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cBeaconGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cBeaconGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_activity_light = std::move(src._activity_light);
@@ -51,7 +51,7 @@ namespace world
 		return(*this);
 	}
 
-	cBeaconGameObject::cBeaconGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cBeaconGameObject::cBeaconGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_), _activity_light{}
 	{
 		instance_->setOwnerGameObject<cBeaconGameObject>(this, &OnRelease);
@@ -80,6 +80,9 @@ namespace world
 
 	void cBeaconGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
+		[[unlikely]] if (!Validate())
+			return;
+
 		_activity_light.accumulator += tDelta;
 		if (_activity_light.accumulator >= _activity_light.interval) {
 			_activity_light.accumulator -= _activity_light.interval;

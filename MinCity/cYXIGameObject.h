@@ -36,9 +36,11 @@ namespace world
 			UP_THRUSTER_COOL_DOWN = duration_cast<fp_seconds>(milliseconds(1000));
 
 	public:
+		static constexpr float const
+			MIN_UP_THRUST = -cPhysics::GRAVITY;
 		static constexpr float const     // total thrust available to main thruster is shared with up thruster, with up thruster always taking priority. However the main thruster has a much higher peak thrust.
 			MAX_MAIN_THRUST = 4.0f,      // maximum = MAX_MAIN_THRUST , minimum = MAX_MAIN_THRUST - MAX_UP_THRUST (when up thruster is on fully)
-			MAX_UP_THRUST = -cPhysics::GRAVITY * SFM::GOLDEN_RATIO * 1.5f; // needs to be greater than gravity, higher = less efficient and steals more thrust from main thruster when on.
+			MAX_UP_THRUST = MAX_MAIN_THRUST * 0.95f; // needs to be greater than gravity, 95% maximum up thrust of main thruster energy. higher = less efficient and steals more thrust from main thruster when on.
 	public:
 		constexpr virtual types::game_object_t const to_type() const override final {
 			return(types::game_object_t::TestGameObject);
@@ -123,7 +125,7 @@ namespace world
 
 		float const                     getThrusterPower(uint32_t const index) { return(_thruster[index].tOn); }
 
-		cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cYXIGameObject& __restrict left, cYXIGameObject& __restrict right) noexcept

@@ -114,14 +114,15 @@ vec3 reflection(inout float emission)
 
 	emission += dot(ambient_reflection, LUMA);
 
-	return(ambient_reflection * 2.0f);
+	return(ambient_reflection);
 }
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
+#define POSITIVE_EPSILON 0.000000001f
 float chiGGX(in const float v)
 {
     //return v > 0. ? 1. : 0.;
-	return ceil(max(v, 0.0f));
+	return( step(0.0f, v - POSITIVE_EPSILON) ); // returns 1.0f when v > 0.0f, otherwise 0.0f is returned
 }
 float GGX_Distribution(in const float NdotH, in const float alpha)
 {

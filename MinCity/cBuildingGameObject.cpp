@@ -18,7 +18,7 @@ namespace world
 		}
 	}
 
-	cBuildingGameObject::cBuildingGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_)
+	cBuildingGameObject::cBuildingGameObject(Volumetric::voxelModelInstance_Static* const& instance_)
 		: tNonUpdateableGameObject(instance_), _tLightChangeInterval(0),
 		_destroyed(nullptr), _videoscreen(nullptr), _MutableState(nullptr)
 	{
@@ -54,14 +54,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cBuildingGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cBuildingGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cBuildingGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cBuildingGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cBuildingGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cBuildingGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_destroyed = std::move(src._destroyed); src._destroyed = nullptr;
@@ -79,14 +79,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cBuildingGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cBuildingGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cBuildingGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cBuildingGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cBuildingGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cBuildingGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_destroyed = std::move(src._destroyed); src._destroyed = nullptr;
@@ -279,20 +279,19 @@ namespace world
 	// select building updates if queued.
 	void __vectorcall cBuildingGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		Volumetric::voxelModelInstance_Static* const __restrict instance(getModelInstance());
+		[[unlikely]] if (!Validate())
+			return;
 
-		[[likely]] if (instance) {
-
-			uint32_t voxels_destroyed(0);
-			for (thread_local_counter::const_iterator i = _MutableState->_destroyed_count.begin(); i != _MutableState->_destroyed_count.end(); ++i)
-			{
-				voxels_destroyed += *i;
-			}
-
-			if (voxels_destroyed > (instance->getVoxelCount() >> 1)) { // 50% destroyed, destroy building.
-				instance->destroy();
-			}
+		uint32_t voxels_destroyed(0);
+		for (thread_local_counter::const_iterator i = _MutableState->_destroyed_count.begin(); i != _MutableState->_destroyed_count.end(); ++i)
+		{
+			voxels_destroyed += *i;
 		}
+
+		if (voxels_destroyed > (Instance->getVoxelCount() >> 1)) { // 50% destroyed, destroy building.
+			Instance->destroy();
+		}
+		
 		
 		if (_MutableState) {
 			_MutableState->_queued_updatable.clear(); // reset this instance

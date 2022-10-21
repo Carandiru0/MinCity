@@ -73,27 +73,6 @@ layout (binding = 6) uniform sampler2D colorMap;
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
 #include "texturearray.glsl"
 
-// roughness = inverse of specular reflectivity
-// so higher value = less specular reflection
-// "" lower  ""    = more specular reflection
-#if defined(T2D)	// terrain only
-const float ROUGHNESS = 0.9f;  
-#else  
-#if defined(TRANS) /// ---- transparent
-#if defined(ROAD) // road only
-const float ROUGHNESS = 0.5f;     
-#else	            // voxels only 
-const float ROUGHNESS = 0.11f;
-#endif
-#else              /// ---- opaque
-#if defined(ROAD) // road only
-const float ROUGHNESS = 0.7f;     
-#else	            // voxels only 
-const float ROUGHNESS = 0.5f;
-#endif
-#endif 
-#endif
-
 #include "lightmap.glsl"
 #include "lighting.glsl"
     
@@ -241,19 +220,25 @@ void main() {
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 	
 																						// bugfix: y is flipped. simplest to correct here.
-	float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).r; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
+	const vec2 terrainDetail = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).rg; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
 	const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 4.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
 	const float grid = 1.0f - dot(grid_segment.rgb, LUMA);
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 
-	terrainHeight = mix(0.5f, 1.0f, terrainHeight);
+	vec3 color = vec3(0);
+					   // twilight reflection
+	color.rgb += lit( terrainDetail.yyy, make_material(terrainDetail.y, terrainDetail.y, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
+					      terrainDetail.y, abs(dot(N,V)),
+					      vec3(0,0,1), N, V);
+
 						// only emissive can have color
-	outColor.rgb = lit( grid * mix(vec3(terrainHeight), unpackColor(In._color), In._emission), make_material(In._emission, 1.0f - grid, ROUGHNESS), light_color,				// regular terrain lighting
-					    grid * grid * terrainHeight * getOcclusion(In.uv.xyz), Ld.att,
+	color.rgb += lit( grid * mix(terrainDetail.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, 1.0f - terrainDetail.y), light_color,				// regular terrain lighting
+					    grid * getOcclusion(In.uv.xyz), Ld.att,
 					    -Ld.dir, N, V);
 	
+	outColor.rgb = color;
 	/*
 	const vec3 N = normalize(In.N.xyz);
 	

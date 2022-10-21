@@ -4,6 +4,7 @@
 #include "MinCity.h"
 #include "cVoxelWorld.h"
 #include <Utility/type_colony.h>
+#include <Utility/alias.h>
 
 namespace world
 {
@@ -11,6 +12,16 @@ namespace world
 	class tNonUpdateableGameObject : private no_copy
 	{
 	public:
+		bool const Validate() const {
+
+			// This is required before using Instance in any case.
+			[[unlikely]] if (!Instance.ok())
+				return(false);
+			else if (Instance->destroyPending())
+				return(false);
+
+			return(true);
+		}
 		TVoxelModelInstance* const getModelInstance() const { return(*Instance); }
 
 		// *mandatory overrides - every child of this class should override
@@ -30,8 +41,8 @@ namespace world
 			return(((uint64_t) &(*this)) == ((uint64_t)&src));
 		}
 		tNonUpdateableGameObject(tNonUpdateableGameObject&& src) noexcept
+			: Instance(std::move(src.Instance))
 		{														   
-			Instance = std::move(src.Instance);
 			src.Instance = nullptr;
 		}
 		tNonUpdateableGameObject& operator=(tNonUpdateableGameObject&& src) noexcept
@@ -42,7 +53,7 @@ namespace world
 			return(*this);
 		}
 	protected:
-		TVoxelModelInstance* const* Instance;
+		alias_t<TVoxelModelInstance> Instance;
 	public:
 		tNonUpdateableGameObject(TVoxelModelInstance* const& instance_)
 			: Instance(&instance_)

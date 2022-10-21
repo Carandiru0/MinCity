@@ -331,6 +331,7 @@ void main() {
 		color = color + dot(bloom, vec3(inv_luma, inv_luma * 0.5f, inv_luma * 0.25f)); //*bugfix - this is correct don't change
 	}
 
+	const float luma = dot(color, LUMA); // b4 non-linear transform
 	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
 	const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
 	{ // ANAMORPHIC FLAREc
@@ -353,7 +354,7 @@ void main() {
 
 		// makes colors take advantage of high contrast. darker darks and brighter brights only offset by the bluenoise. This dithers the color and removes banding. Also the
 		// perceptual difference is that of seeing more color than there really is.
-		color = max(vec3(0), mix(color - noise_dither, color + noise_dither, luminance)); // shade dithering by luminance (only clamping negative values)
+		color = max(vec3(0), mix(color - noise_dither, color + noise_dither, 1.0f - clamp(luminance / luma, 0.0f, 1.0f))); // shade dithering by luminance (only clamping negative values)
 	}
 	
 	outColor = vec4(color, 1.0f);

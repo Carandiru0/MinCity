@@ -33,13 +33,15 @@ namespace world
 		cAttachableGameObject(cAttachableGameObject&& src) noexcept;
 		cAttachableGameObject& operator=(cAttachableGameObject&& src) noexcept;
 
-	private:
+	protected:
 		tUpdateableGameObject<Volumetric::voxelModelInstance_Dynamic> const*		_parent;
+
+	private:
 		XMFLOAT3A																	_offset;
 		v2_rotation_t																_vPitch, _vYaw, _vRoll;
 
 	public:
-		cAttachableGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cAttachableGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cAttachableGameObject& __restrict left, cAttachableGameObject& __restrict right) noexcept

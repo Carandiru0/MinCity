@@ -52,7 +52,7 @@ namespace world
 		void setCharacteristics(float const temperature_boost_ = DEFAULT_TEMPERATURE_BOOST, float const flame_boost_ = DEFAULT_FLAME_BOOST, float const emission_threshold_ = DEFAULT_EMISSION_THRESHOLD);
 
 	public:
-		cThrusterFireGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cThrusterFireGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cThrusterFireGameObject& __restrict left, cThrusterFireGameObject& __restrict right) noexcept

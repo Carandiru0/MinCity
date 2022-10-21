@@ -29,7 +29,7 @@ namespace world
 
 		} _activity_lights;
 	public:
-		cLightConeGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cLightConeGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cLightConeGameObject& __restrict left, cLightConeGameObject& __restrict right) noexcept

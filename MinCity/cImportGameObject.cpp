@@ -48,7 +48,7 @@ namespace world
 	{		
 	}
 
-	cImportGameObject_Dynamic::cImportGameObject_Dynamic(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cImportGameObject_Dynamic::cImportGameObject_Dynamic(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_),
 		_videoscreen(nullptr)
 	{
@@ -62,7 +62,7 @@ namespace world
 
 		_proxy.load(this, reinterpret_cast<Volumetric::voxB::voxelModelBase const* const>(&instance_->getModel())); // safe up-cast to base
 	}
-	cImportGameObject_Static::cImportGameObject_Static(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_)
+	cImportGameObject_Static::cImportGameObject_Static(Volumetric::voxelModelInstance_Static* const& instance_)
 		: tUpdateableGameObject(instance_),
 		_videoscreen(nullptr)
 	{
@@ -84,14 +84,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cImportGameObject_Dynamic>(this, &OnRelease_Dynamic);
-			(*Instance)->setVoxelEventFunction(&cImportGameObject_Dynamic::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cImportGameObject_Dynamic>(this, &OnRelease_Dynamic);
+			Instance->setVoxelEventFunction(&cImportGameObject_Dynamic::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cImportGameObject_Dynamic>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cImportGameObject_Dynamic>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -103,14 +103,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cImportGameObject_Dynamic>(this, &OnRelease_Dynamic);
-			(*Instance)->setVoxelEventFunction(&cImportGameObject_Dynamic::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cImportGameObject_Dynamic>(this, &OnRelease_Dynamic);
+			Instance->setVoxelEventFunction(&cImportGameObject_Dynamic::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cImportGameObject_Dynamic>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cImportGameObject_Dynamic>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -124,14 +124,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cImportGameObject_Static>(this, &OnRelease_Static);
-			(*Instance)->setVoxelEventFunction(&cImportGameObject_Static::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cImportGameObject_Static>(this, &OnRelease_Dynamic);
+			Instance->setVoxelEventFunction(&cImportGameObject_Static::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cImportGameObject_Static>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cImportGameObject_Static>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -143,14 +143,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cImportGameObject_Static>(this, &OnRelease_Static);
-			(*Instance)->setVoxelEventFunction(&cImportGameObject_Static::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cImportGameObject_Static>(this, &OnRelease_Dynamic);
+			Instance->setVoxelEventFunction(&cImportGameObject_Static::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cImportGameObject_Static>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cImportGameObject_Static>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_videoscreen = std::move(src._videoscreen); src._videoscreen = nullptr;
@@ -208,6 +208,9 @@ namespace world
 
 	void cImportGameObject_Dynamic::OnVideoScreen(bool const bEnable)
 	{
+		[[unlikely]] if (!Validate())
+			return;
+
 		if (bEnable) {
 			if (nullptr != _videoscreen) {
 				ImageAnimation::remove(_videoscreen);
@@ -228,6 +231,9 @@ namespace world
 	}
 	void cImportGameObject_Static::OnVideoScreen(bool const bEnable)
 	{
+		[[unlikely]] if (!Validate())
+			return;
+
 		if (bEnable) {
 			if (nullptr != _videoscreen) {
 				ImageAnimation::remove(_videoscreen);

@@ -15,6 +15,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #define COLOR 1
 #define REFLECT 2
 
+#include "light.glsl"
 
 // **must** have defined a :
 // layout (constant_id = any) const float VolumeLength = 0.0f; // This length must be scaled by the voxel size. Pass it in getLight()
@@ -184,20 +185,6 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 
 	// nn sampling
 	lightmap_internal_sampleNaturalNeighbour(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
-}
-
-// main public functions:
-
-// final inverse square law equation used:
-// a = 1.0 / sqrt(d*d + 1.0)  [compute shader]   - light color is pre-multiplied by this equation
-// b = 1.0 / sqrt(d*d + 1.0)  [fragment shader]  - the light color is multiplied again by this equation
-// final attenuation is then b*a*color
-// see : https://www.desmos.com/calculator/qlxe8vxuzh
-float getAttenuation(in const float normalized_light_distance, in const float volume_length) // this is half of the equation, when light volume is generated, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
-{
-	// denormalization and scaling to world coordinates (actual world distance)
-	const float d = normalized_light_distance * volume_length;
-	return( 1.0f / sqrt(fma(d,d,1.0)) );
 }
 
 #define att a

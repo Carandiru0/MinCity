@@ -92,17 +92,17 @@ namespace world
 																			supernoise::interpolator::functor const& interp,
 		                                                                    ImagingMemoryInstance const* const pPassthru)
 	{
-		static constexpr float const INV_255 = 1.0f / 255.0f;
+		static constexpr float const INV_65535 = 1.0f / 65535.0f;
 
-		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_L, size, size);
+		ImagingMemoryInstance* const __restrict imageNoise = ImagingNew(eIMAGINGMODE::MODE_L16, size, size);
 
 		struct { // avoid lambda heap
-			uint8_t const* const* const __restrict image_in;
-			uint8_t* const* const __restrict       image_out;
+			uint16_t const* const* const __restrict image_in;
+			uint16_t* const* const __restrict       image_out;
 			int const size;
 			NoiseRenderPassthruFunc_t const noiseRenderfunc;
 			supernoise::interpolator::functor const& interp;
-		} const p = { pPassthru->image, imageNoise->image, imageNoise->xsize, noiseRenderfunc, interp };
+		} const p = { (uint16_t**)pPassthru->image32, (uint16_t**)imageNoise->image32, imageNoise->xsize, noiseRenderfunc, interp};
 
 
 		tbb::parallel_for(int(0), imageNoise->ysize, [&p](int const y) {
@@ -110,11 +110,11 @@ namespace world
 			float const inv_size(1.0f / float(p.size));
 			float const v((float)y * inv_size);
 			int x = p.size - 1;
-			uint8_t const* __restrict pIn(p.image_in[y]);
-			uint8_t* __restrict pOut(p.image_out[y]);
+			uint16_t const* __restrict pIn(p.image_in[y]);
+			uint16_t* __restrict pOut(p.image_out[y]);
 			do {
 
-				*pOut = p.noiseRenderfunc((float)x * inv_size, v, INV_255 * ((float)*pIn), p.interp);
+				*pOut = p.noiseRenderfunc((float)x * inv_size, v, INV_65535 * ((float)*pIn), p.interp);
 
 				++pOut;
 				++pIn;

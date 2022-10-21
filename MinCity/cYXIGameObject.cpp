@@ -21,14 +21,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cYXIGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cYXIGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		for (uint32_t i = 0; i < THRUSTER_COUNT; ++i) {
@@ -47,14 +47,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cYXIGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cYXIGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		for (uint32_t i = 0 ; i < THRUSTER_COUNT ; ++i) {
@@ -69,7 +69,7 @@ namespace world
 		return(*this);
 	}
 
-	cYXIGameObject::cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cYXIGameObject::cYXIGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_), _thruster{ {MAIN_THRUSTER_COOL_DOWN}, {UP_THRUSTER_COOL_DOWN} }, _body{}, _activity_lights{}, _thrusterFire(nullptr),
 		_parent(nullptr)
 	{
@@ -162,10 +162,11 @@ namespace world
 
 	void cYXIGameObject::enableThrusterFire(float const power)
 	{
-		auto instance(*Instance);
+		[[unlikely]] if (!Validate())
+			return;
 
 		if (nullptr == _thrusterFire) {
-			_thrusterFire = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cThrusterFireGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(instance->getVoxelIndex(),
+			_thrusterFire = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cThrusterFireGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(Instance->getVoxelIndex(),
 				Volumetric::eVoxelModel::DYNAMIC::NAMED::MAIN_THRUST, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 
 			if (_thrusterFire) {
@@ -191,24 +192,32 @@ namespace world
 
 	void cYXIGameObject::autoThrust(float const ground_clearance, fp_seconds const tDelta) // automatic thrusting (up thruster only)
 	{
-		auto const instance(*Instance);
 		float const tD(time_to_float(tDelta));
 
 		static constexpr float const one_second = time_to_float(duration_cast<fp_seconds>(milliseconds(1000)));
 
-		float const targetHeight(ground_clearance + Iso::VOX_STEP * instance->getModel()._Extents.y); // additional clearance equal to the extent of the ship on the y axis
+		float const target_elevation(ground_clearance + Iso::VOX_STEP * Instance->getModel()._Extents.y); // additional clearance equal to the extent of the ship on the y axis
+		float const current_elevation(Instance->getElevation());
 
-		float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT, Iso::VOX_STEP, Iso::VOX_STEP * instance->getModel()._Extents.y);
-	
-		float const current_elevation(instance->getElevation());
+		float const clearance(current_elevation - target_elevation); // distance to target elevation (signed direction aswell)
+		// if clearance > 0, above current target elevation
+		// if clearance < 0, below current  ""       ""
+		//if (clearance > 0.0f)
+		//	return; // direction of the change in ship elevation does not require automatic thrusting
 
-		float const linear_elevation = SFM::linearstep(targetHeight, maximum_clearance, current_elevation);
-		float const linear_velocity = SFM::linearstep(0.0f, MAX_UP_THRUST * 5.0f, SFM::abs(SFM::min(0.0f, _body.velocity.y)));
+		float const velocity(_body.velocity.y - -MIN_UP_THRUST);
+		// if velocity > 0, then current velocity is exceeding gravity
+		// if velocity < 0, then current   ""     is not exceeding gravity
+		//if (velocity < 0.0f)
+		//	return; // direction of the current velocity does not require automatic thrusting
 
+		// v = d/t  , t = d/v
+		float t = SFM::abs(clearance / velocity);
+		// linearize time to 0.0f ... 1.0f range
+		t = SFM::linearstep(0.0f, one_second * 1.0f, t);
+		
 		// up to maximum thrust (up thruster) capability
-		float const t = SFM::saturate(SFM::__sqrt((1.0f - linear_elevation) * (1.0f - linear_elevation) + linear_velocity * linear_velocity));
-
-		float counter_thrust = _body.mass * SFM::lerp(-cPhysics::GRAVITY, MAX_UP_THRUST, t*t);
+		float const counter_thrust = _body.mass * SFM::lerp(-cPhysics::GRAVITY, MAX_UP_THRUST, t*t); // exponential curve
 
 		// get future height (output) 
 		XMVECTOR const xmForce(XMVectorAdd(XMVectorSet(0.0f, counter_thrust, 0.0f, 0.0f), XMLoadFloat3A(&_body.force[in]))); // adding external forces in
@@ -217,19 +226,19 @@ namespace world
 
 		XMVECTOR const xmVelocity = SFM::__fma(XMVectorDivide(xmForce, XMVectorReplicate(_body.mass)), XMVectorReplicate(one_second), xmInitialVelocity);
 
-		XMVECTOR xmPosition(instance->getLocation());
+		XMVECTOR xmPosition(Instance->getLocation());
 
 		xmPosition = SFM::__fma(xmVelocity, XMVectorReplicate(one_second), xmPosition);
 
-		float const futureHeight(XMVectorGetY(xmPosition));
+		float const future_elevation(XMVectorGetY(xmPosition));
 
-		if (futureHeight < targetHeight || t*t > 0.99f) {
+		if (future_elevation < target_elevation /*|| counter_thrust > 0.0f*/) {
 				
 			float const finalThrust(SFM::min(_body.mass * MAX_UP_THRUST, counter_thrust));
 
 			applyThrust(XMVectorSet(0.0f, finalThrust, 0.0f, 0.0f)); // up thruster - must thrust greater or equal to acceleration of gravity to maintain elevation.
 			_thruster[UP].bAuto = true; // flag thruster as automatic
-
+			_activity_lights.accumulator = zero_time_duration; // boost lights
 		}
 		else {
 			_thruster[UP].bAuto = false; // auto-reset to transition to thrust off
@@ -240,14 +249,13 @@ namespace world
 	{
 		constinit static bool bRecover(false);
 
-		auto instance(*Instance);
 		float const tD(time_to_float(tDelta));
 
-		float const targetHeight(ground_clearance + Iso::VOX_STEP * instance->getModel()._Extents.y); // additional clearance equal to the extent of the ship on the y axis
+		float const targetHeight(ground_clearance + Iso::VOX_STEP * Instance->getModel()._Extents.y); // additional clearance equal to the extent of the ship on the y axis
 
-		float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT, Iso::VOX_STEP, Iso::VOX_STEP * instance->getModel()._Extents.y);
+		float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT * 0.8f, Iso::VOX_STEP, Iso::VOX_STEP * Instance->getModel()._Extents.y * 2.0f);
 
-		float const current_elevation(instance->getElevation());
+		float const current_elevation(Instance->getElevation());
 
 		float const linear_elevation = SFM::linearstep(ground_clearance, maximum_clearance, current_elevation);
 		float const target_elevation = SFM::linearstep(targetHeight, maximum_clearance, current_elevation);
@@ -292,13 +300,19 @@ namespace world
 	}
 	void cYXIGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		auto instance(*Instance);
-		float const tD(time_to_float(tDelta));
+		[[unlikely]] if (!Validate()) {
 
-		if (nullptr == instance || _parent->isDestroyed()) {
-			_parent->destroy();
+			if (nullptr != _parent) {
+				_parent->destroy();
+			}
 			return;
 		}
+		[[unlikely]] if (_parent->isDestroyed()) {
+			Instance->destroy(milliseconds(0));
+			return;
+		}
+
+		float const tD(time_to_float(tDelta));
 
 		_activity_lights.accumulator += tDelta;
 		if (_activity_lights.accumulator >= _activity_lights.interval) {
@@ -307,8 +321,8 @@ namespace world
 
 		uint32_t integrations(0);
 
-		rect2D_t const rectInstance(r2D_add(instance->getModel()._LocalArea, instance->getVoxelIndex()));
-		float const current_ground_clearance(Iso::getRealHeight(float(world::getVoxelsAt_MaximumHeight(rectInstance, instance->getYaw())))); // clearance simplified to maximum possible height of terrain
+		rect2D_t const rectInstance(r2D_add(Instance->getModel()._LocalArea, Instance->getVoxelIndex()));
+		float const current_ground_clearance(Iso::VOX_SIZE * Iso::getRealHeight(float(world::getVoxelsAt_MaximumHeight(rectInstance, Instance->getYaw())))); // clearance simplified to maximum possible height of terrain
 
 		if (!collide(current_ground_clearance, tDelta)) {
 			
@@ -319,10 +333,10 @@ namespace world
 			float maximum_future_ground_clearance(0.0f);
 			for (float fwd = one_second_part; fwd < one_second; fwd += one_second_part) {
 
-				XMVECTOR const xmFutureLocation(SFM::__fma(XMLoadFloat3A(&_body.velocity), XMVectorReplicate(fwd), instance->getLocation()));
-				rect2D_t const rectFutureInstance(r2D_add(instance->getModel()._LocalArea, v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFutureLocation))));
+				XMVECTOR const xmFutureLocation(SFM::__fma(XMLoadFloat3A(&_body.velocity), XMVectorReplicate(fwd), Instance->getLocation()));
+				rect2D_t const rectFutureInstance(r2D_add(Instance->getModel()._LocalArea, v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFutureLocation))));
 
-				float const future_ground_clearance(Iso::getRealHeight(float(world::getVoxelsAt_MaximumHeight(rectFutureInstance, instance->getYaw()))));
+				float const future_ground_clearance(Iso::VOX_SIZE * Iso::getRealHeight(float(world::getVoxelsAt_MaximumHeight(rectFutureInstance, Instance->getYaw()))));
 
 				maximum_future_ground_clearance = SFM::max(maximum_future_ground_clearance, future_ground_clearance);
 				++integrations;
@@ -377,14 +391,14 @@ namespace world
 			//									dt
 			XMStoreFloat3A(&_body.angular_force[out], XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(tD)), _body.mass));
 
-			XMVECTOR xmDir(XMVectorSet(instance->getPitch().angle(), instance->getYaw().angle(), instance->getRoll().angle(), 0.0f));
+			XMVECTOR xmDir(XMVectorSet(Instance->getPitch().angle(), Instance->getYaw().angle(), Instance->getRoll().angle(), 0.0f));
 
 			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmDir);
 
 			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
 
-			instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
+			Instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
@@ -394,7 +408,7 @@ namespace world
 		// Linear // Main Thruster //
 		{
 			// Orient linear thrust to ship orientation always. *do not change*
-			quat_t const qOrient(instance->getPitch().angle(), instance->getYaw().angle(), instance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
+			quat_t const qOrient(Instance->getPitch().angle(), Instance->getYaw().angle(), Instance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
 			XMVECTOR const xmThrust(v3_rotate(XMLoadFloat3A(&_body.thrust), qOrient));
 			
 			XMVECTOR const xmForce(XMVectorAdd(xmThrust, XMLoadFloat3A(&_body.force[in]))); // adding external forces in
@@ -408,11 +422,11 @@ namespace world
 			//									dt
 			XMStoreFloat3A(&_body.force[out], XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(tD)), _body.mass));
 
-			XMVECTOR xmPosition(instance->getLocation());
+			XMVECTOR xmPosition(Instance->getLocation());
 
 			xmPosition = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmPosition);
 
-			instance->setLocation(xmPosition);
+			Instance->setLocation(xmPosition);
 
 			XMStoreFloat3A(&_body.velocity, xmVelocity);
 			XMStoreFloat3A(&_body.thrust, XMVectorZero()); // reset required
@@ -421,13 +435,13 @@ namespace world
 
 		{
 			// current forces, and each thruster and elevation normalized
-			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT, Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y);
+			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT * 0.8f, Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y * 2.0f);
 
-			float const elevation = SFM::linearstep(current_ground_clearance, maximum_clearance, instance->getElevation());
+			float const elevation = SFM::linearstep(current_ground_clearance, maximum_clearance, Instance->getElevation());
 
 			FMT_NUKLEAR_DEBUG(false, "velocity{:.3f}   main{:.3f}   up{:.3f}  elevation{:.3f}   {:d}times", 
-				(_body.velocity.y / _body.mass),
-				(_thruster[MAIN].thrust.y / _body.mass),
+				_body.velocity.y,
+				(XMVectorGetX(XMVector3Length(XMLoadFloat3A(&_thruster[MAIN].thrust))) / _body.mass),
 				(_thruster[UP].thrust.y / _body.mass),
 				elevation, integrations
 			);
@@ -436,15 +450,20 @@ namespace world
 
 	void __vectorcall cYXIGameObject::applyThrust(FXMVECTOR xmThrust)
 	{
+		[[unlikely]] if (!Validate())
+			return;
+
 		if (XMVectorGetZ(xmThrust) > 0.0f) { // main forward thruster
 			_thruster[MAIN].On(XMVectorSubtract(xmThrust, XMLoadFloat3A(&_thruster[UP].thrust))); // total thrust available to main thruster is shared with up thruster, with up thruster always taking priority. However the main thruster has a much higher peak thrust.
 			enableThrusterFire(_thruster[MAIN].tOn);
+			_activity_lights.accumulator = zero_time_duration; // boost lights
 		}
 		else if (XMVectorGetY(xmThrust) > 0.0f) { // up thruster 
 
-			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT, Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y);
+			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT * 0.8f , Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y * 2.0f);
 			if (getModelInstance()->getElevation() < maximum_clearance) {
 				_thruster[UP].On(xmThrust); 
+				_activity_lights.accumulator = zero_time_duration; // boost lights
 			}
 		}
 

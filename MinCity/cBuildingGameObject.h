@@ -67,7 +67,7 @@ namespace world
 		static tbb::concurrent_queue<cBuildingGameObject*>		_updateable;
 		
 	public:
-		cBuildingGameObject(Volumetric::voxelModelInstance_Static* const __restrict& __restrict instance_);
+		cBuildingGameObject(Volumetric::voxelModelInstance_Static* const& instance_);
 		~cBuildingGameObject();
 	};
 

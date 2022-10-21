@@ -30,7 +30,7 @@ namespace world
 	private:
 		Volumetric::voxelAnim<true>	_animation;
 	public:
-		cHeliumGasGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_);
+		cHeliumGasGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_);
 	};
 
 	STATIC_INLINE_PURE void swap(cHeliumGasGameObject& __restrict left, cHeliumGasGameObject& __restrict right) noexcept

@@ -24,7 +24,7 @@ void main()
 	Out.uv = uv;
 
 #if defined (SMAA_PASS_2) || defined(RESOLVE) || defined(OVERLAY)	// final neighbourhood blending subpass or volumetric resolve
-	Out.slice = float(u._uframe & 63U); // +blue noise over time
+	Out.slice = frame_to_slice(); // +blue noise over time (every two frames are matched as raymarch is done one frame checkerboard odd, one frame checkerboard even - the blue noise slice *must* be the same one for both frames (to not create white noise badd!!)
 #endif
 
 #ifdef OVERLAY

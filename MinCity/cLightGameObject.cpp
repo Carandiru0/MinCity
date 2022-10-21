@@ -13,7 +13,7 @@ namespace world
 		}
 	}
 
-	cLightGameObject::cLightGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cLightGameObject::cLightGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tNonUpdateableGameObject(instance_), _State(true), _Color(0x00ffffff)
 	{
 		instance_->setOwnerGameObject<cLightGameObject>(this, &OnRelease);
@@ -27,14 +27,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cLightGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cLightGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cLightGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cLightGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cLightGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cLightGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_State = std::move(src._State); src._State = false;
@@ -47,14 +47,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cLightGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cLightGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cLightGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cLightGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cLightGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cLightGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_State = std::move(src._State); src._State = false;

@@ -21,14 +21,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cYXISphereGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cYXISphereGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_parent = std::move(src._parent); src._parent = nullptr;
@@ -47,14 +47,14 @@ namespace world
 		src.free_ownership();
 
 		// important
-		if (Instance && *Instance) {
-			(*Instance)->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
-			(*Instance)->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
+		if (Validate()) {
+			Instance->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
+			Instance->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
 		}
 		// important
-		if (src.Instance && *src.Instance) {
-			(*src.Instance)->setOwnerGameObject<cYXISphereGameObject>(nullptr, nullptr);
-			(*src.Instance)->setVoxelEventFunction(nullptr);
+		if (src.Validate()) {
+			src.Instance->setOwnerGameObject<cYXISphereGameObject>(nullptr, nullptr);
+			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
 		_parent = std::move(src._parent); src._parent = nullptr;
@@ -69,7 +69,7 @@ namespace world
 		return(*this);
 	}
 
-	cYXISphereGameObject::cYXISphereGameObject(Volumetric::voxelModelInstance_Dynamic* const __restrict& __restrict instance_)
+	cYXISphereGameObject::cYXISphereGameObject(Volumetric::voxelModelInstance_Dynamic* const& instance_)
 		: tUpdateableGameObject(instance_), _parent(nullptr), _thrusterFire(nullptr), _offset{}, _thrusters{}, _thruster{}, _body{}
 	{
 		instance_->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
@@ -80,10 +80,15 @@ namespace world
 
 	void cYXISphereGameObject::enableThrusterFire(float const power)
 	{
-		auto instance(*Instance);
+		[[unlikely]] if (!Validate())
+			return;
+		[[unlikely]] if (!_parent->Validate()) {
+			Instance->destroy(milliseconds(0));
+			return;
+		}
 
 		if (nullptr == _thrusterFire) {
-			_thrusterFire = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cThrusterFireGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(instance->getVoxelIndex(),
+			_thrusterFire = MinCity::VoxelWorld->placeUpdateableInstanceAt<world::cThrusterFireGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(Instance->getVoxelIndex(),
 				Volumetric::eVoxelModel::DYNAMIC::NAMED::UP_THRUST, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 
 			if (_thrusterFire) {
@@ -198,14 +203,16 @@ namespace world
 
 	void cYXISphereGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
-		auto instance(*Instance);
+		[[unlikely]] if (!Validate())
+			return;
+		[[unlikely]] if (!_parent->Validate() || _parent->isDestroyed()) {
+			Instance->destroy(milliseconds(0));
+			return;
+		}
+
 		float const tD(time_to_float(tDelta));
 
 		auto const parentInstance(_parent->getModelInstance());
-		if (nullptr == parentInstance || nullptr == instance || _parent->isDestroyed()) {
-			_parent->destroy();
-			return;
-		}
 
 		{
 			// existing thruster(s) finished?
@@ -296,7 +303,7 @@ namespace world
 		{
 			// radius (offset from origin to edge is where force is applied, affecting the force directly, greater radius means greater force) 
 			// T = F x r (Torque) [not using cross product, already done, just scale]
-			float const displacement(voxels_to_meters(instance->getModel()._Radius) * cPhysics::TORQUE_OFFSET_SCALAR);
+			float const displacement(voxels_to_meters(Instance->getModel()._Radius) * cPhysics::TORQUE_OFFSET_SCALAR);
 			
 			XMVECTOR const xmThrust(XMVectorScale(XMLoadFloat3A(&_body.angular_thrust), _body.mass * displacement)); // T = F * r , T = Torque, F = Force, r = Radius/Offset
 
@@ -310,14 +317,14 @@ namespace world
 			//								    dt
 			XMStoreFloat3A(&_body.angular_force, XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(tD)), _body.mass));
 
-			XMVECTOR xmDir(XMVectorSet(instance->getPitch().angle(), instance->getYaw().angle(), instance->getRoll().angle(), 0.0f));
+			XMVECTOR xmDir(XMVectorSet(Instance->getPitch().angle(), Instance->getYaw().angle(), Instance->getRoll().angle(), 0.0f));
 
 			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmDir);
 
 			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
 
-			instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
+			Instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
@@ -333,7 +340,7 @@ namespace world
 
 			xmSphere = v3_rotate(xmSphere, xmParentLocation, qOrient);
 
-			instance->setLocation(xmSphere);
+			Instance->setLocation(xmSphere);
 		}
 	}
 

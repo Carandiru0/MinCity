@@ -273,9 +273,6 @@
     <ClInclude Include="cRemoteUpdateGameObject.h">
       <Filter>Header Files\Gameplay</Filter>
     </ClInclude>
-    <ClInclude Include="cRockStageGameObject.h">
-      <Filter>Header Files\Gameplay</Filter>
-    </ClInclude>
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_doublebuffer.h">
       <Filter>Header Files\VulkanCore</Filter>
     </ClInclude>
@@ -452,9 +449,6 @@
     <ClCompile Include="cRemoteUpdateGameObject.cpp">
       <Filter>Source Files\Gameplay</Filter>
     </ClCompile>
-    <ClCompile Include="cRockStageGameObject.cpp">
-      <Filter>Source Files\Gameplay</Filter>
-    </ClCompile>
     <ClCompile Include="types.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -612,6 +606,9 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\data\shaders\transform.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\data\shaders\light.glsl">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
