@@ -221,22 +221,31 @@ void main() {
 	
 																						// bugfix: y is flipped. simplest to correct here.
 	const vec2 terrainDetail = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).rg; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
-	const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 4.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
-	const float grid = 1.0f - dot(grid_segment.rgb, LUMA);
-
+	
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz);
 
+	const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
+	const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
+
 	vec3 color = vec3(0);
+	const float occ = getOcclusion(In.uv.xyz);
+
 					   // twilight reflection
-	color.rgb += lit( terrainDetail.yyy, make_material(terrainDetail.y, terrainDetail.y, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
-					      terrainDetail.y, abs(dot(N,V)),
-					      vec3(0,0,1), N, V);
+	color.rgb += lit( terrainDetail.yyy, make_material(0.0f, 0.0f, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
+					  occ, 1.0f - Ld.att,
+					  vec3(0,0,1), N, V, false);
+	color.rgb += lit( terrainDetail.yyy, make_material(0.0f, 0.0f, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
+					  occ, 1.0f - Ld.att,
+					  vec3(0,1,0), N, V, false);
+	color.rgb += lit( terrainDetail.yyy, make_material(0.0f, 0.0f, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
+					  occ, 1.0f - Ld.att,
+					  vec3(1,0,0), N, V, false);
 
 						// only emissive can have color
-	color.rgb += lit( grid * mix(terrainDetail.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, 1.0f - terrainDetail.y), light_color,				// regular terrain lighting
-					    grid * getOcclusion(In.uv.xyz), Ld.att,
-					    -Ld.dir, N, V);
+	color.rgb += lit( mix(terrainDetail.xxx, grid * unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, 1.0f - terrainDetail.x), light_color,				// regular terrain lighting
+					      occ, Ld.att,
+					      -Ld.dir, N, V, true); // don't want to double-add reflections
 	
 	outColor.rgb = color;
 	/*
@@ -355,7 +364,7 @@ void main() {
     
 	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
 						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
-						-Ld.dir, N, V);
+						-Ld.dir, N, V, true);
 
 	//outColor.rgb = vec3(attenuation);
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
@@ -369,7 +378,7 @@ void main() {
 	float fresnelTerm;  // feedback from lit      
 	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
 						    getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
-						    -Ld.dir, N, V, fresnelTerm );
+						    -Ld.dir, N, V, true, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //
 

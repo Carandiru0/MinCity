@@ -164,7 +164,8 @@ float fresnel(in const vec3 N, in const vec3 V)
 
 // Albedo = straight color no shading or artificial lighting (voxel color in)
 vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in const float occlusion, in const float attenuation,
-          in const vec3 L, in const vec3 N, in const vec3 V // L = light direction, N = normal, V = eye direction   all expected to be normalized
+          in const vec3 L, in const vec3 N, in const vec3 V, // L = light direction, N = normal, V = eye direction   all expected to be normalized
+		  in const bool reflection_on
 #ifdef OUT_REFLECTION
 		  , out vec3 ambient_reflection
 #endif
@@ -193,10 +194,10 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 	
 #ifndef OUT_REFLECTION
-	const vec3 ambient_reflection = reflection(material.emission);
-#else
-	ambient_reflection = reflection(material.emission);
+	vec3 ambient_reflection = vec3(0);
 #endif
+    movc(reflection_on, ambient_reflection, reflection(material.emission));
+
 	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
 	const vec3 ambient_reflection_term = (unpackColor(material.ambient) + ambient_reflection) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
 	

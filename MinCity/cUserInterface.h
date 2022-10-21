@@ -14,7 +14,7 @@ public:
 	void OnLoaded();
 
 	void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
-	void Paint();
+	void Paint(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 	uint32_t const getActivatedToolType() const;
 	uint32_t const getActivatedSubToolType() const;

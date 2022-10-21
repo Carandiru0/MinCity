@@ -1,5 +1,7 @@
 #pragma once
 #include <Utility/class_helper.h>
+#include <Utility/unordered_vector.h>
+#include <Math/point2D_t.h>
 
 // forward decl
 namespace world {
@@ -29,7 +31,7 @@ public:
 
 	// methods
 	void Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
-	void Paint();
+	void Paint(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 
 	void KeyAction(int32_t const key, bool const down, bool const ctrl);
 
@@ -58,7 +60,6 @@ private:
 	uint64_t							_id;
 
 	// end security //
-
 	fp_seconds                          _beacon_accumulator;
 	float const							_sphere_engine_offset;
 	float								_total_mass;

@@ -165,8 +165,7 @@ void PerVoxel()
 
 void PerQuad(in vec3 normal)
 {
-	//normal.y = -normal.y; // vulkan coordinate system is flipped on yaxis (up)
-	
+
 #ifndef BASIC // final output must be xzy and transformed to eye/view space for fragment shader
 	normal = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
 #endif
@@ -197,7 +196,7 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
 	// so no need for eyePos
 
-	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(worldPos - u._eyePos.xyz));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
+	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
 																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
 #endif
 

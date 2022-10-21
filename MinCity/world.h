@@ -106,6 +106,7 @@ namespace world
 
 	// Random & Search //
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area);
+	point2D_t const __vectorcall getRandomVisibleVoxelIndexInArea(rect2D_t const area);
 	point2D_t const __vectorcall getRandomVisibleVoxelIndex();
 	rect2D_t const __vectorcall  getRandomNonVisibleAreaNear(); // only a step in width/height of visible rect, surrounding non visible area
 	point2D_t const __vectorcall getRandomNonVisibleVoxelIndexNear();

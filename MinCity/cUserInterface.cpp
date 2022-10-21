@@ -24,7 +24,7 @@ void cUserInterface::OnLoaded()
 	_reset_world_event_sent = false; // reset
 }
 
-void cUserInterface::Paint()
+void cUserInterface::Paint(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	if (_tools) {
 
@@ -32,7 +32,7 @@ void cUserInterface::Paint()
 	}
 	if (_user) {
 
-		_user->Paint();
+		_user->Paint(tNow, tDelta);
 	}
 }
 

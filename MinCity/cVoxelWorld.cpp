@@ -206,9 +206,7 @@ static uint32_t const RenderNoiseImagePixel(float const u, float const v, float 
 #ifdef DEBUG_FLAT_GROUND
 	return(SFM::saturate_to_u8(supernoise::blue.get2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v) * (6.0f))); /// perturbed by a small amount of bluenoise to show some details when in the dark moving around.
 #endif
-	float generated = in + in * supernoise::blue.get2D(NOISE_SCALAR_HEIGHT * u, NOISE_SCALAR_HEIGHT * v) * (2.0f / 65535.0f);
-
-	return(SFM::saturate_to_u16(generated * 65535.0f));
+	return(SFM::saturate_to_u16(in * 65535.0f));
 }
 
 void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lunar surface details are weighted into the final terrain generated
@@ -223,24 +221,45 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 		// Generate Image
 		Imaging imageTerrain = ImagingLoadKTX(TEXTURE_DIR "moon_map_elevation.ktx"); // single channel texture
 
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(20));
+
+		Imaging resampledImg = ImagingBits_16To8(imageTerrain);
+		imageNoise = imageTerrain; imageTerrain = resampledImg; // saving original for later
+
+		// filter - removing high frequency noise only, maintaining sharp edges and changes.
+		Imaging const filteredImg = MinCity::Procedural->BilateralFilter(imageTerrain);
+		ImagingDelete(imageTerrain); imageTerrain = filteredImg;
+
+		resampledImg = ImagingBits_8To16(imageTerrain);
+		ImagingDelete(imageTerrain); imageTerrain = resampledImg;
+
+		// mix 8bit filtered image by averaging its result with the full 16 bit original
+		ImagingLerpL16(imageNoise, imageTerrain, 0.5f);
+		ImagingDelete(imageTerrain); imageTerrain = imageNoise; imageNoise = nullptr; // keeping blended 16 bit result
+
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(25));
+
 		// resample terrain image to world grid dimensions
 		if (Iso::WORLD_GRID_SIZE != imageTerrain->xsize || Iso::WORLD_GRID_SIZE != imageTerrain->ysize) {
 			
-			Imaging resampledImg = ImagingBits_16To32(imageTerrain);
+			resampledImg = ImagingBits_16To32(imageTerrain);
 			ImagingDelete(imageTerrain); imageTerrain = resampledImg;
 
 			// resample to required dimensions
-			resampledImg = ImagingResample(imageTerrain, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BICUBIC);
+			resampledImg = ImagingResample(imageTerrain, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BILINEAR);
 			ImagingDelete(imageTerrain); imageTerrain = nullptr;
 
 			imageTerrain = ImagingBits_32To16(resampledImg);
 			ImagingDelete(resampledImg); resampledImg = nullptr;
 		}
 
-		imageNoise = MinCity::Procedural->GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep(), imageTerrain); // single channel image
-		ImagingDelete(imageTerrain); imageTerrain = nullptr; // no longer needed
+		// not customizing with additional features, using real moon heightmap data
+		//imageNoise = MinCity::Procedural->GenerateNoiseImage(&RenderNoiseImagePixel, Iso::WORLD_GRID_SIZE, supernoise::interpolator::SmoothStep(), imageTerrain); // single channel image
+		//ImagingDelete(imageTerrain);
+		imageNoise = imageTerrain; // pass on final heightmap
+		imageTerrain = nullptr; // no longer needed
 
-		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(15));
+		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(30));
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_TERRAIN_KTX
 		ImagingSaveToKTX(imageNoise, DEBUG_DIR L"last_terrain_elevation.ktx");
@@ -291,7 +310,7 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 	if (_heightmap) {
 		ImagingDelete(_heightmap); _heightmap = nullptr;
 	}
-	_heightmap = imageNoise;
+	_heightmap = imageNoise; // main pointer to heightmap becomes the new 16 bit memory location
 
 	// reset voxel grid
 	tbb::parallel_for(int(0), int(Iso::WORLD_GRID_SIZE), [](int yVoxel) {
@@ -1524,7 +1543,7 @@ namespace world
 				uiWidthSum += getVoxelHeightAt(point2D_t(start.x, yMax)); ++fNumSamples;
 			}
 
-			Iso::setHeightStep(start, SFM::round_to_u32((float)uiWidthSum / fNumSamples));
+			Iso::setHeightStep(getLocalVoxelIndexAt(start), SFM::round_to_u32((float)uiWidthSum / fNumSamples));
 
 			++start.x;
 		}
@@ -1550,7 +1569,7 @@ namespace world
 				uiHeightSum += getVoxelHeightAt(point2D_t(xMax, start.y)); ++fNumSamples;
 			}
 
-			Iso::setHeightStep(start, SFM::round_to_u32((float)uiHeightSum / fNumSamples));
+			Iso::setHeightStep(getLocalVoxelIndexAt(start), SFM::round_to_u32((float)uiHeightSum / fNumSamples));
 
 			++start.y;
 		}
@@ -1713,6 +1732,15 @@ namespace world
 	{
 		return(point2D_t(PsuedoRandomNumber32(area.left, area.right),
 						 PsuedoRandomNumber32(area.top, area.bottom)));
+	}
+	point2D_t const __vectorcall getRandomVisibleVoxelIndexInArea(rect2D_t const area)
+	{
+		rect2D_t const visible(MinCity::VoxelWorld->getVisibleGridBounds());
+
+		if (r2D_contains(visible, area)) {
+			return(getRandomVoxelIndexInArea(area));
+		}
+		return(getRandomVoxelIndexInArea(visible));
 	}
 	point2D_t const __vectorcall getRandomVisibleVoxelIndex()
 	{

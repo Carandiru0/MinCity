@@ -379,9 +379,9 @@ namespace Iso
 	{
 		return(heightstep_query(Voxel::HeightMap(voxelIndex)));
 	}
-	STATIC_INLINE void __vectorcall setHeightStep(point2D_t const voxelIndex, uint8_t const HeightStep)
+	STATIC_INLINE void __vectorcall setHeightStep(point2D_t const voxelIndex, uint32_t const HeightStep)
 	{
-		*Voxel::HeightMapReference(voxelIndex) = uint16_t(HeightStep) << 8u;
+		*Voxel::HeightMapReference(voxelIndex) = ((HeightStep << 16u) | HeightStep);
 	}
 	STATIC_INLINE_PURE float const getRealHeight(float const fHeightStep)
 	{
@@ -389,7 +389,7 @@ namespace Iso
 	}
 	STATIC_INLINE float const __vectorcall getRealHeight(point2D_t const voxelIndex)
 	{
-		return(getRealHeight(255.0f * heightstep_query_precise(Voxel::HeightMap(voxelIndex))));  // half-voxel offset is exact
+		return(getRealHeight(255.0f*heightstep_query_precise(Voxel::HeightMap(voxelIndex))));  // half-voxel offset is exact
 	}
 
 	// #defines to ensure one comparison only and compared with zero always (performance)

@@ -258,10 +258,9 @@ void cUser::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tD
 	}
 }
 
-void cUser::Paint()
+void cUser::Paint(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	
-
 }
 
 

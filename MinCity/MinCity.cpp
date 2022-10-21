@@ -739,7 +739,7 @@ void cMinCity::UpdateWorld()
 	bool bTick(false);
 	while (tAccumulate >= critical_delta()) {
 
-		m_tNow += tDeltaFixedStep;  // pause-able time step
+		m_tNow += m_tDelta;  // pause-able time step
 		m_tCriticalNow += critical_delta();
 
 		tAccumulate -= critical_delta();
@@ -748,12 +748,12 @@ void cMinCity::UpdateWorld()
 		
 		if (!bTick) { // limited to the fixed timestep of one iteration per frame
 			
-			bJustLoaded = VoxelWorld->UpdateOnce(m_tNow, tDeltaFixedStep, bPaused);
+			bJustLoaded = VoxelWorld->UpdateOnce(m_tNow, m_tDelta, bPaused);
 
 			bTick = true;
 		}
 		// *bugfix - it's absoletly critical to keep this in the while loop, otherwise frame rate independent motion will be broken.
-		VoxelWorld->Update(m_tNow, tDeltaFixedStep, bPaused, bJustLoaded); // world/game uses regular timing, with a fixed timestep (best practice)
+		VoxelWorld->Update(m_tNow, m_tDelta, bPaused, bJustLoaded); // world/game uses regular timing, with a fixed timestep (best practice)
 	}
 	
 	// fractional amount for render path (uniform shader variables)
@@ -769,7 +769,7 @@ void cMinCity::UpdateWorld()
 	}
 	
 	// *seventh*
-	UserInterface->Paint(); // must be done after all updates to VoxelWorld
+	UserInterface->Paint(m_tNow, m_tDelta); // must be done after all updates to VoxelWorld
 	
 	// *last*
 	ProcessEvents();
@@ -1123,7 +1123,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					size += info->Size;
 				}
 
-				hardware_concurrency = std::max(logical_processors.size(), hw_cores.size()); // std::hardware_concurrency() matches logical processor count
+				hardware_concurrency = (int32_t)std::max(logical_processors.size(), hw_cores.size()); // std::hardware_concurrency() matches logical processor count
 				
 				bool const hyperthreaded = logical_processors.size() != hw_cores.size();
 
