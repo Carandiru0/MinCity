@@ -108,11 +108,15 @@ float refraction_color(out vec3 out_refraction, in const restrict sampler2D grab
 }
 #endif
 
+vec3 reflection()
+{
+	return(subpassLoad(ambientLightMap).rgb);
+}
 vec3 reflection(inout float emission) 
 {
-	const vec3 ambient_reflection = subpassLoad(ambientLightMap).rgb;
+	const vec3 ambient_reflection = reflection();
 
-	emission += dot(ambient_reflection, LUMA);
+	emission = clamp(emission + dot(ambient_reflection, LUMA), 0.0f, 1.0f);
 
 	return(ambient_reflection);
 }

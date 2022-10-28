@@ -356,7 +356,7 @@ namespace Volumetric
 		vku::TextureImageStorage3D*							OpacityMap;
 		voxelVolumeSet										VolumeSet;
 
-		static inline float const							VolumeSize = Size * Iso::VOX_SIZE, // must be VOX_SIZE for maximizing the range of the distance field correctly
+		static inline float const							VolumeSize = Size,
 															VolumeLength = (std::hypot(float(VolumeSize), float(VolumeSize), float(VolumeSize))),
 															InvVolumeLength = (1.0f / VolumeLength);
 

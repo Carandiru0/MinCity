@@ -279,7 +279,7 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	// this is balanced so that sigmaS remains conservative. Only emission can bring the level of sigmaS above 1.0f
 	//lightAmount = lightAmount * random_hemi_up.w;
 
-	const float sigmaS = (1.0f - opacity) * attenuation;
+	const float sigmaS = (1.0f - opacity) * attenuation * voxel.tran;
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
@@ -364,8 +364,8 @@ vec4 traceReflection(in vec4 voxel, in vec3 rd, in vec3 p, in const vec3 n, in c
 	interval_remaining = interval_remaining + subgroupQuadSwapDiagonal(interval_remaining); // less divergence with reflections & needs to be 2x anyways (so not an average, rather a sum)
 	interval_remaining = min(interval_length, interval_remaining * 3.5f);
 
-	const float fresnel_reflection = pow(1.0f - abs(dot(rd, n)), 5.0f);
-	voxel.rgb = voxel.rgb * (1.0f - voxel.tran) + fresnel_reflection * voxel.tran * bn * BLUE_NOISE_DITHER_SCALAR * 2.0f;
+	const float fresnel_reflection = pow(abs(dot(rd, n)), 5.0f);
+	voxel.rgb = voxel.rgb * (1.0f - voxel.tran) + fresnel_reflection * voxel.tran * bn * BLUE_NOISE_DITHER_SCALAR;
 
 	const vec3 bounce = p; // save bounce position
 	p += GOLDEN_RATIO * dt * rd;	// first reflected move to next point - critical to avoid moirre artifacts that this is done with a large enough step (hence scaling by golden ratio) tuned/tweaked.

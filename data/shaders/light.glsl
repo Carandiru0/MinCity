@@ -21,7 +21,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // see : https://www.desmos.com/calculator/qlxe8vxuzh
 float getAttenuation(in const float light_distance)  // this is half of the equation, when light volume is sampled, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
 {
-	return( min(2.0f, 1.0f / sqrt(fma(light_distance,light_distance,SINGULARITY_MAX))) );
+	return( min(1.0f, 1.0f / sqrt(fma(light_distance,light_distance,SINGULARITY_MAX))) );
 }				// light is stored in 16bit 3d volume texture, allow for more precision by using 2.0 as upper limit 
 
 // final inverse square law equation used:
@@ -33,7 +33,7 @@ float getAttenuation(in const float normalized_light_distance, in const float vo
 {
 	// denormalization and scaling to world coordinates (actual world distance)
 	const float d = normalized_light_distance * volume_length;
-	return( min(2.0f, 1.0f / sqrt(fma(d,d,SINGULARITY_MAX))) );
+	return( min(1.0f, 1.0f / sqrt(fma(d,d,SINGULARITY_MAX))) );
 }				// light is stored in 16bit 3d volume texture, allow for more precision by using 2.0 as upper limit 
 
 #endif // _LIGHT_GLSL

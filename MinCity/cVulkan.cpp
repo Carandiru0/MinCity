@@ -1230,21 +1230,23 @@ void cVulkan::CreateSharedVoxelResources()
 	}
 	// Build a template for descriptor sets that use these shaders.
 	
+	// ------------------------------------------------------------------------------------------------------------------------------------------------------//
 	// TEXTURE_ARRAY_LENGTH is purposely fixed as defined for glsl shader which cannot be dynamic //
 	vk::Sampler const samplers_tex_array[TEXTURE_ARRAY_LENGTH]{ 
 		TEX_NOISE_SAMPLER, 
 		TEX_BLUE_NOISE_SAMPLER,
 		TEX_TERRAIN_SAMPLER, 
+		TEX_TERRAIN2_SAMPLER,
 		TEX_GRID_SAMPLER,
 		TEX_BLACKBODY_SAMPLER
 	};// first texture always has repeat addressing, and is a mix of noises on each channel (see textureboy)
-	
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------//
+
 	auto const samplers_common{ getSamplerArray
 			<eSamplerAddressing::CLAMP>(
 				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear (3d texture samplers, etc)
 			)
 	};
-
 
 	{ // voxels common ("one descriptor set")
 		vku::DescriptorSetLayoutMaker	dslm;

@@ -207,57 +207,136 @@ float antialiasedGrid(in vec2 uv, in const float scale)
 	return(smoothstep(0.0f, 1.0f, grid * GOLDEN_RATIO));	// final smoothing
 }
 */
+float getTriplanar(in const vec3 world_uvw, in const vec3 N, in const vec3 projections_ordered, in const float blend_factor) // world_uvw must be in range [-1.0f ... 1.0f]
+{
+	const vec3 heights = projections_ordered * abs(world_uvw) * 3.0f;
+
+	const float begin  = max(max(projections_ordered.x, projections_ordered.y), projections_ordered.z) - blend_factor;
+	vec3 blend = max(vec3(0), projections_ordered - begin);
+
+	blend = blend / dot(blend, abs(N));
+
+	return(dot(projections_ordered, blend));
+}
+
+vec3 computeTriplanarNormal(in const vec3 world_uvw, in const vec3 N, in const vec3 projections_ordered, in const float blend_factor)
+{
+	const vec4 voxel_offset = vec4(InvVolumeDimensions.xxx, 0.0f);
+
+	vec3 gradient;	
+	// trilinear sampling + centered differences
+	gradient.x =   getTriplanar(world_uvw + voxel_offset.xww, N, projections_ordered, blend_factor); - getTriplanar(world_uvw - voxel_offset.xww, N, projections_ordered, blend_factor);
+	gradient.y =   getTriplanar(world_uvw + voxel_offset.wyw, N, projections_ordered, blend_factor); - getTriplanar(world_uvw - voxel_offset.wyw, N, projections_ordered, blend_factor);
+	gradient.z =   getTriplanar(world_uvw + voxel_offset.wwz, N, projections_ordered, blend_factor); - getTriplanar(world_uvw - voxel_offset.wwz, N, projections_ordered, blend_factor);
+
+	return( normalize(gradient) ); // normal from central differences (gradient) 
+}
+
+vec3 calcNormal(in const vec3 world_uvw) {
+	const float hx1 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x - InvVolumeDimensions, world_uvw.y) * InvVolumeDimensions, 0)).r;
+    const float hx2 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x + InvVolumeDimensions, world_uvw.y) * InvVolumeDimensions, 0)).r;
+    const vec3 pu = normalize(vec3(2.0f * InvVolumeDimensions, 0.0f, hx2 - hx1));
+    
+    const float hy1 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x, world_uvw.y - InvVolumeDimensions) * InvVolumeDimensions, 0)).r;
+    const float hy2 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x, world_uvw.y + InvVolumeDimensions) * InvVolumeDimensions, 0)).r;
+    const vec3 pv = normalize(vec3(0.0f, 2.0f * InvVolumeDimensions, hy2 - hy1));
+    
+	vec3 n = normalize(cross(pu, pv));
+	//n.z = -n.z; // vulkan
+    return( n );
+}
+
+#define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
+#define MAX_STEPS VolumeDimensions
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 void main() {
-  
+  																		
+	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
+	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
+
+	//const float bn = textureLod(_texArray[TEX_BLUE_NOISE], vec3((In.world_uv * VolumeDimensions) / BLUE_NOISE_UV_SCALER, In._slice), 0.0f).g;  /* GREEN CHANNEL BN USED */
+	
+	//vec3 light_color;
+	//vec4 Ld;
+
+	//getLight(light_color, Ld, In.uv.xyz);
+	//Ld.att = getAttenuation(Ld.dist, VolumeLength);
+
+	//const float volume_length = length(VolumeDimensions.xxx);
+	//vec3 world_uvw = vec3(In.world_uv, In._height) * VolumeDimensions;
+
+	//const vec3 N2 = calcNormal(world_uvw);
+
+	//outColor = N2 * 0.5f + 0.5f;//max(0, dot(-vec3(Ld.dir.xy,-Ld.dir.z), N2)).xxx;
+
+	/*
+	float t1 = length(Ld.dir * Ld.dist * volume_length);
+	const float dt = max(MIN_STEP, 1.0f/volume_length);
+	uint i = uint(MAX_STEPS*0.5f);
+	
+	float max_height = 0.0f;
+	while(t1 > 0.0f && --i > 0u) {
+
+		const float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(world_uvw.xy * InvVolumeDimensions, 0)).r;
+		max_height = max(max_height, terrainHeight);
+		world_uvw += Ld.dir * dt;
+		t1 -= dt;
+	}
+	
+	// sample right on light
+	t1 += dt;
+	world_uvw += Ld.dir * t1;  // this is the last "partial" step!
+
+	const float light_height = texture(_texArray[TEX_TERRAIN], vec3(world_uvw.xy * InvVolumeDimensions, 0)).r;
+	
+	const float shadow = min(1.0f, light_height / max_height); // if light height is greater than the maximum height encounter on the way to the light, there is no shadowing
+															   // if light height is less than     ""  ""       ""      "       "  "   "   "   "   ", there is shadowing, here smoothly falling off to zero depending on the difference in height
+	
+	outColor = shadow.xxx;
+	*/
+	
+	const vec4 normal_terrain = texture(_texArray[TEX_TERRAIN], vec3(In.world_uv, 0));
+
+	//const float blend_factor = abs(fract( mix(16384.0f * (In.world_uv.x - 0.5f),8192.0f * (In.world_uv.y - 0.5f), 0.5f) * InvVolumeDimensions )); //fract(2.0f * abs(mix(In.world_uv.x,In.world_uv.y,0.5f) - 0.5f));
+	//const float height = mix(In._height, normal_terrain.w, blend_factor);		// interpolate passthru height (grid resolution) towards high resolution texture (texture resolution)
+
+	const vec3 N1 = normalize(In.N.xyz);
+	const vec3 N2 = normalize(normal_terrain.xyz);
+
+	//const vec3 N = normalize(mix(N1, N2, min(1.0f, blend_factor + 0.5f)));	// interpolate voxel normal (grid resolution) towards high resolution texture (texture resolution)
+	const vec3 N = normalize(N2 + normalize(mix(N1, N2, 1.0f - (dot(N1, N2) * 0.5f + 0.5f))));	// interpolate voxel normal (grid resolution) towards high resolution texture (texture resolution)
+	const float height = mix(In._height, normal_terrain.w, 1.0f - (dot(N, N2) * 0.5f + 0.5f));		// interpolate passthru height (grid resolution) towards high resolution texture (texture resolution)
+
+	
+	// lighting
+	const vec3 V = normalize(In.V.xyz);
+	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uv, 0)).rg;
+
+	vec3 color = vec3(0);
+	
+	const float roughness = albedo_ao.x * albedo_ao.y;
+
+	// twilight/starlight terrain lighting
+	color.rgb += lit( albedo_ao.xxx, make_material(0.0f, 0.0f, roughness), vec3(1),				 
+				      albedo_ao.y, getAttenuation((1.0f - height) * InvVolumeDimensions, VolumeDimensions), // on a single voxel
+				      vec3(0,0,1), N, V, false); // don't want to double-add reflections
+
+	// regular terrain lighting
 	vec3 light_color;
 	vec4 Ld;
 
 	getLight(light_color, Ld, In.uv.xyz);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
-	
-																						// bugfix: y is flipped. simplest to correct here.
-	const vec2 terrainDetail = texture(_texArray[TEX_TERRAIN], vec3(vec2(In.world_uv.x, 1.0f - In.world_uv.y), 0)).rg; // since its dark, terrain color doesnt't have a huge impact - but lighting does on terrain
-	
-	const vec3 N = normalize(In.N.xyz);
-	const vec3 V = normalize(In.V.xyz);
-
-	const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
-	const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
-
-	vec3 color = vec3(0);
-	const float occ = getOcclusion(In.uv.xyz);
-
-					   // twilight reflection
-	color.rgb += lit( terrainDetail.yyy, make_material(0.0f, 0.0f, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
-					  occ, 1.0f - Ld.att,
-					  vec3(0,0,1), N, V, false);
-	color.rgb += lit( terrainDetail.yyy, make_material(0.0f, 0.0f, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
-					  occ, 1.0f - Ld.att,
-					  vec3(0,1,0), N, V, false);
-	color.rgb += lit( terrainDetail.yyy, make_material(0.0f, 0.0f, 1.0f - terrainDetail.y), vec3(1),				// regular terrain lighting
-					  occ, 1.0f - Ld.att,
-					  vec3(1,0,0), N, V, false);
 
 						// only emissive can have color
-	color.rgb += lit( mix(terrainDetail.xxx, grid * unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, 1.0f - terrainDetail.x), light_color,				// regular terrain lighting
-					      occ, Ld.att,
-					      -Ld.dir, N, V, true); // don't want to double-add reflections
-	
+	color.rgb += lit( mix(albedo_ao.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, roughness), light_color,		
+					  getOcclusion(In.uv.xyz), Ld.att,
+					  -Ld.dir, N, V, true);
+
 	outColor.rgb = color;
-	/*
-	const vec3 N = normalize(In.N.xyz);
-	
-	float s = abs(step(0.0f, -N.y) * N.y);
-	
-	outColor.rgb = vec3(s);*/
-	
-	//outColor = vec3(attenuation);
-	//outColor.rgb = vec3(visibility);
-	//outColor.rgb = vec3(getOcclusion(In.uv.xyz));//vec3(terrainHeight * In._occlusion);
 }
 #elif defined(ROAD)  
 

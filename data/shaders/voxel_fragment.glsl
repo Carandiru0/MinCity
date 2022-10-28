@@ -62,11 +62,11 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 // only valid for NON-BASIC
 #ifndef BASIC
 
-#define i_extra_00 uv.w			// *                          - free (unused)
+#define i_extra_00 uv.w			// *                          - bn slice #
 #define i_extra_0 N.w			// *						  - ambient (only used when road or terrain, normal voxels have material)
 #define i_extra_1 V.w			// *						  - emission (only used when road or terrain, normal voxels have material)
 #define f_extra_0 extra.x		// *						  - packed color
-#define f_extra_1 extra.y		// *						  - transparency
+#define f_extra_1 extra.y		// *						  - transparency or (terrain only) height
 #define f_extra_2 extra.z		// *                          - pass thru inverse weight maximum (transparency weighting max for this frame)
 #define f_extra_3 extra.w		// *						  - time
 
@@ -75,8 +75,10 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 // defaults //
 // free not used anymore #define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
+#define _slice i_extra_00
 #define _ambient i_extra_0
 #define _emission i_extra_1
+#define _height f_extra_1
 #define _color f_extra_0
 #define _time f_extra_3
 #undef i_extra_2

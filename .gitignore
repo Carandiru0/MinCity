@@ -82,3 +82,7 @@ MinCity/x64/Debug/MinCity.ilk
 data/debug/last_terrain.ktx
 data/debug/last_terrain_grid_sized.ktx
 *.ktx
+data/textures/results/moon_map_albedo.ktx2
+*.ktx2
+*.ktx
+*.ktx

@@ -34,7 +34,7 @@ namespace supernoise
 
 			{
 				float* __restrict pOutBytes(_blueNoise1D);
-				uint8_t const* __restrict pBytes(imgBlueNoise->block);
+				uint32_t const* __restrict pPixels((uint32_t const* __restrict)imgBlueNoise->block);
 
 				int32_t y(BLUENOISE_DIMENSION_SZ - 1);
 				do
@@ -42,11 +42,11 @@ namespace supernoise
 					int32_t x(BLUENOISE_DIMENSION_SZ - 1);
 					do
 					{
-						// format is 2bytes, 2 channels - just grabbing 1st channel for 1D array (this is the correct way)
-						*pOutBytes = SFM::u8_to_float(*pBytes);	// *do not* mix bluenoise channels to obtain one. 
+						// format is 2 components (16bpc) - just grabbing 1st channel for 1D array (this is the correct way)
+						*pOutBytes = SFM::u16_to_float(0xffffu & (*pPixels));	// *do not* mix bluenoise channels to obtain one. 
 
 						++pOutBytes;
-						pBytes += 2;
+						++pPixels;
 
 					} while (--x >= 0);
 				} while (--y >= 0);

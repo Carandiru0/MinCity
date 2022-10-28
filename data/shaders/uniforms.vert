@@ -66,6 +66,7 @@ writeonly layout(location = 0) out streamOut
 	flat float   ambient;
 	flat float   color;
 	flat float   emission;
+	flat float   height;
 #endif
 } Out;
 #elif defined(ROAD) // road
@@ -100,8 +101,10 @@ writeonly layout(location = 0) out streamOut
 #if defined(HEIGHT) || defined(ROAD)
 #ifdef BASIC
 layout (constant_id = 8) const int MINIVOXEL_FACTOR = 1;
+layout (constant_id = 9) const float TERRAIN_MAX_HEIGHT = 1;
 #else
 layout (constant_id = 2) const int MINIVOXEL_FACTOR = 1;
+layout (constant_id = 3) const float TERRAIN_MAX_HEIGHT = 1;
 #endif
 
 #define SHIFT_EMISSION 8U
@@ -208,8 +211,11 @@ void main() {
 	Out.forward	= vec3(0.0f, 0.0f, VOX_SIZE * 0.5f); 
   
   const uint uheightstep = 0xffff & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
-  const float heightstep = 256.0f / float(MINIVOXEL_FACTOR) * (float(uheightstep) / 65535.0f); // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
-  const float real_height = max(VOX_SIZE / float(MINIVOXEL_FACTOR), heightstep / float(MINIVOXEL_FACTOR) * VOX_SIZE) * float(MINIVOXEL_FACTOR);
+  const float heightstep = float(uheightstep) / 65535.0f; // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
+#ifndef BASIC
+  Out.height = heightstep; // output normalized height to pass-thru to fragment shader
+#endif
+  const float real_height = max(VOX_SIZE / float(MINIVOXEL_FACTOR), (TERRAIN_MAX_HEIGHT * heightstep) * (VOX_SIZE / float(MINIVOXEL_FACTOR))) * float(MINIVOXEL_FACTOR);
   Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
 #endif
 

@@ -12,12 +12,6 @@ namespace Volumetric
 
 namespace world
 {
-	static constexpr uint32_t const NUM_DISTINCT_GROUND_HEIGHTS = Iso::NUM_HEIGHT_STEPS - 1; // ***not including / forget about zero***
-	static constexpr uint32_t const GROUND_HEIGHT_NOISE_STEP = (UINT8_MAX - 0) / NUM_DISTINCT_GROUND_HEIGHTS;			// 100 is a good value for more "flat" landmass (by raising the minimum),  use 0 to capture the full range of the data (default).	
-
-	static constexpr uint32_t const TERRAIN_TEXTURE_SZ = 8192;		// ** must be a multiple of world grid, (ideally equal to world grid size)
-	                                                                // ** power of 2 and not exceeding 16384
-
 	static constexpr uint32_t const RESIDENTIAL = 0,
 									COMMERCIAL = 1,
 									INDUSTRIAL = 2;

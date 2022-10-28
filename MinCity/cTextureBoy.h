@@ -20,7 +20,7 @@ class no_vtable cTextureBoy : no_copy
 {
 	static constexpr uint32_t const NOISE_TEXTURE_SIZE = 128; // should be a power of 2
 private:
-	template<typename T>
+	template<typename T, uint32_t const version = 1>
 	bool const LoadKTXTexture(T*& __restrict texture, std::wstring_view const path);
 public:
 	// ######################################################################################
@@ -43,6 +43,10 @@ public:
 	bool const LoadKTXTexture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path);
+	bool const LoadKTX2Texture(vku::TextureImageCube*& __restrict texture, std::wstring_view const path);
+	bool const LoadKTX2Texture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path);
+	bool const LoadKTX2Texture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path);
+	bool const LoadKTX2Texture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path);
 
 	// simplest way to create a blank placeholder texture is to leverage the ImagingToTexture functions, with image initialized to blank memory
 
@@ -413,7 +417,7 @@ __inline void cTextureBoy::ImagingToTexture(ImagingLUT const* const image, vku::
 	texture->finalizeUpload(_device, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
 }
 
-template<typename T>
+template<typename T, uint32_t const version>
 bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view const path)
 {
 	std::error_code error{};
@@ -426,7 +430,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 
 			uint8_t const* const pReadPointer((uint8_t*)mmap.data());
 
-			vku::KTXFileLayout const ktxFile(pReadPointer, pReadPointer + mmap.length());
+			vku::KTXFileLayout<version> const ktxFile(pReadPointer, pReadPointer + mmap.length());
 
 			if (ktxFile.ok()) {
 

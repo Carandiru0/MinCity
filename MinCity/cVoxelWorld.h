@@ -313,9 +313,8 @@ namespace world
 	private:
 		UniformState						  _lastState, _currentState, _targetState;
 
-		Imaging						_terrainTempImage;
-
-		vku::TextureImage2D			*_terrainTexture,
+		vku::TextureImage2D			* _terrainTexture,
+			                        * _terrainTexture2,
 									* _gridTexture;
 
 		vku::TextureImage2D*		_blackbodyTexture;

@@ -31,8 +31,8 @@ namespace Iso
 		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);
 
 	static constexpr int32_t const
-		MIN_VOXEL_COORD = -((int32_t)WORLD_GRID_HALFSIZE),
-		MAX_VOXEL_COORD = (WORLD_GRID_HALFSIZE);
+		MIN_VOXEL_COORD = -((int32_t)(WORLD_GRID_HALFSIZE - 1)),
+		MAX_VOXEL_COORD = (int32_t)(WORLD_GRID_HALFSIZE - 1);
 
 	static constexpr float const
 		MIN_VOXEL_FCOORD = (float)MIN_VOXEL_COORD,
@@ -83,7 +83,8 @@ namespace Iso
 		MINI_VOX_SIZE = VOX_SIZE / MINIVOXEL_FACTORF,	// this value and shader value for mini-vox size need to always match
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
 
-		WORLD_MAX_HEIGHT = (float)SCREEN_VOXELS_Y, // unit: voxels  ** not minivoxels
+		WORLD_MAX_HEIGHT = (float)(SCREEN_VOXELS_Y - 1), // unit: voxels  ** not minivoxels
+		TERRAIN_MAX_HEIGHT = WORLD_MAX_HEIGHT / MINIVOXEL_FACTORF,
 		WORLD_GRID_FSIZE = (float)WORLD_GRID_SIZE,
 		WORLD_GRID_FHALFSIZE = (float)WORLD_GRID_HALFSIZE,
 		INVERSE_WORLD_GRID_FSIZE = 1.0f / WORLD_GRID_FSIZE,
@@ -92,7 +93,7 @@ namespace Iso
 	static constexpr double const
 		VOX_MINZ_SCALAR = ((double)Iso::MINI_VOX_SIZE) * SFM::GOLDEN_RATIO_ZERO;
 
-	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD, (float)SCREEN_VOXELS_Y, MAX_VOXEL_FCOORD }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
+	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD, WORLD_MAX_HEIGHT, MAX_VOXEL_FCOORD }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
 	static constexpr int32_t const
 		VIRTUAL_SCREEN_VOXELS = SCREEN_VOXELS_XZ * MINIVOXEL_FACTOR;
@@ -125,10 +126,9 @@ namespace Iso
 	// 0011 1100 ### UNUSED ###
 	static constexpr uint8_t const MASK_UNUSED_BITS = 0b00111100;
 	// Height moved to dedicated member
-	static constexpr uint32_t const DESC_HEIGHT_STEP_0 = 0;
-	static constexpr uint32_t const MAX_HEIGHT_STEP = 0xFF;	
-	static constexpr uint32_t const NUM_HEIGHT_STEPS = MAX_HEIGHT_STEP + 1;	// 256 Values (0-255 8bits)	
-	static constexpr float const   INV_MAX_HEIGHT_STEP = 1.0f / (float)MAX_HEIGHT_STEP;
+	static constexpr uint32_t const MAX_HEIGHT_STEP = 0xFFFF;	
+	static constexpr uint32_t const NUM_HEIGHT_STEPS = MAX_HEIGHT_STEP + 1;	// 256 Values (0-65535 16bits)	
+	static constexpr float const    INV_MAX_HEIGHT_STEP = 1.0f / (float)MAX_HEIGHT_STEP;
 
 	// 1100 0000 ### SPECIAL ###
 	static constexpr uint8_t const MASK_PENDING_BIT = 0b01000000;			// for temporary status indication (constructing/not commited to grid)
@@ -166,30 +166,14 @@ namespace Iso
 	static constexpr uint8_t const
 		HASH_COUNT = 7;  // 60 bytes + 4bytes = 64bytes/voxel
 
-	typedef union heightstep
-	{
-		struct
-		{
-			uint8_t major : 8;
-			uint8_t minor : 8;
-		};
-
-		uint16_t data;
-	} heightstep;  // Heightstep [0 ... 255] major , [0.000 ... 0.999]
-
-	STATIC_INLINE_PURE float const heightstep_query_precise(heightstep const h) {      /// returns in [0 ... 1.0] range 
-		return(SFM::linearstep(0.0f, 65535.0f, h.data));
-	}
-	STATIC_INLINE_PURE uint32_t const heightstep_query(heightstep const h) {           // returns in [0 ... 255] range
-		return(h.major);
-	}
+	using heightstep = uint16_t;
 
 	class no_vtable Voxel
 	{
 	public:
-		static ImagingMemoryInstance* const& __restrict HeightMap();
-		static heightstep const __vectorcall            HeightMap(point2D_t const voxelIndex);
-		static uint16_t* const __restrict __vectorcall HeightMapReference(point2D_t const voxelIndex);
+		static ImagingMemoryInstance* const& __restrict   HeightMap();
+		static heightstep const __vectorcall              HeightMap(point2D_t const voxelIndex);
+		static heightstep* const __restrict __vectorcall  HeightMapReference(point2D_t const voxelIndex);
 
 		uint8_t Desc;								// Type of Voxel + Attributes
 		uint8_t MaterialDesc;						// Deterministic SubType and Adjacency
@@ -375,21 +359,27 @@ namespace Iso
 		setType(oVoxel, Iso::TYPE_GROUND);   // default change type to ground
 	}
 
-	STATIC_INLINE uint32_t const __vectorcall getHeightStep(point2D_t const voxelIndex)
+	STATIC_INLINE uint32_t const __vectorcall getHeightStep(point2D_t const voxelIndex) // returns 0u .... 65535u
 	{
-		return(heightstep_query(Voxel::HeightMap(voxelIndex)));
+		return(Voxel::HeightMap(voxelIndex));
 	}
-	STATIC_INLINE void __vectorcall setHeightStep(point2D_t const voxelIndex, uint32_t const HeightStep)
+	STATIC_INLINE void __vectorcall setHeightStep(point2D_t const voxelIndex, uint32_t const HeightStep) // HeightStep must be within the range 0u .... 65535u
 	{
-		*Voxel::HeightMapReference(voxelIndex) = ((HeightStep << 16u) | HeightStep);
+		*Voxel::HeightMapReference(voxelIndex) = HeightStep;
 	}
-	STATIC_INLINE_PURE float const getRealHeight(float const fHeightStep)
+	STATIC_INLINE_PURE float const getRealHeight(heightstep const HeightStep)
 	{
-		return(SFM::max(VOX_SIZE / MINIVOXEL_FACTORF, WORLD_MAX_HEIGHT / MINIVOXEL_FACTORF * (fHeightStep/255.0f) * VOX_SIZE) * MINIVOXEL_FACTORF);
+		static constexpr uint32_t const RANGE_MAX = (UINT16_MAX);
+		static constexpr float const INV_RANGE_MAX = 1.0f / (float)RANGE_MAX;
+
+		float const fHeightStep(INV_RANGE_MAX * ((float)HeightStep)); // normalize range 0.0f ... 1.0f
+		// scale to maximum world space terrain height....
+		// glsl :
+		return(SFM::max(MINI_VOX_SIZE, (TERRAIN_MAX_HEIGHT * fHeightStep) * MINI_VOX_SIZE) * MINIVOXEL_FACTORF); // transform by voxel size and minivoxel size, minimum of 1 minivoxel (in world voxel space coordinates) for real height.
 	}
 	STATIC_INLINE float const __vectorcall getRealHeight(point2D_t const voxelIndex)
 	{
-		return(getRealHeight(255.0f*heightstep_query_precise(Voxel::HeightMap(voxelIndex))));  // half-voxel offset is exact
+		return(getRealHeight(Voxel::HeightMap(voxelIndex))); // returns in world space voxel coordinates the height same as above however directly accessed fron Heightmap automatically for the passed in voxelIndex
 	}
 
 	// #defines to ensure one comparison only and compared with zero always (performance)

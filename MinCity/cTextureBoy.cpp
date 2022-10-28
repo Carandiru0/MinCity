@@ -192,6 +192,22 @@ bool const cTextureBoy::LoadKTXTexture(vku::TextureImageCube*& __restrict textur
 {
 	return(LoadKTXTexture<vku::TextureImageCube>(texture, path));
 }
+bool const cTextureBoy::LoadKTX2Texture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path)
+{
+	return(LoadKTXTexture<vku::TextureImage2D, 2>(texture, path));
+}
+bool const cTextureBoy::LoadKTX2Texture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path)
+{
+	return(LoadKTXTexture<vku::TextureImage2DArray, 2>(texture, path));
+}
+bool const cTextureBoy::LoadKTX2Texture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path)
+{
+	return(LoadKTXTexture<vku::TextureImage3D, 2>(texture, path));
+}
+bool const cTextureBoy::LoadKTX2Texture(vku::TextureImageCube*& __restrict texture, std::wstring_view const path)
+{
+	return(LoadKTXTexture<vku::TextureImageCube, 2>(texture, path));
+}
 void cTextureBoy::CleanUp()
 {
 	SAFE_RELEASE_DELETE(_noiseTexture);

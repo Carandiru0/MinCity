@@ -211,31 +211,24 @@ static uint32_t const RenderNoiseImagePixel(float const u, float const v, float 
 
 void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lunar surface details are weighted into the final terrain generated
 {
-	constinit static bool bInitialRun(true);
-
 	supernoise::NewNoisePermutation();
 
 	Imaging imageNoise(nullptr); // elevation only
 
 	{
-		// Generate Image
-		Imaging imageTerrain = ImagingLoadKTX(TEXTURE_DIR "moon_map_elevation.ktx"); // single channel texture
+		// Generate 
+		Imaging imageTerrain = ImagingLoadKTX(TEXTURE_DIR "moon_heightmap.ktx"); // single channel texture
 
+#ifndef NDEBUG
+#ifdef DEBUG_ALIGNMENT_TERRAIN
+		ImagingDelete(imageTerrain);
+		imageTerrain = ImagingLoadKTX(DEBUG_DIR "test_height_map.ktx");
+#endif
+#endif
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(20));
+		Imaging resampledImg(nullptr);
 
-		Imaging resampledImg = ImagingBits_16To8(imageTerrain);
-		imageNoise = imageTerrain; imageTerrain = resampledImg; // saving original for later
-
-		// filter - removing high frequency noise only, maintaining sharp edges and changes.
-		Imaging const filteredImg = MinCity::Procedural->BilateralFilter(imageTerrain);
-		ImagingDelete(imageTerrain); imageTerrain = filteredImg;
-
-		resampledImg = ImagingBits_8To16(imageTerrain);
-		ImagingDelete(imageTerrain); imageTerrain = resampledImg;
-
-		// mix 8bit filtered image by averaging its result with the full 16 bit original
-		ImagingLerpL16(imageNoise, imageTerrain, 0.5f);
-		ImagingDelete(imageTerrain); imageTerrain = imageNoise; imageNoise = nullptr; // keeping blended 16 bit result
+		// bilateral filter removed - bug fix was not 16bit comptabile, terrain detail is better w/o the filter.
 
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(25));
 
@@ -266,45 +259,6 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 #endif
 #endif
 	}
-	// Create and Upload Texture //
-	{
-		// Generate Image
-		Imaging imageTerrainDetail = ImagingLoadKTX(TEXTURE_DIR "moon_map_detail.ktx"); // dual 16bit channel texture
-
-		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(35));
-		// imagenoise retained for generation later //
-		{
-			if (_terrainTempImage) {
-
-				ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr;
-			}
-
-			_terrainTempImage = imageTerrainDetail;
-		}
-#ifndef NDEBUG
-#ifdef DEBUG_EXPORT_TERRAIN_KTX
-		ImagingSaveToKTX(_terrainTempImage, DEBUG_DIR L"last_terrain_detail.ktx");
-#endif
-#endif
-		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
-
-		if (bInitialRun) { // first run at program load requires these things to be setup for texture array and is always run from the main thread
-
-			MinCity::TextureBoy->ImagingToTexture_RG<false, true>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
-			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
-
-			MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
-
-			// imageNoise is released at end of function
-
-			// terrain grid mipmapped texture
-			MinCity::TextureBoy->LoadKTXTexture(_gridTexture, TEXTURE_DIR L"grid.ktx");
-			MinCity::TextureBoy->AddTextureToTextureArray(_gridTexture, TEX_GRID);
-
-			bInitialRun = false;
-		}
-		// otherwise texture creation from image takes place in onloaded event.
-	}
 
 	// Traverse Grid
 	if (_heightmap) {
@@ -330,6 +284,9 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 		} while (++xVoxel < Iso::WORLD_GRID_SIZE);
 
 	});
+
+	// otherwise texture creation from image takes place in onloaded event.
+	MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
 
 	// Compute adjacency based on neighbour occupancy
 	ComputeGroundAdjacency();
@@ -1924,7 +1881,7 @@ namespace // private to this file (anonymous)
 				groundHash |= Iso::getAdjacency(oVoxel);			//				0011 1111
 				//				RRxx xxxx
 				groundHash |= (emissive << 8);						// 0000 0001	xxxx xxxx
-				groundHash |= (uint32_t(Iso::Voxel::HeightMap(voxelIndex).data) << 12);	// 1111 RRRx	xxxx xxxx
+				groundHash |= (uint32_t(Iso::Voxel::HeightMap(voxelIndex)) << 12);	// 1111 RRRx	xxxx xxxx
 
 				XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
 
@@ -1941,7 +1898,7 @@ namespace // private to this file (anonymous)
 				if (emissive) {
 
 					// add light, offset to the height of this ground voxel
-					Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, Iso::getRealHeight(voxelIndex) * 2.0f), color); // cheating on transform, so its on the top effectively applies proper height for light
+					Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, Iso::getRealHeight(voxelIndex) + 1.0f), color); // transform, so its on the top effectively applies proper height for light
 				}
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -2025,8 +1982,15 @@ namespace // private to this file (anonymous)
 #endif
 			point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 
-			// Traverse Grid
-			point2D_t iterations(MAX_VISIBLE_X, MAX_VISIBLE_Y);
+			// wrap bounds //
+			voxelReset.x = voxelReset.x & (Iso::WORLD_GRID_SIZE - 1);
+			voxelReset.y = voxelReset.y & (Iso::WORLD_GRID_SIZE - 1);
+
+			point2D_t voxelEnd = p2D_add(voxelReset, point2D_t(MAX_VISIBLE_X, MAX_VISIBLE_Y));
+
+			// wrap bounds //
+			voxelEnd.x = voxelEnd.x & (Iso::WORLD_GRID_SIZE - 1);
+			voxelEnd.y = voxelEnd.y & (Iso::WORLD_GRID_SIZE - 1);
 
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
@@ -2044,31 +2008,7 @@ namespace // private to this file (anonymous)
 					lines_missing = MAX_VISIBLE_Y - 1;
 				}
 			}
-#endif
-
-			if ((voxelReset.y < 0)) {
-				iterations.y += voxelReset.y;
-				voxelReset.y = 0;
-			}
-
-			if ((voxelReset.x < 0)) {
-				iterations.x += voxelReset.x;
-				voxelReset.x = 0;
-			}
-
-			point2D_t voxelEnd = p2D_add(voxelReset, iterations);
-
-			// wrap bounds //
-			voxelEnd.x = voxelEnd.x & (Iso::WORLD_GRID_SIZE - 1);
-			voxelEnd.y = voxelEnd.y & (Iso::WORLD_GRID_SIZE - 1);
-
-			if (voxelReset.x > voxelEnd.x) {
-				std::swap(voxelReset.x, voxelEnd.x);
-			}
-			if (voxelReset.y > voxelEnd.y) {
-				std::swap(voxelReset.y, voxelEnd.y);
-		    }
-
+#endif		
 
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			voxelEnd.y -= lines_missing;
@@ -2251,9 +2191,8 @@ namespace world
 		:
 		_lastState{}, _currentState{}, _targetState{}, _occlusion{},
 		_vMouse{}, _lastOcclusionQueryValid(false), _inputEnabledBits{},
-		_terrainTempImage(nullptr),
 		_onLoadedRequired(true),
-		_terrainTexture(nullptr), _gridTexture(nullptr), _blackbodyTexture(nullptr), _heightmap(nullptr), _spaceCubemapTexture(nullptr),
+		_terrainTexture2(nullptr), _gridTexture(nullptr), _blackbodyTexture(nullptr), _heightmap(nullptr), _spaceCubemapTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
 		_AsyncClearTaskID(0)
@@ -2269,7 +2208,7 @@ namespace world
 namespace Iso
 {
 	ImagingMemoryInstance* const& __restrict Voxel::HeightMap() {
-		return(Volumetric::VolumetricLink->World.getHeightMapImage());
+		return(MinCity::VoxelWorld->getHeightMapImage());
 	}
 
 	/*
@@ -2310,9 +2249,9 @@ namespace Iso
 
 		uint16_t const* const* const heights((uint16_t**)image->image32);
 
-		return{ heightstep{.data = *(heights[voxelIndex.y] + voxelIndex.x)} };
+		return{ *(heights[voxelIndex.y] + voxelIndex.x) };
 	}
-	uint16_t* const __restrict __vectorcall Voxel::HeightMapReference(point2D_t const voxelIndex)
+	heightstep* const __restrict __vectorcall Voxel::HeightMapReference(point2D_t const voxelIndex)
 	{
 		auto const& image(HeightMap());
 
@@ -2405,7 +2344,23 @@ namespace world
 #endif
 		}
 		
+		// Load Terrain Texture
+#if !defined(NDEBUG) && defined(DEBUG_ALIGNMENT_TERRAIN)
+		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture, DEBUG_DIR "test_pattern_map.ktx");
+#else
+		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture, TEXTURE_DIR "moon_normal_height.ktx");
+#endif
+		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
+
+		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture2, TEXTURE_DIR "moon_albedo_ao.ktx");
+
+		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture2, TEX_TERRAIN2);
+
 		// other textures:
+		// 
+		// terrain grid mipmapped texture
+		MinCity::TextureBoy->LoadKTXTexture(_gridTexture, TEXTURE_DIR L"grid.ktx");
+		MinCity::TextureBoy->AddTextureToTextureArray(_gridTexture, TEX_GRID);
 
 		Imaging const blackbodyImage(ImagingLoadRawBGRA(TEXTURE_DIR "blackbody.data", BLACKBODY_IMAGE_WIDTH, 1));
 		MinCity::TextureBoy->ImagingToTexture<false>(blackbodyImage, _blackbodyTexture);
@@ -2738,11 +2693,6 @@ namespace world
 	{
 		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
-
-		if (_terrainTempImage) { // New pending terrain image to be converted to texture?
-			MinCity::TextureBoy->ImagingToTexture_RG<false, true>(_terrainTempImage, _terrainTexture);	// generated texture is in linear colorspace
-			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr; // don't require reloading in onLoaded method.
-		}
 
 #ifdef GIF_MODE
 
@@ -4038,7 +3988,7 @@ namespace world
 		getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
 	}
 		
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE; // should be minivox size (affects light attenuation *only*)
+	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE / MINIVOXEL_FACTORF; // should be minivox size (affects light attenuation *only*)
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4177,10 +4127,11 @@ namespace world
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * Iso::VOXELS_GRID_SLOT_XZ_FP); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * MINIVOXEL_FACTORF); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(8, (int)MINIVOXEL_FACTOR));		
+		constants.emplace_back(vku::SpecializationConstant(8, (int)MINIVOXEL_FACTOR));	
+		constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
@@ -4189,11 +4140,12 @@ namespace world
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * Iso::VOXELS_GRID_SLOT_XZ_FP); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * MINIVOXEL_FACTORF); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
 		constants.emplace_back(vku::SpecializationConstant(2, (int)MINIVOXEL_FACTOR));
+		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4232,7 +4184,8 @@ namespace world
 		SetSpecializationConstants_Voxel_GS_Common(constants);
 		
 		// used for uv creation in geometry shader  // terrain texture is generated (not available yet)
-		constants.emplace_back(vku::SpecializationConstant(6, 0.5f / ((float)world::TERRAIN_TEXTURE_SZ)));// (0.5f / ((float)Volumetric::Allocation::VOXEL_GRID_VISIBLE_XZ)))); // should be width/depth (width==depth)
+		constants.emplace_back(vku::SpecializationConstant(6, 0.5f / ((float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
+		constants.emplace_back(vku::SpecializationConstant(7, 0.5f / ((float)_terrainTexture->extent().height)));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4427,6 +4380,9 @@ namespace world
 
 		dsu.beginImages(5U, TEX_TERRAIN, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_TERRAIN_SAMPLER, rTextures[TEX_TERRAIN]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		dsu.beginImages(5U, TEX_TERRAIN2, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(TEX_TERRAIN2_SAMPLER, rTextures[TEX_TERRAIN2]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		dsu.beginImages(5U, TEX_GRID, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_GRID_SAMPLER, rTextures[TEX_GRID]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -4839,12 +4795,8 @@ namespace world
 			voxels.visibleTerrain.stagingBuffer[i].release();
 		}
 
-		if (_terrainTempImage) {
-
-			ImagingDelete(_terrainTempImage); _terrainTempImage = nullptr;
-		}
-
 		SAFE_DELETE(_terrainTexture);
+		SAFE_DELETE(_terrainTexture2);
 		SAFE_DELETE(_gridTexture);
 		SAFE_DELETE(_blackbodyTexture);
 		SAFE_DELETE(_spaceCubemapTexture);

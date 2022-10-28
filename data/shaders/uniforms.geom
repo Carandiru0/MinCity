@@ -32,6 +32,7 @@ layout(location = 0) in streamIn
 	readonly flat float   ambient;
 	readonly flat float	  color;
 	readonly flat float   emission;
+	readonly flat float   height;
 #endif
 } In[];
 #elif defined(ROAD) // road
@@ -77,13 +78,10 @@ layout (constant_id = 5) const float InvToIndex_Z = 0.0f;
 #if (defined(HEIGHT) || defined(ROAD)) // terrain, roads
 
 layout (constant_id = 6) const float HALF_TEXEL_OFFSET_U = 0.0f;
-#endif
-#if defined(HEIGHT)
-#define HALF_TEXEL_OFFSET_TEXTURE HALF_TEXEL_OFFSET_U.xx
-#endif
-#if defined(ROAD)
 layout (constant_id = 7) const float HALF_TEXEL_OFFSET_V = 0.0f;
+
 #define HALF_TEXEL_OFFSET_TEXTURE vec2(HALF_TEXEL_OFFSET_U, HALF_TEXEL_OFFSET_V)
+
 #endif
 
 #endif
@@ -140,10 +138,19 @@ void PerVoxel()
 #ifdef _emission
 	Out._emission = In[0].emission;
 #endif
+#if defined(HEIGHT)
+#ifdef _height
+	Out._height = In[0].height;
+#endif
+#endif
 #endif
 
 #ifdef _time
 	Out._time = time();
+#endif
+
+#ifdef _slice
+	Out._slice = frame_to_slice();
 #endif
 
 #ifdef TRANS
