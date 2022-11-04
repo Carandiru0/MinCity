@@ -176,10 +176,13 @@ namespace world
 			}
 		}
 
-		if (_thrusterFire->getIntensity() <= 0.0f) {
-			_thrusterFire->resetAnimation();
+		if (_thrusterFire) {
+
+			if (_thrusterFire->getIntensity() <= 0.0f) {
+				_thrusterFire->resetAnimation();
+			}
+			_thrusterFire->setIntensity(power);
 		}
-		_thrusterFire->setIntensity(power);
 	}
 	void cYXIGameObject::updateThrusterFire(float const power)
 	{

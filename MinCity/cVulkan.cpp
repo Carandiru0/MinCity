@@ -1572,9 +1572,9 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 }
 
 // macros for sampler sets
-#define SAMPLER_SET_STANDARD getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>()
-#define SAMPLER_SET_STANDARD_POINT getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>(), getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>()
-#define SAMPLER_SET_STANDARD_POINT_ANISO getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>(), getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>(), getAnisotropicSampler(), getAnisotropicSampler<eSamplerAddressing::REPEAT>()
+#define SAMPLER_SET_LINEAR getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>()
+#define SAMPLER_SET_LINEAR_POINT getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>(), getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>()
+#define SAMPLER_SET_LINEAR_POINT_ANISO getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>(), getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>(), getAnisotropicSampler(), getAnisotropicSampler<eSamplerAddressing::REPEAT>()
 
 void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 {
@@ -1620,7 +1620,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value - common descriptor set uses the lastColorImageView in binding 6, for transparency usage in the overlay/transparency pass, at that point, it only contains the scene rendered of opaques. "grab pass"
-			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_STANDARD_POINT_ANISO);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_LINEAR_POINT_ANISO);
 			
 		}
 	}
@@ -1632,7 +1632,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			MinCity::VoxelWorld->UpdateDescriptorSet_Voxel_ClearMask(resource_index, _dsu);
+			MinCity::VoxelWorld->UpdateDescriptorSet_Voxel_ClearMask(resource_index, _dsu, SAMPLER_SET_LINEAR);
 
 		}
 	}
@@ -1646,7 +1646,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->normalImageView(), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLight(_dsu, _window->depthResolvedImageView(1), _window->normalImageView(), _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), SAMPLER_SET_LINEAR_POINT);
 
 		}
 	}
@@ -1660,7 +1660,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
-			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), _window->colorVolumetricImageView(), _window->colorReflectionImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightResolve(_dsu, _window->colorVolumetricDownResCheckeredImageView(), _window->colorReflectionDownResCheckeredImageView(), _window->colorVolumetricImageView(), _window->colorReflectionImageView(), SAMPLER_SET_LINEAR_POINT);
 
 		}
 
@@ -1673,7 +1673,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_volData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value
-			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightUpsample(resource_index, _dsu, _window->depthResolvedImageView(0), _window->depthResolvedImageView(1), _window->colorVolumetricDownResImageView(), _window->colorReflectionDownResImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VolumetricLightUpsample(resource_index, _dsu, _window->depthResolvedImageView(0), _window->depthResolvedImageView(1), _window->colorVolumetricDownResImageView(), _window->colorReflectionDownResImageView(), SAMPLER_SET_LINEAR_POINT);
 			
 		}
 
@@ -1704,7 +1704,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value - lastColorImageView becomes the main color texture sampled, by this time it contains the opaques, transparents & volumetrics.
-			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA_Post(_dsu, _window->lastColorImageView(1), _window->lastColorImageView(2), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA_Post(_dsu, _window->lastColorImageView(1), _window->lastColorImageView(2), SAMPLER_SET_LINEAR_POINT);
 		}
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 			_dsu.beginDescriptorSet(_aaData.sets[sPOSTAADATA::eStage::Final][resource_index]);
@@ -1714,7 +1714,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value - lastColorImageView becomes the main color texture sampled, by this time it contains the opaques, transparents & volumetrics.
-			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA_Final(_dsu, _window->lastColorImageView(1), _window->guiImageView(), SAMPLER_SET_STANDARD_POINT);
+			MinCity::VoxelWorld->UpdateDescriptorSet_PostAA_Final(_dsu, _window->lastColorImageView(1), _window->guiImageView(), SAMPLER_SET_LINEAR_POINT);
 		}
 	}
 

@@ -2348,7 +2348,7 @@ namespace world
 #if !defined(NDEBUG) && defined(DEBUG_ALIGNMENT_TERRAIN)
 		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture, DEBUG_DIR "test_pattern_map.ktx");
 #else
-		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture, TEXTURE_DIR "moon_normal_height.ktx");
+		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture, TEXTURE_DIR "moon_height_derivative.ktx");
 #endif
 		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
 
@@ -4183,9 +4183,9 @@ namespace world
 	{
 		SetSpecializationConstants_Voxel_GS_Common(constants);
 		
-		// used for uv creation in geometry shader  // terrain texture is generated (not available yet)
-		constants.emplace_back(vku::SpecializationConstant(6, 0.5f / ((float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
-		constants.emplace_back(vku::SpecializationConstant(7, 0.5f / ((float)_terrainTexture->extent().height)));
+		// used for height vertex displacement & used for uv creation in geometry shader 
+		constants.emplace_back(vku::SpecializationConstant(6, (0.5f / (float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
+		constants.emplace_back(vku::SpecializationConstant(7, (0.5f / (float)_terrainTexture->extent().height)));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4261,7 +4261,7 @@ namespace world
 		dsu.image(nullptr, _textureShader[shader].output->imageView(), vk::ImageLayout::eGeneral); // output texture
 	}
 	*/
-	void cVoxelWorld::UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict fullnormalImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_STANDARD_POINT)
+	void cVoxelWorld::UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict fullnormalImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_LINEAR_POINT)
 	{
 		// Set initial sampler value
 		dsu.beginImages(1U, 0, vk::DescriptorType::eInputAttachment);
@@ -4296,7 +4296,7 @@ namespace world
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightResolve(vku::DescriptorSetUpdater& __restrict dsu, 
 																 vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, 
 																 vk::ImageView const& __restrict fullvolumetricImageView, vk::ImageView const& __restrict fullreflectionImageView,
-																 SAMPLER_SET_STANDARD_POINT)
+																 SAMPLER_SET_LINEAR_POINT)
 	{
 		// Set initial sampler value
 		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
@@ -4312,7 +4312,7 @@ namespace world
 	}
 	void cVoxelWorld::UpdateDescriptorSet_VolumetricLightUpsample(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu,
 		vk::ImageView const& __restrict fulldepthImageView, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView,
-		SAMPLER_SET_STANDARD_POINT)
+		SAMPLER_SET_LINEAR_POINT)
 	{
 		// Set initial sampler value
 		dsu.beginImages(1U, 0, vk::DescriptorType::eInputAttachment);
@@ -4331,7 +4331,7 @@ namespace world
 	}
 	void cVoxelWorld::UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu,
 		vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict lastFrameView,
-		SAMPLER_SET_STANDARD_POINT)
+		SAMPLER_SET_LINEAR_POINT)
 	{
 		// 1 - colorview (backbuffer)
 		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
@@ -4344,7 +4344,7 @@ namespace world
 	}
 	void cVoxelWorld::UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu,
 		vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView,
-		SAMPLER_SET_STANDARD_POINT)
+		SAMPLER_SET_LINEAR_POINT)
 	{
 		// 1 - colorview (backbuffer)
 		dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
@@ -4355,10 +4355,13 @@ namespace world
 
 		MinCity::PostProcess->UpdateDescriptorSet_PostAA_Final(dsu, guiImageView, samplerLinearClamp);
 	}
-	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_STANDARD_POINT_ANISO)
+	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO)
 	{
 		dsu.beginBuffers(1U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
+
+		// finalize texture array and commit to descriptor set #######################################################################
+		tbb::concurrent_vector<vku::TextureImage2DArray const*> const& rTextures(MinCity::TextureBoy->lockTextureArray());
 
 		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -4369,9 +4372,7 @@ namespace world
 		dsu.beginImages(4U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		// finalize texture array and commit to descriptor set #######################################################################
-		tbb::concurrent_vector<vku::TextureImage2DArray const*> const& rTextures( MinCity::TextureBoy->lockTextureArray() );
-
+		
 		dsu.beginImages(5U, TEX_NOISE, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_NOISE_SAMPLER, rTextures[TEX_NOISE]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
@@ -4395,7 +4396,7 @@ namespace world
 		dsu.beginImages(6U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, lastColorImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
-	void cVoxelWorld::UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu)
+	void cVoxelWorld::UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_LINEAR)
 	{
 		// Set initial sampler value
 		dsu.beginImages(1U, 0, vk::DescriptorType::eStorageImage);

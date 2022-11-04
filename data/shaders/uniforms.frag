@@ -37,7 +37,7 @@ layout(location = 2) out vec4 outNormal;
 
 void main() {
 	outMouse.rg = In.voxelIndex;
-	outNormal.rgb = normalize(In.N); // signed output
+	outNormal.rgb = normalize(In.N.xyz); // signed output
 	outNormal.a = 0.0f; // unused - how to use....
 }
 
@@ -207,47 +207,121 @@ float antialiasedGrid(in vec2 uv, in const float scale)
 	return(smoothstep(0.0f, 1.0f, grid * GOLDEN_RATIO));	// final smoothing
 }
 */
-float getTriplanar(in const vec3 world_uvw, in const vec3 N, in const vec3 projections_ordered, in const float blend_factor) // world_uvw must be in range [-1.0f ... 1.0f]
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// DERIVATIVE MAPPING - Mikkelsen2020BumP.pdf - https://jcgt.org/published/0009/03/04/
+
+#define FLT_EPSILON 0.000000001f // avoid division by zero
+
+// texture uv's in, screen space surface gradient out (st)
+vec2 derivatives(in const vec2 uv, 
+			     in const vec2 texture_dimensions, 
+				 in const vec2 derivative_map_sample, // sample @ the uv passed in
+				 in const float bump_scale) 
 {
-	const vec3 heights = projections_ordered * abs(world_uvw) * 3.0f;
+	const vec2 dhdST = texture_dimensions * (derivative_map_sample * 2.0f - 1.0f);
+	const vec2 dSTdx = dFdxFine(uv);
+	const vec2 dSTdy = dFdyFine(uv);
 
-	const float begin  = max(max(projections_ordered.x, projections_ordered.y), projections_ordered.z) - blend_factor;
-	vec3 blend = max(vec3(0), projections_ordered - begin);
+	// chain rule - uv space to screen space
+	const vec2 dhdSCREEN = vec2( dot(dhdST.xy, dSTdx.xy), dot(dhdST.xy, dSTdy.xy) );
 
-	blend = blend / dot(blend, abs(N));
-
-	return(dot(projections_ordered, blend));
+	return( dhdSCREEN * (bump_scale / sqrt(texture_dimensions.x*texture_dimensions.y)) );
 }
 
-vec3 computeTriplanarNormal(in const vec3 world_uvw, in const vec3 N, in const vec3 projections_ordered, in const float blend_factor)
+// It was shown in the paper how Blinn's perturbed normal is independent of
+// the underlying parametrization. Thus this function allows us to perturb the normal on
+// an arbitrary domain (not restricted to screen-space)
+vec3 surface_gradient(in const vec3 vSigmaU, in const vec3 vSigmaV, in const vec3 lastNormal, in const vec2 dHduv)   // generalized, domainless surface gradient
 {
-	const vec4 voxel_offset = vec4(InvVolumeDimensions.xxx, 0.0f);
-
-	vec3 gradient;	
-	// trilinear sampling + centered differences
-	gradient.x =   getTriplanar(world_uvw + voxel_offset.xww, N, projections_ordered, blend_factor); - getTriplanar(world_uvw - voxel_offset.xww, N, projections_ordered, blend_factor);
-	gradient.y =   getTriplanar(world_uvw + voxel_offset.wyw, N, projections_ordered, blend_factor); - getTriplanar(world_uvw - voxel_offset.wyw, N, projections_ordered, blend_factor);
-	gradient.z =   getTriplanar(world_uvw + voxel_offset.wwz, N, projections_ordered, blend_factor); - getTriplanar(world_uvw - voxel_offset.wwz, N, projections_ordered, blend_factor);
-
-	return( normalize(gradient) ); // normal from central differences (gradient) 
+	// surf_norm must be normalized
+	const vec3 R1 = cross(vSigmaV,lastNormal);
+	const vec3 R2 = cross(lastNormal,vSigmaU);
+	
+	const float fDet = dot(vSigmaU, R1);
+	
+	return ( dHduv.x * R1 + dHduv.y * R2 ) / dot(vSigmaU, R1);
 }
 
-vec3 calcNormal(in const vec3 world_uvw) {
-	const float hx1 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x - InvVolumeDimensions, world_uvw.y) * InvVolumeDimensions, 0)).r;
-    const float hx2 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x + InvVolumeDimensions, world_uvw.y) * InvVolumeDimensions, 0)).r;
-    const vec3 pu = normalize(vec3(2.0f * InvVolumeDimensions, 0.0f, hx2 - hx1));
-    
-    const float hy1 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x, world_uvw.y - InvVolumeDimensions) * InvVolumeDimensions, 0)).r;
-    const float hy2 = texture(_texArray[TEX_TERRAIN], vec3(vec2(world_uvw.x, world_uvw.y + InvVolumeDimensions) * InvVolumeDimensions, 0)).r;
-    const vec3 pv = normalize(vec3(0.0f, 2.0f * InvVolumeDimensions, hy2 - hy1));
-    
-	vec3 n = normalize(cross(pu, pv));
-	//n.z = -n.z; // vulkan
-    return( n );
+// usage:
+
+// obtain derivatives()
+
+// use surface_gradient() where:
+
+// vSigmaU = ddx(world_position)
+// vSigmaV = ddy(world_position)
+// surf_normal, normalized
+// dHduv = derivatives() obtained previously
+
+// mix surface gradients, not normals perturbed by surface gradients
+
+// perturb normal by surface gradient
+
+// repeat ...
+
+
+// resolve function to establish the final perturbed normal:
+vec3 perturb_normal(in const vec3 lastNormal, in const vec3 surfGrad) // perturbs a normal by a surface gradient
+{
+	return normalize(lastNormal - surfGrad);
 }
 
-#define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
-#define MAX_STEPS VolumeDimensions
+// conversion of object/world space normal to surface gradient:
+
+// Surface gradient from a known "normal" such as from an object-
+// space normal map. This allows us to mix the contribution with
+// others, including from tangent-space normals. The vector v
+// doesn’t need to be unit length so long as it establishes
+// the direction. It must also be in the same space as the normal.
+vec3 surface_gradient_normal(in const vec3 lastNormal, in const vec3 perturbedNormal) // acquires the *surface-gradient* of the original normal from a perturbed normal
+{
+	// If k is negative then we have an inward facing vector v,
+	// so we negate the surface gradient to perturb toward v.
+	const vec3 n = lastNormal;
+	const float k = dot(n, perturbedNormal);
+	return (k*n - perturbedNormal)/max(FLT_EPSILON, abs(k));
+}
+
+// conversion of volume gradient to surface gradient:
+
+// Used to produce a surface gradient from the gradient of a volume
+// bump function such as 3D Perlin noise. Equation 2 in [Mik10].
+vec3 surface_gradient_volumetric(in const vec3 lastNormal, in const vec3 volumetric_gradient) // volumetric position to surface gradient
+{
+	return volumetric_gradient - dot(lastNormal, volumetric_gradient)*lastNormal;
+}
+
+vec3 triplanar_weights(in const vec3 lastNormal, in const float k) // default = 3.0
+{
+	vec3 weights = abs(lastNormal) - 0.2f;
+	weights = max(vec3(0), weights);
+	weights = pow(weights, k.xxx);
+	weights /= (weights.x + weights.y + weights.z);
+	return weights;
+}
+
+// Triplanar projection is considered a special case of volume
+// bump map. Weights are obtained using DetermineTriplanarWeights()
+// and derivatives using TspaceNormalToDerivative().
+vec3 surface_gradient_triplanar(in const vec3 lastNormal, in const vec3 triplanarWeights, in const vec2 dHduv) // tri-planar surface gradient
+{
+	const float w0 = triplanarWeights.x;
+	const float w1 = triplanarWeights.y;
+	const float w2 = triplanarWeights.z;
+
+	// Assume deriv xplane, deriv yplane, and deriv zplane are
+	// sampled using (z,y), (x,z), and (x,y), respectively.
+	// Positive scales of the lookup coordinate will work
+	// as well, but for negative scales the derivative components
+	// will need to be negated accordingly.
+	const vec3 grad = vec3(w2*dHduv.x + w1*dHduv.x,
+					       w2*dHduv.y + w0*dHduv.y,
+					       w0*dHduv.x + w1*dHduv.y);
+
+	return surface_gradient_volumetric(lastNormal, grad);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
@@ -259,68 +333,44 @@ void main() {
 
 	//const float bn = textureLod(_texArray[TEX_BLUE_NOISE], vec3((In.world_uv * VolumeDimensions) / BLUE_NOISE_UV_SCALER, In._slice), 0.0f).g;  /* GREEN CHANNEL BN USED */
 	
-	//vec3 light_color;
-	//vec4 Ld;
+	const vec3 derivative_height = texture(_texArray[TEX_TERRAIN], vec3(In.world_uv, 0)).rgb;
 
-	//getLight(light_color, Ld, In.uv.xyz);
-	//Ld.att = getAttenuation(Ld.dist, VolumeLength);
+	//const vec2 derivative = derivatives(In.world_uv, vec2(16384.0f, 8192.0f), derivative_height.xy, 11585.0f );  // 11585.0
 
-	//const float volume_length = length(VolumeDimensions.xxx);
-	//vec3 world_uvw = vec3(In.world_uv, In._height) * VolumeDimensions;
-
-	//const vec3 N2 = calcNormal(world_uvw);
-
-	//outColor = N2 * 0.5f + 0.5f;//max(0, dot(-vec3(Ld.dir.xy,-Ld.dir.z), N2)).xxx;
-
-	/*
-	float t1 = length(Ld.dir * Ld.dist * volume_length);
-	const float dt = max(MIN_STEP, 1.0f/volume_length);
-	uint i = uint(MAX_STEPS*0.5f);
+	// **swizzle to Y Is Up**
+	const vec3 world_uvw = (In.uv.xzy * LightVolumeDimensions) / VolumeDimensions; // match the swizzling
 	
-	float max_height = 0.0f;
-	while(t1 > 0.0f && --i > 0u) {
-
-		const float terrainHeight = texture(_texArray[TEX_TERRAIN], vec3(world_uvw.xy * InvVolumeDimensions, 0)).r;
-		max_height = max(max_height, terrainHeight);
-		world_uvw += Ld.dir * dt;
-		t1 -= dt;
-	}
+	vec3 gradient, N;
 	
-	// sample right on light
-	t1 += dt;
-	world_uvw += Ld.dir * t1;  // this is the last "partial" step!
-
-	const float light_height = texture(_texArray[TEX_TERRAIN], vec3(world_uvw.xy * InvVolumeDimensions, 0)).r;
+	N = normalize(vec3(0,1,0)); // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
 	
-	const float shadow = min(1.0f, light_height / max_height); // if light height is greater than the maximum height encounter on the way to the light, there is no shadowing
-															   // if light height is less than     ""  ""       ""      "       "  "   "   "   "   ", there is shadowing, here smoothly falling off to zero depending on the difference in height
-	
-	outColor = shadow.xxx;
-	*/
-	
-	const vec4 normal_terrain = texture(_texArray[TEX_TERRAIN], vec3(In.world_uv, 0));
+	// apply surface gradient
+	//gradient = surface_gradient(dFdxFine(world_uvw), dFdyFine(world_uvw), N, derivative); 
+	//N = perturb_normal(N, gradient);
 
-	//const float blend_factor = abs(fract( mix(16384.0f * (In.world_uv.x - 0.5f),8192.0f * (In.world_uv.y - 0.5f), 0.5f) * InvVolumeDimensions )); //fract(2.0f * abs(mix(In.world_uv.x,In.world_uv.y,0.5f) - 0.5f));
-	//const float height = mix(In._height, normal_terrain.w, blend_factor);		// interpolate passthru height (grid resolution) towards high resolution texture (texture resolution)
+	// apply triplanar surface gradient
+	gradient = surface_gradient_triplanar(N, triplanar_weights(N, 3.0f), derivative_height.yz);
+	N = perturb_normal(N, gradient).xzy;  // <---
+	// **swizzled back to Z Is Up**
 
-	const vec3 N1 = normalize(In.N.xyz);
-	const vec3 N2 = normalize(normal_terrain.xyz);
+	//outColor = (1.0f - (dot(N, normalize(In.N.xyz))) * 0.5f + 0.5f)).xxx;
+	//return;
 
-	//const vec3 N = normalize(mix(N1, N2, min(1.0f, blend_factor + 0.5f)));	// interpolate voxel normal (grid resolution) towards high resolution texture (texture resolution)
-	const vec3 N = normalize(N2 + normalize(mix(N1, N2, 1.0f - (dot(N1, N2) * 0.5f + 0.5f))));	// interpolate voxel normal (grid resolution) towards high resolution texture (texture resolution)
-	const float height = mix(In._height, normal_terrain.w, 1.0f - (dot(N, N2) * 0.5f + 0.5f));		// interpolate passthru height (grid resolution) towards high resolution texture (texture resolution)
+	const float height = mix(In._height, derivative_height.x, 1.0f - (dot(N, normalize(In.N.xyz)) * 0.5f + 0.5f));		// interpolate passthru height (grid resolution) towards high resolution texture (texture resolution)
 
-	
+	//outColor = height.xxx;
+	//return;
+
 	// lighting
 	const vec3 V = normalize(In.V.xyz);
 	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uv, 0)).rg;
 
 	vec3 color = vec3(0);
 	
-	const float roughness = albedo_ao.x * albedo_ao.y;
+	const float roughness = 1.0f - sq(albedo_ao.x*albedo_ao.y);
 
 	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo_ao.xxx, make_material(0.0f, 0.0f, roughness), vec3(1),				 
+	color.rgb += lit( albedo_ao.xxx, make_material(0.8f, 0.0f, roughness), vec3(1),				 
 				      albedo_ao.y, getAttenuation((1.0f - height) * InvVolumeDimensions, VolumeDimensions), // on a single voxel
 				      vec3(0,0,1), N, V, false); // don't want to double-add reflections
 
