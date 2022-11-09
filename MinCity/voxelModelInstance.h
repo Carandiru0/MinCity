@@ -129,13 +129,8 @@ namespace Volumetric
 
 	public:
 		__inline bool const Validate() const;
-	public:
-		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t voxelIndex,
-			Iso::Voxel const&__restrict oVoxel,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 		__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const;
+
 	protected:
 		voxB::voxelModel<Dynamic> const& __restrict 		model;
 		voxel_event_function								eOnVoxel;
@@ -166,24 +161,6 @@ namespace Volumetric
 		return(true);
 	}
 	template<bool const Dynamic>
-	__inline void XM_CALLCONV voxelModelInstance<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
-		Iso::Voxel const&__restrict oVoxel,
-		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
-	{
-		//* bugfix - hoisted out of parallel loop, don't change.
-		if (isEmissionOnly()) {
-			model.Render<true, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
-		}
-		else if (isFaded()) {
-			model.Render<false, true>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
-		}
-		else {
-			model.Render<false, false>(xmVoxelOrigin, voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
-		}
-	}
-	template<bool const Dynamic>
 	__inline VOXEL_EVENT_FUNCTION_RETURN __vectorcall voxelModelInstance<Dynamic>::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		if (eOnVoxel) {
@@ -210,6 +187,14 @@ namespace Volumetric
 		void __vectorcall setRoll(v2_rotation_t const zRoll) { _vRoll = zRoll; }						// row doesn't affect synchronization
 		
 		void __vectorcall setPitchYawRoll(v2_rotation_t const& xPitch, v2_rotation_t const& yYaw, v2_rotation_t const& zRoll) { _vPitch = xPitch; _vRoll = zRoll; synchronize(yYaw); }
+
+	public:
+		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t voxelIndex,
+			Iso::Voxel const& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
+
 	private:
 		bool const __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) const; // internally used only
 		void __vectorcall synchronize(FXMVECTOR const xmLoc);		// must be called whenever a change in location is intended 
@@ -228,6 +213,12 @@ namespace Volumetric
 	// shows animation of keyboard leds - unlocks the building that is 100% leds / emissive with building reflecting the same dynamic effect!
 	class alignas(16) voxelModelInstance_Static : public voxelModelInstance<voxB::STATIC>
 	{
+	public:
+		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t voxelIndex,
+			Iso::Voxel const& __restrict oVoxel,
+			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
 
 	private:
 		// model must be loaded b4 any instance creation!
@@ -242,6 +233,44 @@ namespace Volumetric
 
 	};
 
+
+	__inline void XM_CALLCONV voxelModelInstance_Dynamic::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		Iso::Voxel const& __restrict oVoxel,
+		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+	{
+		quat_t const orientation(getPitch(), getYaw(), getRoll()); // only applies to dynamic model instances, otherwise this is ignored
+
+		//* bugfix - hoisted out of parallel loop, don't change.
+		if (isEmissionOnly()) {
+			model.Render<true, false>(xmVoxelOrigin, orientation.v4(), voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		}
+		else if (isFaded()) {
+			model.Render<false, true>(xmVoxelOrigin, orientation.v4(), voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		}
+		else {
+			model.Render<false, false>(xmVoxelOrigin, orientation.v4(), voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		}
+	}
+
+	__inline void XM_CALLCONV voxelModelInstance_Static::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		Iso::Voxel const& __restrict oVoxel,
+		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
+		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+	{
+		//* bugfix - hoisted out of parallel loop, don't change.
+		if (isEmissionOnly()) {
+			model.Render<true, false>(xmVoxelOrigin, XMVectorZero(), voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		}
+		else if (isFaded()) {
+			model.Render<false, true>(xmVoxelOrigin, XMVectorZero(), voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		}
+		else {
+			model.Render<false, false>(xmVoxelOrigin, XMVectorZero(), voxelIndex, oVoxel, *this, voxels_static, voxels_dynamic, voxels_trans);
+		}
+	}
 } // end ns
 
 

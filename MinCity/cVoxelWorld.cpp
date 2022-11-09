@@ -513,13 +513,14 @@ void __vectorcall cVoxelWorld::updateCameraFollow(XMVECTOR xmPosition, XMVECTOR 
 	float const current_speed(XMVectorGetX(XMVector3Length(xmVelocity)) * time_to_float(tDelta));
 	float const t = SFM::__exp(-10.0f * (current_speed / max_speed + (float)(volume_visible <= 0)));
 
-	// wrap around camera coords //
 	XMVECTOR xmInterpPosition(XMVectorSetY(SFM::lerp(xmPosition, xmFutureFocusPosition, t), 0.0f)); // only xz for camera store
-	// wraps early at one half distance from visible edge
-	XMVECTOR const xmHalfExtent(XMVectorSet(Iso::WORLD_GRID_HALFSIZE - (Iso::SCREEN_VOXELS_XZ >> 1), 0.0f, Iso::WORLD_GRID_HALFSIZE - (Iso::SCREEN_VOXELS_XZ >> 1), 0.0f));
-	xmInterpPosition = XMVectorSubtract(XMVectorMod(XMVectorAdd(xmInterpPosition, xmHalfExtent), XMVectorSet(Iso::WORLD_GRID_SIZE - Iso::SCREEN_VOXELS_XZ, 1.0f, Iso::WORLD_GRID_SIZE - Iso::SCREEN_VOXELS_XZ, 1.0f)), xmHalfExtent);
-	Interpolator.set(oCamera.Origin, xmInterpPosition);
+	
+	// wrap around camera coords // -- causes camera movement spike when actively wrapping.
+	//XMVECTOR const xmHalfExtent(XMVectorSet(Iso::WORLD_GRID_HALFSIZE, 0.0f, Iso::WORLD_GRID_HALFSIZE, 0.0f));
+	//xmInterpPosition = XMVectorSubtract(XMVectorMod(XMVectorAdd(xmInterpPosition, xmHalfExtent), XMVectorSet(Iso::WORLD_GRID_SIZE, 1.0f, Iso::WORLD_GRID_SIZE, 1.0f)), xmHalfExtent);
+	
 	//Interpolator very smooth :)
+	Interpolator.set(oCamera.Origin, xmInterpPosition);
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -1983,15 +1984,20 @@ namespace // private to this file (anonymous)
 			point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 
 			// wrap bounds //
-			voxelReset.x = voxelReset.x & (Iso::WORLD_GRID_SIZE - 1);
-			voxelReset.y = voxelReset.y & (Iso::WORLD_GRID_SIZE - 1);
+			//voxelReset.x = voxelReset.x & (Iso::WORLD_GRID_SIZE - 1);
+			//voxelReset.y = voxelReset.y & (Iso::WORLD_GRID_SIZE - 1);
 
 			point2D_t voxelEnd = p2D_add(voxelReset, point2D_t(MAX_VISIBLE_X, MAX_VISIBLE_Y));
 
 			// wrap bounds //
-			voxelEnd.x = voxelEnd.x & (Iso::WORLD_GRID_SIZE - 1);
-			voxelEnd.y = voxelEnd.y & (Iso::WORLD_GRID_SIZE - 1);
+			//voxelEnd.x = voxelEnd.x & (Iso::WORLD_GRID_SIZE - 1);
+			//voxelEnd.y = voxelEnd.y & (Iso::WORLD_GRID_SIZE - 1);
 
+			FMT_NUKLEAR_DEBUG(false, "start({:d}, {:d}) begin({:d}, {:d})   end({:d}, {:d})",
+				voxelStart.x, voxelStart.y,
+				voxelReset.x, voxelReset.y,
+				voxelEnd.x, voxelEnd.y
+			);
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
 			{
@@ -2053,12 +2059,7 @@ namespace // private to this file (anonymous)
 
 					for (voxelIndex.y = y_begin; voxelIndex.y < y_end; ++voxelIndex.y) 
 					{
-						voxelIndex.x = x_begin;
-
-						Iso::Voxel const* __restrict pVoxel = theGrid + ((voxelIndex.y << WORLD_GRID_SIZE_BITS) + voxelIndex.x);
-						_mm_prefetch((const CHAR*)pVoxel, _MM_HINT_T0);
-
-						for (; voxelIndex.x < x_end; ++voxelIndex.x)
+						for (voxelIndex.x = x_begin; voxelIndex.x < x_end; ++voxelIndex.x)
 						{
 							// Make index (row,col)relative to starting index voxel
 							// calculate origin from relative row,col
@@ -2067,13 +2068,14 @@ namespace // private to this file (anonymous)
 							bool bRenderVisible(false);
 
 							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
-							Iso::Voxel const oVoxel(*pVoxel);
-							++pVoxel; // sequentially access for best cache prediction
+							point2D_t const voxelIndexWrapped(p2D_wrap(voxelIndex, Iso::WORLD_GRID_SIZE));
+
+							Iso::Voxel const oVoxel(*(theGrid + ((voxelIndexWrapped.y << WORLD_GRID_SIZE_BITS) + voxelIndexWrapped.x)));
 
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -2081,7 +2083,7 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndex, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 									}
 								}
 							}
@@ -2103,7 +2105,7 @@ namespace // private to this file (anonymous)
 							*/
 
 							// ***Ground always exists*** // *bugfix: frustum culling ground leaves empty space in an undefined state. for example, raymarched reflections disappear if camera is too close *do not change*
-							RenderGround(xmVoxelOrigin, voxelIndex, oVoxel, voxelGround, localGround);
+							RenderGround(xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelGround, localGround);
 						} // for
 
 					} // for
@@ -2243,7 +2245,7 @@ namespace Iso
 		}
 	}*/
 
-	heightstep const __vectorcall Voxel::HeightMap(point2D_t voxelIndex)
+	heightstep const __vectorcall Voxel::HeightMap(point2D_t const voxelIndex)
 	{
 		auto const& image(HeightMap());
 
@@ -4102,6 +4104,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
 		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
+
+		constants.emplace_back(vku::SpecializationConstant(9, ((float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
+		constants.emplace_back(vku::SpecializationConstant(10, ((float)_terrainTexture->extent().height)));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
@@ -4183,7 +4188,7 @@ namespace world
 	{
 		SetSpecializationConstants_Voxel_GS_Common(constants);
 		
-		// used for height vertex displacement & used for uv creation in geometry shader 
+		// used for uv creation in geometry shader 
 		constants.emplace_back(vku::SpecializationConstant(6, (0.5f / (float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
 		constants.emplace_back(vku::SpecializationConstant(7, (0.5f / (float)_terrainTexture->extent().height)));
 	}

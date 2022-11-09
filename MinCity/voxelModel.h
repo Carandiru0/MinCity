@@ -39,9 +39,6 @@ namespace Volumetric
 {
 	template< bool const Dynamic >
 	class voxelModelInstance;	// forward declaration
-	class voxelModelInstance_Dynamic;
-	class voxelModelInstance_Static;
-
 } // end ns
 
 // definitions //
@@ -388,7 +385,7 @@ namespace voxB
 			: voxelModelBase(width, height, depth), _identity{ 0, 0 }
 		{}
 		template<bool const EmissionOnly, bool const Faded>
-		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance, 
+		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
@@ -425,7 +422,7 @@ namespace voxB
 
 	template<bool const Dynamic>
 	template<bool const EmissionOnly, bool const Faded>
-	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient, point2D_t const voxelIndex,
 		Iso::Voxel const& __restrict oVoxel,
 		voxelModelInstance<Dynamic> const& instance,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
@@ -436,15 +433,15 @@ namespace voxB
 
 		private:
 			XMVECTOR const											xmVoxelOrigin;
+			[[maybe_unused]] XMVECTOR const                         xmVoxelOrient;
 			voxB::voxelDescPacked const* const __restrict			voxelsIn;
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict		voxels_static;
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_dynamic;
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict		voxels_trans;
 			voxelModelInstance<Dynamic> const& __restrict			instance;
 
-			quat_t const& orientation;
-
 			XMVECTOR const  maxDimensionsInv, maxDimensions;
+			[[maybe_unused]] float Sign = 1.0f;  // packing/encoding of quaternion and color
 			float const		YDimension;
 			uint32_t const	Transparency;
 
@@ -454,22 +451,20 @@ namespace voxB
 
 			sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 		public:
-			__forceinline sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_,
+			__forceinline sRenderFuncBlockChunk(FXMVECTOR xmVoxelOrigin_, FXMVECTOR xmVoxelOrient_,
 				voxB::voxelDescPacked const* const __restrict voxelsIn_,
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic_,
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans_,
-				voxelModelInstance<Dynamic> const& __restrict instance_,
-				quat_t const& orientation_
+				voxelModelInstance<Dynamic> const& __restrict instance_
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceType& PerformanceCounters_
 #endif
 			) 
 				:
-				xmVoxelOrigin(xmVoxelOrigin_),
+				xmVoxelOrigin(xmVoxelOrigin_), xmVoxelOrient(xmVoxelOrient_),
 				voxelsIn(voxelsIn_), voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
 				instance(instance_),
-				orientation(orientation_),
 				maxDimensionsInv(XMLoadFloat3A(&instance_.getModel()._maxDimensionsInv)), 
 				maxDimensions(uvec4_v(instance_.getModel()._maxDimensions).v4f()),
 				YDimension(XMVectorGetY(maxDimensions)),
@@ -478,6 +473,12 @@ namespace voxB
 				, PerformanceCounters(PerformanceCounters_)
 #endif
 			{
+				if constexpr (Dynamic) { // rotation quaternion (optimized out depending on "Dynamic")
+					// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
+
+					if (XMVectorGetW(xmVoxelOrient_) < 0.0f)
+						Sign = -Sign; // default is positive. the sign is packed into color. *color* must not equal zero for sign to be preserved
+				}
 			}
 
 			void operator()(tbb::blocked_range<uint32_t> const& r) const {
@@ -513,18 +514,9 @@ namespace voxB
 
 					XMVECTOR xmMiniVox = getMiniVoxelGridIndex(maxDimensions, maxDimensionsInv, _mm_cvtepi32_ps(voxel.getPosition()));
 
-					[[maybe_unused]] XMVECTOR xmOrient;  // rotation quaternion (optimized out depending on "Dynamic")
-					[[maybe_unused]] float Sign(1.0f);
-
-					if constexpr (Dynamic) {
+					if constexpr (Dynamic) { // rotation quaternion (optimized out depending on "Dynamic")
 						// orient voxel by quaternion
-						xmMiniVox = v3_rotate(xmMiniVox, orientation); // *do not change* extremely sensitive to order
-
-						// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
-						xmOrient = orientation.v4();
-
-						if (XMVectorGetW(xmOrient) < 0.0f)
-							Sign = -Sign; // default is positive. the sign is packed into color. *color* must not equal zero for sign to be preserved
+						xmMiniVox = v3_rotate(xmMiniVox, xmVoxelOrient);
 					}
 
 					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, SFM::__fms(YDimension, -0.5f, XMVectorGetY(xmMiniVox))), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin, precise height offset for center of model
@@ -572,7 +564,7 @@ namespace voxB
 									local::voxels_dynamic.emplace_back(
 										voxels_dynamic,
 										xmStreamOut,
-										XMVectorSetW(xmOrient, Sign * (float)color),
+										XMVectorSetW(xmVoxelOrient, Sign * (float)color),
 										hash
 									);
 								}
@@ -595,7 +587,7 @@ namespace voxB
 									local::voxels_trans.emplace_back(
 										voxels_trans,
 										xmStreamOut,
-										XMVectorSetW(xmOrient, Sign * (float)color),
+										XMVectorSetW(xmVoxelOrient, Sign * (float)color),
 										hash
 									);
 								}
@@ -655,7 +647,7 @@ namespace voxB
 		uint32_t const vxl_count(instance.getVoxelCount());
 		uint32_t const vxl_transparent_count(instance.getVoxelTransparentCount());
 
-		if (!instance.isFaded()) {
+		if constexpr (!Faded) {
 			if constexpr (Dynamic) {
 				pVoxelsOutDynamic = voxels_dynamic.fetch_and_add<tbb::release>(vxl_count - vxl_transparent_count);
 			}
@@ -668,12 +660,6 @@ namespace voxB
 			pVoxelsOutTrans = voxels_trans.fetch_and_add<tbb::release>(vxl_count);
 		}
 
-		quat_t orientation; // only applies to dynamic model instances, otherwise this is ignored
-		if constexpr (Dynamic) {
-			voxelModelInstance_Dynamic const& __restrict instance_dynamic(static_cast<voxelModelInstance_Dynamic const& __restrict>(instance));	// this resolves to a safe implicit static_cast downcast
-
-			orientation = quat_t(instance_dynamic.getPitch(), instance_dynamic.getYaw(), instance_dynamic.getRoll()); // replace with actual orientation
-		}
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceType PerformanceCounters;
 #endif
@@ -690,11 +676,10 @@ namespace voxB
 		
 		tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 		tbb::parallel_for(tbb::blocked_range<uint32_t>(vxl_offset, vxl_offset + vxl_count, eThreadBatchGrainSize::MODEL),
-			RenderFuncBlockChunk(xmVoxelOrigin,
+			RenderFuncBlockChunk(xmVoxelOrigin, xmVoxelOrient,
 				_Voxels, 
 				pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
-				instance,
-				orientation // dynamic only
+				instance
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceCounters
 #endif

@@ -58,6 +58,12 @@ layout (constant_id = 6) const float VolumeLength = 0.0f; // <---- only for this
 layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume //
 layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 
+#if defined(T2D) 
+layout (constant_id = 9) const float  TextureDimensionsU = 0.0f; // terrain texture u //
+layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain texture v //
+#define TextureDimensions vec2(TextureDimensionsU, TextureDimensionsV)
+#endif
+
 #define DD 0
 #define COLOR 1
 #define OPACITY 2
@@ -215,17 +221,14 @@ float antialiasedGrid(in vec2 uv, in const float scale)
 // texture uv's in, screen space surface gradient out (st)
 vec2 derivatives(in const vec2 uv, 
 			     in const vec2 texture_dimensions, 
-				 in const vec2 derivative_map_sample, // sample @ the uv passed in
-				 in const float bump_scale) 
+				 in const vec2 derivative_map_sample) 
 {
 	const vec2 dhdST = texture_dimensions * (derivative_map_sample * 2.0f - 1.0f);
 	const vec2 dSTdx = dFdxFine(uv);
 	const vec2 dSTdy = dFdyFine(uv);
 
 	// chain rule - uv space to screen space
-	const vec2 dhdSCREEN = vec2( dot(dhdST.xy, dSTdx.xy), dot(dhdST.xy, dSTdy.xy) );
-
-	return( dhdSCREEN * (bump_scale / sqrt(texture_dimensions.x*texture_dimensions.y)) );
+	return( vec2( dot(dhdST.xy, dSTdx.xy), dot(dhdST.xy, dSTdy.xy) ) );
 }
 
 // It was shown in the paper how Blinn's perturbed normal is independent of
@@ -327,18 +330,15 @@ vec3 surface_gradient_triplanar(in const vec3 lastNormal, in const vec3 triplana
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 void main() {
-  																		
-	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
-	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
 
 	//const float bn = textureLod(_texArray[TEX_BLUE_NOISE], vec3((In.world_uv * VolumeDimensions) / BLUE_NOISE_UV_SCALER, In._slice), 0.0f).g;  /* GREEN CHANNEL BN USED */
 	
 	const vec3 derivative_height = texture(_texArray[TEX_TERRAIN], vec3(In.world_uv, 0)).rgb;
 
-	//const vec2 derivative = derivatives(In.world_uv, vec2(16384.0f, 8192.0f), derivative_height.xy, 11585.0f );  // 11585.0
+	const vec2 derivative = derivatives(In.world_uv, TextureDimensions, derivative_height.yz);  // 11585.0
 
 	// **swizzle to Y Is Up**
-	const vec3 world_uvw = (In.uv.xzy * LightVolumeDimensions) / VolumeDimensions; // match the swizzling
+	//const vec3 world_uvw = (In.uv.xzy * LightVolumeDimensions) / VolumeDimensions; // match the swizzling
 	
 	vec3 gradient, N;
 	
@@ -349,7 +349,7 @@ void main() {
 	//N = perturb_normal(N, gradient);
 
 	// apply triplanar surface gradient
-	gradient = surface_gradient_triplanar(N, triplanar_weights(N, 3.0f), derivative_height.yz);
+	gradient = surface_gradient_triplanar(N, triplanar_weights(N, 3.0f), derivative);
 	N = perturb_normal(N, gradient).xzy;  // <---
 	// **swizzled back to Z Is Up**
 
@@ -367,7 +367,9 @@ void main() {
 
 	vec3 color = vec3(0);
 	
-	const float roughness = 1.0f - sq(albedo_ao.x*albedo_ao.y);
+	const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
+	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
+	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
 
 	// twilight/starlight terrain lighting
 	color.rgb += lit( albedo_ao.xxx, make_material(0.8f, 0.0f, roughness), vec3(1),				 
