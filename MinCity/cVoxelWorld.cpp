@@ -1971,8 +1971,6 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
 		{
-			render_state.road_tiles_visible = 0; // reset - visible road tile count very useful eg.) adding cars //
-
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
 			render_state.numDynamicVoxelsRendered = 0,
@@ -1981,23 +1979,9 @@ namespace // private to this file (anonymous)
 			render_state.numLightVoxelsRendered = 0;
 #endif
 #endif
-			point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
+			point2D_t const voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
+			point2D_t const voxelEnd(p2D_add(voxelReset, point2D_t(MAX_VISIBLE_X, MAX_VISIBLE_Y)));
 
-			// wrap bounds //
-			//voxelReset.x = voxelReset.x & (Iso::WORLD_GRID_SIZE - 1);
-			//voxelReset.y = voxelReset.y & (Iso::WORLD_GRID_SIZE - 1);
-
-			point2D_t voxelEnd = p2D_add(voxelReset, point2D_t(MAX_VISIBLE_X, MAX_VISIBLE_Y));
-
-			// wrap bounds //
-			//voxelEnd.x = voxelEnd.x & (Iso::WORLD_GRID_SIZE - 1);
-			//voxelEnd.y = voxelEnd.y & (Iso::WORLD_GRID_SIZE - 1);
-
-			FMT_NUKLEAR_DEBUG(false, "start({:d}, {:d}) begin({:d}, {:d})   end({:d}, {:d})",
-				voxelStart.x, voxelStart.y,
-				voxelReset.x, voxelReset.y,
-				voxelEnd.x, voxelEnd.y
-			);
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
 			{

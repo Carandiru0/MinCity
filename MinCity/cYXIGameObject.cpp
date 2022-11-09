@@ -450,7 +450,7 @@ namespace world
 			XMStoreFloat3A(&_body.force[in], XMVectorZero()); // reset required
 		}
 
-		/*{
+		{
 			// current forces, and each thruster and elevation normalized
 			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT * 0.75f, Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y * 2.0f);
 
@@ -462,7 +462,7 @@ namespace world
 				(_thruster[UP].thrust.y / _body.mass),
 				elevation, integrations
 			);
-		}*/
+		}
 	}
 
 	void __vectorcall cYXIGameObject::applyThrust(FXMVECTOR xmThrust)
