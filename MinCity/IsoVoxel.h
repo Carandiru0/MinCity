@@ -22,10 +22,9 @@ struct ImagingMemoryInstance;
 
 namespace Iso
 {
-
 	// cONSTANTS/*****************
 	static constexpr size_t const
-		WORLD_GRID_SIZE_BITS = 13;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
+		WORLD_GRID_SIZE_BITS = 11;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
 	static constexpr uint32_t const				//                                          recommend using 2^13 = 8192x8192 or less, map is still extremely large
 		WORLD_GRID_SIZE = (1U << WORLD_GRID_SIZE_BITS),
 		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);
@@ -70,11 +69,6 @@ namespace Iso
 		SCREEN_VOXELS_X = SCREEN_VOXELS_XZ,		// must be be even numbers, maximum zoom out affects this value so screen grid is fully captured in its bounds
 		SCREEN_VOXELS_Y = 256,					// this is "up", needs to be measured
 		SCREEN_VOXELS_Z = SCREEN_VOXELS_XZ;		// x and z should be equal and divisible by 8
-
-	static constexpr uint32_t const
-		OVER_SCREEN_VOXELS_XZ = SCREEN_VOXELS_XZ, // (can optionally be set larger)
-		OVER_SCREEN_VOXELS_X = OVER_SCREEN_VOXELS_XZ,
-		OVER_SCREEN_VOXELS_Z = OVER_SCREEN_VOXELS_XZ;
 
 	static constexpr float const
 		VOX_SIZE = 1.0f / VOXELS_GRID_SLOT_XZ_FP,			// this value and shader value for normal vox size need to always match
@@ -168,7 +162,7 @@ namespace Iso
 
 	using heightstep = uint16_t;
 
-	class no_vtable Voxel
+	class no_vtable alignas(64) Voxel
 	{
 	public:
 		static ImagingMemoryInstance* const& __restrict   HeightMap();

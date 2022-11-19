@@ -349,11 +349,11 @@ public:
 
 		size = LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t);
 		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance and to prevent false sharing
-		_block_size_atomic = size / hardware_concurrency;
+		_block_size_atomic = size_t(size) / hardware_concurrency;
 
 		size = LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A);
 		_cache = (XMFLOAT4A * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
-		_block_size_cache = size / hardware_concurrency;
+		_block_size_cache = size_t(size) / hardware_concurrency;
 
 		clear(0);
 	}

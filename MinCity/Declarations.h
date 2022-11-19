@@ -20,7 +20,7 @@ namespace VertexDecl
 
 	};
 
-	struct no_vtable alignas(16) VoxelNormal {
+	struct no_vtable alignas(32) VoxelNormal {
 
 	public:
 		XMVECTOR	worldPos;						//xyz = world position , w = hash
@@ -43,7 +43,7 @@ namespace VertexDecl
 		VoxelNormal(VoxelNormal const&) = delete;
 		VoxelNormal& operator=(VoxelNormal const&) = delete;
 	};
-	struct no_vtable alignas(16) VoxelDynamic : public VoxelNormal {
+	struct no_vtable alignas(32) VoxelDynamic : public VoxelNormal {
 
 		// same size as normal //
 

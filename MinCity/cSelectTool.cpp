@@ -132,53 +132,48 @@ void __vectorcall cSelectTool::ClickAction(FXMVECTOR const xmMousePos)
 	// indicate selection ...
 	point2D_t const voxelIndex(MinCity::VoxelWorld->getHoveredVoxelIndex());
 
-	Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+	Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-	if (pVoxel) {
+	if (Iso::isOwnerAny(oVoxel)) {
 
-		Iso::Voxel const oVoxel(*pVoxel);
+		uint32_t hash(0), index(0);
 
-		if (Iso::isOwnerAny(oVoxel)) {
+		for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
 
-			uint32_t hash(0), index(0);
+			if (Iso::isOwner(oVoxel, i)) {
 
-			for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+				// get hash, which should be the voxel model instance ID
+				hash = Iso::getHash(oVoxel, i);
+				index = i;
+			}
+		}
+		// will always select dynamic over static if both are enabled in mousebuffer mode
+		if (0 != hash) {
 
-				if (Iso::isOwner(oVoxel, i)) {
+			if (Iso::STATIC_HASH == index) {
+				auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(hash);
 
-					// get hash, which should be the voxel model instance ID
-					hash = Iso::getHash(oVoxel, i);
-					index = i;
+				if (instance) {
+					//instance->setHighlighted(true);
+
+					_selectedInstanceHash = hash;
+					_selectedVoxelIndex = voxelIndex;
+					_selectedDynamic = false;
 				}
 			}
-			// will always select dynamic over static if both are enabled in mousebuffer mode
-			if (0 != hash) {
+			else {
+				auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash);
 
-				if (Iso::STATIC_HASH == index) {
-					auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<false>(hash);
+				if (instance) {
+					//instance->setHighlighted(true);
 
-					if (instance) {
-						//instance->setHighlighted(true);
-
-						_selectedInstanceHash = hash;
-						_selectedVoxelIndex = voxelIndex;
-						_selectedDynamic = false;
-					}
+					_selectedInstanceHash = hash;
+					_selectedVoxelIndex = voxelIndex;
+					_selectedDynamic = true;
 				}
-				else {
-					auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<true>(hash);
-
-					if (instance) {
-						//instance->setHighlighted(true);
-
-						_selectedInstanceHash = hash;
-						_selectedVoxelIndex = voxelIndex;
-						_selectedDynamic = true;
-					}
-				}
+			}
 
 					
-			}
 		}
 	}
 }

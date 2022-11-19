@@ -14,13 +14,15 @@ The VOX File format is Copyright to their respectful owners.
 #include "pch.h"
 #include "globals.h"
 #include "MinCity.h"
+
 #define VOX_IMPL
 #include "VoxBinary.h"
+
 #include "IsoVoxel.h"
 #include "voxelAlloc.h"
 #include "eVoxelModels.h"
-
 #include <Utility/mio/mmap.hpp>
+
 #include <filesystem>
 #include <stdio.h> // C File I/O is 10x faster than C++ file stream I/O
 
@@ -39,10 +41,6 @@ The VOX File format is Copyright to their respectful owners.
 #include <Utility/console_indicators/cursor_control.hpp> // https://github.com/p-ranav/indicators - Indicators for console applications. Progress bars! MIT license.
 #include <Utility/console_indicators/progress_bar.hpp>
 #endif
-
-namespace { // anonymous, local to this file - automatically released at program close.
-	static vector<mio::mmap_source>	_persistant_mmp;
-}
 
 /*
 1x4      | char       | chunk id
@@ -686,7 +684,7 @@ bool const LoadV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 {
 	std::error_code error{};
 
-	mio::mmap_source mmap = mio::make_mmap_source(path, false, error);
+	mio::mmap_source mmap(mio::make_mmap_source(path, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error));
 	if (!error) {
 
 		if (mmap.is_open() && mmap.is_mapped()) {
@@ -811,8 +809,7 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 		// otherwise fallthrough and reload vox file
 	}
 
-	mio::mmap_source mmap{};
-	mmap = mio::make_mmap_source(szOrigPathFilename, false, error);
+	mio::mmap_source mmap(mio::make_mmap_source(szOrigPathFilename, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error));
 
 	if (!error) {
 
@@ -1140,7 +1137,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 {
 	std::error_code error{};
 
-	mio::mmap_source mmap = mio::make_mmap_source(path, false, error);
+	mio::mmap_source mmap = mio::make_mmap_source(path, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error);
 	if (!error) {
 
 		if (mmap.is_open() && mmap.is_mapped()) {
@@ -1322,55 +1319,11 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 		if (cachedmodifytime > vdbmodifytime) {
 			if (LoadV1XACachedFile(szCachedPathFilename, pDestMem)) {
 
-				// save uncompressed (loaded) voxel data (raw data) to temporary file in cached folder
-				std::wstring szMemoryMappedPathFilename(cMinCity::getUserFolder());
-				szMemoryMappedPathFilename += VIRTUAL_DIR;
-				szMemoryMappedPathFilename += szFolderName;
-				szMemoryMappedPathFilename += MMP_FILE_EXT;
-
-				FILE * __restrict stream(nullptr);
-				if ((stream = _wfsopen(szMemoryMappedPathFilename.c_str(), L"wbST", _SH_DENYWR))) {
-
-					_fwrite_nolock(&pDestMem->_Voxels[0], sizeof(voxelDescPacked), pDestMem->_numVoxels, stream);
-					_fflush_nolock(stream);
-					_fclose_nolock(stream); // handover to mmio
-					stream = nullptr;
-
-					// memory map the temporary file, using the global vector that keeps track of the memory mapped files
-					std::error_code error{};
-
-					_persistant_mmp.emplace_back(std::forward<mio::mmap_source&&>(mio::make_mmap_source(szMemoryMappedPathFilename, true, error))); // temporary hidden readonly file is automatically deleted on destruction of memory mapped object in persistant map @ program close.
-
-					if (!error) { // ideally everything still lives in the windows file cache. And it knows that the data does not actually need to be written to disk. Leveraging that and deletion of the virtual file is transferred to the memory mapped file handle ownership now.
-
-						if (_persistant_mmp.back().is_open() && _persistant_mmp.back().is_mapped()) {
-
-							// release the uncompressed voxel data in the model
-							if (pDestMem->_Voxels) {
-								scalable_aligned_free(const_cast<voxelDescPacked*>(pDestMem->_Voxels));
-								pDestMem->_Voxels = nullptr;
-							}
-
-							// update "_Voxels" to point to beginning of memory mapped file
-							pDestMem->_Voxels = (voxelDescPacked const* const __restrict)_persistant_mmp.back().data();
-							pDestMem->_Mapped = true;
-
-							// model voxel data is now read-only and is "virtual memory", so it saves physical memory by only keeping whats active from virtual memory.
-							// all management of this memory is handled by the OS, and the memory mapped file handle is automatically deleted on program close.
-						}
-					}
-				}
-
 #ifdef VOX_DEBUG_ENABLED
 				FMT_LOG(VOX_LOG, " < {:s} > [sequence] {:d} channels " " [{:s}]  [{:s}]  [{:s}]", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_Features.sequence->numChannels(), pDestMem->_Features.sequence->getChannelName(0), pDestMem->_Features.sequence->getChannelName(1), pDestMem->_Features.sequence->getChannelName(2));
 #endif
 				
-				if (pDestMem->_Mapped) {
-					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) (virtual) loaded ({:d}, {:d}, {:d})", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
-				}
-				else {
-					FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) loaded ({:d}, {:d}, {:d})", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
-				}
+				FMT_LOG_OK(VOX_LOG, " < {:s} > [sequence] (cache) loaded ({:d}, {:d}, {:d})", stringconv::ws2s(szFolderName + V1XA_FILE_EXT), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
 
 				return(1); // indicating existing (cached) sequence loaded
 			}
@@ -1378,9 +1331,9 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 				FMT_LOG_FAIL(VOX_LOG, "unable to load cached .V1XA file: {:s}, reverting to reload .VDB ....", stringconv::ws2s(szCachedPathFilename));
 			}
 		}
-		else
+		else {
 			FMT_LOG(VOX_LOG, " newer .VDB found, reverting to reload .VDB ....", stringconv::ws2s(szCachedPathFilename));
-
+		}
 		// otherwise fallthrough and reload vdb file
 	}
 
@@ -1630,10 +1583,8 @@ void voxelModelBase::ComputeLocalAreaAndExtents()
 
 voxelModelBase::~voxelModelBase()
 {
-	if (!_Mapped) { // if memory mapped to a file, don't delete it as this memory is managed elsewhere
-		if (_Voxels) {
-			scalable_aligned_free(const_cast<voxelDescPacked * __restrict>(_Voxels));
-		}
+	if (_Voxels) {
+		scalable_aligned_free(const_cast<voxelDescPacked * __restrict>(_Voxels));
 	}
 	_Voxels = nullptr;
 }

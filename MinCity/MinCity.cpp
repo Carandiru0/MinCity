@@ -795,6 +795,7 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	}
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
+	VoxelWorld->GarbageCollect(); // optimal position to exploit wait at begining of RenderTask_Normal, this is the ideal "dead-zone"
 	VoxelWorld->Render(resource_index);
 	Vulkan->checkStaticCommandsDirty(resource_index);
 }
@@ -1243,7 +1244,7 @@ cVulkan const& cMinCity::Priv_Vulkan() { return(_.Vulkan); }
 
 // *********************************************************************************************************************************************************************************************************************************************************************** //
 
-extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, uint32_t const thread_stack_size = 0);  // external forward decl
+extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, uint32_t const thread_count = -1, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
 	// secure process:
@@ -1293,7 +1294,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 		m_hwCoreCount = std::max(m_hwCoreCount, (size_t)std::thread::hardware_concurrency()); // can return 0 on failure, so keep the highest core count. default of 1 is set for m_hwCoreCount.
 	}
 
-	global_init_tbb_floating_point_env(TASK_INIT, Globals::DEFAULT_STACK_SIZE);
+	global_init_tbb_floating_point_env(TASK_INIT, m_hwCoreCount, Globals::DEFAULT_STACK_SIZE);
 
 #if !defined(NDEBUG) || defined(DEBUG_CONSOLE)
 	RedirectIOToConsole();	// always on in debug builds, conditionally on in release builds with DEBUG_CONSOLE

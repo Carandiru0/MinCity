@@ -50,40 +50,30 @@ namespace Volumetric
 				// this could be a slight move (fractional) that does not change the voxelindex (integer)
 				if (new_rootVoxel != old_rootVoxel || vYaw != _vYaw) {
 
-					Iso::Voxel const* const pVoxelNew = world::getVoxelAt(new_rootVoxel);
-					if (nullptr != pVoxelNew) {
-						
-						// clear and set areas 1st, then update root voxels
-						rect2D_t const vLocalArea(getModel()._LocalArea);
+					// clear and set areas 1st, then update root voxels
+					rect2D_t const vLocalArea(getModel()._LocalArea);
 
-						// clear old area of the hash id only			   
-						world::resetVoxelsHashAt(r2D_add(vLocalArea, old_rootVoxel), hashID, _vYaw); // using old location & Yaw
+					// clear old area of the hash id only			   
+					world::resetVoxelsHashAt(r2D_add(vLocalArea, old_rootVoxel), hashID, _vYaw); // using old location & Yaw
 
-						/// ////////////////////////////////////////////////////////////////////////////////////
-						Iso::Voxel oVoxelNew(*pVoxelNew);
-						uint32_t const new_index(Iso::getNextAvailableHashIndex<true>(oVoxelNew)); // must capture index here 1st
+					/// ////////////////////////////////////////////////////////////////////////////////////
+					Iso::Voxel oVoxelNew(world::getVoxelAt(new_rootVoxel));
+					uint32_t const new_index(Iso::getNextAvailableHashIndex<true>(oVoxelNew)); // must capture index here 1st
 
-						// set new area of the hash id only
-						world::setVoxelsHashAt(r2D_add(vLocalArea, new_rootVoxel), hashID, vYaw); // using new location & Yaw
+					// set new area of the hash id only
+					world::setVoxelsHashAt(r2D_add(vLocalArea, new_rootVoxel), hashID, vYaw); // using new location & Yaw
 
-						// update the new owner //
-						Iso::setAsOwner(oVoxelNew, new_index);
-						Iso::setHash(oVoxelNew, new_index, hashID);
+					// update the new owner //
+					Iso::setAsOwner(oVoxelNew, new_index);
+					Iso::setHash(oVoxelNew, new_index, hashID);
 
-						// do not need to check return as previously did already when getVoxelAt was called, and non-nullptr was returned
-						world::setVoxelAt(new_rootVoxel, std::forward<Iso::Voxel const&& __restrict>(oVoxelNew));
+					// do not need to check return as previously did already when getVoxelAt was called, and non-nullptr was returned
+					world::setVoxelAt(new_rootVoxel, std::forward<Iso::Voxel const&& __restrict>(oVoxelNew));
 
-						// update root voxel index at the global map //
-						pRootVoxel->v = new_rootVoxel.v;   // updates the hash map of root voxels corresponding to voxel model instance
-															// getVoxelIndex() is the occupied voxel at the origin of this voxel model instance
-					}
-					else { // exception - new voxel index, derived from new location outside bounds of world - this may or may not be an error - instance could be intended to just die off
-#ifndef NDEBUG
-						FMT_LOG_WARN(VOX_LOG, "Possible error - could not synchronize root voxel index of voxel model instance: {:d} at ({:d},{:d}) -> ({:d},{:d}), *voxel model instance new voxel index / location does not exist*", hashID, old_rootVoxel.x, old_rootVoxel.y, new_rootVoxel.x, new_rootVoxel.y);
-#endif
-						return(false); // signalled for destruction //
-						// bugfix: NOT SAFE to destroyInstance() (DIRECT Deletion) voxelmodel instance here, would be inside of a gameobject's update method, where it expects this voxelmodel instance to exist until its update method is complete 
-					}
+					// update root voxel index at the global map //
+					pRootVoxel->v = new_rootVoxel.v;   // updates the hash map of root voxels corresponding to voxel model instance
+														// getVoxelIndex() is the occupied voxel at the origin of this voxel model instance
+
 				}
 				
 				// this also covers fractional moves only (where voxelIndex does not change)

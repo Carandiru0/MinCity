@@ -18,19 +18,15 @@ void cAbstractToolMethods::undoHighlights()
 	// vector is iterated in reverse (newest to oldest) to properly restore the grid voxels
 	for (vector<sUndoVoxel>::const_reverse_iterator undoVoxel = _undoHighlight.crbegin(); undoVoxel != _undoHighlight.crend(); ++undoVoxel)
 	{
-		Iso::Voxel const* const pVoxel(world::getVoxelAt(undoVoxel->voxelIndex));
+		Iso::Voxel oVoxel(world::getVoxelAt(undoVoxel->voxelIndex));
 
-		if (pVoxel) {
-			Iso::Voxel oVoxel(*pVoxel);
+		if (Iso::isGroundOnly(oVoxel)) { // undo for highlights is specific, only if still ground
 
-			if (Iso::isGroundOnly(oVoxel)) { // undo for highlights is specific, only if still ground
+			Iso::clearPending(oVoxel);
+			Iso::clearEmissive(oVoxel);
+			Iso::clearColor(oVoxel);
 
-				Iso::clearPending(oVoxel);
-				Iso::clearEmissive(oVoxel);
-				Iso::clearColor(oVoxel);
-
-				world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-			}
+			world::setVoxelAt(undoVoxel->voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 		}
 	}
 
@@ -65,26 +61,23 @@ void cAbstractToolMethods::paint()
 		for (vector<sUndoVoxel>::const_iterator highlightedVoxel = _undoHighlight.cbegin(); highlightedVoxel != _undoHighlight.cend(); ++highlightedVoxel)
 		{
 			point2D_t const voxelIndex(highlightedVoxel->voxelIndex);
-			Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
 
-			if (pVoxel) {
-				Iso::Voxel oVoxel(*pVoxel);
+			Iso::Voxel oVoxel(world::getVoxelAt(voxelIndex));
 
-				if (Iso::isEmissive(oVoxel) && Iso::isPending(oVoxel)) { // IsPending prevents highlighting occupied voxels
+			if (Iso::isEmissive(oVoxel) && Iso::isPending(oVoxel)) { // IsPending prevents highlighting occupied voxels
 
-					uint32_t const original_color(Iso::getColor(highlightedVoxel->undoVoxel));
+				uint32_t const original_color(Iso::getColor(highlightedVoxel->undoVoxel));
 
-					if (original_color) { // had existing color before being highlighted
+				if (original_color) { // had existing color before being highlighted
 
-						uint32_t const color(SFM::lerp(0, _highlightColor, tNorm));
+					uint32_t const color(SFM::lerp(0, _highlightColor, tNorm));
 
-						Iso::setColor(oVoxel, color);
+					Iso::setColor(oVoxel, color);
 
-						world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-					}
-
-					// otherwise if color exists that is not in conflict, which is unmodified still, so no need to do anything- it will be visible if it has a valid color (color != 0)
+					world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 				}
+
+				// otherwise if color exists that is not in conflict, which is unmodified still, so no need to do anything- it will be visible if it has a valid color (color != 0)
 			}
 		}
 	}
@@ -103,22 +96,17 @@ float const cAbstractToolMethods::getHighlightAmount()
 
 bool const __vectorcall cAbstractToolMethods::highlightVoxel(point2D_t const voxelIndex) // w/o change to ground voxel color
 {
-	// center
-	Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+	Iso::Voxel oVoxel(world::getVoxelAt(voxelIndex));
 
-	if (pVoxel) {
-		Iso::Voxel oVoxel(*pVoxel);
+	if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) {
 
-		if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) {
+		_undoHighlight.emplace_back(voxelIndex, oVoxel);
 
-			_undoHighlight.emplace_back(voxelIndex, oVoxel);
+		Iso::setPending(oVoxel);	// setPending prevents highlighting occupied voxels
+		Iso::setEmissive(oVoxel);
 
-			Iso::setPending(oVoxel);	// setPending prevents highlighting occupied voxels
-			Iso::setEmissive(oVoxel);
-
-			world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-			return(true);
-		}
+		world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+		return(true);
 	}
 
 	return(false);
@@ -126,22 +114,18 @@ bool const __vectorcall cAbstractToolMethods::highlightVoxel(point2D_t const vox
 bool const __vectorcall cAbstractToolMethods::highlightVoxel(point2D_t const voxelIndex, uint32_t const color) // w/ change to ground voxel color
 {
 	// center
-	Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+	Iso::Voxel oVoxel(world::getVoxelAt(voxelIndex));
 
-	if (pVoxel) {
-		Iso::Voxel oVoxel(*pVoxel);
+	if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) {
 
-		if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) {
+		_undoHighlight.emplace_back(voxelIndex, oVoxel);
 
-			_undoHighlight.emplace_back(voxelIndex, oVoxel);
+		Iso::setPending(oVoxel);	// setPending prevents highlighting occupied voxels
+		Iso::setColor(oVoxel, color);
+		Iso::setEmissive(oVoxel);
 
-			Iso::setPending(oVoxel);	// setPending prevents highlighting occupied voxels
-			Iso::setColor(oVoxel, color);
-			Iso::setEmissive(oVoxel);
-
-			world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-			return(true);
-		}
+		world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
+		return(true);
 	}
 
 	return(false);
@@ -169,14 +153,11 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 			ok = world::isVoxelVisible(voxelIndex);
 			if (ok) {
 				// current
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+				Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-				if (pVoxel) {
-					Iso::Voxel const oVoxel(*pVoxel);
+				_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+				highlightVoxel(voxelIndex, color);
 
-					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
-					highlightVoxel(voxelIndex, color);
-				}
 				// outside
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(0, -1)));
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(0, 1)));
@@ -196,14 +177,11 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 			ok = world::isVoxelVisible(voxelIndex);
 			if (ok) {
 				// current
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+				Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-				if (pVoxel) {
-					Iso::Voxel const oVoxel(*pVoxel);
+				_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+				highlightVoxel(voxelIndex, color);
 
-					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
-					highlightVoxel(voxelIndex, color);
-				}
 				// outside
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(0, -1)));
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(0, 1)));
@@ -223,14 +201,11 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 			ok = world::isVoxelVisible(voxelIndex);
 			if (ok) {
 				// current
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+				Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-				if (pVoxel) {
-					Iso::Voxel const oVoxel(*pVoxel);
-
-					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
-					highlightVoxel(voxelIndex, color);
-				}
+				_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+				highlightVoxel(voxelIndex, color);
+				
 				// outside
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(-1, 0)));
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(1, 0)));
@@ -250,14 +225,11 @@ void __vectorcall cAbstractToolMethods::highlightCross(point2D_t const origin, u
 			ok = world::isVoxelVisible(voxelIndex);
 			if (ok) {
 				// current
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+				Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-				if (pVoxel) {
-					Iso::Voxel const oVoxel(*pVoxel);
-
-					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
-					highlightVoxel(voxelIndex, color);
-				}
+				_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+				highlightVoxel(voxelIndex, color);
+				
 				// outside
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(-1, 0)));
 				ok = highlightVoxel(p2D_add(voxelIndex, point2D_t(1, 0)));
@@ -281,14 +253,10 @@ void __vectorcall cAbstractToolMethods::highlightArea(rect2D_t area, uint32_t co
 			
 			if (world::isVoxelVisible(voxelIndex)) {
 				
-				Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+				Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-				if (pVoxel) {
-					Iso::Voxel const oVoxel(*pVoxel);
-
-					_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
-					highlightVoxel(voxelIndex, color);
-				}
+				_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+				highlightVoxel(voxelIndex, color);
 			}
 		}
 	}
@@ -332,14 +300,10 @@ void __vectorcall cAbstractToolMethods::highlightPerimeter(rect2D_t area, uint32
 
 						if (0 == outside) {
 
-							Iso::Voxel const* const pVoxel(world::getVoxelAt(voxelIndex));
+							Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-							if (pVoxel) {
-								Iso::Voxel const oVoxel(*pVoxel);
-
-								_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
-								highlightVoxel(voxelIndex, color);
-							}
+							_blink |= bool(Iso::getColor(oVoxel)); // existing color? indicate w/ blinking that these ground voxels are to be replaced.
+							highlightVoxel(voxelIndex, color);
 						}
 						else {
 							highlightVoxel(voxelIndex); // surrounding, color remains untouched

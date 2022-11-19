@@ -339,6 +339,9 @@
     <ClInclude Include="cThrusterFireGameObject.h">
       <Filter>Header Files\Gameplay\VDB</Filter>
     </ClInclude>
+    <ClInclude Include="StreamingGrid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -501,6 +504,9 @@
       <Filter>Source Files\Gameplay\VDB</Filter>
     </ClCompile>
     <ClCompile Include="world.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="StreamingGrid.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

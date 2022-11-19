@@ -39,6 +39,8 @@
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
 
+#define BATCHED_VOXELS 16
+
 using namespace world;
 
 inline interpolator Interpolator; // global singleton instance
@@ -122,24 +124,6 @@ namespace // private to this file (anonymous)
 
 } // end ns
 
-namespace // private to this file (anonymous)
-{
-	namespace the
-	{
-		static inline tbb::queuing_rw_mutex lock; // for the::grid
-
-		static inline constinit struct // purposely anonymous union, protected pointer implementation for the::grid
-		{
-			Iso::Voxel* __restrict		 _protected = nullptr;
-
-			__declspec(safebuffers) __forceinline operator Iso::Voxel* const __restrict() const {
-				return(_protected);
-			}
-		} grid{};
-		
-	} // end ns
-} // end ns
-
 /* deprecated, moved to full 8bit heightstep
 namespace // private to this file (anonymous)
 {
@@ -162,11 +146,140 @@ namespace // private to this file (anonymous)
 	};
 } // end ns
 */
+
+template<bool const AllNewGround = false>
+static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
+{
+	auto const voxelIterate = getLocalVoxelIndexAt(voxelIndex);
+
+	::Iso::Voxel const* __restrict pNeighbour(nullptr);
+	uint32_t const curVoxelHeightStep(::Iso::getHeightStep(voxelIterate));
+	uint8_t Adjacency(0);
+
+	// Therefore the neighbours of a voxel, follow same isometric layout/order //
+	/*
+
+								NBR_TR
+					[NBR_T]				   [NBR_R]
+		NBR_TL					VOXEL					NBR_BR
+					[NBR_L]				   [NBR_B]
+								NBR_BL
+	*/
+
+	// Side Back = NBR_T
+	{
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_T]);
+
+		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
+
+		// adjacency
+		if (neighbourHeightStep >= curVoxelHeightStep) {
+
+			Adjacency |= (1 << ::Volumetric::adjacency::back);
+		}
+	}
+
+	// Side Right = NBR_R
+	{
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_R]);
+
+		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
+
+		// adjacency
+		if (neighbourHeightStep >= curVoxelHeightStep) {
+
+			Adjacency |= (1 << ::Volumetric::adjacency::right);
+		}
+	}
+
+	// Side Left = NBR_L
+	{
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_L]);
+
+		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
+
+		// adjacency
+		if (neighbourHeightStep >= curVoxelHeightStep) {
+
+			Adjacency |= (1 << ::Volumetric::adjacency::left);
+		}
+	}
+
+	// Side Front = NBR_B
+	{
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_B]);
+
+		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
+
+		// adjacency
+		if (neighbourHeightStep >= curVoxelHeightStep) {
+
+			Adjacency |= (1 << ::Volumetric::adjacency::front);
+		}
+	}
+
+	Iso::Voxel oVoxel{};
+
+	if constexpr (AllNewGround) { // load-time
+		// start of a new voxel (these are the initial world voxel state)
+		oVoxel.Desc = Iso::TYPE_GROUND;
+		oVoxel.MaterialDesc = 0;		// Initially visibility is set off on all voxels until ComputeGroundOcclusion()
+		Iso::clearColor(oVoxel);		// *bugfix - must clear to default color used for ground on generation.
+	}
+	else { // during run-time
+		oVoxel = std::move(getVoxelAtLocal(voxelIterate));
+	}
+
+	if (0 == Adjacency) {
+		::Iso::clearAdjacency(oVoxel);
+	}
+	else {
+		::Iso::setAdjacency(oVoxel, Adjacency);
+	}
+
+	setVoxelAtLocal(voxelIterate, std::forward<::Iso::Voxel const&& __restrict>(oVoxel));
+}
+
+template<bool const AllNewGround = false>
+static void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
+{
+	// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
+	voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
+
+	// clamp to world/minmax coords
+	voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+
+	point2D_t const voxelBegin(voxelArea.left_top());
+	point2D_t const voxelEnd(voxelArea.right_bottom());
+
+	tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+	tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelBegin.y, voxelEnd.y, BATCHED_VOXELS, voxelBegin.x, voxelEnd.x, BATCHED_VOXELS),
+		[&](tbb::blocked_range2d<int32_t, int32_t> const& r)
+		{
+			int32_t const	// pull out into registers from memory
+			    y_begin(r.rows().begin()),
+				y_end(r.rows().end()),
+				x_begin(r.cols().begin()),
+				x_end(r.cols().end());
+
+			point2D_t const voxelBegin(x_begin, y_begin);
+
+			point2D_t voxelIndex;
+			for (voxelIndex.y = y_begin; voxelIndex.y <= y_end; ++voxelIndex.y)
+			{
+				for (voxelIndex.x = x_begin; voxelIndex.x <= x_end; ++voxelIndex.x)
+				{
+					recomputeGroundAdjacency<AllNewGround>(voxelIndex);
+				}
+			}
+		});
+}
+
 // ####### Private Init methods
 static void ComputeGroundAdjacency()
 {
 	// entire grid
-	recomputeGroundAdjacency(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
+	recomputeGroundAdjacency<true>(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
 }
 /*
 // https://www.shadertoy.com/view/ftSfRw
@@ -196,6 +309,20 @@ float craterShape(float x, Crater c) {
 
 }
 */
+
+namespace // private to this file (anonymous)
+{
+	constinit static inline struct // purposely anonymous union, protected pointer implementation for the::grid
+	{
+		StreamingGrid* __restrict		 _protected = nullptr;
+
+		__declspec(safebuffers) __forceinline operator StreamingGrid* const __restrict() const {
+			return(_protected);
+		}
+	} grid{};
+} // end ns
+
+
 static uint32_t const RenderNoiseImagePixel(float const u, float const v, float const in, supernoise::interpolator::functor const& interp)
 {
 	static constexpr float const NOISE_SCALAR_HEIGHT = 1.0f * (Iso::WORLD_GRID_FSIZE / 512.0f); // fixed so scale of terrain height is constant irregardless of width/depth of map
@@ -265,31 +392,18 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 		ImagingDelete(_heightmap); _heightmap = nullptr;
 	}
 	_heightmap = imageNoise; // main pointer to heightmap becomes the new 16 bit memory location
-
-	// reset voxel grid
-	tbb::parallel_for(int(0), int(Iso::WORLD_GRID_SIZE), [](int yVoxel) {
-
-		int32_t xVoxel(0);
-																							// Y is inverted to match world texture uv
-		do
-		{	
-			Iso::Voxel oVoxel;
-			oVoxel.Desc = Iso::TYPE_GROUND;
-			oVoxel.MaterialDesc = 0;		// Initially visibility is set off on all voxels until ComputeGroundOcclusion()
-			Iso::clearColor(oVoxel);		// *bugfix - must clear to default color used for ground on generation.
-			
-			// Save Voxel to Grid SRAM
-			*(the::grid + ((yVoxel * Iso::WORLD_GRID_SIZE) + xVoxel)) = oVoxel;
-
-		} while (++xVoxel < Iso::WORLD_GRID_SIZE);
-
-	});
-
+	
 	// otherwise texture creation from image takes place in onloaded event.
 	MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
 
+	// reset voxel grid
+	_streamingGrid.Reset();
+
 	// Compute adjacency based on neighbour occupancy
 	ComputeGroundAdjacency();
+
+	// reset voxel grid (should be done after computegroundadjacency and before real-time usage
+	_streamingGrid.Reset();
 
 	FMT_LOG_OK(GAME_LOG, "Lunar Surface Synthesized");
 }
@@ -447,7 +561,7 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
 	voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
 
-	point2D_t const visibleRadius(p2D_half(point2D_t(Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z))); // want radius, hence the half value
+	point2D_t const visibleRadius(p2D_half(point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z))); // want radius, hence the half value
 
 	// get starting voxel in TL corner of screen
 	voxelIndex = p2D_sub(voxelIndex, visibleRadius);
@@ -774,79 +888,72 @@ void cVoxelWorld::updateMouseOcclusion(bool const bPaused)
 
 			// hovered voxel on ground
 			voxelIndex = getHoveredVoxelIndex();
-			Iso::Voxel const* const pVoxelHovered = world::getVoxelAt(voxelIndex);
 
-			if (pVoxelHovered) {
-				Iso::Voxel const oHoveredVoxel(*pVoxelHovered);
+			Iso::Voxel const oHoveredVoxel(world::getVoxelAt(voxelIndex));
 
-				// occlusion voxel not ground
-				voxelIndex = _occlusion.occlusionVoxelIndex;
-				Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+			// occlusion voxel not ground
+			voxelIndex = _occlusion.occlusionVoxelIndex;
 
-				if (pVoxel) {
+			Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-					Iso::Voxel const oVoxel(*pVoxel);
+			if (Iso::isOwnerAny(oVoxel)) {
 
-					if (Iso::isOwnerAny(oVoxel)) {
+				for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
 
-						for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+					if (Iso::isOwner(oVoxel, i)) {
 
-							if (Iso::isOwner(oVoxel, i)) {
+						// get hash, which should be the voxel model instance ID
+						uint32_t const hash = Iso::getHash(oVoxel, i);
 
-								// get hash, which should be the voxel model instance ID
-								uint32_t const hash = Iso::getHash(oVoxel, i);
+						if (0 != hash) {
 
-								if (0 != hash) {
+							// Check hash against bottom (exclusion)
+							bool excluded(false);
 
-									// Check hash against bottom (exclusion)
-									bool excluded(false);
+							for (uint32_t j = Iso::STATIC_HASH; j < Iso::HASH_COUNT; ++j) {
 
-									for (uint32_t j = Iso::STATIC_HASH; j < Iso::HASH_COUNT; ++j) {
+								if (Iso::getHash(oHoveredVoxel, j) == hash) {
+									excluded = true;
+									break;
+								}
+							}
 
-										if (Iso::getHash(oHoveredVoxel, j) == hash) {
-											excluded = true;
-											break;
-										}
+							if (!excluded) {
+
+								// add to set of unique instance hashes
+								uint32_t const set = (uint32_t const)(Iso::STATIC_HASH != i); // DYNAMIC or STATIC
+
+								// only add if fadeable
+								if (set) {
+									auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<DYNAMIC>(hash);
+									if (instance) {
+										excluded = !instance->isFadeable();
 									}
-
-									if (!excluded) {
-
-										// add to set of unique instance hashes
-										uint32_t const set = (uint32_t const)(Iso::STATIC_HASH != i); // DYNAMIC or STATIC
-
-										// only add if fadeable
-										if (set) {
-											auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<DYNAMIC>(hash);
-											if (instance) {
-												excluded = !instance->isFadeable();
-											}
-										}
-										else {
-											auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<STATIC>(hash);
-											if (instance) {
-												excluded = !instance->isFadeable();
-											}
-										}
-										
-										if (!excluded) {
-											_occlusion.fadedInstances[set].emplace(hash);
-										}
+								}
+								else {
+									auto const instance = MinCity::VoxelWorld->lookupVoxelModelInstance<STATIC>(hash);
+									if (instance) {
+										excluded = !instance->isFadeable();
 									}
+								}
+
+								if (!excluded) {
+									_occlusion.fadedInstances[set].emplace(hash);
 								}
 							}
 						}
 					}
 				}
+			}
 
-				_occlusion.tToOcclude -= delta();
-				_occlusion.tToOcclude = fp_seconds(SFM::max(0.0, _occlusion.tToOcclude.count()));
+			_occlusion.tToOcclude -= delta();
+			_occlusion.tToOcclude = fp_seconds(SFM::max(0.0, _occlusion.tToOcclude.count()));
 
-				if (zero_time_duration == _occlusion.tToOcclude) {
+			if (zero_time_duration == _occlusion.tToOcclude) {
 
-					// adjust instances to faded
-					setOcclusionInstances();
+				// adjust instances to faded
+				setOcclusionInstances();
 
-				}
 			}
 		}
 	}
@@ -911,18 +1018,15 @@ namespace world
 
 				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
 
-					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAtLocal(voxelIterate)); // pre-transformed to [0,0 to X,Y]
+					// pre-transformed to [0,0 to X,Y]
+					Iso::Voxel oVoxel(world::getVoxelAtLocal(voxelIterate));
 
-					if (pVoxel) {
-						Iso::Voxel oVoxel(*pVoxel);
+					if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) { // only apply to ground area excluding the static & dynamic instances
 
-						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel) ) { // only apply to ground area excluding the static & dynamic instances
+						Iso::setZoning(oVoxel, zoning);
+						Iso::setColor(oVoxel, world::ZONING_COLOR[zoning]);
 
-							Iso::setZoning(oVoxel, zoning);
-							Iso::setColor(oVoxel, world::ZONING_COLOR[zoning]);
-							
-							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
-						}
+						world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 					}
 				}
 			}
@@ -977,19 +1081,16 @@ namespace world
 
 				for (voxelIterate.x = voxelArea.left; voxelIterate.x < voxelArea.right; ++voxelIterate.x) {
 
-					Iso::Voxel const* const __restrict pVoxel(world::getVoxelAtLocal(voxelIterate)); // pre-transformed to [0,0 to X,Y]
+					// pre-transformed to [0,0 to X,Y]
+					Iso::Voxel oVoxel(world::getVoxelAtLocal(voxelIterate));
 
-					if (pVoxel) {
-						Iso::Voxel oVoxel(*pVoxel);
+					if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) { // only apply to ground area excluding the static & dynamic instances
 
-						if (Iso::isGroundOnly(oVoxel) && Iso::isHashEmpty(oVoxel)) { // only apply to ground area excluding the static & dynamic instances
-
-							Iso::clearZoning(oVoxel);
-							Iso::clearColor(oVoxel);
-							Iso::clearEmissive(oVoxel);
+						Iso::clearZoning(oVoxel);
+						Iso::clearColor(oVoxel);
+						Iso::clearEmissive(oVoxel);
 							
-							world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
-						}
+						world::setVoxelAtLocal(voxelIterate, std::forward<Iso::Voxel const&&>(oVoxel));
 					}
 				}
 			}
@@ -1008,7 +1109,7 @@ namespace world
 		return(Iso::getHeightStep(voxelIndex));
 	}
 
-	Iso::Voxel const * const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex)
+	Iso::Voxel const __vectorcall getVoxelAt(point2D_t voxelIndex)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
 		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
@@ -1017,7 +1118,7 @@ namespace world
 		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
 		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
 
-		return((the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+		return(((StreamingGrid* const)::grid)->getVoxel(voxelIndex));
 	}
 
 	point2D_t const __vectorcall getLocalVoxelIndexAt(point2D_t voxelIndex)
@@ -1031,19 +1132,19 @@ namespace world
 
 		return(voxelIndex);
 	}
-	Iso::Voxel const * const __restrict __vectorcall getVoxelAt(FXMVECTOR const Location)
+	Iso::Voxel const __vectorcall getVoxelAt(FXMVECTOR const Location)
 	{	//          	equal same voxel	
 		// still in Grid Space (-x,-y) to (X, Y) Coordinates 
 		return(getVoxelAt(v2_to_p2D(Location)));
 	}
 
-	Iso::Voxel const* const __restrict __vectorcall getVoxelAtLocal(point2D_t voxelIndex)
+	Iso::Voxel const __vectorcall getVoxelAtLocal(point2D_t voxelIndex)
 	{
 		// wrap bounds //
 		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
 		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
 
-		return((the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)));
+		return(((StreamingGrid* const)::grid)->getVoxel(voxelIndex));
 	}
 
 	uint32_t const getVoxelsAt_AverageHeight(rect2D_t voxelArea)
@@ -1106,7 +1207,6 @@ namespace world
 		}
 
 		return(maximum_height);
-
 	}
 
 	void setVoxelHeightAt(point2D_t const voxelIndex, uint32_t const heightstep)
@@ -1146,7 +1246,7 @@ namespace world
 		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
 
 		// Update Voxel
-		*(the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
+		((StreamingGrid* const)::grid)->setVoxel(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(newData));
 	}
 	void __vectorcall setVoxelAt(FXMVECTOR const Location, Iso::Voxel const&& __restrict newData)
 	{
@@ -1163,7 +1263,7 @@ namespace world
 		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
 
 		// Update Voxel
-		*(the::grid + ((voxelIndex.y * Iso::WORLD_GRID_SIZE) + voxelIndex.x)) = std::move(newData);
+		((StreamingGrid* const)::grid)->setVoxel(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(newData));
 	}
 
 	void __vectorcall setVoxelsAt(rect2D_t voxelArea, Iso::Voxel const&& __restrict voxelReference)
@@ -1334,17 +1434,12 @@ namespace world
 			voxelIterate.x = voxelArea.left;
 			while (voxelIterate.x <= voxelEnd.x) {
 
-				Iso::Voxel const* const __restrict pVoxel(getVoxelAt(voxelIterate));
+				Iso::Voxel oVoxel(getVoxelAt(voxelIterate));
 
-				if (pVoxel) {
+				// Reset everything EXCEPT [ Height, Occlusion, ... ]
+				Iso::resetAsGroundOnly(oVoxel);
 
-					Iso::Voxel oVoxel(*pVoxel);
-
-					// Reset everything EXCEPT [ Height, Occlusion, ... ]
-					Iso::resetAsGroundOnly(oVoxel);
-
-					setVoxelAt(voxelIterate, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-				}
+				setVoxelAt(voxelIterate, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 				
 
 				++voxelIterate.x;
@@ -1449,7 +1544,7 @@ namespace world
 	}
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset)
+	Iso::Voxel const getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
 		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
@@ -1463,10 +1558,10 @@ namespace world
 		voxelNeighbour.x = voxelNeighbour.x & (Iso::WORLD_GRID_SIZE - 1);
 		voxelNeighbour.y = voxelNeighbour.y & (Iso::WORLD_GRID_SIZE - 1);
 
-		return((the::grid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
+		return(((StreamingGrid* const)::grid)->getVoxel(voxelNeighbour));
 	}
 	// Grid Space (0,0) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset)
+	Iso::Voxel const getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset)
 	{
 		point2D_t voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
 
@@ -1477,7 +1572,7 @@ namespace world
 		voxelNeighbour.x = voxelNeighbour.x & (Iso::WORLD_GRID_SIZE - 1);
 		voxelNeighbour.y = voxelNeighbour.y & (Iso::WORLD_GRID_SIZE - 1);
 
-		return((the::grid + ((voxelNeighbour.y * Iso::WORLD_GRID_SIZE) + voxelNeighbour.x)));
+		return(((StreamingGrid* const)::grid)->getVoxel(voxelNeighbour));
 	}
 	
 	static void smoothRow(point2D_t start, int32_t width)  // iterates from start.x to start.x + width (Left 2 Right)
@@ -1575,114 +1670,11 @@ namespace world
 
 	void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
 	{
-		// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
-		voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
-
-		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
-
-		point2D_t voxelIterate(voxelArea.left_top());
-		point2D_t const voxelEnd(voxelArea.right_bottom());
-
-		while (voxelIterate.y <= voxelEnd.y) {
-
-			voxelIterate.x = voxelArea.left;
-			while (voxelIterate.x <= voxelEnd.x) {
-
-				auto const localvoxelIndex = getLocalVoxelIndexAt(voxelIterate);
-
-				Iso::Voxel const* __restrict pNeighbour(nullptr);
-				uint32_t const curVoxelHeightStep(Iso::getHeightStep(localvoxelIndex));
-				uint8_t Adjacency(0);
-
-				// Therefore the neighbours of a voxel, follow same isometric layout/order //
-				/*
-
-											NBR_TR
-								[NBR_T]				   [NBR_R]
-					NBR_TL					VOXEL					NBR_BR
-								[NBR_L]				   [NBR_B]
-											NBR_BL
-				*/
-
-				// Side Back = NBR_T
-				{
-					auto const localvoxelIndexNeighbour = world::getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_T]);
-
-					uint32_t const neighbourHeightStep(Iso::getHeightStep(localvoxelIndexNeighbour));
-
-					// adjacency
-					if (neighbourHeightStep >= curVoxelHeightStep) {
-
-						Adjacency |= (1 << Volumetric::adjacency::back);
-					}
-				}
-
-				// Side Right = NBR_R
-				{
-					auto const localvoxelIndexNeighbour = world::getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_R]);
-
-					uint32_t const neighbourHeightStep(Iso::getHeightStep(localvoxelIndexNeighbour));
-
-					// adjacency
-					if (neighbourHeightStep >= curVoxelHeightStep) {
-
-						Adjacency |= (1 << Volumetric::adjacency::right);
-					}
-				}
-
-				// Side Left = NBR_L
-				{
-					auto const localvoxelIndexNeighbour = world::getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_L]);
-
-					uint32_t const neighbourHeightStep(Iso::getHeightStep(localvoxelIndexNeighbour));
-
-					// adjacency
-					if (neighbourHeightStep >= curVoxelHeightStep) {
-
-						Adjacency |= (1 << Volumetric::adjacency::left);
-					}
-				}
-
-				// Side Front = NBR_B
-				{
-					auto const localvoxelIndexNeighbour = world::getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_B]);
-
-					uint32_t const neighbourHeightStep(Iso::getHeightStep(localvoxelIndexNeighbour));
-
-					// adjacency
-					if (neighbourHeightStep >= curVoxelHeightStep) {
-
-						Adjacency |= (1 << Volumetric::adjacency::front);
-					}
-				}
-
-				Iso::Voxel const* const pVoxel(getVoxelAtLocal(localvoxelIndex));
-
-				if (nullptr != pVoxel) {
-
-					Iso::Voxel oVoxel(*pVoxel);
-
-					if (0 == Adjacency) {
-						Iso::clearAdjacency(oVoxel);
-					}
-					else {
-						Iso::setAdjacency(oVoxel, Adjacency);
-					}
-
-					world::setVoxelAtLocal(localvoxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-				}
-
-				++voxelIterate.x;
-			}
-
-			++voxelIterate.y;
-		}
+		::recomputeGroundAdjacency<false>(voxelArea);
 	}
-
 	void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 	{
-		recomputeGroundAdjacency(rect2D_t{ voxelIndex, voxelIndex });
+		::recomputeGroundAdjacency<false>(voxelIndex);
 	}
 
 	// Random //
@@ -1933,11 +1925,11 @@ namespace // private to this file (anonymous)
 				xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
 
 				if (!(bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP)))) {
-					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+					//FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
 					// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
-				FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, oVoxel, voxels_static, voxels_dynamic, voxels_trans);
+				FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, voxels_static, voxels_dynamic, voxels_trans);
 
 				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
 
@@ -1964,7 +1956,6 @@ namespace // private to this file (anonymous)
 			return(bVisible);
 		}
 
-		template<uint32_t const MAX_VISIBLE_X, uint32_t const MAX_VISIBLE_Y>
 		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic,
@@ -1980,7 +1971,9 @@ namespace // private to this file (anonymous)
 #endif
 #endif
 			point2D_t const voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
-			point2D_t const voxelEnd(p2D_add(voxelReset, point2D_t(MAX_VISIBLE_X, MAX_VISIBLE_Y)));
+			point2D_t const voxelEnd(p2D_add(voxelReset, point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z)));
+
+			((StreamingGrid* const __restrict)::grid)->CacheVisible(voxelReset, voxelEnd);
 
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
@@ -2007,7 +2000,7 @@ namespace // private to this file (anonymous)
 
 			private:
 				point2D_t const 								voxelStart;
-				Iso::Voxel const* const __restrict				theGrid;
+				StreamingGrid* const __restrict				    streamingGrid;
 
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
@@ -2018,12 +2011,12 @@ namespace // private to this file (anonymous)
 			public:
 				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
 					point2D_t const voxelStart_,
-					Iso::Voxel const* const __restrict theGrid_,
+					StreamingGrid* const __restrict streamingGrid_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
-					: voxelStart(voxelStart_), theGrid(theGrid_),
+					: voxelStart(voxelStart_), streamingGrid(streamingGrid_),
 					voxelGround(voxelGround_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
 				{}
 
@@ -2054,23 +2047,7 @@ namespace // private to this file (anonymous)
 							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
 							point2D_t const voxelIndexWrapped(p2D_wrap(voxelIndex, Iso::WORLD_GRID_SIZE));
 
-							Iso::Voxel const oVoxel(*(theGrid + ((voxelIndexWrapped.y << WORLD_GRID_SIZE_BITS) + voxelIndexWrapped.x)));
-
-							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
-							{
-#ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
-#endif
-							} // root
-							// a voxel in the grid can have a static model and dynamic model simultaneously
-							if (Iso::isOwnerAny(oVoxel, Iso::DYNAMIC_HASH)) { // only if there are dynamic hashes which this voxel owns
-								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
-									if (Iso::isOwner(oVoxel, i)) {
-
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
-									}
-								}
-							}
+							Iso::Voxel const oVoxel(streamingGrid->getVoxel(voxelIndex));
 
 							/* @todo (optional)
 							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
@@ -2090,6 +2067,22 @@ namespace // private to this file (anonymous)
 
 							// ***Ground always exists*** // *bugfix: frustum culling ground leaves empty space in an undefined state. for example, raymarched reflections disappear if camera is too close *do not change*
 							RenderGround(xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelGround, localGround);
+
+							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
+							{
+#ifndef DEBUG_NO_RENDER_STATIC_MODELS
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+#endif
+							} // root
+							// a voxel in the grid can have a static model and dynamic model simultaneously
+							if (Iso::isOwnerAny(oVoxel, Iso::DYNAMIC_HASH)) { // only if there are dynamic hashes which this voxel owns
+								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
+									if (Iso::isOwner(oVoxel, i)) {
+
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+									}
+								}
+							}
 						} // for
 
 					} // for
@@ -2104,12 +2097,10 @@ namespace // private to this file (anonymous)
 			tTime const tGridStart(high_resolution_clock::now());																
 #endif																														
 			{
-				tbb::queuing_rw_mutex::scoped_lock lock(the::lock, false); // read-only grid access
-
 				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-					RenderFuncBlockChunk(voxelStart, the::grid, voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
+					RenderFuncBlockChunk(voxelStart, ((StreamingGrid* const)::grid), voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
 				);
 			}
 			// ####################################################################################################################
@@ -2187,6 +2178,7 @@ namespace world
 #endif
 	{
 		Volumetric::VolumetricLink = new Volumetric::voxLink{ *this, _OpacityMap, _Visibility };
+		
 		_occlusion.tToOcclude = Volumetric::Konstants::OCCLUSION_DELAY;
 	}
 } // end ns
@@ -2388,15 +2380,9 @@ namespace world
 	{
 		_Visibility.Initialize();
 
-		// create world grid memory
-		{
-			the::grid._protected = (Iso::Voxel* const __restrict)scalable_aligned_malloc(sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE, CACHE_LINE_BYTES);
+		_streamingGrid.Initialize();
+		::grid._protected = &_streamingGrid; // assign global reference (global only to this file)
 
-			memset(the::grid._protected, 0, sizeof(Iso::Voxel) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
-			
-			FMT_LOG(VOX_LOG, "world grid voxel allocation: {:n} bytes", (size_t)(sizeof(the::grid[0]) * Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE));
-		}
-		
 		GenerateGround();
 #ifndef NDEBUG
 		OutputVoxelStats();
@@ -2658,6 +2644,12 @@ namespace world
 		// reset world / camera *bugfix important
 		resetCamera();
 	}
+
+	void cVoxelWorld::GarbageCollect()
+	{
+		_streamingGrid.GarbageCollect();
+	}
+
 	void cVoxelWorld::NewWorld()
 	{
 		Clear();
@@ -2904,8 +2896,8 @@ namespace world
 		Iso::Voxel* __restrict gridSnapshot = (Iso::Voxel * __restrict)scalable_malloc(gridSz);
 
 		{
-			tbb::queuing_rw_mutex::scoped_lock lock(the::lock, false); // read-only access
-			memcpy(gridSnapshot, the::grid, gridSz);
+			tbb::queuing_rw_mutex::scoped_lock lock(_streamingGrid.access_lock(), false); // read-only access
+			////////////////////////////memcpy(gridSnapshot, the::grid, gridSz);
 		}
 
 		return(std::make_pair( gridSnapshot, voxel_count ));
@@ -2933,8 +2925,8 @@ namespace world
 			// to be thread safe. This lock has very little contention put on it from this side, however if the lock is already 
 			// obtained by RenderGrid the wait this function will have is high (time for RenderGrid to complete)
 
-			tbb::queuing_rw_mutex::scoped_lock lock(the::lock, true); // write access
-			oldGrid = (Iso::Voxel*)_InterlockedExchangePointer((PVOID * __restrict)&the::grid._protected, theGrid);
+			tbb::queuing_rw_mutex::scoped_lock lock(_streamingGrid.access_lock(), true); // write access
+			///////////////////////////////oldGrid = (Iso::Voxel*)_InterlockedExchangePointer((PVOID * __restrict)&the::grid._protected, theGrid);
 		}
 		// free the old grid's large allocation
 		if (oldGrid) {
@@ -3102,7 +3094,7 @@ namespace world
 		_OpacityMap.map(); // (maps, should be done once clear for lights has completed, and before any lights are added)
 
 		// GRID RENDER //
-		voxelRender::RenderGrid<Iso::OVER_SCREEN_VOXELS_X, Iso::OVER_SCREEN_VOXELS_Z>(
+		voxelRender::RenderGrid(
 			oCamera.voxelIndex_TopLeft,
 			MappedVoxels_Terrain,
 			MappedVoxels_Static,
@@ -3890,7 +3882,11 @@ namespace world
 		//###########################################################//
 		UpdateUniformStateTarget(tNow, tStart, bJustLoaded);
 		//###########################################################//
-		
+#ifndef NDEBUG
+#ifdef DEBUG_OUTPUT_STREAMING_STATS
+		_streamingGrid.OutputDebugStats(tDelta);
+#endif
+#endif
 		// ***** Anything that uses uniform state updates AFTER
 		_bMotionDelta = false; // must reset *here*
 		
@@ -3925,50 +3921,58 @@ namespace world
 
 	void cVoxelWorld::AsyncClears(uint32_t const resource_index)
 	{
-		_AsyncClearTaskID = async_long_task::enqueue<background_critical>([&, resource_index] {
+		if (0 == resource_index) { // required for template argument
 
-			{
-				auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
-			}
-			{
-				auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-				___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
-			}
-			{
-				auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
-			}
-			{
-				auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-				___memset_threaded<16>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-				stagingBuffer.unmap();
-			}
-			
-			/*
-			{
-				
-			}
-			{
+			_AsyncClearTaskID = async_long_task::enqueue<background_critical, 0>([&, resource_index] { // unique lambda [0]
 
-			}
-			{
-				
-			}
-			{
-				
-			}
-			{
-				
-			}
-			{
-				
-			}
-			*/
-		});
+				{
+					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				{
+					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				{
+					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				{
+					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+			});
+		}
+		else {
+
+			_AsyncClearTaskID = async_long_task::enqueue<background_critical, 1>([&, resource_index] {  // unique lambda [1]
+
+				{
+					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				{
+					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				{
+					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+				{
+					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
+					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					stagingBuffer.unmap();
+				}
+			});
+		}
 
 		// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
 		getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
@@ -4399,35 +4403,30 @@ namespace world
 	// queries if voxel model instance of type intersects a voxel. does not have to be owner voxel.
 	uint32_t const cVoxelWorld::hasVoxelModelInstanceAt(point2D_t const voxelIndex, int32_t const modelGroup, uint32_t const modelIndex) const
 	{
-		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+		Iso::Voxel const oVoxel(world::getVoxelAt(voxelIndex));
 
-		if (pVoxel) {
+		for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
 
-			Iso::Voxel const oVoxel(*pVoxel);
+			// get hash, which should be the voxel model instance ID
+			uint32_t const hash(Iso::getHash(oVoxel, i));
 
-			for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+			if (Iso::STATIC_HASH == i) {
+				auto const instance = lookupVoxelModelInstance<false>(hash);
 
-				// get hash, which should be the voxel model instance ID
-				uint32_t const hash(Iso::getHash(oVoxel, i));
-
-				if (Iso::STATIC_HASH == i) {
-					auto const instance = lookupVoxelModelInstance<false>(hash);
-
-					if (instance) {
-						auto const ident = instance->getModel().identity();
-						if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
-							return(hash);
-						}
+				if (instance) {
+					auto const ident = instance->getModel().identity();
+					if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
+						return(hash);
 					}
 				}
-				else {
-					auto const instance = lookupVoxelModelInstance<true>(hash);
+			}
+			else {
+				auto const instance = lookupVoxelModelInstance<true>(hash);
 
-					if (instance) {
-						auto const ident = instance->getModel().identity();
-						if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
-							return(hash);
-						}
+				if (instance) {
+					auto const ident = instance->getModel().identity();
+					if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
+						return(hash);
 					}
 				}
 			}
@@ -4469,57 +4468,53 @@ namespace world
 	{
 		uint32_t existing(0);
 
-		Iso::Voxel const* const pVoxel = world::getVoxelAt(voxelIndex);
+		Iso::Voxel oVoxel(world::getVoxelAt(voxelIndex));
 
-		if (pVoxel) {
+		if (Iso::isOwnerAny(oVoxel)) {
+			uint32_t hash(0);
 
-			Iso::Voxel oVoxel(*pVoxel);
+			for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
 
-			if (Iso::isOwnerAny(oVoxel)) {
-				uint32_t hash(0);
+				if (Iso::isOwner(oVoxel, i)) {
 
-				for (uint32_t i = Iso::STATIC_HASH; i < Iso::HASH_COUNT; ++i) {
+					// get hash, which should be the voxel model instance ID
+					hash = Iso::getHash(oVoxel, i);
 
-					if (Iso::isOwner(oVoxel, i)) {
+					if (Iso::STATIC_HASH == i) {
+						auto const instance = lookupVoxelModelInstance<false>(hash);
 
-						// get hash, which should be the voxel model instance ID
-						hash = Iso::getHash(oVoxel, i);
-
-						if (Iso::STATIC_HASH == i) {
-							auto const instance = lookupVoxelModelInstance<false>(hash);
-
-							if (instance) {
-								auto const ident = instance->getModel().identity();
-								if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
-									existing = i;
-									break;
-								}
-							}
-						}
-						else {
-							auto const instance = lookupVoxelModelInstance<true>(hash);
-
-							if (instance) {
-								auto const ident = instance->getModel().identity();
-								if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
-									existing = i;
-									break;
-								}
+						if (instance) {
+							auto const ident = instance->getModel().identity();
+							if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
+								existing = i;
+								break;
 							}
 						}
 					}
-				}
+					else {
+						auto const instance = lookupVoxelModelInstance<true>(hash);
 
-				if (existing) {
-					Iso::clearAsOwner(oVoxel, existing);
-					world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&&>(oVoxel));
-
-					if (pRecordHidden) {
-						pRecordHidden->emplace_back(voxelIndex, hash);
+						if (instance) {
+							auto const ident = instance->getModel().identity();
+							if (modelGroup == ident._modelGroup && modelIndex == ident._index) {
+								existing = i;
+								break;
+							}
+						}
 					}
 				}
 			}
+
+			if (existing) {
+				Iso::clearAsOwner(oVoxel, existing);
+				world::setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&&>(oVoxel));
+
+				if (pRecordHidden) {
+					pRecordHidden->emplace_back(voxelIndex, hash);
+				}
+			}
 		}
+		
 
 		return(existing);
 	}
@@ -4554,52 +4549,47 @@ namespace world
 	// once the instance finishes its destruction sequence, it will be queued for deletion in a concurrent safe manner
 	// upon actual deletion the voxel grid is then modified to remove any references to the model instances hash for its local area.
 	// when a model instance is released any associated game object will then be released on its update cycle.
-	bool const cVoxelWorld::destroyVoxelModelInstanceAt(Iso::Voxel const* const pVoxel, uint32_t const hashTypes)
+	bool const cVoxelWorld::destroyVoxelModelInstanceAt(Iso::Voxel const& oVoxel, uint32_t const hashTypes)
 	{
 		static constexpr uint32_t const INSTANCE_COUNT(8);
 
 		bool bExisting(false);
 
-		if (pVoxel) {
+		Volumetric::voxelModelInstanceBase* FoundModelInstance[INSTANCE_COUNT]{ nullptr };
 
-			Iso::Voxel const oVoxel(*pVoxel);
+		if (Iso::STATIC_HASH == (hashTypes & Iso::STATIC_HASH) && Iso::hasStatic(oVoxel)) { // static
+			// get hash, which should be the voxel model instance ID
+			uint32_t const hash(Iso::getHash(oVoxel, Iso::STATIC_HASH));
 
-			Volumetric::voxelModelInstanceBase* FoundModelInstance[INSTANCE_COUNT]{ nullptr };
+			if (0 != hash) {
 
-			if (Iso::STATIC_HASH == (hashTypes & Iso::STATIC_HASH) && Iso::hasStatic(oVoxel)) { // static
+				// resolve model instance
+				FoundModelInstance[0] = static_cast<Volumetric::voxelModelInstanceBase* const>(lookupVoxelModelInstance<false>(hash));
+			}
+		}
+		if (Iso::DYNAMIC_HASH == (hashTypes & Iso::DYNAMIC_HASH) && Iso::hasDynamic(oVoxel)) { // dynamic
+
+			for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 				// get hash, which should be the voxel model instance ID
-				uint32_t const hash(Iso::getHash(oVoxel, Iso::STATIC_HASH));
+				uint32_t const hash(Iso::getHash(oVoxel, i));
 
 				if (0 != hash) {
 
 					// resolve model instance
-					FoundModelInstance[0] = static_cast<Volumetric::voxelModelInstanceBase* const>(lookupVoxelModelInstance<false>(hash));
+					FoundModelInstance[1 + (i - Iso::DYNAMIC_HASH)] = static_cast<Volumetric::voxelModelInstanceBase* const>(lookupVoxelModelInstance<true>(hash));
 				}
 			}
-			if (Iso::DYNAMIC_HASH == (hashTypes & Iso::DYNAMIC_HASH) && Iso::hasDynamic(oVoxel)) { // dynamic
+		}
 
-				for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
-					// get hash, which should be the voxel model instance ID
-					uint32_t const hash(Iso::getHash(oVoxel, i));
+		for (uint32_t i = 0 ; i < INSTANCE_COUNT; ++i) {
+			if (FoundModelInstance[i]) {
 
-					if (0 != hash) {
-
-						// resolve model instance
-						FoundModelInstance[1 + (i - Iso::DYNAMIC_HASH)] = static_cast<Volumetric::voxelModelInstanceBase* const>(lookupVoxelModelInstance<true>(hash));
-					}
-				}
-			}
-
-			for (uint32_t i = 0 ; i < INSTANCE_COUNT; ++i) {
-				if (FoundModelInstance[i]) {
-
-					// the instance will delete itself after destruction sequence
-					// cleanup of instance from map will happen at that time in a thread safe manner
-					// the grid voxels for the area defined by the voxel model instance will also be cleaned up
-					// at that time
-					FoundModelInstance[i]->destroy(); //its ok if we call destroy multiple times on the same instance, only the first call matters
-					bExisting = true;
-				}
+				// the instance will delete itself after destruction sequence
+				// cleanup of instance from map will happen at that time in a thread safe manner
+				// the grid voxels for the area defined by the voxel model instance will also be cleaned up
+				// at that time
+				FoundModelInstance[i]->destroy(); //its ok if we call destroy multiple times on the same instance, only the first call matters
+				bExisting = true;
 			}
 		}
 
@@ -4650,59 +4640,55 @@ namespace world
 
 			point2D_t const rootVoxel(*FoundIndex);
 
-			Iso::Voxel const* const pVoxel(getVoxelAt(rootVoxel));
-			if (pVoxel) {
+			Iso::Voxel const oVoxel(getVoxelAt(rootVoxel));
 
-				Iso::Voxel const oVoxel(*pVoxel);
+			if (Iso::getHash(oVoxel, Iso::STATIC_HASH) == hash) {
+				// resolve model instance
+				Volumetric::voxelModelInstance_Static const* DeleteModelInstance_Static = lookupVoxelModelInstance<Volumetric::voxB::STATIC>(hash);
 
-				if (Iso::getHash(oVoxel, Iso::STATIC_HASH) == hash) {
-					// resolve model instance
-					Volumetric::voxelModelInstance_Static const* DeleteModelInstance_Static = lookupVoxelModelInstance<Volumetric::voxB::STATIC>(hash);
+				if (DeleteModelInstance_Static) { // if found static instance first remove from the lookup map
 
-					if (DeleteModelInstance_Static) { // if found static instance first remove from the lookup map
+					_hshVoxelModelInstances_Static[hash] = nullptr; // release ownership
 
-						_hshVoxelModelInstances_Static[hash] = nullptr; // release ownership
+					rect2D_t const vLocalArea(DeleteModelInstance_Static->getModel()._LocalArea);
 
-						rect2D_t const vLocalArea(DeleteModelInstance_Static->getModel()._LocalArea);
+					_queueCleanUpInstances.emplace(std::forward<hashArea&&>(hashArea{ hash,
+																						r2D_add(vLocalArea, rootVoxel)}));
 
-						_queueCleanUpInstances.emplace(std::forward<hashArea&&>(hashArea{ hash,
-																						  r2D_add(vLocalArea, rootVoxel)}));
-
-						// *** Actual deletion of voxel model instance happens *** //
-						SAFE_DELETE(DeleteModelInstance_Static);
+					// *** Actual deletion of voxel model instance happens *** //
+					SAFE_DELETE(DeleteModelInstance_Static);
 #ifndef NDEBUG
-						FMT_LOG(VOX_LOG, "Static Model Instance Deleted");
+					FMT_LOG(VOX_LOG, "Static Model Instance Deleted");
 #endif
-					}
 				}
-				else {
+			}
+			else {
 
-					for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i)
-					{
-						if (Iso::getHash(oVoxel, i) == hash) {
-							// resolve model instance
-							Volumetric::voxelModelInstance_Dynamic const* DeleteModelInstance_Dynamic = lookupVoxelModelInstance<Volumetric::voxB::DYNAMIC>(hash);
+				for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i)
+				{
+					if (Iso::getHash(oVoxel, i) == hash) {
+						// resolve model instance
+						Volumetric::voxelModelInstance_Dynamic const* DeleteModelInstance_Dynamic = lookupVoxelModelInstance<Volumetric::voxB::DYNAMIC>(hash);
 
-							if (DeleteModelInstance_Dynamic) {
+						if (DeleteModelInstance_Dynamic) {
 
-								_hshVoxelModelInstances_Dynamic[hash] = nullptr; // release ownership
+							_hshVoxelModelInstances_Dynamic[hash] = nullptr; // release ownership
 
-								rect2D_t const vLocalArea(DeleteModelInstance_Dynamic->getModel()._LocalArea);
+							rect2D_t const vLocalArea(DeleteModelInstance_Dynamic->getModel()._LocalArea);
 
-								_queueCleanUpInstances.emplace(std::forward<hashArea&&>(hashArea{ hash,
-																								  r2D_add(vLocalArea, rootVoxel),
-																								  DeleteModelInstance_Dynamic->getYaw() }));
+							_queueCleanUpInstances.emplace(std::forward<hashArea&&>(hashArea{ hash,
+																								r2D_add(vLocalArea, rootVoxel),
+																								DeleteModelInstance_Dynamic->getYaw() }));
 
-								// *** Actual deletion of voxel model instance happens *** //
-								SAFE_DELETE(DeleteModelInstance_Dynamic);
+							// *** Actual deletion of voxel model instance happens *** //
+							SAFE_DELETE(DeleteModelInstance_Dynamic);
 #ifndef NDEBUG
-								FMT_LOG(VOX_LOG, "Dynamic Model Instance Deleted");
+							FMT_LOG(VOX_LOG, "Dynamic Model Instance Deleted");
 #endif
-							}
 						}
 					}
-
 				}
+
 			}
 		}
 	}
@@ -4820,12 +4806,7 @@ namespace world
 			_buffers.shared_buffer[resource_index].release();
 		}
 
-		supernoise::blue.Release();
-
-		if (the::grid._protected) {
-			scalable_aligned_free(the::grid._protected);
-		}
-		
+		supernoise::blue.Release();		
 
 #ifdef DEBUG_STORAGE_BUFFER
 		SAFE_RELEASE_DELETE(DebugStorageBuffer);

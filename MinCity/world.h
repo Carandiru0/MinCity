@@ -34,9 +34,9 @@ namespace world
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	point2D_t const getNeighbourLocalVoxelIndex(point2D_t voxelIndex, point2D_t const relativeOffset);
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset);
+	Iso::Voxel const getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset);
 	// Grid Space (0,0) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset);
+	Iso::Voxel const getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset);
 	
 	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*
 	XMVECTOR const __vectorcall getOrigin();
@@ -48,11 +48,11 @@ namespace world
 	point2D_t const __vectorcall getLocalVoxelIndexAt(point2D_t voxelIndex);
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict __vectorcall getVoxelAt(point2D_t voxelIndex);
-	Iso::Voxel const* const __restrict __vectorcall getVoxelAt(FXMVECTOR const Location);
+	Iso::Voxel const __vectorcall getVoxelAt(point2D_t voxelIndex);
+	Iso::Voxel const __vectorcall getVoxelAt(FXMVECTOR const Location);
 
 	// Grid Space (0,0) to (X, Y) Coordinates Only
-	Iso::Voxel const* const __restrict __vectorcall getVoxelAtLocal(point2D_t const voxelIndex);
+	Iso::Voxel const __vectorcall getVoxelAtLocal(point2D_t const voxelIndex);
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	uint32_t const __vectorcall getVoxelHeightAt(point2D_t voxelIndex);
@@ -123,42 +123,34 @@ namespace world
 	template<bool const Dynamic>
 	STATIC_INLINE void __vectorcall setVoxelHashAt(point2D_t voxelIndex, uint32_t const hash)
 	{
-		Iso::Voxel const* const __restrict pVoxel(getVoxelAt(voxelIndex));
+		Iso::Voxel oVoxel(getVoxelAt(voxelIndex));
 
-		if (pVoxel) {
-			Iso::Voxel oVoxel(*pVoxel);
+		uint8_t const index(Iso::getNextAvailableHashIndex<Dynamic>(oVoxel));
 
-			uint8_t const index(Iso::getNextAvailableHashIndex<Dynamic>(oVoxel));
+		if (0 != index) {
+			Iso::setHash(oVoxel, index, hash);
 
-			if (0 != index) {
-				Iso::setHash(oVoxel, index, hash);
-
-				setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-			}
+			setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 		}
 	}
 
 	template<bool const Dynamic>
 	STATIC_INLINE void __vectorcall resetVoxelHashAt(point2D_t voxelIndex, uint32_t const hash)
 	{
-		Iso::Voxel const* const __restrict pVoxel(getVoxelAt(voxelIndex));
+		Iso::Voxel oVoxel(getVoxelAt(voxelIndex));
 
-		if (pVoxel) {
-			Iso::Voxel oVoxel(*pVoxel);
+		if constexpr (Dynamic) {
+			for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 
-			if constexpr (Dynamic) {
-				for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
-
-					if (Iso::getHash(oVoxel, i) == hash) {
-						Iso::resetHash(oVoxel, i);
-						setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-					}
+				if (Iso::getHash(oVoxel, i) == hash) {
+					Iso::resetHash(oVoxel, i);
+					setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 				}
 			}
-			else {
-				Iso::resetHash(oVoxel, Iso::STATIC_HASH);
-				setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
-			}
+		}
+		else {
+			Iso::resetHash(oVoxel, Iso::STATIC_HASH);
+			setVoxelAt(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(oVoxel));
 		}
 	}
 } // end ns world

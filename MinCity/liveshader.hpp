@@ -106,7 +106,7 @@ namespace liveshader
 	{
 		std::error_code error{};
 
-		mio::mmap_source mmap = mio::make_mmap_source(SHADER_GLSL_FILE_PATH, false, error);
+		mio::mmap_source mmap = mio::make_mmap_source(SHADER_GLSL_FILE_PATH, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error);
 		if (!error) {
 			if (mmap.is_open() && mmap.is_mapped()) {
 

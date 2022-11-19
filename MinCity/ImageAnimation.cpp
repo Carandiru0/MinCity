@@ -223,7 +223,7 @@ void ImageAnimation::async_loadNextImage(uint32_t const desired_width, uint32_t 
 		buildUniquePlaylist(gifDirectory);
 	}
 	
-	_background_task_id = async_long_task::enqueue<background>([=] { return(loadNextImage(desired_width, desired_height, unique_hash_seed)); });
+	_background_task_id = async_long_task::enqueue<background>([=] { return(loadNextImage(desired_width, desired_height, unique_hash_seed)); }); // this maybe bugged now @TODO
 }
 
 ImageAnimation::~ImageAnimation()

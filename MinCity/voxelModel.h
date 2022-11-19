@@ -324,21 +324,20 @@ namespace voxB
 		rect2D_t		_LocalArea;						// Rect defining local area in grid units (converted from minivoxels to voxels) (unit: voxels) *note this is not in minivoxels
 		
 		voxelModelFeatures _Features;
-		bool			   _Mapped;						// "_Voxels" points to memory mapped file (virtual memory) containing contigous data
 		
 		inline voxelModelBase() 
-			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _Radius{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _Radius{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)
 		{}
 
 		voxelModelBase(voxelModelBase&& src)
 			: _maxDimensions(src._maxDimensions), _maxDimensionsInv(src._maxDimensionsInv), _Extents(src._Extents), _Radius(src._Radius), _LocalArea(src._LocalArea), _Features(std::move(src._Features)),
-			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr), _Mapped(src._Mapped)
+			_numVoxels(src._numVoxels), _numVoxelsEmissive(src._numVoxelsEmissive), _numVoxelsTransparent(src._numVoxelsTransparent), _Voxels(nullptr)
 		{
 			std::swap<voxelDescPacked const* __restrict>(_Voxels, src._Voxels);
 		}
 
 		voxelModelBase(uint32_t const width, uint32_t const height, uint32_t const depth)
-			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _Radius{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr), _Mapped(false)
+			: _maxDimensions{}, _maxDimensionsInv{}, _Extents{}, _Radius{}, _numVoxels(0), _numVoxelsEmissive(0), _numVoxelsTransparent(0), _Voxels(nullptr)
 		{
 			vec4_v const maxDimensions(width, height, depth);
 			
@@ -385,7 +384,8 @@ namespace voxB
 			: voxelModelBase(width, height, depth), _identity{ 0, 0 }
 		{}
 		template<bool const EmissionOnly, bool const Faded>
-		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient, point2D_t const voxelIndex, Iso::Voxel const& __restrict oVoxel, voxelModelInstance<Dynamic> const& instance,
+		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient, point2D_t const voxelIndex, 
+			voxelModelInstance<Dynamic> const& __restrict instance,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
@@ -423,8 +423,7 @@ namespace voxB
 	template<bool const Dynamic>
 	template<bool const EmissionOnly, bool const Faded>
 	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient, point2D_t const voxelIndex,
-		Iso::Voxel const& __restrict oVoxel,
-		voxelModelInstance<Dynamic> const& instance,
+		voxelModelInstance<Dynamic> const& __restrict instance,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const

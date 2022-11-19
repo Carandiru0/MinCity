@@ -341,6 +341,7 @@
     <ClInclude Include="RenderInfo.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="sBatched.h" />
+    <ClInclude Include="StreamingGrid.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="tbb.h" />
     <ClInclude Include="tTime.h" />
@@ -420,6 +421,7 @@
     <ClCompile Include="private_implementations.cpp" />
     <ClCompile Include="RedirectIO.cpp" />
     <ClCompile Include="saveworld.cpp" />
+    <ClCompile Include="StreamingGrid.cpp" />
     <ClCompile Include="tbb_fp_env.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
@@ -457,7 +459,10 @@
     <CustomBuild Include="..\Data\Shaders\uniforms.frag">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC   --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC   --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DT2D  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_t2d%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
@@ -489,7 +494,17 @@
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin</Outputs>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DDYNAMIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DBASIC -DDYNAMIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTRANS -DDYNAMIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC -DDYNAMIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DDYNAMIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DDYNAMIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"   --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DCLEAR -DBASIC -DHEIGHT  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DBASIC -DHEIGHT  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHEIGHT  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)_trans_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_trans_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_dynamic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic%(Extension).bin;%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_clear_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_basic_height%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_height%(Extension).bin</Outputs>
