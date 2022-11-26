@@ -39,8 +39,6 @@
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
 
-#define BATCHED_VOXELS 16
-
 using namespace world;
 
 inline interpolator Interpolator; // global singleton instance
@@ -241,19 +239,11 @@ static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 }
 
 template<bool const AllNewGround = false>
-static void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
+static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelBegin, point2D_t const voxelEnd, tbb::affinity_partitioner& part)
 {
-	// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
-	voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
+	static constexpr uint32_t const block_size(16); // good value
 
-	// clamp to world/minmax coords
-	voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
-
-	point2D_t const voxelBegin(voxelArea.left_top());
-	point2D_t const voxelEnd(voxelArea.right_bottom());
-
-	tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
-	tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelBegin.y, voxelEnd.y, BATCHED_VOXELS, voxelBegin.x, voxelEnd.x, BATCHED_VOXELS),
+	tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelBegin.y, voxelEnd.y, block_size, voxelBegin.x, voxelEnd.x, block_size),
 		[&](tbb::blocked_range2d<int32_t, int32_t> const& r)
 		{
 			int32_t const	// pull out into registers from memory
@@ -272,7 +262,66 @@ static void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
 					recomputeGroundAdjacency<AllNewGround>(voxelIndex);
 				}
 			}
-		});
+		}, part);
+}
+template<bool const AllNewGround = false>
+static void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
+{
+	// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
+	voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
+
+	// clamp to world/minmax coords
+	voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+
+	point2D_t voxelBegin;
+	point2D_t voxelEnd;
+
+	tbb::affinity_partitioner part; // cache, can leverage same thread between iterations of parallel_for
+	
+	// ** top row ** //
+	
+	// left top quad of voxelArea *******************************************************************************************************//
+	voxelBegin = voxelArea.left_top();
+	voxelEnd   = p2D_half(voxelArea.right_bottom());
+
+	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
+	
+	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
+		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
+	}
+
+	// right top quad of voxelArea *******************************************************************************************************//
+	voxelBegin = point2D_t(voxelArea.right >> 1, voxelArea.top);
+	voxelEnd = point2D_t(voxelArea.right, voxelArea.bottom >> 1);
+
+	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
+
+	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
+		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
+	}
+	
+
+	// ** bottom row ** //
+	
+	// left bottom quad of voxelArea *******************************************************************************************************//
+	voxelBegin = point2D_t(voxelArea.left, voxelArea.bottom >> 1);
+	voxelEnd = point2D_t(voxelArea.right >> 1, voxelArea.bottom);
+
+	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
+
+	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
+		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
+	}
+
+	// right bottom quad of voxelArea *******************************************************************************************************//
+	voxelBegin = p2D_half(voxelArea.right_bottom());
+	voxelEnd = voxelArea.right_bottom();
+
+	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
+
+	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
+		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
+	}
 }
 
 // ####### Private Init methods
@@ -396,14 +445,11 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 	// otherwise texture creation from image takes place in onloaded event.
 	MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
 
-	// reset voxel grid
-	_streamingGrid.Reset();
-
 	// Compute adjacency based on neighbour occupancy
 	ComputeGroundAdjacency();
 
-	// reset voxel grid (should be done after computegroundadjacency and before real-time usage
-	_streamingGrid.Reset();
+	// close all chunks
+	((StreamingGrid* const)::grid)->Flush();
 
 	FMT_LOG_OK(GAME_LOG, "Lunar Surface Synthesized");
 }
@@ -1925,7 +1971,7 @@ namespace // private to this file (anonymous)
 				xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
 
 				if (!(bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP)))) {
-					//FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
 					// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
 
@@ -1972,8 +2018,6 @@ namespace // private to this file (anonymous)
 #endif
 			point2D_t const voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
 			point2D_t const voxelEnd(p2D_add(voxelReset, point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z)));
-
-			((StreamingGrid* const __restrict)::grid)->CacheVisible(voxelReset, voxelEnd);
 
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
@@ -2045,9 +2089,9 @@ namespace // private to this file (anonymous)
 							bool bRenderVisible(false);
 
 							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
-							point2D_t const voxelIndexWrapped(p2D_wrap(voxelIndex, Iso::WORLD_GRID_SIZE));
+							point2D_t const voxelIndexWrapped(p2D_wrap_pow2(voxelIndex, Iso::WORLD_GRID_SIZE));
 
-							Iso::Voxel const oVoxel(streamingGrid->getVoxel(voxelIndex));
+							Iso::Voxel const oVoxel(streamingGrid->getVoxel(voxelIndexWrapped));
 
 							/* @todo (optional)
 							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
@@ -2380,8 +2424,8 @@ namespace world
 	{
 		_Visibility.Initialize();
 
-		_streamingGrid.Initialize();
 		::grid._protected = &_streamingGrid; // assign global reference (global only to this file)
+		_streamingGrid.Initialize();
 
 		GenerateGround();
 #ifndef NDEBUG
@@ -2645,9 +2689,9 @@ namespace world
 		resetCamera();
 	}
 
-	void cVoxelWorld::GarbageCollect()
+	void cVoxelWorld::GarbageCollect(bool const bForce)
 	{
-		_streamingGrid.GarbageCollect();
+		_streamingGrid.GarbageCollect(bForce);
 	}
 
 	void cVoxelWorld::NewWorld()
@@ -3103,6 +3147,9 @@ namespace world
 		// game related asynchronous methods
 		// physics can be "cleared" as early as here. corresponding wait is in Update() of VoxelWorld.
 		MinCity::Physics->AsyncClear();
+
+		// lru streaming grid deadzone
+		MinCity::VoxelWorld->GarbageCollect(); // optimal position to exploit wait at begining of RenderTask_Normal, this is the ideal "dead-zone"
 		
 		{ // voxels //
 			vku::VertexBufferPartition* const __restrict& __restrict dynamic_partition_info_updater(MinCity::Vulkan->getDynamicPartitionInfo(resource_index));
@@ -3882,11 +3929,13 @@ namespace world
 		//###########################################################//
 		UpdateUniformStateTarget(tNow, tStart, bJustLoaded);
 		//###########################################################//
+
 #ifndef NDEBUG
 #ifdef DEBUG_OUTPUT_STREAMING_STATS
 		_streamingGrid.OutputDebugStats(tDelta);
 #endif
 #endif
+
 		// ***** Anything that uses uniform state updates AFTER
 		_bMotionDelta = false; // must reset *here*
 		

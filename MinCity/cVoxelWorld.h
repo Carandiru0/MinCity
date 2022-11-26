@@ -112,7 +112,7 @@ namespace world
 		void Initialize(); // 2nd
 		void OnLoaded(tTime const& __restrict tNow);
 		void Clear();
-		void GarbageCollect();
+		void GarbageCollect(bool const bForce = false);
 
 		template<bool const bEnable = true> // eInputEnabledBits
 		uint32_t const InputEnable(uint32_t const bits); 

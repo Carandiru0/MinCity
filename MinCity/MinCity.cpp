@@ -795,7 +795,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	}
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
-	VoxelWorld->GarbageCollect(); // optimal position to exploit wait at begining of RenderTask_Normal, this is the ideal "dead-zone"
 	VoxelWorld->Render(resource_index);
 	Vulkan->checkStaticCommandsDirty(resource_index);
 }
@@ -1251,10 +1250,10 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	// *bugfix - dynamic code execution required by *nvidia* driver usage in specifically - vkCmdBindDescriptorSets() uses dynamic code? Disabling the code below fixes the issue.
 	// bug should be fixed in a newer driver....
 	// setup zero dynamic code execution
-	//PROCESS_MITIGATION_DYNAMIC_CODE_POLICY policy{};
-	//policy.ProhibitDynamicCode = 1;
+	PROCESS_MITIGATION_DYNAMIC_CODE_POLICY policy{};
+	policy.ProhibitDynamicCode = 1;
 
-	//SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &policy, sizeof(PROCESS_MITIGATION_DYNAMIC_CODE_POLICY));
+	SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &policy, sizeof(PROCESS_MITIGATION_DYNAMIC_CODE_POLICY));
 
 	// setup secure loading of dlls, should be done before loading any dlls, or creation of any threads under this process (including dlls creating threads)
 	{
@@ -1283,7 +1282,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 
 	// changes timing resolution, affects threading, scheduling, sleep, waits etc globally (important)
 	// https://docs.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
-	timeBeginPeriod(1); // ensure that the regular default timer resolution is active
+	timeEndPeriod(1); // ensure that the regular default timer resolution is active
 
 	int32_t const hardware_concurrency(SetupEnvironment());
 
@@ -1351,7 +1350,6 @@ __declspec(noinline) void cMinCity::CriticalCleanup()
 	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
 	
 	SAFE_DELETE(TASK_INIT);
-	timeEndPeriod(1);
 }
 
 int __stdcall _tWinMain(_In_ HINSTANCE hInstance,

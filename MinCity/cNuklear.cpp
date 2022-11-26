@@ -24,7 +24,7 @@
 #define NK_IMPLEMENTATION  // the only place this is defined
 #include "nk_include.h"
 #include "nk_style.h"
-#ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
+#if defined(DEBUG_PERFORMANCE_VOXEL_SUBMISSION) || defined(DEBUG_OUTPUT_STREAMING_STATS)
 #include <queue>
 #endif
 
@@ -3040,6 +3040,16 @@ void cNuklear::do_debug_explosion_window(tTime const tLocal)
 }
 #endif
 
+#ifdef DEBUG_OUTPUT_STREAMING_STATS
+void cNuklear::debug_update_streaming(uint64_t const maximum, uint64_t const cache_size, uint64_t const queue_size)
+{
+	debug_streaming_stats.maximum = maximum;
+	debug_streaming_stats.cache_size = cache_size;
+	debug_streaming_stats.queue_size = queue_size;
+
+}
+#endif
+
 #ifdef DEBUG_FPS_WINDOW
 void cNuklear::do_debug_fps_window(tTime const tLocal)
 {
@@ -3054,7 +3064,7 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 
 	if (nk_begin_titled(_ctx, windowName._to_string(),
 		fmt::format(FMT_STRING("MINCITY     {:.2f}S  {:.1f}MS"), fp_seconds(tLocal - start()).count(), fp_seconds(MinCity::Vulkan->frameTimeAverage()).count() * 1000.0f).c_str(),
-		nk_recti(450, 50, 700, windowHeight),
+		nk_recti(50, 50, 650, windowHeight),
 		(!bMainWindowStartOpen ? NK_WINDOW_MINIMIZED : NK_WINDOW_BORDER) |
 		NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
 	{
@@ -3352,6 +3362,115 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 		}
 		else
 			bPerformanceOpen = false;
+
+#endif
+
+			// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! //
+#ifdef DEBUG_OUTPUT_STREAMING_STATS // *** chart causes flickering mouse and other anomolies when updated, good nuff for debugging just don't mistake it for something new....
+
+			static constexpr milliseconds DISPLAY_INTERVAL = milliseconds(256 * 2); // div by 2 the interval currently used in streaminggrid.cpp OutputDebugStats
+			static constexpr size_t const GRAPH_LENGTH = 80;
+			static tTime tLastInterval = zero_time_point;
+			static std::queue<uint64_t> queuePerf[3];
+
+			if (high_resolution_clock::now() - tLastInterval > DISPLAY_INTERVAL) {
+
+				queuePerf[0].push(debug_streaming_stats.maximum);
+				queuePerf[1].push(debug_streaming_stats.cache_size);
+				queuePerf[2].push(debug_streaming_stats.queue_size);
+
+				// pop any old elements past graph length
+				for (uint32_t i = 0; i < 3; ++i) {
+					if (queuePerf[i].size() >= GRAPH_LENGTH) {
+						queuePerf[i].pop();
+					}
+				}
+				
+				tLastInterval = high_resolution_clock::now();
+			}
+
+			if (nk_tree_push(_ctx, NK_TREE_TAB, "STREAMING", NK_MAXIMIZED))
+			{
+				nk_layout_row_begin(_ctx, NK_STATIC, 200, 1);
+				nk_layout_row_push(_ctx, 750);
+
+				size_t queueLength(std::min(GRAPH_LENGTH, std::max(std::max(queuePerf[0].size(), queuePerf[1].size()), queuePerf[3].size())));
+
+				static float
+					y_max = 1.0f, y_min = 0.0f;
+
+				if (nk_chart_begin_colored(_ctx, NK_CHART_LINES, nk_rgb(235, 16, 32), nk_rgb(235, 16, 32),    // maximum (red)
+					queueLength, y_min * 0.9f, y_max * 1.1f)) {
+					nk_chart_add_slot_colored(_ctx, NK_CHART_LINES, nk_rgb(122, 204, 255), nk_rgb(122, 204, 255), // cache_size (blue)
+						queueLength, y_min * 0.9f, y_max * 1.1f);
+					nk_chart_add_slot_colored(_ctx, NK_CHART_LINES, nk_rgb(150, 255, 32), nk_rgb(150, 255, 32),   // queue_size (green)
+						queueLength, y_min * 0.9f, y_max * 1.1f);
+
+					// reset 
+					//y_max = 0; y_min = 0;
+
+					std::queue<uint64_t> queueTmp[3]{ queuePerf[0], queuePerf[1], queuePerf[2] };
+
+					while (0 != queueLength) {
+
+						for (uint32_t i = 0; i < 3; ++i) {
+
+							if (!queueTmp[i].empty()) {
+
+								float const value(queueTmp[i].back());
+								
+								y_max = SFM::max(y_max, value);
+								y_min = SFM::min(y_min, value);
+
+								nk_chart_push_slot(_ctx, value, i);
+
+								queueTmp[i].pop();
+							}
+						}
+
+						--queueLength;
+					}
+
+					nk_chart_end(_ctx);
+				}
+				nk_layout_row_end(_ctx);
+
+				std::string szText("");
+
+				nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+				nk_layout_row_push(_ctx, 700);
+				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
+				szText = fmt::format(FMT_STRING("MAXIMUM   > {:d}"), debug_streaming_stats.maximum);
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+				NK_POP_COLOR(_ctx);
+
+				nk_layout_row_end(_ctx);
+
+				nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+				nk_layout_row_push(_ctx, 700);
+				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
+				szText = fmt::format(FMT_STRING("CACHE SIZE   > {:d}"), debug_streaming_stats.cache_size);
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+				NK_POP_COLOR(_ctx);
+
+				nk_layout_row_end(_ctx);
+				nk_layout_row_begin(_ctx, NK_STATIC, 32, 1);
+
+				nk_layout_row_push(_ctx, 700);
+				NK_PUSH_TEXT_COLOR(_ctx, nk_rgb(255, 255, 255));
+				szText = fmt::format(FMT_STRING("QUEUE SIZE   > {:d}"), debug_streaming_stats.queue_size);
+				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
+				NK_POP_COLOR(_ctx);
+
+				nk_layout_row_end(_ctx);
+
+				bPerformanceOpen = true;
+				nk_tree_pop(_ctx);
+			}
+			else
+				bPerformanceOpen = false;
 
 #endif
 

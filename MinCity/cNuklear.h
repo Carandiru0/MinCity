@@ -246,6 +246,14 @@ private:
 #ifdef DEBUG_LUT_WINDOW
 	void draw_lut_window(tTime const& __restrict tNow, uint32_t const height_offset);
 #endif
+#ifdef DEBUG_OUTPUT_STREAMING_STATS
+public:
+	void debug_update_streaming(uint64_t const maximum, uint64_t const cache_size, uint64_t const queue_size);
+	struct {
+		uint64_t maximum{}, cache_size{}, queue_size{};
+	} debug_streaming_stats;;
+#endif
+
 private:
 	vku::double_buffer<vku::GenericBuffer>	_stagingBuffer[2];
 	vku::TextureImage2DArray*	_fontTexture;

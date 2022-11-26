@@ -88,6 +88,7 @@ extern void debug_out_nuklear_off();
 //#define DEBUG_DEPTH_CUBE
 //#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
 //#define DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
+//#define DEBUG_OUTPUT_STREAMING_STATS
 
 #define FMT_LOG_DEBUG(message, ...) //{ (void)message; (void)__VA_ARGS__; }
 #define FMT_NUKLEAR_DEBUG(bLog, message, ...) //{ (void)bLog; (void)message; (void)__VA_ARGS__; }
@@ -102,6 +103,7 @@ extern void debug_out_nuklear_off();
     || defined(VOX_DEBUG_ENABLED)					\
 	|| defined(DEBUG_PERFORMANCE_VOXEL_SUBMISSION)	\
 	|| defined(DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP) \
+    || defined(DEBUG_OUTPUT_STREAMING_STATS) \
 
 #ifndef DEBUG_OPTIONS_USED
 #define DEBUG_OPTIONS_USED
