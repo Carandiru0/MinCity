@@ -33,9 +33,7 @@ layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 
 #if defined(BASIC)
 
-#if !defined(ROAD) // opacity map not used for roads
 layout (binding = 1, r8) writeonly restrict uniform image3D opacityMap;
-#endif
 
 layout (constant_id = 1) const float VolumeDimensions = 0.0f;
 
@@ -50,7 +48,7 @@ layout (constant_id = 6) const float InvToIndex_Y = 0.0f;
 layout (constant_id = 7) const float InvToIndex_Z = 0.0f;
 #define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
-#elif defined(HEIGHT) || defined(ROAD) // NOT BASIC:
+#elif defined(HEIGHT) // NOT BASIC:
 
 layout (constant_id = 1) const float VolumeDimensions = 0.0f;
 
@@ -61,24 +59,11 @@ writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat uint   adjacency;
-	flat vec2	world_uv;
+	flat vec3	world_uvw;
 #ifndef BASIC
 	flat float   ambient;
 	flat float   color;
 	flat float   emission;
-	flat float   height;
-#endif
-} Out;
-#elif defined(ROAD) // road
-writeonly layout(location = 0) out streamOut
-{
-	flat vec3	right, forward, up;
-	flat vec4   corners;
-	flat vec2	world_uv;
-#ifndef BASIC
-	flat float   ambient;
-	flat float   emission;
-	flat vec4    extra;
 #endif
 } Out;
 #else  // voxels only
@@ -98,7 +83,7 @@ writeonly layout(location = 0) out streamOut
 #endif
 
 
-#if defined(HEIGHT) || defined(ROAD)
+#if defined(HEIGHT)
 #ifdef BASIC
 layout (constant_id = 8) const int MINIVOXEL_FACTOR = 1;
 layout (constant_id = 9) const float TERRAIN_MAX_HEIGHT = 1;
@@ -118,32 +103,7 @@ const uint MASK_HEIGHTSTEP = 0x0FFFF000U;	/*			 1111 000x xxxx xxxx */
 const uint MASK_TRANSPARENCY = 0x600U;	/*			 xxxx 011x xxxx xxxx */
 #endif
 
-#if defined(ROAD)  
-#ifdef BASIC
-layout (constant_id = 11) const float ROAD_WIDTH = 0.0f;
-#else
-layout (constant_id = 5) const float ROAD_WIDTH = 0.0f;
-#endif
-
-#undef MASK_ADJACENCY // not used for roads //
-#undef MASK_EMISSION
-#define SHIFT_ROAD_HEIGHTSTEP_BEGIN 9U
-#define SHIFT_ROAD_HEIGHTSTEP_END 13U
-#define SHIFT_ROAD_DIRECTION 17U
-#define SHIFT_ROAD_TILE 19U
-const uint MASK_ROAD_HEIGHTSTEP_BEGIN = 0x1E00U;		/*                0001 111x xxxx xxxx */
-const uint MASK_ROAD_HEIGHTSTEP_END = 0x1E000U;			/*           0001 111x xxxx xxxx xxxx */
-const uint MASK_ROAD_DIRECTION = 0x60000U;				/*           011x xxxx xxxx xxxx xxxx */
-const uint MASK_ROAD_TILE = 0x1F80000U;					/* 0001 1111 1xxx xxxx xxxx xxxx xxxx */
-
-const uint  NORTH = 0U,
-			SOUTH = 1U,
-			EAST = 2U,
-			WEST = 3U;
-
-#endif
-
-#else // not HEIGHT/ROAD
+#else // not HEIGHT
 
 #define SHIFT_EMISSION 6U
 #define SHIFT_METALLIC 7U
@@ -204,27 +164,21 @@ void main() {
   }
 
   const uint hash = floatBitsToUint(inWorldPos.w);
+  Out.adjacency = (hash & MASK_ADJACENCY);
 
 #if defined(HEIGHT) // terrain only
 
 	Out.right   = vec3(VOX_SIZE * 0.5f, 0.0f, 0.0f);
 	Out.forward	= vec3(0.0f, 0.0f, VOX_SIZE * 0.5f); 
   
-  const uint uheightstep = 0xffff & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
+  const uint uheightstep = 0xffffu & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
   const float heightstep = float(uheightstep) / 65535.0f; // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
-#ifndef BASIC
-  Out.height = heightstep; // output normalized height to pass-thru to fragment shader
-#endif
   const float real_height = max(VOX_SIZE / float(MINIVOXEL_FACTOR), (TERRAIN_MAX_HEIGHT * heightstep) * (VOX_SIZE / float(MINIVOXEL_FACTOR))) * float(MINIVOXEL_FACTOR);
   Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
 #endif
 
-#if !(defined(ROAD)) // not road
-  Out.adjacency = (hash & MASK_ADJACENCY);
-#endif
-
-#if defined(HEIGHT) || defined(ROAD) // terrain/road voxels only
-  Out.world_uv.xy = inUV.xy; //  - mousebuffer voxelindex ID
+#if defined(HEIGHT) // terrain voxels only
+  Out.world_uvw.xyz = vec3(inUV.xy, -heightstep); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
 #elif defined(BASIC)
   Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
 #endif
@@ -234,11 +188,7 @@ void main() {
 #ifndef CLEAR
 
 #if defined(DYNAMIC) && defined(TRANS)  // transparent voxels only
-#if defined(ROAD)
-  Out.extra.z = 0.25f;	// transparent road selection only (does not require configurable level of transparency)
-#else
   Out.extra.z = float(((hash & MASK_TRANSPARENCY) >> SHIFT_TRANSPARENCY) + 1) * INV_MAX_TRANSPARENCY;  // 0.25f, 0.5f, 0.75f, 1.0f (4 valid levels of transparency)
-#endif
 #endif
 
 #endif // !clear
@@ -249,62 +199,7 @@ void main() {
 
 #endif // !basic
 
-   vec3 worldPos = inWorldPos.xyz;
-
-#if defined(ROAD) // road voxels only
-
-#ifndef BASIC
-	Out.extra.x = float((hash & MASK_ROAD_TILE) >> SHIFT_ROAD_TILE);
-#endif
-  {
-	const float height_begin = float((hash & MASK_ROAD_HEIGHTSTEP_BEGIN) >> SHIFT_ROAD_HEIGHTSTEP_BEGIN) * VOX_SIZE;
-	const float height_end = float((hash & MASK_ROAD_HEIGHTSTEP_END) >> SHIFT_ROAD_HEIGHTSTEP_END) * VOX_SIZE;
-
-	const vec2 delta_height = vec2(0, -(height_end - height_begin));
-	
-	const uint road_direction = (hash & MASK_ROAD_DIRECTION) >> SHIFT_ROAD_DIRECTION;
-
-	[[flatten]] switch(road_direction)
-	{
-		case NORTH:	// +z
-#ifndef BASIC
-			Out.extra.y = 0.0f;
-#endif
-			Out.corners = delta_height.xxyy; // correct
-			Out.right *= ROAD_WIDTH;
-		break;
-		case SOUTH: // -z
-#ifndef BASIC
-			Out.extra.y = 0.0f;
-#endif
-			Out.corners = delta_height.yyxx; // correct
-			Out.right *= ROAD_WIDTH;
-		break;
-		case EAST:	// +x
-#ifndef BASIC
-			Out.extra.y = 1.0f;			  // rotate
-#endif
-			Out.corners = delta_height.yxyx; // correct
-			Out.forward *= ROAD_WIDTH;
-		break;
-		case WEST:	// -x
-#ifndef BASIC
-			Out.extra.y = 1.0f;			  // rotate
-#endif
-			Out.corners = delta_height.xyxy; // correct
-			Out.forward *= ROAD_WIDTH;
-		break;
-	}
-
-	const float road_height = -(height_begin);
-	const vec2 corner_height = road_height + delta_height.xy;
-	const float y_min = min(corner_height.x, corner_height.y);
-	const float y_max = max(corner_height.x, corner_height.y);
-	
-	// perfectly centered, delta_height removes staircase
-	worldPos.y = 0.5f * (y_max + (y_min - delta_height.y)); // (herbie optimized) same as: (y_max - (y_max - y_min) * 0.5f) - delta_height.y * 0.5f
-  }
-#endif
+  vec3 worldPos = inWorldPos.xyz;
 
   // out position //
   gl_Position = vec4(worldPos, 1.0f);
@@ -314,12 +209,12 @@ void main() {
   const float emissive = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
 #else // not basic:
 
-#if !defined(HEIGHT) && !defined(ROAD) // voxels only:
+#if !defined(HEIGHT) // voxels only:
   Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
   Out.material.ambient = 10.0f * packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
-#else // terrain or road:
+#else // terrain 
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.ambient = 10.0f * packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
 #endif
@@ -327,7 +222,7 @@ void main() {
 #endif
 #endif // clear
 
-#ifndef ROAD // applies to ground and regular voxels only
+// applies to ground and regular voxels only
 #ifdef BASIC
 #if !defined(CLEAR) && !defined(TRANS)
 	// Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
@@ -336,9 +231,8 @@ void main() {
 #else
 	Out.color = packColor(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
 #endif
-#endif
 
-#if defined(BASIC) && !defined(ROAD) && !defined(TRANS) // only basic past this point
+#if defined(BASIC) && !defined(TRANS) // only basic past this point
 
 	// derive the normalized index
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
@@ -383,5 +277,5 @@ void main() {
   }
 #endif // HEIGHT
 
-#endif // is BASIC & !ROAD
+#endif // is BASIC
 }

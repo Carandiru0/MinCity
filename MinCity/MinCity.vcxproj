@@ -83,7 +83,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
-    <IncludePath>D:\boost_1_79_0;X:\tbb\include;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>D:\boost_1_79_0;X:\tbb\include;X:\mimalloc\include;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
     <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
@@ -93,7 +93,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>D:\boost_1_79_0;X:\tbb\include;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>D:\boost_1_79_0;X:\tbb\include;X:\mimalloc\include;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
@@ -435,6 +435,18 @@
     </ClCompile>
     <ClCompile Include="voxelModelInstance.cpp" />
     <ClCompile Include="world.cpp" />
+    <ClCompile Include="X:\mimalloc\src\static.c">
+      <Optimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MaxSpeed</Optimization>
+      <InlineFunctionExpansion Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Speed</FavorSizeOrSpeed>
+      <OmitFramePointers Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</OmitFramePointers>
+      <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WholeProgramOptimization>
+      <ExceptionHandling Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExceptionHandling>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</BufferSecurityCheck>
+      <IntelJCCErratum Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</IntelJCCErratum>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="X:\Vulkan\Vookoo\include\vku\volk\volk.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
@@ -748,6 +760,7 @@
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)_even%(Extension).bin;%(FullPath)\..\Binary\%(Filename)_odd%(Extension).bin;%(Outputs)</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
     </CustomBuild>
+    <None Include="..\data\shaders\terrain.glsl" />
     <None Include="..\Data\Shaders\text.glsl" />
     <CustomBuild Include="..\Data\Shaders\voxel_rain.frag">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>

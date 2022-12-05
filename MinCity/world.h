@@ -84,9 +84,6 @@ namespace world
 	void setVoxelsHeightAt(rect2D_t voxelArea, uint32_t const heightstep);
 	rect2D_t const voxelArea_grow(rect2D_t const voxelArea, point2D_t const grow);
 	void smoothRect(rect2D_t voxelArea);
-	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea);
-	void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex);
 
 	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius); // y (height) coordinate is required, otherwise it's 0.0f    Volumetric::volumetricVisibility::getVoxelRadius() or Volumetric::volumetricVisibility::getMiniVoxelRadius()
 	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex); // y (height) coordinate *not* required, automattically set to ground height. only Volumetric::volumetricVisibility::getVoxelRadius()

@@ -99,7 +99,7 @@ void cTextureBoy::ImagingSequenceToTexture(ImagingSequence const* const image, v
 	}
 
 	if (nullptr == texture) {
-		texture = new vku::TextureImage2DArray(_device, image->xsize, image->ysize, count,
+		texture = new vku::TextureImage2DArray(_device, image->xsize, image->ysize, count, 1,
 			vk::Format::eR8G8B8A8Srgb, false, false); // gifs are always non-linear, load as srgb
 	}
 

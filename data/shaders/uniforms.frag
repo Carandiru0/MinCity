@@ -62,6 +62,9 @@ layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 layout (constant_id = 9) const float  TextureDimensionsU = 0.0f; // terrain texture u //
 layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain texture v //
 #define TextureDimensions vec2(TextureDimensionsU, TextureDimensionsV)
+
+#include "terrain.glsl"
+
 #endif
 
 #define DD 0
@@ -69,15 +72,22 @@ layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain text
 #define OPACITY 2
 layout (binding = 3) uniform sampler3D volumeMap[3];
 layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
-// binding 5 is the shared common image array bundle
-#if defined(TRANS)
-layout (binding = 6) uniform sampler2D colorMap;
-#endif
-
-// binding 5:
+// binding 5 - is the shared common image array bundle
 // for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
 #include "texturearray.glsl"
+
+#if defined(TRANS) // only for transparent voxels
+layout (binding = 6) uniform sampler2D colorMap;
+#endif
+#if defined(T2D) // only for terrain
+layout (binding = 7) uniform sampler3D detailDerivativeMap;
+
+//#define DEBUG_SHADER
+
+#endif
+
+
 
 #include "lightmap.glsl"
 #include "lighting.glsl"
@@ -221,14 +231,13 @@ float antialiasedGrid(in vec2 uv, in const float scale)
 // texture uv's in, screen space surface gradient out (st)
 vec2 derivatives(in const vec2 uv, 
 			     in const vec2 texture_dimensions, 
+				 in const vec2 duvdx, in const vec2 duvdy,
 				 in const vec2 derivative_map_sample) 
 {
 	const vec2 dhdST = texture_dimensions * (derivative_map_sample * 2.0f - 1.0f);
-	const vec2 dSTdx = dFdxFine(uv);
-	const vec2 dSTdy = dFdyFine(uv);
 
 	// chain rule - uv space to screen space
-	return( vec2( dot(dhdST.xy, dSTdx.xy), dot(dhdST.xy, dSTdy.xy) ) );
+	return( vec2( dot(dhdST.xy, duvdx.xy), dot(dhdST.xy, duvdy.xy) ) );
 }
 
 // It was shown in the paper how Blinn's perturbed normal is independent of
@@ -306,7 +315,7 @@ vec3 triplanar_weights(in const vec3 lastNormal, in const float k) // default = 
 // Triplanar projection is considered a special case of volume
 // bump map. Weights are obtained using DetermineTriplanarWeights()
 // and derivatives using TspaceNormalToDerivative().
-vec3 surface_gradient_triplanar(in const vec3 lastNormal, in const vec3 triplanarWeights, in const vec2 dHduv) // tri-planar surface gradient
+vec3 surface_gradient_triplanar(in const vec3 lastNormal, in const vec3 triplanarWeights, in const vec2 dHduv_x, in const vec2 dHduv_y, in const vec2 dHduv_z) // tri-planar surface gradient
 {
 	const float w0 = triplanarWeights.x;
 	const float w1 = triplanarWeights.y;
@@ -317,53 +326,157 @@ vec3 surface_gradient_triplanar(in const vec3 lastNormal, in const vec3 triplana
 	// Positive scales of the lookup coordinate will work
 	// as well, but for negative scales the derivative components
 	// will need to be negated accordingly.
-	const vec3 grad = vec3(w2*dHduv.x + w1*dHduv.x,
-					       w2*dHduv.y + w0*dHduv.y,
-					       w0*dHduv.x + w1*dHduv.y);
+	const vec3 grad = vec3(w2*dHduv_z.x + w1*dHduv_y.x, // x = z,y
+					       w0*dHduv_x.y + w2*dHduv_z.y, // y = x,z
+					       w0*dHduv_x.x + w1*dHduv_y.y);// z = x,y
 
 	return surface_gradient_volumetric(lastNormal, grad);
 }
 
+float height_triplanar(in const vec3 triplanarWeights, in const float x, in const float y, in const float z) // tri-planar surface gradient
+{
+	const float w0 = triplanarWeights.x;
+	const float w1 = triplanarWeights.y;
+	const float w2 = triplanarWeights.z;
+
+	// Assume deriv xplane, deriv yplane, and deriv zplane are
+	// sampled using (z,y), (x,z), and (x,y), respectively.
+	// Positive scales of the lookup coordinate will work
+	// as well, but for negative scales the derivative components
+	// will need to be negated accordingly.
+	//const vec3 grad = vec3(w2*z + w1*y, // x = z,y
+	//				       w2*z + w0*x, // y = z,x
+	//				       w0*x + w1*y);// z = x,y
+
+	return(x * w0 + y * w1 + z * w2);
+}
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// https://www.shadertoy.com/view/Xtl3zf - Texture Repitition Removal (iq)
+float sum( vec3 v ) { return v.x+v.y+v.z; }
+
+vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy, in const float t )
+{
+    float k = texture( _texArray[TEX_NOISE], vec3(0.005f*uv, 0.0f) )._simplex; // cheap (cache friendly) lookup
+        
+    float l = k*8.0f;
+    float f = fract(l);
+    
+#if 0
+    float ia = floor(l); // iq's method
+    float ib = ia + 1.0f;
+#else
+    float ia = floor(l+0.5f); // suslik's method (see comments)
+    float ib = floor(l);
+    f = min(f, 1.0f-f)*2.0f;
+#endif    
+    
+    vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash
+    vec2 offb = sin(vec2(3.0,7.0)*ib); // can replace with any other hash
+
+    vec3 cola = textureGrad( detailDerivativeMap, vec3(uv + t*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
+    vec3 colb = textureGrad( detailDerivativeMap, vec3(uv + t*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
+    
+    return mix( cola, colb, smoothstep(0.2f,0.8f,f-0.1f*sum(cola-colb)) );
+}
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 void main() {
 
-	//const float bn = textureLod(_texArray[TEX_BLUE_NOISE], vec3((In.world_uv * VolumeDimensions) / BLUE_NOISE_UV_SCALER, In._slice), 0.0f).g;  /* GREEN CHANNEL BN USED */
-	
-	const vec3 derivative_height = texture(_texArray[TEX_TERRAIN], vec3(In.world_uv, 0)).rgb;
+	vec3 N, gradient;
+	float height;
 
-	const vec2 derivative = derivatives(In.world_uv, TextureDimensions, derivative_height.yz);  // 11585.0
+	// **swizzle to Y Is Up**	        // <---
+	const vec3 uvw = In.world_uvw.xzy; // make it xyz
+	const vec3 duvdx = dFdxFine(uvw),
+	           duvdy = dFdyFine(uvw);
 
-	// **swizzle to Y Is Up**
-	//const vec3 world_uvw = (In.uv.xzy * LightVolumeDimensions) / VolumeDimensions; // match the swizzling
-	
-	vec3 gradient, N;
-	
-	N = normalize(vec3(0,1,0)); // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
-	
+	// **swizzle to Y Is Up**	        // <---
+	N = normalize(In.N.xyz).xzy; // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
+
+#ifdef DEBUG_SHADER
+	outColor = unpackColor(In._color); // debug mode - color output of normal direction (xyz order)
+	return;
+#endif
+
+	// temporarily invert Y (negative->positive) vulkan
+	//N.y = -N.y;
+
 	// apply surface gradient
 	//gradient = surface_gradient(dFdxFine(world_uvw), dFdyFine(world_uvw), N, derivative); 
-	//N = perturb_normal(N, gradient);
 
-	// apply triplanar surface gradient
-	gradient = surface_gradient_triplanar(N, triplanar_weights(N, 3.0f), derivative);
-	N = perturb_normal(N, gradient).xzy;  // <---
-	// **swizzled back to Z Is Up**
+	// common triplanar weights
+	const vec3 weights = triplanar_weights(N, TRIPLANAR_BLEND_WEIGHT);
 
-	//outColor = (1.0f - (dot(N, normalize(In.N.xyz))) * 0.5f + 0.5f)).xxx;
-	//return;
+	// -------------------------16K SURFACE //
+	{
+		// xz (y axis)
+		const vec3 height_derivative_xz = texture(_texArray[TEX_TERRAIN], vec3(uvw.xz, 0)).rgb; // repeated on all axis
 
-	const float height = mix(In._height, derivative_height.x, 1.0f - (dot(N, normalize(In.N.xyz)) * 0.5f + 0.5f));		// interpolate passthru height (grid resolution) towards high resolution texture (texture resolution)
+		height = height_triplanar(weights, height_derivative_xz.r, height_derivative_xz.r, height_derivative_xz.r);
+		const vec2 derivative = derivatives(uvw.xz, TextureDimensions, duvdx.xz, duvdy.xz, height_derivative_xz.gb);  // 11585.0
+
+		// apply triplanar surface gradient
+		gradient = surface_gradient_triplanar(N, weights, derivative, derivative, derivative); // tricks for "triplanar projection of the same axis"
+		N = perturb_normal(N, gradient);
+	}
 
 	//outColor = height.xxx;
 	//return;
 
+	// -------------------------DETAIL SURFACE //
+	{
+		const float normalized_height = abs(uvw.y);
+		vec2 scale, uv, dvdx, dvdy;
+
+		// zy (x axis)
+		scale = vec2(DETAIL_SCALE, 1.0f);
+		uv = uvw.zy * scale;
+		dvdx = duvdx.zy * scale;
+		dvdy = duvdy.zy * scale;
+
+		const vec3 detail_derivative_zy = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
+		const vec2 derivative_zy = derivatives(uv, vec2(DETAIL_DIMENSIONS, 1.0f), dvdx, dvdy, detail_derivative_zy.gb);
+
+		// xz (y axis)
+		scale = vec2(DETAIL_SCALE);
+		uv = uvw.xz * scale;
+		dvdx = duvdx.xz * scale;
+		dvdy = duvdy.xz * scale;
+
+		const vec3 detail_derivative_xz = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
+		const vec2 derivative_xz = derivatives(uv, vec2(DETAIL_DIMENSIONS), dvdx, dvdy, detail_derivative_xz.gb);
+
+		// xy (z axis)
+		scale = vec2(DETAIL_SCALE, 1.0f);
+		uv = uvw.xy * scale;
+		dvdx = duvdx.xy * scale;
+		dvdy = duvdy.xy * scale;
+
+		const vec3 detail_derivative_xy = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
+		const vec2 derivative_xy = derivatives(uv, vec2(DETAIL_DIMENSIONS, 1.0f), dvdx, dvdy, detail_derivative_xy.gb);
+
+		height *= height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
+
+		// apply triplanar surface gradient
+		gradient = surface_gradient_triplanar(N, weights, derivative_zy, derivative_xz, derivative_xy);
+		N = perturb_normal(N, gradient).xzy;  // <---
+		// **swizzled back to Z Is Up**
+		// restore invert Y (positive->negative) vulkan
+		//N.z = -N.z;
+	}
+
+	outColor = pow(height, 1.0f/2.2f).xxx;
+	return;
+
+	//outColor = N.xzy * 0.5f + 0.5f;
+	//return;
+
 	// lighting
 	const vec3 V = normalize(In.V.xyz);
-	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uv, 0)).rg;
+	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rg;
 
 	vec3 color = vec3(0);
 	
@@ -371,8 +484,10 @@ void main() {
 	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
 	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
 
+	const float albedo = pow(albedo_ao.x * height, 1.0f/2.2f);
+
 	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo_ao.xxx, make_material(0.8f, 0.0f, roughness), vec3(1),				 
+	color.rgb += lit( albedo.xxx, make_material(0.75f, 0.0f, roughness), vec3(1),				 
 				      albedo_ao.y, getAttenuation((1.0f - height) * InvVolumeDimensions, VolumeDimensions), // on a single voxel
 				      vec3(0,0,1), N, V, false); // don't want to double-add reflections
 
@@ -384,97 +499,12 @@ void main() {
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 						// only emissive can have color
-	color.rgb += lit( mix(albedo_ao.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, roughness), light_color,		
+	color.rgb += lit( mix(albedo.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, roughness), light_color,		
 					  getOcclusion(In.uv.xyz), Ld.att,
 					  -Ld.dir, N, V, true);
 
 	outColor.rgb = color;
 }
-#elif defined(ROAD)  
-
-void main() { 
-}
-
-/*
-// FRAGMENT - - - - In = xzy view space
-//					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
-//			--------Out = screen space
-
-#ifdef TRANS
-const vec3 gui_bleed = vec3(619.607e-3f, 1.0f, 792.156e-3f);
-#endif
-
-void main() {
-  
-#ifndef TRANS
-
-	vec3 light_color;
-	vec4 Ld;
-
-	getLight(light_color, Ld, In.uv.xyz);
-	Ld.att = getAttenuation(Ld.dist, VolumeLength);
-
-	// smoother
-	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
-	
-	road_segment.rgb *= road_segment.a; // important
-	
-	const vec3 N = normalize(In.N.xyz);
-	const vec3 V = normalize(In.V.xyz); 
-
-	const float decal_luminance = min(1.0f, road_segment.g * Ld.att * Ld.att * 2.0f);
-
-	outColor.rgb = lit( road_segment.rgb, make_material(decal_luminance, 0.0f, mix(ROUGHNESS, 0.1f, min(1.0f, road_segment.g))), light_color,
-					    getOcclusion(In.uv.xyz), Ld.att,
-					    -Ld.dir, N, V );	
-	//outColor.rgb = vec3(attenuation);
-
-#else  // roads, "transparent selection"
-
-#define SELECTION 3.0f
-
-	vec3 light_color;
-	vec4 Ld;
-
-	getLight(light_color, Ld, In.uv.xyz);
-	Ld.att = getAttenuation(Ld.dist, VolumeLength);
-
-	const vec3 N = normalize(In.N.xyz);
-	const vec3 V = normalize(In.V.xyz); 
-
-	// smoother
-	vec4 road_segment = texture(_texArray[TEX_ROAD], In.road_uv.xyz); // anisotropoic filtering enabled, cannot use textureLod, must use texture
-	road_segment.rgb *= road_segment.a; // important
-	const float road_tile_luma = dot(road_segment.rgb, LUMA);
-	//const vec4 dFdUV = vec4( dFdx(In.uv_local.xy), dFdy(In.uv_local.xy) );
-	//const float road_tile_luma = dot(textureGrad(_texArray[TEX_ROAD], vec3(magnify(In.uv_local.xy, vec2(64.0f, 16.0f)), In.uv_local.z), dFdUV.xy, dFdUV.zw).rgb, LUMA);
-
-	const vec2 uv = In.road_uv.xy + vec2(0.0f, In._time*0.5f);
-
-	road_segment.a = texture(_texArray[TEX_ROAD], vec3(uv, SELECTION)).a;
-	road_segment.rgb = road_tile_luma * gui_bleed * road_segment.a;
-	// or ** more sharp pixelated but without any aliasing hmmm...
-	//vec4 road_segment = textureGrad(_texArray[TEX_ROAD], vec3(magnify(uv, vec2(64.0f, 16.0f)), SELECTION), dFdUV.xy, dFdUV.zw); 
-
-	vec3 color;
-
-	const float decal_luminance = road_segment.a * Ld.att * Ld.att;
-	float fresnelTerm;  // feedback from lit
-	color.rgb = lit( road_segment.rgb, make_material(road_segment.a * 20.0f, 0.0f, ROUGHNESS), light_color,	// todo roads need actual street lights for proper lighting or else too dark
-						1.0f, // occlusion
-						min(1.0f, Ld.att + decal_luminance),
-						-Ld.dir, N, V, fresnelTerm);
-						    
-	vec3 refract_color;
-	const float weight = refraction_color(refract_color, colorMap, decal_luminance);
-	color.rgb = road_segment.rgb + mix(color.rgb + color.rgb * decal_luminance, color.rgb + refract_color * road_segment.a, fresnelTerm);
-
-	outColor = applyTransparency(vec3(1,0,0) * color, road_segment.a, weight);
-	// outColor = vec4(weight.xxx, 1.0f); 
-#endif
-
-}
-*/
 
 #else // voxels, w/lighting 
         

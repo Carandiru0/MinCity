@@ -2660,8 +2660,6 @@ void cNuklear::do_cyberpunk_import_window(std::string& __restrict szHint, bool& 
 						world::smoothRect(vWorldArea);
 
 						// go around perimeter doing lerp between border
-						// *required* recompute adjacency for area as height of voxels has changed
-						world::recomputeGroundAdjacency(vWorldArea);
 						
 						// will now show the import window and close this modal prompt
 						// add gameobject for import, load the colormap into importproxy																						// safe down-cast, memory pointed to by the pointer is allocated as such, and previously a pointer of that type.

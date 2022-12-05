@@ -20,11 +20,8 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	vec4 N;
 	vec4 V;
 	flat vec4 extra;	
-#if defined(HEIGHT) || defined(ROAD)
-	vec2 world_uv;
-#ifdef ROAD
-	vec3 road_uv;
-#endif
+#if defined(HEIGHT)
+	vec3 world_uvw;
 #else // voxels only
 	flat vec4 material;
 #endif
@@ -47,11 +44,8 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 	readonly vec4 N;
 	readonly vec4 V;
 	readonly flat vec4 extra;	
-#if defined(T2D) || defined(ROAD)
-	readonly vec2 world_uv;
-#ifdef ROAD
-	readonly vec3 road_uv;
-#endif
+#if defined(T2D)
+	readonly vec3 world_uvw;
 #else // voxels only
 	readonly flat vec4 material;
 #endif
@@ -62,7 +56,7 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 // only valid for NON-BASIC
 #ifndef BASIC
 
-#define i_extra_00 uv.w			// *                          - bn slice #
+#define i_extra_00 uv.w			// *                          - free to use by shader - do not assign permanantly, so this interpolated param is flexible
 #define i_extra_0 N.w			// *						  - ambient (only used when road or terrain, normal voxels have material)
 #define i_extra_1 V.w			// *						  - emission (only used when road or terrain, normal voxels have material)
 #define f_extra_0 extra.x		// *						  - packed color
@@ -75,10 +69,9 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 
 // defaults //
 // free not used anymore #define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
-#define _slice i_extra_00
+#define _extra i_extra_00
 #define _ambient i_extra_0
 #define _emission i_extra_1
-#define _height f_extra_1
 #define _color f_extra_0
 #define _time f_extra_3
 #undef i_extra_2

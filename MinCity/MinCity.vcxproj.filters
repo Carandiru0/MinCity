@@ -58,6 +58,9 @@
     <Filter Include="Source Files\Gameplay\VDB">
       <UniqueIdentifier>{689548a1-fd7a-439d-a945-79bbf3207c38}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\MemoryCore">
+      <UniqueIdentifier>{dcb8f395-36f8-486b-bb67-98a87d4f2ff4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -509,6 +512,9 @@
     <ClCompile Include="StreamingGrid.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="X:\mimalloc\src\static.c">
+      <Filter>Source Files\MemoryCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\Data\Shaders\uniforms.vert">
@@ -615,6 +621,9 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\data\shaders\light.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\data\shaders\terrain.glsl">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

@@ -309,6 +309,7 @@ namespace world
 	private:
 		UniformState						  _lastState, _currentState, _targetState;
 
+		vku::TextureImage3D         * _terrainDetail;
 		vku::TextureImage2D			* _terrainTexture,
 			                        * _terrainTexture2,
 									* _gridTexture;
@@ -574,12 +575,7 @@ auto const cVoxelWorld::placeVoxelModelInstanceAt(point2D_t const voxelIndex, Vo
 			vWorldArea = voxelArea_grow(vWorldArea, point2D_t(1, 1));
 
 			// smooth border of model area with surrounding terrain
-			smoothRect(vWorldArea);
-
-			// go around perimeter doing lerp between border
-			// *required* recompute adjacency for area as height of voxels has changed
-			recomputeGroundAdjacency(vWorldArea);
-				
+			smoothRect(vWorldArea);				
 		}
 		// root is special
 

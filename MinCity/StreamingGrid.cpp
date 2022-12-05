@@ -18,6 +18,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <Utility/async_long_task.h>
 #include <winioctl.h>
 #include <density.h>	// https://github.com/centaurean/density - Density, fastest compression/decompression library out there with simple interface. must reproduce license file. attribution.
+#include <mimalloc.h>   // https://microsoft.github.io/mimalloc/modules.html - mimalloc - fastest allocator available. maintained by Microsoft. MIT License.
 
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
@@ -29,49 +30,60 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #endif
 
+// ################ *bugfix - do *not* change the type of mutex used per Chunk ################# //
+
+
 namespace // private to this file (anonymous)
 {
-	static inline tbb::queuing_rw_mutex grid_lock; // for the::grid
-
 	static constexpr int8_t const
 		CLOSED = 0,
 		OPEN = 1;
 
-	typedef struct no_vtable Chunk { // ordering - most frequently accessed - not size
+	typedef struct alignas(64) Chunk { // ordering - most frequently accessed - not size
 
 		// temporal (time) //
-		std::atomic_flag       _state; 
-		tbb::spin_rw_mutex     _lock;
-		std::atomic<tTime>     _last_access; // does not need to be atomic. Garbage Collection is the only other place this is accessed. Garbage Collection is run at a different time during the frame that does not overlap the normal chunk / grid usage - the "dead zone"
+		struct {
+			std::atomic_flag       _state;
+			tbb::queuing_rw_mutex  _lock; // should be queueing_rw_mutex *bugfix - do not change type of mutex, StreamingGrid leverages the fact that this type of mutex is [fair], scalable.
+			std::atomic<tTime>     _last_access; // does not need to be atomic. Garbage Collection is the only other place this is accessed. Garbage Collection is run at a different time during the frame that does not overlap the normal chunk / grid usage - the "dead zone"
+		}; // 24 bytes
+
+		// 64 byte alignment/padding seperation (cache line) between locks and the data //
+		uint8_t padding[40]; // 40 bytes 
 
 		// space //
-		uint8_t*               _data; // data is compressed if CLOSED, or, data is decompressed if OPEN
-		uint16_t               _compressed_size;
-		
+		struct {
+			uint8_t*               _data; // data is compressed if CLOSED, or, data is decompressed if OPEN
+			uint16_t               _compressed_size;
+		}; // 16 bytes
+
+	private:
+		void open(tbb::queuing_rw_mutex::scoped_lock& lock);
+	public:
 		Iso::Voxel const open(uint32_t const index);
 		void update(uint32_t const index, Iso::Voxel const&& oVoxel);
 		void close();
 
-	} Chunk;
+	} Chunk; // 128 bytes
 
-	static inline thread_local alignas(64) struct {
+	static inline thread_local struct alignas(64) {
 
 		static constexpr uint32_t const
-			DECOMPRESS_SAFE_BUFFER_SIZE = 4416;  // 4400 is a safe decompression size for density for 4096 bytes below in chunk
+			DECOMPRESS_SAFE_BUFFER_SIZE = 2304;  // 2304 is a safe decompression size for density for 2048 bytes below in chunk
 
 		struct {
-			uint8_t    buffer[DECOMPRESS_SAFE_BUFFER_SIZE]{};          // 4400 is a safe decompression size for density for 4096 bytes above in chunk
+			uint8_t    buffer[DECOMPRESS_SAFE_BUFFER_SIZE]{};          // 4400 is a safe decompression size for density for 2048 bytes above in chunk
 		} safe;
 
 	} thread_local_decompress_chunks;
 	
-	static inline thread_local alignas(64) struct {
+	static inline thread_local struct alignas(64) {
 
 		static constexpr uint32_t const
-			COMPRESS_SAFE_BUFFER_SIZE = 5344;    // 5344 ""    ""  compression    ""         ""        ""    ""    ""      ""
+			COMPRESS_SAFE_BUFFER_SIZE = 2784;    // 2784 ""    ""  compression    ""         ""        ""    ""    ""      ""
 
 		struct {
-			uint8_t    buffer[COMPRESS_SAFE_BUFFER_SIZE]{};          // 5344 is a safe compression size for density for 4096 bytes above in chunk
+			uint8_t    buffer[COMPRESS_SAFE_BUFFER_SIZE]{};          // 5344 is a safe compression size for density for 2048 bytes above in chunk
 		} safe;
 
 	} thread_local_compress_chunks;
@@ -80,12 +92,13 @@ namespace // private to this file (anonymous)
 	{
 		static constexpr uint32_t const CHUNK_VOXELS = StreamingGrid::CHUNK_VOXELS; // Must always be power of 2
 		static constexpr uint32_t const CHUNK_BITS = 6; // must be CHUNK_VOXELS = (1 << CHUNK_BITS) (manually set to match)
+		static constexpr uint32_t const CHUNK_SIZE = CHUNK_VOXELS * sizeof(Iso::Voxel);
 		static constexpr uint32_t const CHUNK_COUNT = (Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE) / CHUNK_VOXELS;
 		
-		Chunk* __restrict            _chunks = nullptr;
+		static constexpr uint32_t const HEADER_SIZE = 8; // same value as density_header_size(), constant does not change in density always equals 8 bytes.
 
+		Chunk* __restrict            _chunks = nullptr;
 		density_context*             _context = nullptr; // re-usuable context for decompression/compression 
-		size_t                       _common_header_size = 0;
 
 		__declspec(safebuffers) __forceinline operator Chunk* const __restrict() const {
 			return(_chunks);
@@ -105,77 +118,79 @@ namespace // private to this file (anonymous)
 
 	} world_grid{};
 
-	Iso::Voxel const Chunk::open(uint32_t const index)  // used by getVoxel() of StreamingGrid
+	// private //
+	void Chunk::open(tbb::queuing_rw_mutex::scoped_lock& lock)
 	{
-		static constexpr size_t const CHUNK_VOXEL_SIZE = WorldGrid::CHUNK_VOXELS * sizeof(Iso::Voxel);
-
-		tbb::spin_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
-
 		if (!_state.test_and_set()) { // CLOSED = false/clear
 
 			/**/ // OPEN = set // /**/
 			lock.upgrade_to_writer(); // write access
 
 			[[unlikely]] if (nullptr == _data) { // treat as OPEN & skip decompression
-				_data = (uint8_t* const __restrict)scalable_malloc(CHUNK_VOXEL_SIZE);
-				memset(_data, 0, CHUNK_VOXEL_SIZE);
+				_data = (uint8_t* const __restrict)mi_zalloc(WorldGrid::CHUNK_SIZE);
 			}
 			else {
-				density_processing_result const result = density_decompress_with_context(_data + ::world_grid._common_header_size, // _data is compressed, skip over header
-																						 _compressed_size,
-																						 thread_local_decompress_chunks.safe.buffer, thread_local_decompress_chunks.DECOMPRESS_SAFE_BUFFER_SIZE,
-																						 ::world_grid._context);
+				density_processing_result const result = density_decompress_with_context(_data + ::WorldGrid::HEADER_SIZE, // _data is compressed, skip over header
+					                                                                     _compressed_size,
+					                                                                     thread_local_decompress_chunks.safe.buffer, thread_local_decompress_chunks.DECOMPRESS_SAFE_BUFFER_SIZE,
+					                                                                     ::world_grid._context);
 				if (!result.state) {
 
-					_data = (uint8_t* const __restrict)scalable_realloc(_data, CHUNK_VOXEL_SIZE); // _data becomes decompressed
+					_data = (uint8_t* const __restrict)mi_realloc(_data, WorldGrid::CHUNK_SIZE); // _data becomes decompressed
 
 					// copy out to chunk local cache //
-					memcpy(_data, thread_local_decompress_chunks.safe.buffer, CHUNK_VOXEL_SIZE);
+					memcpy(_data, thread_local_decompress_chunks.safe.buffer, WorldGrid::CHUNK_SIZE);
 				}
 			}
 		}
+		else if (nullptr == _data) { // treat as OPEN & skip decompression
+
+			lock.upgrade_to_writer(); // write access
+			_data = (uint8_t* const __restrict)mi_zalloc(WorldGrid::CHUNK_SIZE);
+		}
+
+	}
+
+	// public //
+	Iso::Voxel const Chunk::open(uint32_t const index)  // used by getVoxel() of StreamingGrid
+	{
+		tbb::queuing_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
+
+		open(lock); // open chunk, ref existing lock
 
 		lock.downgrade_to_reader(); // read access
 		
-		_last_access = critical_now(); // atomic
+		_last_access = critical_now(); // atomic  [after read access]
 
 		Iso::Voxel const* const decompressed(reinterpret_cast<Iso::Voxel const* const>(_data));
-
 		return(decompressed[index]);
 	}
 
 	void Chunk::update(uint32_t const index, Iso::Voxel const&& oVoxel) // used by setVoxel() of StreamingGrid
 	{
-		static constexpr size_t const CHUNK_VOXEL_SIZE = WorldGrid::CHUNK_VOXELS * sizeof(Iso::Voxel);
+		tbb::queuing_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
 
-		_state.test_and_set(); /**/ // OPEN = set // /**/
-		{
-			tbb::spin_rw_mutex::scoped_lock lock(_lock, true); // write-only access //
+		open(lock); // open chunk, ref existing lock
 
-			if (nullptr == _data) { // treat as OPEN
-				_data = (uint8_t* const __restrict)scalable_malloc(CHUNK_VOXEL_SIZE);
-				memset(_data, 0, CHUNK_VOXEL_SIZE);
-			}
+		_last_access = critical_now(); // tomic  [before write access]
 
-			Iso::Voxel* const decompressed(reinterpret_cast<Iso::Voxel* const>(_data));
-			decompressed[index] = std::move(oVoxel);
-		}
-		_last_access = critical_now();
+		lock.upgrade_to_writer(); // write access
+
+		Iso::Voxel* const decompressed(reinterpret_cast<Iso::Voxel* const>(_data));
+		decompressed[index] = std::move(oVoxel);
 	}
 
 	void Chunk::close() // used by GarbageCollection() of StreamingGrid
 	{
-		static constexpr size_t const CHUNK_VOXEL_SIZE = WorldGrid::CHUNK_VOXELS * sizeof(Iso::Voxel);
-
 		if (_state.test()) { // OPEN = true/set
 
 			/**/ // CLOSED = clear // /**/
 			_state.clear(); /**/
 
-			tbb::spin_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
+			tbb::queuing_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
 
 			density_processing_result const result = density_compress_with_context(_data, // _data is decompressed
-				                                                                   CHUNK_VOXEL_SIZE,
+				                                                                   WorldGrid::CHUNK_SIZE,
 				                                                                   thread_local_compress_chunks.safe.buffer, thread_local_compress_chunks.COMPRESS_SAFE_BUFFER_SIZE,
 				                                                                   ::world_grid._context);
 
@@ -185,7 +200,7 @@ namespace // private to this file (anonymous)
 
 				lock.upgrade_to_writer(); // write access //
 
-				_data = (uint8_t* const __restrict)scalable_realloc(_data, new_compressed_size); // _data becomes compressed
+				_data = (uint8_t* const __restrict)mi_realloc(_data, new_compressed_size); // _data becomes compressed
 
 				memcpy(_data, thread_local_compress_chunks.safe.buffer, new_compressed_size);
 
@@ -205,23 +220,34 @@ bool const StreamingGrid::Initialize()
 
 	// create world grid memory
 	{
-		::world_grid._chunks = (Chunk* const __restrict)scalable_aligned_malloc(sizeof(Chunk) * WorldGrid::CHUNK_COUNT, CACHE_LINE_BYTES);
+		// set special allocator memory options
+		mi_option_set_enabled_default(mi_option_show_errors, false);
+		mi_option_disable(mi_option_show_errors);
+		mi_option_set_enabled_default(mi_option_show_stats, false);
+		mi_option_disable(mi_option_show_stats);
+		mi_option_set_enabled_default(mi_option_verbose, false);
+		mi_option_disable(mi_option_verbose);
 
-		memset(::world_grid._chunks, 0, sizeof(Chunk) * WorldGrid::CHUNK_COUNT);
+#ifdef DEBUG_OUTPUT_STREAMING_STATS
+		// for debugging:
+		mi_option_enable(mi_option_show_errors);
+		mi_option_enable(mi_option_show_stats);
+		mi_option_enable(mi_option_verbose);
+		mi_stats_reset();
+#endif
+
+		::world_grid._chunks = (Chunk* const __restrict)mi_zalloc_aligned(sizeof(Chunk) * WorldGrid::CHUNK_COUNT, CACHE_LINE_BYTES);
 
 		FMT_LOG(VOX_LOG, "world chunk allocation: {:n} bytes", (sizeof(Chunk) * WorldGrid::CHUNK_COUNT));
 
 		// Setup context
-		::world_grid._context = density_alloc_context(DENSITY_ALGORITHM_CHAMELEON, false, scalable_malloc); //*bugfix - CHEETAH and LION are bugged "input buffer too small" error. Only CHAMELEON works properly it seems...
-		::world_grid._common_header_size = density_header_size();
+		::world_grid._context = density_alloc_context(DENSITY_ALGORITHM_CHAMELEON, false, mi_malloc); //*bugfix - CHEETAH and LION are bugged "input buffer too small" error. Only CHAMELEON works properly it seems...
 
-		// Determine safe buffer sizes ~4400 bytes
-		static constexpr size_t const voxel_chunk_size(sizeof(Iso::Voxel) * CHUNK_VOXELS);
-		 
-		size_t const decompress_safe_size = density_decompress_safe_size(voxel_chunk_size);
-		size_t const compressed_safe_size = density_compress_safe_size(voxel_chunk_size);
+		// Determine safe buffer sizes ~4400 bytes	 
+		size_t const decompress_safe_size = density_decompress_safe_size(WorldGrid::CHUNK_SIZE);
+		size_t const compressed_safe_size = density_compress_safe_size(WorldGrid::CHUNK_SIZE);
 
-		FMT_LOG(VOX_LOG, "chunk size: {:n} bytes / chunk decompress safe size: {:n} bytes / chunk compress safe size: {:n} bytes", voxel_chunk_size, decompress_safe_size, compressed_safe_size);
+		FMT_LOG(VOX_LOG, "chunk size: {:n} bytes / chunk decompress safe size: {:n} bytes / chunk compress safe size: {:n} bytes", WorldGrid::CHUNK_SIZE, decompress_safe_size, compressed_safe_size);
 		
 		if (decompress_safe_size > thread_local_decompress_chunks.DECOMPRESS_SAFE_BUFFER_SIZE) {
 
@@ -236,11 +262,6 @@ bool const StreamingGrid::Initialize()
 	}
 
 	return(bReturn);
-}
-
-tbb::queuing_rw_mutex& StreamingGrid::access_lock() const
-{
-	return(::grid_lock);
 }
 
 Iso::Voxel const __vectorcall StreamingGrid::getVoxel(point2D_t const voxelIndex) const
@@ -276,8 +297,6 @@ namespace {
 
 void StreamingGrid::Flush() // closes all chunks to "flush" any chunks that are open/
 {
-	tbb::queuing_rw_mutex::scoped_lock lock(::grid_lock, true);
-
 	tbb::parallel_for(uint32_t(0), uint32_t(WorldGrid::CHUNK_COUNT), [&](uint32_t const i) {
 
 		world_grid._chunks[i].close(); // close the chunk
@@ -292,12 +311,12 @@ void StreamingGrid::Flush() // closes all chunks to "flush" any chunks that are 
 #endif
 
 }
-void StreamingGrid::GarbageCollect(bool const bForce)
+void StreamingGrid::GarbageCollect(tTime const tNow, nanoseconds const tDelta, bool const bForce)
 {
 	static constexpr milliseconds const interval(GARBAGE_COLLECTION_INTERVAL);
 	static constinit nanoseconds accumulator{};
 
-	if ((accumulator += critical_delta()) >= interval) {
+	if ((accumulator += tDelta) >= interval || bForce) {
 
 		static constinit bool mode{};
 
@@ -312,20 +331,21 @@ void StreamingGrid::GarbageCollect(bool const bForce)
 		// go thru all chunks, closing chunks that have exceeded the TTL (time to live)
 		tbb::parallel_for(start, end, [&](uint32_t const i) {
 
-			// nothing should be initially pending when Garbage Collect is called //
 			Chunk& chunk(world_grid._chunks[i]);
-			if (chunk._state.test()) { /**/ // OPEN = set // /**/ 
-	
-				tTime const last_access(chunk._last_access);
 
-				if ((critical_now() - last_access) >= CHUNK_TTL || bForce) {
+			tTime const last_access(chunk._last_access);
 
-					chunk.close(); // close the chunk
-				}
+			if ((tNow - last_access) >= CHUNK_TTL || bForce) {
+
+				chunk.close(); // close the chunk
 			}
 		});
 
 		accumulator -= interval;
+
+		if (nanoseconds(0) == accumulator || bForce) { // randomly engage the garbage collection of the dedicated allocator for the streaming grid during run-time. Reduces memory usage, and fragmentation.
+			mi_collect(bForce);                        // If Forced, there could be a significant delay - used only during load-time to reduce memory pressure / usage. Do not use force during run-time.
+		}
 	}
 	
 #ifdef DEBUG_OUTPUT_STREAMING_STATS
@@ -333,9 +353,9 @@ void StreamingGrid::GarbageCollect(bool const bForce)
 		static constexpr milliseconds const debug_interval(5); // prevent successive rapid execution of the streaming stats
 		static constinit tTime tLast{};
 
-		if (critical_now() - tLast > debug_interval) {
+		if (tNow - tLast > debug_interval) {
 
-			tLast = critical_now();
+			tLast = tNow;
 
 			_chunksOpen = 0;
 			_chunksClosed = 0;
@@ -349,7 +369,7 @@ void StreamingGrid::GarbageCollect(bool const bForce)
 				if (chunk._state.test()) { // OPEN
 
 					++_chunksOpen;
-					_bytesOpen += WorldGrid::CHUNK_COUNT * sizeof(Iso::Voxel);
+					_bytesOpen += WorldGrid::CHUNK_SIZE;
 				}
 				else { // CLOSED
 
@@ -444,7 +464,7 @@ void StreamingGrid::OutputDebugStats(fp_seconds const& tDelta)
 		MinCity::Nuklear->debug_update_streaming(chunksClosed / count, chunksClosed / count, chunksOpen / count);
 
 		//reset for averaging stats
-		count = 0.0f;
+		count = 0;
 		chunksOpen = 0;
 		chunksClosed = 0;
 		bytesOpen = 0;
@@ -454,16 +474,25 @@ void StreamingGrid::OutputDebugStats(fp_seconds const& tDelta)
 }
 #endif
 
-StreamingGrid::~StreamingGrid()
+static void mi_output_function(const char* msg, void* arg)
+{
+	fmt::print(fg(fmt::color::orange_red), "{:s}", msg);
+}
+
+void StreamingGrid::CleanUp()
 {
 	// free context
 	if (::world_grid._context) {
-		density_free_context(::world_grid._context, scalable_free); ::world_grid._context = nullptr;
+		density_free_context(::world_grid._context, mi_free); ::world_grid._context = nullptr;
 	}
 
 	// free all chunks
 	if (::world_grid._chunks) {
 
+		// *bugfix - on program exit this causes a massive amount of memory to release memory
+		// very strange - since this is @ program exit, this memory will be re-claimed by the OS anyways
+
+		/*
 		static constexpr size_t const
 			WORLD_CHUNKS_SIZE = (Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE) / CHUNK_VOXELS;
 
@@ -471,11 +500,22 @@ StreamingGrid::~StreamingGrid()
 
 		for (uint32_t i = 0; i < chunk_count; ++i) {
 			if (::world_grid._chunks[i]._data) {
-				scalable_free(::world_grid._chunks[i]._data); ::world_grid._chunks[i]._data = nullptr;
+				mi_free(::world_grid._chunks[i]._data); ::world_grid._chunks[i]._data = nullptr;
 			}
 		}
+		*/
 
-		scalable_aligned_free(::world_grid._chunks); ::world_grid._chunks = nullptr;
+		mi_free_aligned(::world_grid._chunks, CACHE_LINE_BYTES); ::world_grid._chunks = nullptr;
 	}
 
+#ifdef DEBUG_OUTPUT_STREAMING_STATS
+	mi_stats_merge();
+	mi_stats_print_out(mi_output_function, nullptr);
+#endif
+
+}
+
+StreamingGrid::~StreamingGrid()
+{
+	CleanUp();
 }

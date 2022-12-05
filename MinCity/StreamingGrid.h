@@ -10,13 +10,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #pragma once
 #include <Utility/class_helper.h>
-#include <atomic>
-#include <Math/point2D_t.h>
 #include "IsoVoxel.h"
-
-
-
-
 
 #define GRID_FILE_EXT L".grid"
 
@@ -34,15 +28,15 @@ public:
 	static constexpr milliseconds const     GARBAGE_COLLECTION_INTERVAL = milliseconds(100), // garbage collection beat
 		                                    CHUNK_TTL = GARBAGE_COLLECTION_INTERVAL * 5; // time to live, chunk life when no recent access' are made
 public:
-	tbb::queuing_rw_mutex& access_lock() const;
-
 	Iso::Voxel const __vectorcall getVoxel(point2D_t const voxelIndexWrapped) const;
 	void __vectorcall             setVoxel(point2D_t const voxelIndexWrapped, Iso::Voxel const&& oVoxel);
 
 	bool const Initialize();
 	
 	void Flush();
-	void GarbageCollect(bool const bForce = false); // see notes in cpp for proper usage
+	void GarbageCollect(tTime const tNow, nanoseconds const tDelta, bool const bForce = false); // see notes in cpp for proper usage
+
+	void CleanUp();
 
 #ifdef DEBUG_OUTPUT_STREAMING_STATS
 	void OutputDebugStats(fp_seconds const& tDelta);

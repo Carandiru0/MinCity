@@ -51,7 +51,7 @@ __declspec(noinline) void RedirectIOToConsole()
 	SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING); // enable ansi color !!! windows 10 only
 
 	*(FILE_COMPLETE*)stdout = *(FILE_COMPLETE*)_wfdopen(_open_osfhandle((intptr_t)hOut, _O_TEXT), L"w");
-	
+
 	// this is important so that main application is not slowed down
 	std::ios_base::sync_with_stdio(false);
 	std::cin.tie(NULL);

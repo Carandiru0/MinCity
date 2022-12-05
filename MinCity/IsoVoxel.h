@@ -24,7 +24,7 @@ namespace Iso
 {
 	// cONSTANTS/*****************
 	static constexpr size_t const
-		WORLD_GRID_SIZE_BITS = 13;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
+		WORLD_GRID_SIZE_BITS = 14;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
 	static constexpr uint32_t const				//                                          recommend using 2^13 = 8192x8192 or less, map is still extremely large
 		WORLD_GRID_SIZE = (1U << WORLD_GRID_SIZE_BITS),//                                   using 2^14 = 16384x16384  
 		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);
@@ -119,6 +119,7 @@ namespace Iso
 
 	// 0011 1100 ### UNUSED ###
 	static constexpr uint8_t const MASK_UNUSED_BITS = 0b00111100;
+
 	// Height moved to dedicated member
 	static constexpr uint32_t const MAX_HEIGHT_STEP = 0xFFFF;	
 	static constexpr uint32_t const NUM_HEIGHT_STEPS = MAX_HEIGHT_STEP + 1;	// 256 Values (0-65535 16bits)	
@@ -131,7 +132,7 @@ namespace Iso
 	// ######### MaterialDesc bits:
 
 	// ### TYPE_ALL_VOXELS ###
-	static constexpr uint8_t const MASK_ADJACENCY_BITS = 0b00011111;
+	static constexpr uint8_t const MASK_UNUSED2_BITS = 0b00011111;
 	static constexpr uint8_t const MASK_EMISSION_BITS = 0b00100000;
 	static constexpr uint8_t const
 		EMISSION_SHADING_NONE = 0,
@@ -158,11 +159,11 @@ namespace Iso
 		STATIC_HASH = (1 << 0),
 		DYNAMIC_HASH = (1 << 1);
 	static constexpr uint8_t const
-		HASH_COUNT = 7;  // 60 bytes + 4bytes = 64bytes/voxel
+		HASH_COUNT = 7;  // 28 bytes + 3bytes = 31bytes/voxel
 
 	using heightstep = uint16_t;
 
-	class no_vtable alignas(64) Voxel
+	class no_vtable alignas(32) Voxel  // 32 bytes / voxel
 	{
 	public:
 		static ImagingMemoryInstance* const& __restrict   HeightMap();
@@ -170,7 +171,7 @@ namespace Iso
 		static heightstep* const __restrict __vectorcall  HeightMapReference(point2D_t const voxelIndex);
 
 		uint8_t Desc;								// Type of Voxel + Attributes
-		uint8_t MaterialDesc;						// Deterministic SubType and Adjacency
+		uint8_t MaterialDesc;						// Deterministic SubType + Emission
 		uint8_t Owner;								// Owner Indices
 
 		uint32_t Hash[HASH_COUNT];
@@ -185,6 +186,7 @@ namespace Iso
 		Voxel(Voxel&&) noexcept = default;
 		Voxel& operator=(Voxel&&) noexcept = default;
 	};
+	static_assert(sizeof(Voxel) <= 32); // Ensure Iso::Voxel is correct size @ compile time
 
 	// Special case leveraging more of the beginning bits
 	STATIC_INLINE_PURE bool const isGroundOnly(Voxel const& oVoxel) { return(TYPE_GROUND == (MASK_TYPE_BIT & oVoxel.Desc)); }
@@ -397,19 +399,6 @@ namespace Iso
 			clearEmissive(oVoxel);
 		}
 
-	}
-	STATIC_INLINE_PURE uint8_t const getAdjacency(Voxel const& oVoxel) {
-		return((MASK_ADJACENCY_BITS & oVoxel.MaterialDesc) << 1); // always add bottom bit, not used for ground voxels but externally the usage with the bitmasks defined in adjacency.h requires the layout to match. (decompress to 6bits)
-	}
-	STATIC_INLINE void clearAdjacency(Voxel& oVoxel) {
-		// Clear adjacency bits
-		oVoxel.MaterialDesc &= (~MASK_ADJACENCY_BITS);
-	}
-	STATIC_INLINE void setAdjacency(Voxel& oVoxel, uint8_t const adjacency) {
-		// Clear adjacency bits
-		oVoxel.MaterialDesc &= (~MASK_ADJACENCY_BITS);
-		// Set new adjacency bits
-		oVoxel.MaterialDesc |= (MASK_ADJACENCY_BITS & (adjacency >> 1)); // always remove bottom bit, not used for ground voxels (compress to 5bits)
 	}
 
 	// #### Ground Only 

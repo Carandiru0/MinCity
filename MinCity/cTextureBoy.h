@@ -215,8 +215,8 @@ void  cTextureBoy::ImagingToTexture(ImagingMemoryInstance const* const image, vk
 			format = vk::Format::eR8G8B8A8Unorm;
 		}
 
-		texture = new vku::TextureImage2DArray(_device, image->xsize, image->ysize, 1, // this is for a single 2D image / layer,
-											   format, false, bDedicatedMemory);								  // for array with n layers content, use ImagingSequenceToTexture
+		texture = new vku::TextureImage2DArray(_device, image->xsize, image->ysize, 1, 1, // this is for a single 2D image / layer,
+											   format, false, bDedicatedMemory);	      // for array with n layers content, use ImagingSequenceToTexture
 	}
 
 	if (buffer) {
@@ -410,7 +410,7 @@ __inline void cTextureBoy::ImagingToTexture(ImagingLUT const* const image, vku::
 	}
 
 	if (nullptr == texture) {
-		texture = new vku::TextureImage3D(_device, image->size, image->size, image->size,
+		texture = new vku::TextureImage3D(_device, image->size, image->size, image->size, 1,
 			vk::Format::eR16G16B16A16Unorm, false, true);
 	}
 	texture->upload<false>(_device, image->block, image->slicesize * image->size, *commandPool, *queue);
@@ -445,7 +445,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 						commandPool = &dmaTransferPool();
 						queue = &transferQueue();
 					}
-					texture = new T(_device, width, height, depth, ktxFile.format());
+					texture = new T(_device, width, height, depth, ktxFile.mipLevels(), ktxFile.format());
 				}
 				else { // 2D
 					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0));
@@ -456,7 +456,7 @@ bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view
 					}
 					
 					if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
-						texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.format());
+						texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.mipLevels(), ktxFile.format());
 					}
 					else { // vku::TextureImage2D or vku::TextureImageCube
 						texture = new T(_device, width, height, ktxFile.mipLevels(), ktxFile.format());

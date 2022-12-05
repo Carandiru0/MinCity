@@ -2,9 +2,6 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_control_flow_attributes : enable
 
-#include "shareduniform.glsl"
-#include "transform.glsl"
-
 /* Copyright (C) 20xx Jason Tully - All Rights Reserved
  * You may use, distribute and modify this code under the
  * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
@@ -15,6 +12,25 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
+#include "shareduniform.glsl"
+#include "transform.glsl"
+
+// Attention:
+//
+// "Vulkan Rendering is different, concerning the Y Axis. Instead of starting at the bottom of the screen and working up (+Y), we have to start at the top of the screen and work down (-Y)
+//  This affects everything, everything is upside down - from uv's to normals. This creates a lot of confusion, and is something of a pain in the ass to work with. Even the standard cartesian coordinate system has Y Up as Positive.
+//  Unfortuanetly Y Up is NEGATIVE." - Jason Tully
+//
+// "If Vulkan didn't negate the Y Axis, it would be the perfect 3D api. Whoever decided to do this has very little understanding of math."
+//
+//
+
+
+//#define DEBUG_SHADER
+
+#ifdef DEBUG_SHADER
+#include "common.glsl"
+#endif
 
 layout(points) in;					// maximum 3 faces/quads visible of any cube/voxel
 layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far slower - don't use
@@ -27,24 +43,11 @@ layout(location = 0) in streamIn
 {
 	readonly flat vec3	right, forward, up;
 	readonly flat uint  adjacency;
-	readonly flat vec2	world_uv;
+	readonly flat vec3	world_uvw;
 #ifndef BASIC
 	readonly flat float   ambient;
 	readonly flat float	  color;
 	readonly flat float   emission;
-	readonly flat float   height;
-#endif
-} In[];
-#elif defined(ROAD) // road
-layout(location = 0) in streamIn
-{
-	readonly flat vec3	right, forward, up;
-	readonly flat vec4  corners;
-	readonly flat vec2	world_uv;
-#ifndef BASIC
-	readonly flat float   ambient;
-	readonly flat float   emission;
-	readonly flat vec4    extra;
 #endif
 } In[];
 #else  // voxels only
@@ -75,45 +78,31 @@ layout (constant_id = 4) const float InvToIndex_Y = 0.0f;
 layout (constant_id = 5) const float InvToIndex_Z = 0.0f;
 #define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
-#if (defined(HEIGHT) || defined(ROAD)) // terrain, roads
+#if defined(HEIGHT) // terrain
 
 layout (constant_id = 6) const float HALF_TEXEL_OFFSET_U = 0.0f;
 layout (constant_id = 7) const float HALF_TEXEL_OFFSET_V = 0.0f;
-
 #define HALF_TEXEL_OFFSET_TEXTURE vec2(HALF_TEXEL_OFFSET_U, HALF_TEXEL_OFFSET_V)
 
-#endif
+#include "terrain.glsl"
 
 #endif
 
-#ifdef ROAD
-layout (constant_id = 8) const float ROAD_WIDTH = 0.0f;
 #endif
 
-#ifndef ROAD
 const uint BIT_ADJ_BELOW = (1<<0),
 		   BIT_ADJ_ABOVE = (1<<1),
 		   BIT_ADJ_BACK  = (1<<2),				
 		   BIT_ADJ_FRONT = (1<<3),				
 		   BIT_ADJ_RIGHT = (1<<4),				
 		   BIT_ADJ_LEFT  = (1<<5);
-#endif
 
-#if defined(ROAD)
-// road only
-#if !defined(IsNotAdjacent)
-#define GEO_FLATTEN [[flatten]]
-#define IsNotAdjacent(adjacent) ( true )  //adjacency flag not used (yet) for roads
-#endif
-
-#else
 // vxl & terrain vxl
 #if !defined(IsNotAdjacent)
 #define GEO_FLATTEN [[dont_flatten]]
 #define IsNotAdjacent(adjacent) ( 0 == (In[0].adjacency & adjacent) )
 #endif
 
-#endif
 
 #if !defined(IsVisible)
 #define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) >= 0.0f )
@@ -127,30 +116,17 @@ void PerVoxel()
 	Out._color = In[0].color;
 #endif
 
-#ifdef ROAD
-	Out.road_uv.z = In[0].extra.x; // road tile index in .z, which is good for indexing texture array nicely as special.xy already contains uv coords
-#endif
-	
-#if !(defined(HEIGHT) || defined(ROAD)) // voxels only
+#if !defined(HEIGHT) // voxels only
 	Out.material = In[0].material; 
 #else
 	Out._ambient = In[0].ambient;
 #ifdef _emission
 	Out._emission = In[0].emission;
 #endif
-#if defined(HEIGHT)
-#ifdef _height
-	Out._height = In[0].height;
-#endif
-#endif
 #endif
 
 #ifdef _time
 	Out._time = time();
-#endif
-
-#ifdef _slice
-	Out._slice = frame_to_slice();
 #endif
 
 #ifdef TRANS
@@ -164,9 +140,11 @@ void PerVoxel()
 
 #endif
 #else // basic
-
+#if defined(HEIGHT)
+    Out.voxelIndex = In[0].world_uvw.xy; // normalized world grid uv coords
+#else
 	Out.voxelIndex = In[0].world_uv.xy; // normalized world grid uv coords
-
+#endif
 #endif  // basic
 }
 
@@ -174,7 +152,12 @@ void PerQuad(in vec3 normal)
 {
 
 #ifndef BASIC // final output must be xzy and transformed to eye/view space for fragment shader
-	normal = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
+
+#ifdef DEBUG_SHADER
+	Out._color = packColor(normal * 0.5f + 0.5f); // override color output in debug mode (normal direction)
+#endif
+
+	//normal = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
 #endif
 	
 	Out.N.xzy = normal; // require world space normal for normal map output. (negating whole normal matches up with computed normal in volumetric shader)
@@ -195,7 +178,7 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	
 #if !defined(BASIC)
 	
-	// main uvw coord for light, common to terrain, road & normal voxels
+	// main uvw coord for light, common to terrain, normal voxels
 															// *bugfix - half-voxel offset required to sample center of voxel
 	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
@@ -210,28 +193,16 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	EmitVertex();
 }
 
-void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal) 
+void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal)
 {	
 #if !defined(BASIC)
 
 #if defined(HEIGHT) 
 	const vec2 texel_texture = HALF_TEXEL_OFFSET_TEXTURE; // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
-#endif
-#if defined(ROAD)
-	const vec2 texel_road_texture = vec2(0.5f, ROAD_WIDTH * 0.5f);
+	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uvw.xy);  
 #endif
 
 #endif // not basic
-	
-#ifdef ROAD
-#ifndef BASIC
-	const float rotate = In[0].extra.y;
-	const vec2 texel_texture = mix(HALF_TEXEL_OFFSET_TEXTURE.yx, HALF_TEXEL_OFFSET_TEXTURE.xy, rotate); // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uv.xy);
-#endif
-	const vec4 corners = In[0].corners; 
-#endif
 	
 	// 2+<--------+1
 	//  |\\       |
@@ -242,17 +213,14 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 	
 { // right - up vertex
 	vec3 tangent = right - up;
-#ifdef ROAD
-	tangent.y += corners.x;
-#endif
+
 #if !defined(BASIC)
 
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#if defined(HEIGHT)
+	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
+	Out.world_uvw.z = In[0].world_uvw.z;
 #endif
-#ifdef ROAD
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
+
 #endif // not basic
 
 	EmitVxlVertex(center + tangent, normal);
@@ -261,17 +229,14 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 
 { // -right - up vertex
 	vec3 tangent = -right - up;
-#ifdef ROAD
-	tangent.y += corners.y;
-#endif
+
 #if !defined(BASIC)
 	 
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#if defined(HEIGHT)
+	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+	Out.world_uvw.z = In[0].world_uvw.z;
 #endif
-#ifdef ROAD
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
+
 #endif // not basic
 
 	EmitVxlVertex(center + tangent, normal);
@@ -280,17 +245,14 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 
 { // right + up vertex
 	vec3 tangent = right + up;
-#ifdef ROAD
-	tangent.y += corners.z;
-#endif
+
 #if !defined(BASIC)
 	
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+#if defined(HEIGHT)
+	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
+	Out.world_uvw.z = 0.0f;
 #endif
-#ifdef ROAD 
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
+
 #endif // not basic
 
 	EmitVxlVertex(center + tangent, normal);
@@ -299,17 +261,14 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 
 { // -right + up vertex
 	vec3 tangent = -right + up;
-#ifdef ROAD
-	tangent.y += corners.w;
-#endif
+
 #if !defined(BASIC)
 	
-#if defined(HEIGHT) || defined(ROAD)
-	Out.world_uv.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
+#if defined(HEIGHT)
+	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
+	Out.world_uvw.z = 0.0f;
 #endif
-#ifdef ROAD 
-	Out.road_uv.xy = (normalize(mix(tangent.xz, tangent.zx, rotate))) * texel_road_texture + 0.5f;
-#endif
+
 #endif // not basic
 
 	EmitVxlVertex(center + tangent, normal);
@@ -336,15 +295,15 @@ void main() {
 
 	// ** Per voxel ops *** //
 
+	// DOT NOT CHANGE ORDER OF QUADS OR VERTICES - ORDER IS IMPORTANT //
 
-#ifndef ROAD // only top quad is required for roads
 	// RIGHT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {
 #define _normal right
 		const vec3 normal = normalize(_normal);
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, up, forward, normal);
+			BeginQuad(center + _normal, forward, -up, normal);
 		}
 #undef _normal
 	} 
@@ -354,21 +313,21 @@ void main() {
 		const vec3 normal = normalize(_normal);
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, forward, up, normal); 
+			BeginQuad(center + _normal, forward, up, normal);
 		}
 #undef _normal
 	} // else
-
+	
 	// FRONT
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_FRONT) ) {
 #define _normal -forward
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, up, right, normal);
+			BeginQuad(center + _normal, right, -up, normal);
 		}
 #undef _normal
-	} 
+	}
 	// BACK
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BACK) ) {
 #define _normal forward
@@ -379,20 +338,19 @@ void main() {
 		}
 #undef _normal
 	} // else
-
-#ifndef HEIGHT // not terrain (also not ROAD from above) - No bottoms on Terrain or Road
+	
+#ifndef HEIGHT // not terrain - No bottoms on Terrain
 	// DOWN
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BELOW) ) {
 #define _normal up
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, forward, right, normal);			
+			BeginQuad(center + _normal, right, -forward, normal);
 		}
 #undef _normal
 	}
 #endif // #### not terrain
-#endif // #### not road
 
 	// UP
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_ABOVE) ) {
@@ -400,7 +358,7 @@ void main() {
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, forward, normal);			
+			BeginQuad(center + _normal, right, forward, normal);
 		}
 #undef _normal
 	}

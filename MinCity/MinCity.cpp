@@ -1246,6 +1246,7 @@ cVulkan const& cMinCity::Priv_Vulkan() { return(_.Vulkan); }
 extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, uint32_t const thread_count = -1, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
+#ifdef SECURE_DYNAMIC_CODE_NOT_ALLOWED
 	// secure process:
 	// *bugfix - dynamic code execution required by *nvidia* driver usage in specifically - vkCmdBindDescriptorSets() uses dynamic code? Disabling the code below fixes the issue.
 	// bug should be fixed in a newer driver....
@@ -1254,6 +1255,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 	policy.ProhibitDynamicCode = 1;
 
 	SetProcessMitigationPolicy(ProcessDynamicCodePolicy, &policy, sizeof(PROCESS_MITIGATION_DYNAMIC_CODE_POLICY));
+#endif
 
 	// setup secure loading of dlls, should be done before loading any dlls, or creation of any threads under this process (including dlls creating threads)
 	{

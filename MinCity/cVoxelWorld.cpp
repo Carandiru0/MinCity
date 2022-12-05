@@ -21,7 +21,6 @@
 #include "voxelAlloc.h"
 #include "voxelModel.h"
 #include "eVoxelModels.h"
-#include <Random/superrandom.hpp>
 #include "cUserInterface.h"
 #include "cCity.h"
 
@@ -145,14 +144,13 @@ namespace // private to this file (anonymous)
 } // end ns
 */
 
-template<bool const AllNewGround = false>
-static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
-{
-	auto const voxelIterate = getLocalVoxelIndexAt(voxelIndex);
+// in: local voxel index only 
+static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) // Adjacency is only used during Rendering to cull hidden faces.
+{                                                                              // *bugfix - Dynamically called during run-time -- faster than before where it was pre-computed before & terrain height updates are seamless with adjacency no longer being updated seperately, 
+	                                                                           // it's automatic now. Also no longer have huge memory spike at loadtime when generating ground! Was 21GB!! 
 
-	::Iso::Voxel const* __restrict pNeighbour(nullptr);
-	uint32_t const curVoxelHeightStep(::Iso::getHeightStep(voxelIterate));
-	uint8_t Adjacency(0);
+	uint32_t const curVoxelHeightStep(::Iso::getHeightStep(voxelIndex));
+	uint32_t Adjacency(0);
 
 	// Therefore the neighbours of a voxel, follow same isometric layout/order //
 	/*
@@ -163,10 +161,10 @@ static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 					[NBR_L]				   [NBR_B]
 								NBR_BL
 	*/
-
+	 
 	// Side Back = NBR_T
 	{
-		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_T]);
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIndex, ADJACENT[NBR_T]);
 
 		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
 
@@ -177,22 +175,9 @@ static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 		}
 	}
 
-	// Side Right = NBR_R
-	{
-		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_R]);
-
-		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
-
-		// adjacency
-		if (neighbourHeightStep >= curVoxelHeightStep) {
-
-			Adjacency |= (1 << ::Volumetric::adjacency::right);
-		}
-	}
-
 	// Side Left = NBR_L
 	{
-		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_L]);
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIndex, ADJACENT[NBR_L]);
 
 		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
 
@@ -203,9 +188,22 @@ static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 		}
 	}
 
+	// Side Right = NBR_R
+	{
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIndex, ADJACENT[NBR_R]);
+
+		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
+
+		// adjacency
+		if (neighbourHeightStep >= curVoxelHeightStep) {
+
+			Adjacency |= (1 << ::Volumetric::adjacency::right);
+		}
+	}
+
 	// Side Front = NBR_B
 	{
-		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIterate, ADJACENT[NBR_B]);
+		auto const localvoxelIndexNeighbour = getNeighbourLocalVoxelIndex(voxelIndex, ADJACENT[NBR_B]);
 
 		uint32_t const neighbourHeightStep(::Iso::getHeightStep(localvoxelIndexNeighbour));
 
@@ -216,120 +214,9 @@ static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
 		}
 	}
 
-	Iso::Voxel oVoxel{};
-
-	if constexpr (AllNewGround) { // load-time
-		// start of a new voxel (these are the initial world voxel state)
-		oVoxel.Desc = Iso::TYPE_GROUND;
-		oVoxel.MaterialDesc = 0;		// Initially visibility is set off on all voxels until ComputeGroundOcclusion()
-		Iso::clearColor(oVoxel);		// *bugfix - must clear to default color used for ground on generation.
-	}
-	else { // during run-time
-		oVoxel = std::move(getVoxelAtLocal(voxelIterate));
-	}
-
-	if (0 == Adjacency) {
-		::Iso::clearAdjacency(oVoxel);
-	}
-	else {
-		::Iso::setAdjacency(oVoxel, Adjacency);
-	}
-
-	setVoxelAtLocal(voxelIterate, std::forward<::Iso::Voxel const&& __restrict>(oVoxel));
+	return(Adjacency);
 }
 
-template<bool const AllNewGround = false>
-static void __vectorcall recomputeGroundAdjacency(point2D_t const voxelBegin, point2D_t const voxelEnd, tbb::affinity_partitioner& part)
-{
-	static constexpr uint32_t const block_size(16); // good value
-
-	tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelBegin.y, voxelEnd.y, block_size, voxelBegin.x, voxelEnd.x, block_size),
-		[&](tbb::blocked_range2d<int32_t, int32_t> const& r)
-		{
-			int32_t const	// pull out into registers from memory
-			    y_begin(r.rows().begin()),
-				y_end(r.rows().end()),
-				x_begin(r.cols().begin()),
-				x_end(r.cols().end());
-
-			point2D_t const voxelBegin(x_begin, y_begin);
-
-			point2D_t voxelIndex;
-			for (voxelIndex.y = y_begin; voxelIndex.y <= y_end; ++voxelIndex.y)
-			{
-				for (voxelIndex.x = x_begin; voxelIndex.x <= x_end; ++voxelIndex.x)
-				{
-					recomputeGroundAdjacency<AllNewGround>(voxelIndex);
-				}
-			}
-		}, part);
-}
-template<bool const AllNewGround = false>
-static void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
-{
-	// adjust voxelArea to include a "border" around the passed in area of voxels, as they should be recomputed always
-	voxelArea = voxelArea_grow(voxelArea, point2D_t(1, 1));
-
-	// clamp to world/minmax coords
-	voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
-
-	point2D_t voxelBegin;
-	point2D_t voxelEnd;
-
-	tbb::affinity_partitioner part; // cache, can leverage same thread between iterations of parallel_for
-	
-	// ** top row ** //
-	
-	// left top quad of voxelArea *******************************************************************************************************//
-	voxelBegin = voxelArea.left_top();
-	voxelEnd   = p2D_half(voxelArea.right_bottom());
-
-	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
-	
-	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
-		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
-	}
-
-	// right top quad of voxelArea *******************************************************************************************************//
-	voxelBegin = point2D_t(voxelArea.right >> 1, voxelArea.top);
-	voxelEnd = point2D_t(voxelArea.right, voxelArea.bottom >> 1);
-
-	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
-
-	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
-		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
-	}
-	
-
-	// ** bottom row ** //
-	
-	// left bottom quad of voxelArea *******************************************************************************************************//
-	voxelBegin = point2D_t(voxelArea.left, voxelArea.bottom >> 1);
-	voxelEnd = point2D_t(voxelArea.right >> 1, voxelArea.bottom);
-
-	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
-
-	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
-		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
-	}
-
-	// right bottom quad of voxelArea *******************************************************************************************************//
-	voxelBegin = p2D_half(voxelArea.right_bottom());
-	voxelEnd = voxelArea.right_bottom();
-
-	recomputeGroundAdjacency<AllNewGround>(voxelBegin, voxelEnd, part);
-
-	if constexpr (AllNewGround) { // *bugfix - between the parallel region iterations this is required to keep memory usage on ground generation sane.
-		MinCity::VoxelWorld->GarbageCollect(true); // high potential memory usage - if no garbage collection takes place during ground generation the memory usage can accumulate to > 8GB
-	}
-}
-
-// ####### Private Init methods
-static void ComputeGroundAdjacency()
-{
-	// entire grid
-	recomputeGroundAdjacency<true>(rect2D_t(Iso::MIN_VOXEL_COORD, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD, Iso::MAX_VOXEL_COORD));
-}
 /*
 // https://www.shadertoy.com/view/ftSfRw
 struct Crater {
@@ -445,13 +332,7 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 	// otherwise texture creation from image takes place in onloaded event.
 	MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(50));
 
-	// Compute adjacency based on neighbour occupancy
-	ComputeGroundAdjacency();
-
-	// close all chunks
-	((StreamingGrid* const)::grid)->Flush();
-
-	FMT_LOG_OK(GAME_LOG, "Lunar Surface Synthesized");
+	FMT_LOG_OK(GAME_LOG, "Generated Ground");
 }
 
 XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
@@ -1714,15 +1595,6 @@ namespace world
 		smoothRow(voxelArea.left_bottom(), width_height.x);
 	}
 
-	void __vectorcall recomputeGroundAdjacency(rect2D_t voxelArea)
-	{
-		::recomputeGroundAdjacency<false>(voxelArea);
-	}
-	void __vectorcall recomputeGroundAdjacency(point2D_t const voxelIndex)
-	{
-		::recomputeGroundAdjacency<false>(voxelIndex);
-	}
-
 	// Random //
 	point2D_t const __vectorcall getRandomVoxelIndexInArea(rect2D_t const area)
 	{
@@ -1917,7 +1789,7 @@ namespace // private to this file (anonymous)
 
 				// Build hash //
 				uint32_t groundHash(0);
-				groundHash |= Iso::getAdjacency(oVoxel);			//				0011 1111
+				groundHash |= groundAdjacency(voxelIndex);			//				0011 1111
 				//				RRxx xxxx
 				groundHash |= (emissive << 8);						// 0000 0001	xxxx xxxx
 				groundHash |= (uint32_t(Iso::Voxel::HeightMap(voxelIndex)) << 12);	// 1111 RRRx	xxxx xxxx
@@ -2213,7 +2085,8 @@ namespace world
 		_lastState{}, _currentState{}, _targetState{}, _occlusion{},
 		_vMouse{}, _lastOcclusionQueryValid(false), _inputEnabledBits{},
 		_onLoadedRequired(true),
-		_terrainTexture2(nullptr), _gridTexture(nullptr), _blackbodyTexture(nullptr), _heightmap(nullptr), _spaceCubemapTexture(nullptr),
+		_terrainDetail(nullptr),
+		_terrainTexture(nullptr), _terrainTexture2(nullptr), _gridTexture(nullptr), _blackbodyTexture(nullptr), _heightmap(nullptr), _spaceCubemapTexture(nullptr),
 		_blackbodyImage(nullptr), _tBorderScroll(Iso::CAMERA_SCROLL_DELAY),
 		_sequence(GenerateVanDerCoruptSequence<30, 2>()),
 		_AsyncClearTaskID(0)
@@ -2391,6 +2264,7 @@ namespace world
 		_blackbodyImage = blackbodyImage; // save image to be used for blackbody radiation light color lookup
 
 		// other textures, not part of common texture array:
+		MinCity::TextureBoy->LoadKTXTexture(_terrainDetail, TEXTURE_DIR "moon_detail.ktx");
 		MinCity::TextureBoy->LoadKTXTexture(_spaceCubemapTexture, TEXTURE_DIR "space_cubemap.ktx");
 		 
 		// [[deprecated]] texture shaders:
@@ -2691,7 +2565,7 @@ namespace world
 
 	void cVoxelWorld::GarbageCollect(bool const bForce)
 	{
-		_streamingGrid.GarbageCollect(bForce);
+		_streamingGrid.GarbageCollect(critical_now(), critical_delta(), bForce);
 	}
 
 	void cVoxelWorld::NewWorld()
@@ -2931,10 +2805,10 @@ namespace world
 	// *** no simultaneous !writes! to grid or grid data can occur while calling this function ***
 	// simultaneous reads (read-only) is OK.
 	// RenderGrid is protected only for read-only access
-	// GridSnapshot is protected for read-only access
-	auto cVoxelWorld::GridSnapshot() const -> std::pair<Iso::Voxel const* const __restrict, uint32_t const> const
-	{
-		static constexpr uint32_t const voxel_count(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+	// GridSnapshot is protected for read-only access                                                             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	auto cVoxelWorld::GridSnapshot() const -> std::pair<Iso::Voxel const* const __restrict, uint32_t const> const // !broken! - when required again need @TODO compatibility w/ StreamingGrid. Grid is large enough now that it does not all fit in memory at once, StreamingGrid fixes that.
+	{                                                                                                             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		/*static constexpr uint32_t const voxel_count(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 		static constexpr size_t const gridSz(sizeof(Iso::Voxel) * size_t(voxel_count));
 
 		Iso::Voxel* __restrict gridSnapshot = (Iso::Voxel * __restrict)scalable_malloc(gridSz);
@@ -2944,16 +2818,17 @@ namespace world
 			////////////////////////////memcpy(gridSnapshot, the::grid, gridSz);
 		}
 
-		return(std::make_pair( gridSnapshot, voxel_count ));
+		return(std::make_pair( gridSnapshot, voxel_count ));*/
+		return {};
 	}
 
 	// *** no simultaneous !writes! to grid or grid data can occur while calling this function ***
 	// simultaneous reads (read-only) is NOT OK - unless protected
 	// RenderGrid is protected only for read-only access
-	// GridSnapshotLoad is protected for write access
-	void cVoxelWorld::GridSnapshotLoad(Iso::Voxel const* const __restrict new_grid)
-	{
-		static constexpr uint32_t const voxel_count(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+	// GridSnapshotLoad is protected for write access                               // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	void cVoxelWorld::GridSnapshotLoad(Iso::Voxel const* const __restrict new_grid) // !broken! - when required again need @TODO compatibility w/ StreamingGrid. Grid is large enough now that it does not all fit in memory at once, StreamingGrid fixes that.
+	{                                                                               // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+		/*static constexpr uint32_t const voxel_count(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
 		static constexpr size_t const gridSz(sizeof(Iso::Voxel) * size_t(voxel_count));
 
 		// internally memory for the grid uses VirtualAlloc2 / VirtualFree for it's data
@@ -2975,7 +2850,7 @@ namespace world
 		// free the old grid's large allocation
 		if (oldGrid) {
 			scalable_aligned_free(oldGrid);
-		}
+		}*/
 	}
 
 } // end ns world
@@ -3131,6 +3006,9 @@ namespace world
 			MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans]
 		};
 
+		// lru streaming grid deadzone
+		MinCity::VoxelWorld->GarbageCollect(); // optimal position to exploit wait at begining of RenderTask_Normal, this is the ideal "dead-zone"
+
 		// ensure the async clears are done
 		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears");
 		___streaming_store_fence(); // ensure "streaming" clears are coherent
@@ -3147,9 +3025,6 @@ namespace world
 		// game related asynchronous methods
 		// physics can be "cleared" as early as here. corresponding wait is in Update() of VoxelWorld.
 		MinCity::Physics->AsyncClear();
-
-		// lru streaming grid deadzone
-		MinCity::VoxelWorld->GarbageCollect(); // optimal position to exploit wait at begining of RenderTask_Normal, this is the ideal "dead-zone"
 		
 		{ // voxels //
 			vku::VertexBufferPartition* const __restrict& __restrict dynamic_partition_info_updater(MinCity::Vulkan->getDynamicPartitionInfo(resource_index));
@@ -4437,6 +4312,9 @@ namespace world
 		
 		dsu.beginImages(6U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, lastColorImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerAnisoRepeat, _terrainDetail->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
 	void cVoxelWorld::UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_LINEAR)
 	{
@@ -4811,6 +4689,9 @@ namespace world
 		Volumetric::CleanUpAllVoxelModels();
 		SAFE_DELETE(Volumetric::VolumetricLink);
 
+		// Grid 
+		((StreamingGrid* const)::grid)->CleanUp();
+
 		_OpacityMap.release();
 
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
@@ -4820,6 +4701,7 @@ namespace world
 			voxels.visibleTerrain.stagingBuffer[i].release();
 		}
 
+		SAFE_RELEASE_DELETE(_terrainDetail);
 		SAFE_DELETE(_terrainTexture);
 		SAFE_DELETE(_terrainTexture2);
 		SAFE_DELETE(_gridTexture);
