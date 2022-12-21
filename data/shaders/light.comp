@@ -562,7 +562,7 @@ void main()
 		sample_warp(pingpongTexture[pc.index_input], ivec3(gl_GlobalInvocationID.xyz), current_direction_distance, current_color, current_location);
 
 		// view is in xyz form, must swizzle direction to xzy form to be xyz form match the view. On output, swizzled back to xzy form as that is the standard for the volumes best data layout. (x = width, z = depth, y = height/slice)
-		current_direction_distance.xzy = transformNormalToViewSpace(mat3(u._view), current_direction_distance.xzy);
+		//current_direction_distance.xzy = transformNormalToViewSpace(mat3(u._view), current_direction_distance.xzy);
 		current_direction_distance.w = normalize_distance(current_direction_distance.w) * 2.0f - 1.0f; // expand distance to range [-1,1] for signed texture precision usage
 		
 		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), current_direction_distance);

@@ -37,8 +37,8 @@
 #define DEBUG_SHOW_GUI_WINDOW_BORDERS
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC
-#define DEBUG_OUTPUT_STREAMING_STATS
-#define DEBUG_EXPORT_TERRAIN_KTX
+//#define DEBUG_OUTPUT_STREAMING_STATS
+//#define DEBUG_EXPORT_TERRAIN_KTX
 //#define DEBUG_EXPORT_BLUENOISE_KTX
 //#define DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
 //#define DEBUG_EXPORT_BLACKBODY_KTX
@@ -173,7 +173,7 @@ namespace Globals
 	static constexpr uint32_t const DEFAULT_STACK_SIZE = 262144;	// in bytes, 256KB
 
 	static constexpr uint32_t const DEFAULT_SCREEN_WIDTH = 1920,	// 16:9 default, should not be used directly
-									DEFAULT_SCREEN_HEIGHT = 1080;  // strange bug if full 1080 used - goes into some kind of weird psuedo exclusive mode (the driver does). Need to finish VK_FULLSCREEN exclusive support extension I guess for this to work properly
+									DEFAULT_SCREEN_HEIGHT = 1080;  
 	static constexpr float const DEFAULT_ANISOTROPIC_LEVEL = 8.0f;
 
 	static constexpr float const DEFAULT_ZOOM_SCALAR = 2.5f * SFM::GOLDEN_RATIO,				// controls "zoom" higher values are farther away

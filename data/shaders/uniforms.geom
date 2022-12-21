@@ -186,14 +186,18 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
 	// so no need for eyePos
 
-	Out.V.xzy = transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
+	Out.V.xzy = normalize(u._eyePos.xyz - worldPos);//transformNormalToViewSpace(mat3(u._view), normalize(u._eyePos.xyz - worldPos));	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
 																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
 #endif
 
 	EmitVertex();
 }
 
-void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal)
+void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal
+#if !defined(BASIC) && defined(HEIGHT)
+	, in const vec2 min_max_height
+#endif
+)
 {	
 #if !defined(BASIC)
 
@@ -218,7 +222,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
-	Out.world_uvw.z = In[0].world_uvw.z;
+	Out.world_uvw.z = min_max_height.y;
 #endif
 
 #endif // not basic
@@ -234,7 +238,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 	 
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.world_uvw.z = In[0].world_uvw.z;
+	Out.world_uvw.z = min_max_height.y;
 #endif
 
 #endif // not basic
@@ -250,7 +254,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 	
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
-	Out.world_uvw.z = 0.0f;
+	Out.world_uvw.z = min_max_height.x;
 #endif
 
 #endif // not basic
@@ -266,7 +270,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 	
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
-	Out.world_uvw.z = 0.0f;
+	Out.world_uvw.z = min_max_height.x;
 #endif
 
 #endif // not basic
@@ -303,7 +307,11 @@ void main() {
 		const vec3 normal = normalize(_normal);
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, forward, -up, normal);
+			BeginQuad(center + _normal, forward, -up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, In[0].world_uvw.z)
+#endif
+			);
 		}
 #undef _normal
 	} 
@@ -313,7 +321,11 @@ void main() {
 		const vec3 normal = normalize(_normal);
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, forward, up, normal);
+			BeginQuad(center + _normal, forward, up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, In[0].world_uvw.z)
+#endif
+			);
 		}
 #undef _normal
 	} // else
@@ -324,7 +336,11 @@ void main() {
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, -up, normal);
+			BeginQuad(center + _normal, right, -up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, In[0].world_uvw.z)
+#endif
+			);
 		}
 #undef _normal
 	}
@@ -334,7 +350,11 @@ void main() {
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, up, normal);
+			BeginQuad(center + _normal, right, up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, In[0].world_uvw.z)
+#endif
+			);
 		}
 #undef _normal
 	} // else
@@ -346,7 +366,11 @@ void main() {
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, -forward, normal);
+			BeginQuad(center + _normal, right, -forward, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f)
+#endif
+			);
 		}
 #undef _normal
 	}
@@ -358,7 +382,11 @@ void main() {
 		const vec3 normal = normalize(_normal);
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, forward, normal);
+			BeginQuad(center + _normal, right, forward, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(In[0].world_uvw.z)
+#endif
+			);
 		}
 #undef _normal
 	}

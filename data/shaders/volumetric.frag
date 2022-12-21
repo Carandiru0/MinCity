@@ -88,11 +88,8 @@ layout (constant_id = 6) const float VolumeLength = 0.0f;
 layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume
 layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
 
-// "World Volume"
-layout (constant_id = 9) const float WorldDimensions = 0.0f;
-
-layout (constant_id = 10) precise const float ZFar = 0.0f;
-layout (constant_id = 11) precise const float ZNear = 0.0f;
+layout (constant_id = 9) precise const float ZFar = 0.0f;
+layout (constant_id = 10) precise const float ZNear = 0.0f;
 
 #include "lightmap.glsl"
 

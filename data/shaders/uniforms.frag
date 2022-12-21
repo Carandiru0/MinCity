@@ -350,12 +350,20 @@ float height_triplanar(in const vec3 triplanarWeights, in const float x, in cons
 
 	return(x * w0 + y * w1 + z * w2);
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // https://www.shadertoy.com/view/Xtl3zf - Texture Repitition Removal (iq)
 float sum( vec3 v ) { return v.x+v.y+v.z; }
+float sum( float v ) { return v+v+v; }
 
-vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy, in const float t )
+// adaptive sample count - more samples at oblique angles to the surface, less samples for angles that are head-onn to the surface.
+float sample_count( in const float minimum, in const float maximum, in const float NdotV )
+{
+	return(mix(minimum, maximum, abs(NdotV)));
+}
+
+vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy )
 {
     float k = texture( _texArray[TEX_NOISE], vec3(0.005f*uv, 0.0f) )._simplex; // cheap (cache friendly) lookup
         
@@ -374,108 +382,293 @@ vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx
     vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash
     vec2 offb = sin(vec2(3.0,7.0)*ib); // can replace with any other hash
 
-    vec3 cola = textureGrad( detailDerivativeMap, vec3(uv + t*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
-    vec3 colb = textureGrad( detailDerivativeMap, vec3(uv + t*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
+    vec3 cola = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
+    vec3 colb = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
     
     return mix( cola, colb, smoothstep(0.2f,0.8f,f-0.1f*sum(cola-colb)) );
 }
+
+float getHeight(in const vec2 uv, in const vec3 weights)
+{
+	const float height = texture(_texArray[TEX_TERRAIN], vec3(uv, 0)).r; // repeated on all axis
+
+	return( height_triplanar(weights, height.r, height.r, height.r) );
+}
+// shadertoy - https://www.shadertoy.com/view/dslSzN - Mario8664
+#define PARALLAX_HEIGHT 0.001f
+#define PARALLAX_LAYERS_MIN 16.0f
+#define PARALLAX_LAYERS_MAX 32.0f
+vec2 parallax(in const vec2 uv, in const vec2 iV, in const float NdotV, in const vec3 weights)
+{
+	//parallax occlusion mapping
+    const float layerDepth = 1.0f / sample_count(PARALLAX_LAYERS_MIN, PARALLAX_LAYERS_MAX, NdotV);
+
+    float lastHeight, lastDepth;
+
+    vec2 offset = iV * PARALLAX_HEIGHT;
+
+    for(float depth = 1.0; depth >= 0.0; depth -= layerDepth)
+    {
+        float currentHeight = getHeight(uv + offset * depth, weights).r;
+        if(depth < currentHeight)
+        {
+            const vec2 lastOffset = offset * lastDepth;
+            const float c = currentHeight - depth;
+            const float l = lastDepth - lastHeight;
+            offset = mix(offset * depth, lastOffset, c / (c + l)); // intersection between last offset and current offset
+            break;
+        }
+        lastHeight = currentHeight;
+        lastDepth = depth;
+    }
+
+	//return clamp(uv + offset, 0.0f, 1.0f);
+	//return smoothstep(0.2f,0.8f, uv + offset);
+	const vec2 parallax_uv = uv + offset;
+	return mix(uv, parallax_uv, bvec2((parallax_uv.x >= 0.0f && parallax_uv.y >= 0.0f && parallax_uv.x <= 1.0f && parallax_uv.y <= 1.0f)));
+}
+
+float textureNoTile_SingleChannel( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy )
+{
+    float k = texture( _texArray[TEX_NOISE], vec3(0.005f*uv, 0.0f) )._simplex; // cheap (cache friendly) lookup
+        
+    float l = k*8.0f;
+    float f = fract(l);
+    
+#if 0
+    float ia = floor(l); // iq's method
+    float ib = ia + 1.0f;
+#else
+    float ia = floor(l+0.5f); // suslik's method (see comments)
+    float ib = floor(l);
+    f = min(f, 1.0f-f)*2.0f;
+#endif    
+    
+    vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash
+    vec2 offb = sin(vec2(3.0,7.0)*ib); // can replace with any other hash
+
+    float cola = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).x;
+    float colb = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).x;
+    
+    return mix( cola, colb, smoothstep(0.2f,0.8f,f-0.1f*sum(cola-colb)) );
+}
+
+#define STEEP_SLIDER_SCALE 80.0f
+
+float getHeightDetail(in const vec3 uvw, in const float normalized_height, in const vec3 duvdx, in const vec3 duvdy, in const vec3 weights)
+{
+	// scale TextureDimensions (global variable) is 16384x16384  - the detail texture is always 512x512  - if projecting right, forward the Y Axis scale needs to match
+	// the scale used for when projecting *up*. 1.0 is not it. it's set as DETAIL_SCALE for both components (x,y) in the uv's projecting up. However this has to change
+	// for the other projections. We don't want to repeat the texture like 512.0 would do (512 times) this is over a distance 16384.0 (TextureDimensions). The distance
+	// on the up axis is normalized 0.0 .. 1.0 so by what factor do we scale the height/up axis/yaxis ? 
+	vec2 scale;
+
+	// zy (x axis)
+	scale = vec2(DETAIL_SCALE, (1.0f + normalized_height) * STEEP_SLIDER_SCALE * (DETAIL_SCALE/TextureDimensionsU));
+
+	const float height_zy = textureNoTile_SingleChannel(uvw.zy * scale, normalized_height, duvdx.zy * scale, duvdy.zy * scale);
+	
+	// xz (y axis)
+	scale = vec2(DETAIL_SCALE);
+
+	const float height_xz = textureNoTile_SingleChannel(uvw.xz * scale, normalized_height, duvdx.xz * scale, duvdy.xz * scale);
+
+	// xy (z axis)
+	scale = vec2(DETAIL_SCALE, (1.0f + normalized_height) * STEEP_SLIDER_SCALE * (DETAIL_SCALE/TextureDimensionsU));
+
+	const float height_xy = textureNoTile_SingleChannel(uvw.xy * scale, normalized_height, duvdx.xy * scale, duvdy.xy * scale);
+
+
+	return( height_triplanar(weights, height_zy, height_xz, height_xy) );
+}
+
+// shadertoy - https://www.shadertoy.com/view/dslSzN - Mario8664
+#define DETAIL_PARALLAX_HEIGHT 0.00005f
+#define DETAIL_PARALLAX_LAYERS_MIN 8.0f
+#define DETAIL_PARALLAX_LAYERS_MAX 16.0f
+
+vec3 parallax_detail(in const float normalized_height, in const float height, in const vec3 uvw, in const vec3 iV, in const float NdotV, in const vec3 duvdx, in const vec3 duvdy, in const vec3 weights)
+{
+	//parallax occlusion mapping
+    const float layerDepth = 1.0f / sample_count(DETAIL_PARALLAX_LAYERS_MIN, DETAIL_PARALLAX_LAYERS_MAX, NdotV);
+
+    float lastHeight, lastDepth;
+
+    vec3 offset = iV * DETAIL_PARALLAX_HEIGHT;
+
+    for(float depth = 1.0f; depth >= 0.0f; depth -= layerDepth)
+    {
+        const float currentHeight = getHeightDetail(uvw + offset * depth, normalized_height, duvdx, duvdy, weights);
+
+        if(depth < currentHeight)
+        {
+			const vec3 lastOffset = offset * lastDepth;
+			const float c = currentHeight - depth;
+			const float l = lastDepth - lastHeight;
+			offset = mix(offset * depth, lastOffset, c / (c + l)); // intersection between last offset and current offset
+            break;
+        }
+        lastHeight = currentHeight;
+        lastDepth = depth;
+    }
+
+	return uvw + offset; // texture wrapping should be enabled
+}
+/*
+vec2 parallax_detail(in const float height, in const vec3 uvw, in const vec3 iV, in const vec3 duvdx, in const vec3 duvdy, in const vec3 weights)
+{
+	const float normalized_height = abs(uvw.y);
+
+	//parallax occlusion mapping
+    const float layerDepth = 1.0f / DETAIL_PARALLAX_LAYERS;
+
+    float lastHeight, lastDepth;
+
+    vec2 offset[3] = vec2[3](iV.zy * DETAIL_PARALLAX_HEIGHT, iV.xz * DETAIL_PARALLAX_HEIGHT, iV.xy * DETAIL_PARALLAX_HEIGHT);
+
+    for(float depth = 1.0; depth >= 0.0; depth -= layerDepth)
+    {
+		// zy (x axis)
+        const float height_zy = height + getHeightDetail(uvw.zy + offset[0] * depth, normalized_height, duvdx.zy, duvdy.zy, vec2(DETAIL_SCALE, 32.0f * (768.0f/TextureDimensionsV))).r;
+
+		// xz (y axis)
+        const float height_xz = height + getHeightDetail(uvw.xz + offset[1] * depth, normalized_height, duvdx.xz, duvdy.xz, vec2(DETAIL_SCALE)).r;
+
+		// xy (z axis)
+        const float height_xy = height + getHeightDetail(uvw.xy + offset[2] * depth, normalized_height, duvdx.xy, duvdy.xy, vec2(DETAIL_SCALE, 32.0f * (768.0f/TextureDimensionsV))).r;
+
+		const float currentHeight = height_triplanar(weights, height_zy, height_xz, height_xy);
+
+        if(depth < currentHeight)
+        {
+			for(uint i = 0u; i < 3u; ++i) {
+				vec2 lastOffset = offset[i] * lastDepth;
+				float c = currentHeight - depth;
+				float l = lastDepth - lastHeight;
+				float mixValue = c / (c + l);
+				offset[i] = mix(offset[i] * depth, lastOffset, mixValue);
+			}
+            break;
+        }
+        lastHeight = currentHeight;
+        lastDepth = depth;
+    }
+
+	return offset_triplanar(weights, offset[0], offset[1], offset[2]);
+
+	//return clamp(uv + offset, 0.0f, 1.0f);
+	//return smoothstep(0.2f,0.8f, uv + offset);
+	//const vec3 parallax_uvw = uvw + vec3(offset[0], offset[1], offset.y);
+	//return mix(uvw, parallax_uvw, bvec3((parallax_uvw.x >= 0.0f && parallax_uvw.z >= 0.0f && parallax_uvw.x <= 1.0f && parallax_uvw.z <= 1.0f)));
+}
+*/
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 void main() {
 
-	vec3 N, gradient;
+	vec3 N, V, gradient;
 	float height;
 
 	// **swizzle to Y Is Up**	        // <---
-	const vec3 uvw = In.world_uvw.xzy; // make it xyz
-	const vec3 duvdx = dFdxFine(uvw),
-	           duvdy = dFdyFine(uvw);
-
+	vec3 uvw = In.world_uvw.xzy; // make it xyz
+	
 	// **swizzle to Y Is Up**	        // <---
 	N = normalize(In.N.xyz).xzy; // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
+	V = normalize(In.V.xyz).xzy;        // <---
+	const float NdotV = dot(N,V);
 
 #ifdef DEBUG_SHADER
 	outColor = unpackColor(In._color); // debug mode - color output of normal direction (xyz order)
 	return;
 #endif
 
-	// temporarily invert Y (negative->positive) vulkan
-	//N.y = -N.y;
-
 	// apply surface gradient
 	//gradient = surface_gradient(dFdxFine(world_uvw), dFdyFine(world_uvw), N, derivative); 
 
+
+	// common partial derivatives
+	const vec3 duvdx = dFdxFine(uvw),  // *bugfix - using original partial derivatives rather than recalculating them again with the parallax uv's produces effective anti-aliasing.
+		       duvdy = dFdyFine(uvw);
 	// common triplanar weights
 	const vec3 weights = triplanar_weights(N, TRIPLANAR_BLEND_WEIGHT);
 
 	// -------------------------16K SURFACE //
 	{
+		// parallax uv's
+		const vec2 uv = parallax(uvw.xz, -V.xz, NdotV, weights);
+
 		// xz (y axis)
-		const vec3 height_derivative_xz = texture(_texArray[TEX_TERRAIN], vec3(uvw.xz, 0)).rgb; // repeated on all axis
+		const vec3 height_derivative_xz = texture(_texArray[TEX_TERRAIN], vec3(uv, 0)).rgb; // repeated on all axis
 
 		height = height_triplanar(weights, height_derivative_xz.r, height_derivative_xz.r, height_derivative_xz.r);
-		const vec2 derivative = derivatives(uvw.xz, TextureDimensions, duvdx.xz, duvdy.xz, height_derivative_xz.gb);  // 11585.0
+		const vec2 derivative = derivatives(uvw.xz, TextureDimensions, duvdx.xz, duvdx.xz, height_derivative_xz.gb);  // 11585.0
 
 		// apply triplanar surface gradient
 		gradient = surface_gradient_triplanar(N, weights, derivative, derivative, derivative); // tricks for "triplanar projection of the same axis"
 		N = perturb_normal(N, gradient);
 	}
 
-	//outColor = height.xxx;
-	//return;
+	// outColor = pow(height, 1.0f/2.2f).xxx;
+	// return;
 
 	// -------------------------DETAIL SURFACE //
 	{
+		// parallax uv's
 		const float normalized_height = abs(uvw.y);
-		vec2 scale, uv, dvdx, dvdy;
+
+		//uvw = parallax_detail(normalized_height, height, uvw, -V, NdotV, duvdx, duvdy, weights);
+
+		// scale TextureDimensions (global variable) is 16384x16384  - the detail texture is always 512x512  - if projecting right, forward the Y Axis scale needs to match
+		// the scale used for when projecting *up*. 1.0 is not it. it's set as DETAIL_SCALE for both components (x,y) in the uv's projecting up. However this has to change
+		// for the other projections. We don't want to repeat the texture like 512.0 would do (512 times) this is over a distance 16384.0 (TextureDimensions). The distance
+		// on the up axis is normalized 0.0 .. 1.0 so by what factor do we scale the height/up axis/yaxis ? 
+		const vec2 detail_dimensions = vec2(DETAIL_DIMENSIONS);
+		vec3 detail_derivative_zy, detail_derivative_xz, detail_derivative_xy;
 
 		// zy (x axis)
-		scale = vec2(DETAIL_SCALE, 1.0f);
-		uv = uvw.zy * scale;
-		dvdx = duvdx.zy * scale;
-		dvdy = duvdy.zy * scale;
+		{
+			const vec2 scale = vec2(DETAIL_SCALE, (1.0f + normalized_height) * STEEP_SLIDER_SCALE * (DETAIL_SCALE/TextureDimensionsU));
 
-		const vec3 detail_derivative_zy = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
-		const vec2 derivative_zy = derivatives(uv, vec2(DETAIL_DIMENSIONS, 1.0f), dvdx, dvdy, detail_derivative_zy.gb);
+			detail_derivative_zy = textureNoTile(uvw.zy * scale, normalized_height, duvdx.zy * scale, duvdy.zy * scale);
+			detail_derivative_zy.gb = derivatives(uvw.zy * scale, detail_dimensions, duvdx.zy * scale, duvdy.zy * scale, detail_derivative_zy.gb);
+		}
 
 		// xz (y axis)
-		scale = vec2(DETAIL_SCALE);
-		uv = uvw.xz * scale;
-		dvdx = duvdx.xz * scale;
-		dvdy = duvdy.xz * scale;
+		{
+			const vec2 scale = vec2(DETAIL_SCALE);
 
-		const vec3 detail_derivative_xz = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
-		const vec2 derivative_xz = derivatives(uv, vec2(DETAIL_DIMENSIONS), dvdx, dvdy, detail_derivative_xz.gb);
+			detail_derivative_xz = textureNoTile(uvw.xz * scale, normalized_height, duvdx.xz * scale, duvdy.xz * scale);
+			detail_derivative_xz.gb = derivatives(uvw.xz * scale, detail_dimensions, duvdx.xz * scale, duvdy.xz * scale, detail_derivative_xz.gb);
+		}
 
 		// xy (z axis)
-		scale = vec2(DETAIL_SCALE, 1.0f);
-		uv = uvw.xy * scale;
-		dvdx = duvdx.xy * scale;
-		dvdy = duvdy.xy * scale;
+		{
+			const vec2 scale = vec2(DETAIL_SCALE, (1.0f + normalized_height) * STEEP_SLIDER_SCALE * (DETAIL_SCALE/TextureDimensionsV));
 
-		const vec3 detail_derivative_xy = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
-		const vec2 derivative_xy = derivatives(uv, vec2(DETAIL_DIMENSIONS, 1.0f), dvdx, dvdy, detail_derivative_xy.gb);
+			detail_derivative_xy = textureNoTile(uvw.xy * scale, normalized_height, duvdx.xy * scale, duvdy.xy * scale);
+			detail_derivative_xy.gb = derivatives(uvw.xy * scale, detail_dimensions, duvdx.xy * scale, duvdy.xy * scale, detail_derivative_xy.gb);
+		}
 
-		height *= height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
+		height += height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
 
 		// apply triplanar surface gradient
-		gradient = surface_gradient_triplanar(N, weights, derivative_zy, derivative_xz, derivative_xy);
+		gradient = surface_gradient_triplanar(N, weights, detail_derivative_zy.gb, detail_derivative_xz.gb, detail_derivative_xy.gb); 
 		N = perturb_normal(N, gradient).xzy;  // <---
+		V = V.xzy;                            // <---
 		// **swizzled back to Z Is Up**
-		// restore invert Y (positive->negative) vulkan
-		//N.z = -N.z;
+		height = height * 0.5f;
+		N = normalize(N + vec3(0,0,-1));
 	}
 
-	outColor = pow(height, 1.0f/2.2f).xxx;
-	return;
+	//outColor = pow(height, 1.0f/2.2f).xxx;
+	//return;
 
 	//outColor = N.xzy * 0.5f + 0.5f;
 	//return;
 
 	// lighting
-	const vec3 V = normalize(In.V.xyz);
 	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rg;
 
 	vec3 color = vec3(0);

@@ -1,11 +1,12 @@
 #pragma once
+#include "IsoVoxel.h"
 
 namespace Volumetric
 {
 	namespace ComputeLightConstants
 	{
-		static constexpr uint32_t const		
-			LIGHT_RESOLUTION = 128U;
+		static constexpr uint32_t const
+			LIGHT_RESOLUTION = Iso::SCREEN_VOXELS_XZ >> 1;        // Half-resolution of visible volume works best //
 
 		using memLayoutV = XMFLOAT4A;
 

@@ -17,7 +17,6 @@ namespace Volumetric
 												// 512x256x512 times VoxelNormal = 12.8 GB !!!! where a "line" of 2x256x512 times VoxelNormal = 50 MB
 	// needs measurement from stress test
 	BETTER_ENUM(Allocation, uint32_t const,
-		VOXEL_RENDER_FACTOR_BITS = 8,
 
 		VOXEL_GRID_VISIBLE_XZ = Iso::SCREEN_VOXELS_XZ,
 		VOXEL_GRID_VISIBLE_X = Iso::SCREEN_VOXELS_X,
@@ -28,8 +27,20 @@ namespace Volumetric
 		VOXEL_MINIGRID_VISIBLE_Y = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_Y,
 		VOXEL_MINIGRID_VISIBLE_Z = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_Z,
 
-		VOXEL_MINIGRID_VISIBLE_TOTAL = (VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Y * VOXEL_MINIGRID_VISIBLE_Z) >> (Volumetric::Allocation::VOXEL_RENDER_FACTOR_BITS >> 1),	// static voxels
-		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = (VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Y * VOXEL_MINIGRID_VISIBLE_Z) >> Volumetric::Allocation::VOXEL_RENDER_FACTOR_BITS	// dynamic voxels 
+		VOXEL_RENDER_FACTOR = (VOXEL_MINIGRID_VISIBLE_Z / 3), // split in half for dynamic + static *** important *** should be less than 256MB total for a dynamic + static combined buffer size.
+
+		                              // 8,388,608 visible mini voxels ( 4,194,304 dynamic + 4,194,304 static )  -  compare to a full/filled 512x512x512 volume 134,217,728 voxels. less than 6.25% of the visible volume can contain a mini voxel - counting on lots of empty space!!!
+		                              // this is a 3,628,072,960 bytes (3.6 GB) capacity for the visible voxels gpu buffer.
+		                              // this buffer is uploaded to the gpu every frame, however it's size is dynamic being the active/visible voxels for that frame. So it's far less than 3.6 GB uploaded/frame typically.
+		                              // If the buffer was completely used, is there enough bandwidth on the PCI Express 3.0 x16 bus?
+		                              // PCI Express 3.0 x16 total bandwidth: 16GB/s
+		                              // 60 frames/s * 3.6GB = 217,684,377,600 bytes/s - (217 GB/s) ouch.
+		                              // So what is the maximum buffer size and corresponding number of voxels that can actually squeeze into the 16 GB/s bandwidth available if that gpu buffer was fully used?    - 266 MB theoretical maximum/frame
+		                              // ****** 256 MB maximum/frame --> ~591,000 voxels/frame, so around *****[600k]***** voxels total be used. ******
+		                              // --------------------------------------------------------------------------------------------------------------
+
+		VOXEL_MINIGRID_VISIBLE_TOTAL = (VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Y * VOXEL_MINIGRID_VISIBLE_Z) / VOXEL_RENDER_FACTOR,	// static voxels
+		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_TOTAL	// dynamic voxels 
 	);
 
 	read_only inline XMVECTORF32 const VOXEL_GRID_VISIBLE_XYZ{ (float)Allocation::VOXEL_GRID_VISIBLE_X, 1.0f, (float)Allocation::VOXEL_GRID_VISIBLE_Z };

@@ -209,7 +209,7 @@ namespace world
 						constexpr uint32_t const offscreen_image_size(offscreen_thumbnail_width * offscreen_thumbnail_height * sizeof(uint32_t));
 						pReadPointer += offscreen_image_size;
 
-						static constexpr uint32_t const voxel_count(Iso::WORLD_GRID_SIZE * Iso::WORLD_GRID_SIZE);
+						static constexpr uint32_t const voxel_count(Iso::WORLD_GRID_WIDTH * Iso::WORLD_GRID_HEIGHT);
 						static constexpr size_t const gridSz(sizeof(Iso::Voxel) * size_t(voxel_count));
 
 						// verify

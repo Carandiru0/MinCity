@@ -21,14 +21,14 @@ namespace world
 
 #define zERO 0.0f
 	read_only inline XMVECTORF32 const WORLD_CENTER{ 0.0f, 0.0f, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_TOP{ 0.0f, -Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_BOTTOM{ 0.0f, Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_LEFT{ -Iso::WORLD_GRID_FHALFSIZE, 0.0f, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_RIGHT{ Iso::WORLD_GRID_FHALFSIZE, 0.0f, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_TL{ -Iso::WORLD_GRID_FHALFSIZE, -Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_TR{ Iso::WORLD_GRID_FHALFSIZE, -Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_BL{ -Iso::WORLD_GRID_FHALFSIZE, Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
-	read_only inline XMVECTORF32 const WORLD_BR{ Iso::WORLD_GRID_FHALFSIZE, Iso::WORLD_GRID_FHALFSIZE, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_TOP{ 0.0f, -Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_BOTTOM{ 0.0f, Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_LEFT{ -Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, 0.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_RIGHT{ Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, 0.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_TL{ -Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, -Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_TR{ Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, -Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_BL{ -Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
+	read_only inline XMVECTORF32 const WORLD_BR{ Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
 #undef zERO
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
