@@ -121,7 +121,7 @@ namespace // private to this file (anonymous)
 
 } // end ns
 
-/* deprecated, moved to full 8bit heightstep
+/* deprecated, moved to full 16bit heightstep
 namespace // private to this file (anonymous)
 {
 	static inline uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
@@ -148,6 +148,33 @@ namespace // private to this file (anonymous)
 static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) // Adjacency is only used during Rendering to cull hidden faces.
 {                                                                              // *bugfix - Dynamically called during run-time -- faster than before where it was pre-computed before & terrain height updates are seamless with adjacency no longer being updated seperately, 
 	                                                                           // it's automatic now. Also no longer have huge memory spike at loadtime when generating ground! Was 21GB!! 
+
+	// Therefore the neighbours of a voxel, follow same isometric layout/order //
+	/*
+
+								NBR_TR
+					[NBR_T]				   [NBR_R]
+		NBR_TL					VOXEL					NBR_BR
+					[NBR_L]				   [NBR_B]
+								NBR_BL
+	*/
+																			   // @TODO - Occlusion could be passed to the gpu here for every voxel based on adjacency of neighbours, and if that neighbouring voxel is of greater height than the current voxel.
+	// Adjacency - that is sent to the gpu already - does this already, with face culling.
+	// This gives information for 4 adjacent voxels being greater in height or not
+	// Each corners' occlusion value, 4 vertices per face, can than be deduced (applies only from perspective of the top face, sides would be different on a voxel)
+	
+	// [  faces  ]              [ vertex ]
+	// 0.5 * (top + left)     = top left vertex occlusion
+	// 0.5 * (top + right)    = top right vertex ""     ""
+	// 0.5 * (bottom + left)  = bottom left vertex ""   ""
+	// 0.5 * (bottom + right) = bottom right vertex  "" ""
+	
+	// where the face (top, right, bottom, left) is either a 1.0 or 0.0
+	// this would also be computed in the geometry shader, for the top face.
+	// the fragment shader will then naturally interpolate between vertices (aka vertex lighting) for the entire face.
+	// the fragment shader should raise the pow() of these linear occlusion values to finish faking the occlusion and making it look proper for what ambient occlusion looks like (lots of white, minimal greys and blacks - representing the occluded area)
+	// shading would be along the edges of voxels and it's neighbours and not extend to far into the face from the edge. some multiplied noise, for occluded areas, may look less repetitive and give the occlusion some variance.
+	// ...as for the combinations of faces to vertices for the sides of the voxel, well it may not be worth it. good for terrain only! and only if this type of edge occlusion is desirable for every terrain voxel.... (local occlusion)
 
 	uint32_t const curVoxelHeightStep(::Iso::getHeightStep(voxelIndex));
 	uint32_t Adjacency(0);
@@ -1436,12 +1463,9 @@ namespace world
 		}
 	}
 
-	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	point2D_t const getNeighbourLocalVoxelIndex(point2D_t voxelIndex, point2D_t const relativeOffset)
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	point2D_t const getNeighbourLocalVoxelIndex(point2D_t const voxelIndex, point2D_t const relativeOffset)
 	{
-		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
-
 		point2D_t voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
 
 		// wrap bounds //
@@ -2227,7 +2251,7 @@ namespace world
 #endif
 		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
 
-		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture2, TEXTURE_DIR "moon_albedo_ao.ktx");
+		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture2, TEXTURE_DIR "moon_albedo_rough_ao.ktx");
 
 		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture2, TEX_TERRAIN2);
 
@@ -3877,8 +3901,6 @@ namespace world
 		getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
 	}
 		
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE / MINIVOXEL_FACTORF; // should be minivox size (affects light attenuation *only*)
-
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		_OpacityMap.SetSpecializationConstants_ComputeLight(constants);
@@ -3913,17 +3935,18 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4,  (float)Volumetric::voxelOpacity::getSize()));		  // should be world volume size
 		constants.emplace_back(vku::SpecializationConstant(5,  1.0f / (float)Volumetric::voxelOpacity::getSize()));       // should be inverse world volume size
 		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getVolumeLength())); // should be world volume length (1:1 ratio here, do not scale by voxel size)
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Iso::MINI_VOX_SIZE * MINIVOXEL_FACTORF * 8.0f)); // should be Iso::MINI_VOX_SIZE
 
 		// light volume dimensions //																				// xzy
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)(Volumetric::voxelOpacity::getLightSize())));   // should be 1.0 / light volume size
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size
+		constants.emplace_back(vku::SpecializationConstant(9, 1.0f / (float)(Volumetric::voxelOpacity::getLightSize())));   // should be 1.0 / light volume size
 
 		// For depth reconstruction from hardware depth buffer
 		// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 		constexpr double ZFar = Globals::MAXZ_DEPTH;
 		constexpr double ZNear = Globals::MINZ_DEPTH * Iso::VOX_MINZ_SCALAR;
-		constants.emplace_back(vku::SpecializationConstant(9, (float)ZFar)); 
-		constants.emplace_back(vku::SpecializationConstant(10, (float)ZNear));
+		constants.emplace_back(vku::SpecializationConstant(10, (float)ZFar)); 
+		constants.emplace_back(vku::SpecializationConstant(11, (float)ZNear));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -3983,14 +4006,16 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getInvVolumeLength())));  // should be world volume length
 
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Iso::MINI_VOX_SIZE * MINIVOXEL_FACTORF * 0.25f)); // should be Iso::MINI_VOX_SIZE
 
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
-		constants.emplace_back(vku::SpecializationConstant(9, ((float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
-		constants.emplace_back(vku::SpecializationConstant(10, ((float)_terrainTexture->extent().height)));
+		constants.emplace_back(vku::SpecializationConstant(9, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
+
+		constants.emplace_back(vku::SpecializationConstant(10, ((float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
+		constants.emplace_back(vku::SpecializationConstant(11, ((float)_terrainTexture->extent().height)));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
@@ -4089,11 +4114,13 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getInvVolumeLength())));  // should be world volume length
 
-		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
+		constants.emplace_back(vku::SpecializationConstant(7, (float)Iso::MINI_VOX_SIZE * MINIVOXEL_FACTORF * 0.25f)); // should be Iso::MINI_VOX_SIZE
 
-		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
+		constants.emplace_back(vku::SpecializationConstant(8, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
+
+		constants.emplace_back(vku::SpecializationConstant(9, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants)

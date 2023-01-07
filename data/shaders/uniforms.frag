@@ -53,14 +53,15 @@ void main() {
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 layout (constant_id = 4) const float VolumeDimensions = 0.0f;	// world volume //
 layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
-layout (constant_id = 6) const float VolumeLength = 0.0f; // <---- only for this constant ** length is scaled by voxel_size
+layout (constant_id = 6) const float VolumeLength = 0.0f;
+layout (constant_id = 7) const float MINI_VOX_SIZE = 0.0f;
 
-layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume //
-layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
+layout (constant_id = 8) const float LightVolumeDimensions = 0.0f; // light volume //
+layout (constant_id = 9) const float InvLightVolumeDimensions = 0.0f;
 
 #if defined(T2D) 
-layout (constant_id = 9) const float  TextureDimensionsU = 0.0f; // terrain texture u //
-layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain texture v //
+layout (constant_id = 10) const float TextureDimensionsU = 0.0f; // terrain texture u //
+layout (constant_id = 11) const float TextureDimensionsV = 0.0f; // terrain texture v //
 #define TextureDimensions vec2(TextureDimensionsU, TextureDimensionsV)
 
 #include "terrain.glsl"
@@ -567,17 +568,29 @@ vec2 parallax_detail(in const float height, in const vec3 uvw, in const vec3 iV,
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 void main() {
-
-	vec3 N, V, gradient;
-	float height;
-
+	
+	// ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	// ** do not change N0 & N - for ground voxels the face shading hides the actual "box" surface by leveraging the sampled heightmap here In
+	// the fragment shader. This allows a much higher render resolution independent interpolation of the normal.
+	// N0 - actual normal, N is fixed to -up.
+	// only triplanar surface generation uses the actual normal (required)
+	// the surface gradient starts out fixed to up, when the surface gradient is then available duriing the base heightmap sampling. This defines a new normal
+	// This hiresolution normal is because of the available data: height (16bit) & derivative map - which is generated from a normal map.
+	// Turning off independent face lighting for ground voxels at the "non-detail" stage looks a lot better and is technically more volumetric.
+	// Nice interpolated regions for the ground voxels rather than a aliased blocky mess with distracting lighting information.
+	// Detail is the next stage, where the actual normal is needed again, only for triplanar surface gradient generation. Perturbing a normal still maintains
+	// the last state of N. N is the fixed up -> hi resolution normal -> detailed hi resolution normal
+	// that we have been perturbing all along. Keeping N0 & N seperate enables the surface "filtering / interpolation"
+	//
+	// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	
 	// **swizzle to Y Is Up**	        // <---
 	vec3 uvw = In.world_uvw.xzy; // make it xyz
 	
 	// **swizzle to Y Is Up**	        // <---
-	N = normalize(In.N.xyz).xzy; // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
-	V = normalize(In.V.xyz).xzy;        // <---
-	const float NdotV = dot(N,V);
+	const vec3 N0 = normalize(In.N.xyz).xzy; // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
+	vec3 V = normalize(In.V.xyz).xzy;        // <---
+	const float NdotV = dot(N0,V);
 
 #ifdef DEBUG_SHADER
 	outColor = unpackColor(In._color); // debug mode - color output of normal direction (xyz order)
@@ -592,8 +605,10 @@ void main() {
 	const vec3 duvdx = dFdxFine(uvw),  // *bugfix - using original partial derivatives rather than recalculating them again with the parallax uv's produces effective anti-aliasing.
 		       duvdy = dFdyFine(uvw);
 	// common triplanar weights
-	const vec3 weights = triplanar_weights(N, TRIPLANAR_BLEND_WEIGHT);
+	const vec3 weights = triplanar_weights(N0, TRIPLANAR_BLEND_WEIGHT);
 
+	vec3 N;
+	float height;
 	// -------------------------16K SURFACE //
 	{
 		// parallax uv's
@@ -606,14 +621,15 @@ void main() {
 		const vec2 derivative = derivatives(uvw.xz, TextureDimensions, duvdx.xz, duvdx.xz, height_derivative_xz.gb);  // 11585.0
 
 		// apply triplanar surface gradient
-		gradient = surface_gradient_triplanar(N, weights, derivative, derivative, derivative); // tricks for "triplanar projection of the same axis"
-		N = perturb_normal(N, gradient);
+		const vec3 gradient = surface_gradient_triplanar(N0, weights, derivative, derivative, derivative); // tricks for "triplanar projection of the same axis"
+		N = normalize(perturb_normal(vec3(0,-1,0), gradient));
 	}
 
-	// outColor = pow(height, 1.0f/2.2f).xxx;
-	// return;
+	//outColor = height.xxx;
+	//return;
 
 	// -------------------------DETAIL SURFACE //
+	float height_detail;
 	{
 		// parallax uv's
 		const float normalized_height = abs(uvw.y);
@@ -651,37 +667,41 @@ void main() {
 			detail_derivative_xy.gb = derivatives(uvw.xy * scale, detail_dimensions, duvdx.xy * scale, duvdy.xy * scale, detail_derivative_xy.gb);
 		}
 
-		height += height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
+		height_detail = height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
 
 		// apply triplanar surface gradient
-		gradient = surface_gradient_triplanar(N, weights, detail_derivative_zy.gb, detail_derivative_xz.gb, detail_derivative_xy.gb); 
-		N = perturb_normal(N, gradient).xzy;  // <---
-		V = V.xzy;                            // <---
-		// **swizzled back to Z Is Up**
-		height = height * 0.5f;
-		N = normalize(N + vec3(0,0,-1));
-	}
+		vec3 gradient = surface_gradient_triplanar(N0, weights, detail_derivative_zy.gb, detail_derivative_xz.gb, detail_derivative_xy.gb); 
 
-	//outColor = pow(height, 1.0f/2.2f).xxx;
+		N = normalize(N + 0.1f * perturb_normal(N, gradient));  // <---
+		
+		N = N.xzy;	// <---
+		V = V.xzy;  // <---
+		// **swizzled back to Z Is Up**
+	}
+	
+	//outColor = height.xxx;
 	//return;
 
 	//outColor = N.xzy * 0.5f + 0.5f;
 	//return;
 
 	// lighting
-	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rg;
+	const vec3 albedo_rough_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rgb;
+
+	height *= height_detail;
 
 	vec3 color = vec3(0);
 	
-	const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
+	//const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
 	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
 	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
 
-	const float albedo = pow(albedo_ao.x * height, 1.0f/2.2f);
+	const float albedo = albedo_rough_ao.x * 0.75f + height_detail * 0.25f;//pow(albedo_rough_ao.x * height, 1.0f/2.2f);
+	const float occlusion = getOcclusion(In.uv.xyz) * albedo_rough_ao.z;
 
 	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo.xxx, make_material(0.75f, 0.0f, roughness), vec3(1),				 
-				      albedo_ao.y, getAttenuation((1.0f - height) * InvVolumeDimensions, VolumeDimensions), // on a single voxel
+	color.rgb += lit( albedo.xxx, make_material(0.0f, 0.0f, albedo_rough_ao.y), vec3(1),				 
+				      occlusion, getAttenuation((1.0f - height), VolumeDimensions, MINI_VOX_SIZE), // on a single voxel
 				      vec3(0,0,1), N, V, false); // don't want to double-add reflections
 
 	// regular terrain lighting
@@ -689,11 +709,11 @@ void main() {
 	vec4 Ld;
 
 	getLight(light_color, Ld, In.uv.xyz);
-	Ld.att = getAttenuation(Ld.dist, VolumeLength);
+	Ld.att = getAttenuation(Ld.dist, VolumeLength, MINI_VOX_SIZE);
 
 						// only emissive can have color
-	color.rgb += lit( mix(albedo.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, roughness), light_color,		
-					  getOcclusion(In.uv.xyz), Ld.att,
+	color.rgb += lit( mix(albedo.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
+					  occlusion, Ld.att,
 					  -Ld.dir, N, V, true);
 
 	outColor.rgb = color;
@@ -717,7 +737,7 @@ void main() {
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
-						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
+						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength, MINI_VOX_SIZE),
 						-Ld.dir, N, V, true);
 
 	//outColor.rgb = vec3(attenuation);
@@ -731,7 +751,7 @@ void main() {
 
 	float fresnelTerm;  // feedback from lit      
 	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
-						    getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
+						    getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength, MINI_VOX_SIZE),
 						    -Ld.dir, N, V, true, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //

@@ -171,7 +171,7 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	PerVoxel();
 	PerQuad(normal);  
 	
-#if defined(HEIGHT)
+#if defined(HEIGHT) // *remeber negative Y here is Up, positive Y here is Down*
 	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
 #endif
 	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways

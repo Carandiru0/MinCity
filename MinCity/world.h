@@ -31,8 +31,8 @@ namespace world
 	read_only inline XMVECTORF32 const WORLD_BR{ Iso::WORLD_GRID_FHALF_WIDTH - 1.0f, Iso::WORLD_GRID_FHALF_HEIGHT - 1.0f, zERO, zERO };
 #undef zERO
 
-	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	point2D_t const getNeighbourLocalVoxelIndex(point2D_t voxelIndex, point2D_t const relativeOffset);
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	point2D_t const getNeighbourLocalVoxelIndex(point2D_t const voxelIndex, point2D_t const relativeOffset);
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
 	Iso::Voxel const getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset);
 	// Grid Space (0,0) to (X, Y) Coordinates Only

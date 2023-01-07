@@ -88,3 +88,5 @@ data/textures/results/moon_map_albedo.ktx2
 *.ktx
 StructLayoutSettings.json
 *.test
+*.old2
+*.old

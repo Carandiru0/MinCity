@@ -28,9 +28,9 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS VolumeDimensions
 
-float PHASE_FUNCTION(in const float emission) // t = max(0.0f, dot(rd, n))    [0.0f .... 1.0f]
+float PHASE_FUNCTION() // t = max(0.0f, dot(rd, n))    [0.0f .... 1.0f]
 {
-	return((1.0f + emission) / (GOLDEN_RATIO * PI)); // Isotropic
+	return(1.0f / (GOLDEN_RATIO * PI)); // Isotropic
 }
 
 #define EPSILON 0.000000001f
@@ -83,13 +83,14 @@ layout (binding = 6, rgba8) writeonly restrict uniform image2D outImage[2]; // r
 layout (constant_id = 4) const float VolumeDimensions = 0.0f; // world volume
 layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
 layout (constant_id = 6) const float VolumeLength = 0.0f;
+layout (constant_id = 7) const float MINI_VOX_SIZE = 0.0f;
 
 // "Light Volume"
-layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume
-layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
+layout (constant_id = 8) const float LightVolumeDimensions = 0.0f; // light volume
+layout (constant_id = 9) const float InvLightVolumeDimensions = 0.0f;
 
-layout (constant_id = 9) precise const float ZFar = 0.0f;
-layout (constant_id = 10) precise const float ZNear = 0.0f;
+layout (constant_id = 10) precise const float ZFar = 0.0f;
+layout (constant_id = 11) precise const float ZNear = 0.0f;
 
 #include "lightmap.glsl"
 
@@ -174,7 +175,7 @@ float fetch_light_reflected( out vec3 light_color, in const vec3 uvw, in const v
 										 
 	vec4 Ld;
 	getReflectionLightFast(light_color, Ld, offset(uvw));
-	Ld.att = getAttenuation(Ld.dist, VolumeLength);
+	Ld.att = getAttenuation(Ld.dist, VolumeLength, MINI_VOX_SIZE);
 		
 	// real dot(N,L)
 	Ld.att *= max(0.0f, dot(n, -Ld.dir));
@@ -188,7 +189,7 @@ float fetch_light_volumetric( out vec3 light_color, in const vec3 uvw, in const 
 		
 	vec4 Ld;
 	getLightFast(light_color, Ld, uvw);
-	Ld.att = getAttenuation(Ld.dist, VolumeLength);
+	Ld.att = getAttenuation(Ld.dist, VolumeLength, MINI_VOX_SIZE);
 
 	// directional derivative - equivalent to dot(N,L) operation
 	Ld.att *= (1.0f - clamp((abs(extract_opacity(fetch_opacity_emission(uvw + Ld.dir * dt))) - opacity) / dt, 0.0f, 1.0f)); // absolute - sampked opacity can be either opaque or transparent
@@ -280,13 +281,13 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = (sigmaS + attenuation * light_color) * PHASE_FUNCTION(emission); // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+    const vec3 Li = (sigmaS + attenuation * light_color) * PHASE_FUNCTION(); // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
 	const float sigma_dt = exp2(-sigmaE * attenuation);
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran *= sigma_dt;		// *bugfix - dot not multiply emission by dt, square it and add to transmission. emission finaly works right. ***do not change***		// decay or grows with emission
+	voxel.tran *= sigma_dt + emission*emission;		// *bugfix - dot not multiply emission by dt, square it and add to transmission. emission finaly works right. ***do not change***		// decay or grows with emission
 }
 
 
@@ -316,7 +317,7 @@ void reflection(inout vec4 voxel, in const float distance_to_bounce, in const ve
 	
 	// add ambient light that is reflected																								  
 	voxel.light += light_color * attenuation * voxel.tran;
-	voxel.a = getAttenuation(distance_to_bounce) * (opacity + emission);
+	voxel.a = getAttenuation(distance_to_bounce, MINI_VOX_SIZE) * (opacity + emission);
 	// upscaling shader uses these output values uniquely.
 }
 

@@ -203,7 +203,7 @@ void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw)
 	
 	// light_direction_distance.a = normalized [0...1] distance
 }
-// getAttenuation(normalized_distance, volume_length); to get attenuation from normalized distance returned from getLight
+// getAttenuation(normalized_distance, volume_length, MINI_VOX_SIZE); to get attenuation from normalized distance returned from getLight
 
 // less preferred, but when required (fast hw-trilinear sampling)
 void getLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
