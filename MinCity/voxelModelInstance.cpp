@@ -113,4 +113,16 @@ namespace Volumetric
 
 		_vYaw = vYaw; // must be last
 	}
+
+	void __vectorcall voxelModelInstance_Dynamic::setTransform(FXMVECTOR const xmLoc, v2_rotation_t const& xPitch, v2_rotation_t const& yYaw, v2_rotation_t const& zRoll) {
+
+		Interpolator.set(vLoc, xmLoc); // *must* be set b4 synchro
+
+		if (!synchronize(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)vLoc)), yYaw)) {
+			destroy(milliseconds(0)); // signalled for destruction //
+		}
+
+		_vYaw = yYaw; // must be last
+		_vPitch = xPitch; _vRoll = zRoll;
+	}
 } //end ns volumetric

@@ -187,6 +187,7 @@ namespace Volumetric
 		void __vectorcall setRoll(v2_rotation_t const zRoll) { _vRoll = zRoll; }						// row doesn't affect synchronization
 		
 		void __vectorcall setPitchYawRoll(v2_rotation_t const& xPitch, v2_rotation_t const& yYaw, v2_rotation_t const& zRoll) { _vPitch = xPitch; _vRoll = zRoll; synchronize(yYaw); }
+		void __vectorcall setTransform(FXMVECTOR const xmLoc, v2_rotation_t const& xPitch, v2_rotation_t const& yYaw, v2_rotation_t const& zRoll);
 
 	public:
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,

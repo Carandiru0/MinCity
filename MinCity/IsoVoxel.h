@@ -26,16 +26,22 @@ namespace Iso
 	static constexpr size_t const
 		WORLD_GRID_SIZE_BITS = 14;				// 2n = SIZE, always power of 2 for grid.   maximum size is 2^16 = 65536x65536 which is friggen huge - limited only by resolution of 16bit/component mouse voxelIndex color attachment. *the amount of world space doubles for every bit*  yeaahhh!!!
 	static constexpr uint32_t const				//                                          recommend using 2^13 = 8192x8192 or less, map is still extremely large
-		WORLD_GRID_SIZE = (1U << WORLD_GRID_SIZE_BITS),//                                   using 2^14 = 16384x16384  
-		WORLD_GRID_HALFSIZE = (WORLD_GRID_SIZE >> 1U);
+		WORLD_GRID_WIDTH = (1u << WORLD_GRID_SIZE_BITS),
+		WORLD_GRID_HEIGHT = (1u << WORLD_GRID_SIZE_BITS) >> 1u,  // moon maps are 2:1 (width:height)
+		WORLD_GRID_HALF_WIDTH = (WORLD_GRID_WIDTH >> 1u),
+		WORLD_GRID_HALF_HEIGHT = (WORLD_GRID_HEIGHT >> 1u);
 
 	static constexpr int32_t const
-		MIN_VOXEL_COORD = -((int32_t)(WORLD_GRID_HALFSIZE - 1)),
-		MAX_VOXEL_COORD = (int32_t)(WORLD_GRID_HALFSIZE - 1);
+		MIN_VOXEL_COORD_U = -((int32_t)(WORLD_GRID_HALF_WIDTH - 1)),
+		MIN_VOXEL_COORD_V = -((int32_t)(WORLD_GRID_HALF_HEIGHT - 1)),
+		MAX_VOXEL_COORD_U = (int32_t)(WORLD_GRID_HALF_WIDTH - 1),
+		MAX_VOXEL_COORD_V = (int32_t)(WORLD_GRID_HALF_HEIGHT - 1);
 
 	static constexpr float const
-		MIN_VOXEL_FCOORD = (float)MIN_VOXEL_COORD,
-		MAX_VOXEL_FCOORD = (float)MAX_VOXEL_COORD;
+		MIN_VOXEL_FCOORD_U = (float)MIN_VOXEL_COORD_U,
+		MIN_VOXEL_FCOORD_V = (float)MIN_VOXEL_COORD_V,
+		MAX_VOXEL_FCOORD_U = (float)MAX_VOXEL_COORD_U,
+		MAX_VOXEL_FCOORD_V = (float)MAX_VOXEL_COORD_V;
 
 	// KEY NOTE ON SPACE BETWEEN VOXELS AND SCALE //
 	/*
@@ -56,13 +62,13 @@ namespace Iso
 	// uniforms.vert   ,  isovoxel.h   ,    globals.h
 	static constexpr uint32_t const
 		VOXELS_GRID_SLOT_XZ_BITS_2N = 1,						 // modify to get desired voxel size, uniforms.vert must equal
-		VOXELS_GRID_SLOT_XZ = (1 << VOXELS_GRID_SLOT_XZ_BITS_2N) + 1;// max num voxels in x or z direction for a single slot / square on "minigrid" : "grid"
+		VOXELS_GRID_SLOT_XZ = (1 << VOXELS_GRID_SLOT_XZ_BITS_2N);// max num voxels in x or z direction for a single slot / square on "minigrid" : "grid"
 			// 2^3 bits = 8
 	static constexpr float const
 		VOXELS_GRID_SLOT_XZ_FP = ((float)(VOXELS_GRID_SLOT_XZ));
 
-#define MINIVOXEL_FACTOR Iso::VOXELS_GRID_SLOT_XZ
-#define MINIVOXEL_FACTORF Iso::VOXELS_GRID_SLOT_XZ_FP
+#define MINIVOXEL_FACTOR (Iso::VOXELS_GRID_SLOT_XZ)
+#define MINIVOXEL_FACTORF (Iso::VOXELS_GRID_SLOT_XZ_FP)
 
 	static constexpr uint32_t const
 		SCREEN_VOXELS_XZ = 256,
@@ -71,29 +77,30 @@ namespace Iso
 		SCREEN_VOXELS_Z = SCREEN_VOXELS_XZ;		// x and z should be equal and divisible by 8
 
 	static constexpr float const
-		VOX_SIZE = 1.0f / VOXELS_GRID_SLOT_XZ_FP,			// this value and shader value for normal vox size need to always match
+		VOX_SIZE = 0.5f,			// this value and shader value for normal vox size need to always match
 		VOX_STEP = VOX_SIZE * 2.0f,
 
 		MINI_VOX_SIZE = VOX_SIZE / MINIVOXEL_FACTORF,	// this value and shader value for mini-vox size need to always match
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
 
-		WORLD_MAX_HEIGHT = (float)(SCREEN_VOXELS_Y - 1), // unit: voxels  ** not minivoxels
+		WORLD_MAX_HEIGHT = (float)(SCREEN_VOXELS_Y >> 1), // unit: voxels  ** not minivoxels - must always be half the volume height to limit the camera showing void area.
 		TERRAIN_MAX_HEIGHT = WORLD_MAX_HEIGHT / MINIVOXEL_FACTORF,
-		WORLD_GRID_FSIZE = (float)WORLD_GRID_SIZE,
-		WORLD_GRID_FHALFSIZE = (float)WORLD_GRID_HALFSIZE,
-		INVERSE_WORLD_GRID_FSIZE = 1.0f / WORLD_GRID_FSIZE,
-		INVERSE_MAX_VOXEL_COORD = 1.0f / (MAX_VOXEL_FCOORD);		// -- good for normalization in range -1.0f...1.0f
-
+		WORLD_GRID_FWIDTH = (float)WORLD_GRID_WIDTH,
+		WORLD_GRID_FHEIGHT = (float)WORLD_GRID_HEIGHT,
+		WORLD_GRID_FHALF_WIDTH = (float)WORLD_GRID_HALF_WIDTH,
+		WORLD_GRID_FHALF_HEIGHT = (float)WORLD_GRID_HALF_HEIGHT,
+		INVERSE_WORLD_GRID_FWIDTH = 1.0f / WORLD_GRID_FWIDTH,
+		INVERSE_WORLD_GRID_FHEIGHT = 1.0f / WORLD_GRID_FHEIGHT,
+		INVERSE_MAX_VOXEL_COORD_U = 1.0f / (MAX_VOXEL_FCOORD_U),
+		INVERSE_MAX_VOXEL_COORD_V = 1.0f / (MAX_VOXEL_FCOORD_V);		// -- good for normalization in range -1.0f...1.0f
+      
 	static constexpr double const
 		VOX_MINZ_SCALAR = ((double)Iso::MINI_VOX_SIZE) * SFM::GOLDEN_RATIO_ZERO;
 
-	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD, WORLD_MAX_HEIGHT, MAX_VOXEL_FCOORD }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
+	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD_U, WORLD_MAX_HEIGHT, MAX_VOXEL_FCOORD_V }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
 	static constexpr int32_t const
-		VIRTUAL_SCREEN_VOXELS = SCREEN_VOXELS_XZ * MINIVOXEL_FACTOR;
-
-	static constexpr int32_t const
-		GRID_VOXELS_START_XZ_OFFSET = (VIRTUAL_SCREEN_VOXELS / MINIVOXEL_FACTOR) >> 1;		// matches the origin of world and volumetric unit cube
+		GRID_VOXELS_START_XZ_OFFSET = SCREEN_VOXELS_XZ >> 1;		// matches the origin of world and volumetric unit cube
 
 	// perfect alignment with 3d texture and volume rendering, finally
 	read_only_no_constexpr inline point2D_t const GRID_OFFSET{ -GRID_VOXELS_START_XZ_OFFSET, -GRID_VOXELS_START_XZ_OFFSET };

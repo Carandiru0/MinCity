@@ -144,8 +144,8 @@ vec4 decode_quaternion(in const vec3 xyz, in const float sgn)
 
 void main() {
   
+#define size VOX_SIZE
   { // orientation output vectors right, forward, up
-	const float size = VOX_SIZE;
 
 #ifdef DYNAMIC
 	// only DYNAMIC
@@ -156,10 +156,12 @@ void main() {
 	const vec3 forward = v3_rotate(vec3(0.0f, 0.0f, 1.0f), quaternion); //v3_rotate_pitch(v3_rotate_yaw(v3_rotate_roll(vec3(0.0f, 0.0f, 1.0f), sin_angles.z, cos_angles.z), sin_angles.y, cos_angles.y), sin_angles.x, cos_angles.x); // *do not change* extremely sensitive to order
 	Out.forward	= forward * size;
 	Out.up = cross(forward, right) * size;
-#elif !defined(HEIGHT) // not terrain (done below)
+	
+#elif !defined(HEIGHT) // STATIC
+	Out.up      = vec3(0.0f, size, 0.0f);
 	Out.right   = vec3(size, 0.0f, 0.0f);
 	Out.forward	= vec3(0.0f, 0.0f, size);
-	Out.up      = vec3(0.0f, size, 0.0f);
+
 #endif
   }
 
@@ -167,14 +169,12 @@ void main() {
   Out.adjacency = (hash & MASK_ADJACENCY);
 
 #if defined(HEIGHT) // terrain only
-
-	Out.right   = vec3(VOX_SIZE * 0.5f, 0.0f, 0.0f);
-	Out.forward	= vec3(0.0f, 0.0f, VOX_SIZE * 0.5f); 
-  
   const uint uheightstep = 0xffffu & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
   const float heightstep = float(uheightstep) / 65535.0f; // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
   const float real_height = max(VOX_SIZE / float(MINIVOXEL_FACTOR), (TERRAIN_MAX_HEIGHT * heightstep) * (VOX_SIZE / float(MINIVOXEL_FACTOR))) * float(MINIVOXEL_FACTOR);
   Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
+  Out.right   = vec3(size, 0.0f, 0.0f);
+  Out.forward = vec3(0.0f, 0.0f, size);
 #endif
 
 #if defined(HEIGHT) // terrain voxels only
@@ -213,10 +213,10 @@ void main() {
   Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
-  Out.material.ambient = 10.0f * packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
+  Out.material.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count << 2u));
 #else // terrain 
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-  Out.ambient = 10.0f * packColor(b.average_reflection_color.rgb / float(b.average_reflection_count >> 2u));
+  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count << 2u));
 #endif
 
 #endif
@@ -258,10 +258,10 @@ void main() {
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
-  
+ 
   ivec3 iminivoxel;
 									
-  [[dependency_infinite]] for( iminivoxel.y = int(heightstep * float(MINIVOXEL_FACTOR - 1)) - 1; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
+  [[dependency_infinite]] for( iminivoxel.y = 1/*int(floor((heightstep * VolumeDimensions) / MINIVOXEL_FACTOR)) - 1*/; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 

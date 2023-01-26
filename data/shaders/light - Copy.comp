@@ -21,6 +21,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "common.glsl"
 #include "transform.glsl"
 #include "shareduniform.glsl"
+
+#define COMPUTE_SHADER
 #include "light.glsl"
 
 #define GROUP_SIZE_XYZ 8
@@ -43,14 +45,16 @@ layout (binding = 3, rgba32f) writeonly restrict uniform image3D pingpongImage[2
 //////////////////////////////////////////////////////////////////////////////////
 layout (binding = 4, rg16_snorm) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly) // only signed normalized values
 layout (binding = 5, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
+layout (binding = 6, rgba8) writeonly restrict uniform image3D outTemporalRFinal; // (reflection color) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly)
 
 // "World Visible Volume"
 layout (constant_id = 0) const float WorldDimensions = 0.0f;
 layout (constant_id = 1) const float InvWorldLength = 0.0f;
+layout (constant_id = 2) const float MINI_VOX_SIZE = 0.0f;
 
 // "Light Volume"
-layout (constant_id = 2) const float VolumeDimensions = 0.0f;
-layout (constant_id = 3) const float InvVolumeDimensions = 0.0f;
+layout (constant_id = 3) const float VolumeDimensions = 0.0f;
+layout (constant_id = 4) const float InvVolumeDimensions = 0.0f;
 
 #define emitter_location xyz
 #define packed_color a
@@ -428,6 +432,10 @@ void main()
 			//current_light_color = current_color * att + current_light_color * att; // light color target is 16bpc float so the intensity increases for light nicely based off distance
 			
 			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color.rgb, 1.0f));
+		}
+
+		{ // reflection
+			imageStore(outTemporalRFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color.rgb, 1.0f)); // reflection color is 8bpc, just store the color.
 		}
 	}
 

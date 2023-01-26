@@ -565,9 +565,6 @@
     <CustomBuild Include="..\Data\Shaders\voxel_shockwave.frag">
       <Filter>Shaders\voxel effects</Filter>
     </CustomBuild>
-    <CustomBuild Include="..\data\shaders\voxel_explosion.frag">
-      <Filter>Shaders\voxel effects</Filter>
-    </CustomBuild>
     <CustomBuild Include="..\data\shaders\voxel_tornado.frag">
       <Filter>Shaders\voxel effects</Filter>
     </CustomBuild>
@@ -576,6 +573,9 @@
     </CustomBuild>
     <CustomBuild Include="..\data\shaders\textureshader_001.comp">
       <Filter>Shaders\textureshaders</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\data\shaders\voxel_explosion.frag">
+      <Filter>Shaders</Filter>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>

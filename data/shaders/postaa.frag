@@ -2,6 +2,14 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_quad: enable
 
+#ifdef HDR
+	#define output_rgba rgba16
+	#define output_r r16
+#else 
+    #define output_rgba rgba8
+	#define output_r r8
+#endif
+
 #include "screendimensions.glsl"
 #ifdef HDR
 layout (constant_id = 4) const float MaximumNits = 1000.0f;
@@ -37,16 +45,16 @@ layout(location = 0) in streamIn
 layout (binding = 1) uniform sampler2D colorMap;
 layout (binding = 2) uniform sampler2DArray noiseMap;	// bluenoise RG channels, 64 slices.
 
-layout (binding = 3, rgba8) writeonly restrict uniform image2D outTemporal;
+layout (binding = 3, output_rgba) writeonly restrict uniform image2D outTemporal;
 layout (binding = 4) uniform sampler2D temporalColorMap;
 
 layout (input_attachment_index = 0, set = 0, binding = 5) uniform subpassInput lastColorMap;
 
 layout (binding = 6) uniform sampler2D blurMap[2];
-layout (binding = 7, rgba8) writeonly restrict uniform image2D outBlur[2];
+layout (binding = 7, output_rgba) writeonly restrict uniform image2D outBlur[2];
 
 layout (binding = 8) uniform sampler2D anamorphicMap[2];
-layout (binding = 9, r8) writeonly restrict uniform image2D outAnamorphic[2];
+layout (binding = 9, output_r) writeonly restrict uniform image2D outAnamorphic[2];
 
 #else
 // Final Descriptor Set //

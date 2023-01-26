@@ -14,7 +14,7 @@ namespace vku
 class no_vtable cPostProcess : no_copy
 {
 public:
-	void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize);
+	void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize, bool const bHDROn);
 
 	void UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict lastFrameView, vk::Sampler const& __restrict samplerLinearClamp);
 	void UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict guiImageView, vk::Sampler const& __restrict samplerLinearClamp);

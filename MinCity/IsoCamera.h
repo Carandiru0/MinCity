@@ -16,7 +16,7 @@ namespace Iso
 
 	// 2:1 (Psuedo/Dimetric) Isometric (TOO HIGH):			  
 	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC_ANGLES		= { XM_PIDIV4, XM_PIDIV4, 0.0f };  // in radians  x,y,z ( 45 degrees, 45 degrees, 0 degrees )
-	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC			= { EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+	static constexpr XMFLOAT3A   const PSUEDO_ISOMETRIC			    = { EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 	
 
 	// Balanced Isometric (JUST RIGHT):							

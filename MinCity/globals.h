@@ -37,8 +37,8 @@
 #define DEBUG_SHOW_GUI_WINDOW_BORDERS
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC
-#define DEBUG_OUTPUT_STREAMING_STATS
-#define DEBUG_EXPORT_TERRAIN_KTX
+//#define DEBUG_OUTPUT_STREAMING_STATS
+//#define DEBUG_EXPORT_TERRAIN_KTX
 //#define DEBUG_EXPORT_BLUENOISE_KTX
 //#define DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
 //#define DEBUG_EXPORT_BLACKBODY_KTX
@@ -173,21 +173,23 @@ namespace Globals
 	static constexpr uint32_t const DEFAULT_STACK_SIZE = 262144;	// in bytes, 256KB
 
 	static constexpr uint32_t const DEFAULT_SCREEN_WIDTH = 1920,	// 16:9 default, should not be used directly
-									DEFAULT_SCREEN_HEIGHT = 1080;  // strange bug if full 1080 used - goes into some kind of weird psuedo exclusive mode (the driver does). Need to finish VK_FULLSCREEN exclusive support extension I guess for this to work properly
+									DEFAULT_SCREEN_HEIGHT = 1080;  
 	static constexpr float const DEFAULT_ANISOTROPIC_LEVEL = 8.0f;
+
+	static constexpr float const INTERPOLATION_TIME_SCALAR = 1.0f; // for slow-motion, or a view of high precision motion, use a really low value
 
 	static constexpr float const DEFAULT_ZOOM_SCALAR = 2.5f * SFM::GOLDEN_RATIO,				// controls "zoom" higher values are farther away
 								 MAX_ZOOM_FACTOR = 0.5f,
 #ifndef NDEBUG
 								 MIN_ZOOM_FACTOR = DEFAULT_ZOOM_SCALAR * 4.0f, // allow zoom out in debug builds
 #else
-								 MIN_ZOOM_FACTOR = DEFAULT_ZOOM_SCALAR, // fits the bounded volume in release builds
+								 MIN_ZOOM_FACTOR = DEFAULT_ZOOM_SCALAR * 4.0f, // fits the bounded volume in release builds
 #endif
 								 ZOOM_SPEED = 0.44f; // see Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER for edge scrolling speed
 	
 							// Parallel Projections have a magnitude greater range in precision. Orthographic projection has nearly infinite accuracy compared to perspective projection. *Do not optimize these values further* The high depth buffer precision is supported, when coupled with a 32bit depth buffer.
 	static constexpr double const MINZ_DEPTH = (0.000001 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
-	static constexpr double const MAXZ_DEPTH = (411.111111 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
+	static constexpr double const MAXZ_DEPTH = 4.0f * (411.111111 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 16;	 // 16ms = 60fps maximum gui update interval when no input is flagging the gui to be updated (set for minimum latency)

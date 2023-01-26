@@ -68,14 +68,14 @@ namespace world
 	// ***** watchout - thread safety is a concern here this method is executed in parallel ******
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cLightConeGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
-		constexpr uint32_t const ray_color(0x00ff007f);
+		constexpr uint32_t const ray_color(0x00ffffff);
 
 		Volumetric::voxelModelInstance_Dynamic const* const __restrict instance(getModelInstance());
 		uint32_t const voxel_count(instance->getModel()._numVoxels);
 
 		float const t(SFM::saturate(time_to_float(_activity_lights.accumulator) / time_to_float(_activity_lights.interval)));
 
-		uint32_t const ring(SFM::saturate_to_u8((1.0f - t) * 255.0f));
+		uint32_t const ring(0x7f/*SFM::saturate_to_u8((1.0f - t) * 255.0f)*/);
 
 		voxel.Hidden = true;
 		voxel.Transparent = true;

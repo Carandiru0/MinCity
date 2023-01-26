@@ -69,8 +69,8 @@ layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain text
 
 #define DD 0
 #define COLOR 1
-#define OPACITY 2
-layout (binding = 3) uniform sampler3D volumeMap[3];
+
+layout (binding = 3) uniform sampler3D volumeMap[2];
 layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
 // binding 5 - is the shared common image array bundle
 // for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
@@ -82,7 +82,7 @@ layout (binding = 6) uniform sampler2D colorMap;
 #endif
 #if defined(T2D) // only for terrain
 layout (binding = 7) uniform sampler3D detailDerivativeMap;
-
+layout (binding = 8) uniform samplerCube reflectionCubeMap; // light coming from the sky/space surrounding the volume
 //#define DEBUG_SHADER
 
 #endif
@@ -91,54 +91,8 @@ layout (binding = 7) uniform sampler3D detailDerivativeMap;
 
 #include "lightmap.glsl"
 #include "lighting.glsl"
-    
-float extract_opacity( in const float sampling ) // this includes transparent voxels, however result is negative if transparent
-{
-	return( clamp(sampling * 2.0f, 0.0f, 1.0f) ); // if opaque greatest value is 0.5f, want a value no greater than 1.0f - this is affected by emission
-}
-float extract_emission( in const float sampling ) // this includes transparent voxels that are emissive, result is positive either opaque or transparent
-{
-	return( max( 0.0f, sampling - 0.5f) * 2.0f );  // if greater than 0.5f is emissive, want value no greater than 1.0f and only the emissive part
-}
-float opacity( in const float sampling ) {
 
-	return( extract_opacity(sampling) ); // only opaques
-}
-
-// iq - voxel occlusion //
-// https://www.iquilezles.org/www/articles/voxellines/voxellines.htm
-float getOcclusion(in vec3 uvw) 
-{
-	vec4 vc;
-	// sides
-	vc.x = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 0, 1,-1)).r ); // front
-	vc.y = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 0,-1,-1)).r ); // back
-	vc.z = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3(-1, 0,-1)).r ); // left
-	vc.w = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 1, 0,-1)).r ); // right
-
-	vec4 vd;
-	// corners
-	vd.x = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3(-1, 1,-1)).r ); // down
-	vd.y = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3(-1,-1,-1)).r ); // left
-	vd.z = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 1,-1,-1)).r ); // up
-	vd.w = opacity( textureLodOffset(volumeMap[OPACITY], uvw, 0.0f, ivec3( 1, 1,-1)).r ); // right
-
-	const vec2 st = 1.0f - uvw.xy;
-
-	// sides
-	const vec4 wa = vec4( uvw.x, st.x, uvw.y, st.y ) * vc;
-
-	// corners
-	const vec4 wb = vec4(uvw.x * uvw.y,
-						 st.x  * uvw.y,
-						 st.x  * st.y,
-						 uvw.x * st.y) * vd * (1.0f - vc.xzyw) * (1.0f - vc.zywx);
-	
-	const float occlusion = 1.0f - (wa.x + wa.y + wa.z + wa.w + wb.x + wb.y + wb.z + wb.w) / 8.0f;
-
-	return(occlusion*occlusion*occlusion);
-}
-
+// occlusion was causing noticable aliasing  *removed*
 
 // terrain, w/lighting 
 #if defined(T2D) 
@@ -350,12 +304,14 @@ float height_triplanar(in const vec3 triplanarWeights, in const float x, in cons
 
 	return(x * w0 + y * w1 + z * w2);
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // https://www.shadertoy.com/view/Xtl3zf - Texture Repitition Removal (iq)
 float sum( vec3 v ) { return v.x+v.y+v.z; }
+float sum( float v ) { return v+v+v; }
 
-vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy, in const float t )
+vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy )
 {
     float k = texture( _texArray[TEX_NOISE], vec3(0.005f*uv, 0.0f) )._simplex; // cheap (cache friendly) lookup
         
@@ -374,122 +330,208 @@ vec3 textureNoTile( in const vec2 uv, in const float height, in const vec2 duvdx
     vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash
     vec2 offb = sin(vec2(3.0,7.0)*ib); // can replace with any other hash
 
-    vec3 cola = textureGrad( detailDerivativeMap, vec3(uv + t*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
-    vec3 colb = textureGrad( detailDerivativeMap, vec3(uv + t*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
+    vec3 cola = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
+    vec3 colb = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).xyz;
     
     return mix( cola, colb, smoothstep(0.2f,0.8f,f-0.1f*sum(cola-colb)) );
+}
+float textureNoTile_SingleChannel( in const vec2 uv, in const float height, in const vec2 duvdx, in const vec2 duvdy )
+{
+    float k = texture( _texArray[TEX_NOISE], vec3(0.005f*uv, 0.0f) )._simplex; // cheap (cache friendly) lookup
+        
+    float l = k*8.0f;
+    float f = fract(l);
+    
+#if 0
+    float ia = floor(l); // iq's method
+    float ib = ia + 1.0f;
+#else
+    float ia = floor(l+0.5f); // suslik's method (see comments)
+    float ib = floor(l);
+    f = min(f, 1.0f-f)*2.0f;
+#endif    
+    
+    vec2 offa = sin(vec2(3.0,7.0)*ia); // can replace with any other hash
+    vec2 offb = sin(vec2(3.0,7.0)*ib); // can replace with any other hash
+
+    float cola = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offa, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).x;
+    float colb = textureGrad( detailDerivativeMap, vec3(uv + 0.5f*offb, height), vec3(duvdx, 0.0f), vec3(duvdy, 0.0f) ).x;
+    
+    return mix( cola, colb, smoothstep(0.2f,0.8f,f-0.1f*sum(cola-colb)) );
+}
+
+float getHeight(in const vec2 uv, in const vec3 weights)
+{
+	const float height = texture(_texArray[TEX_TERRAIN], vec3(uv, 0)).r; // repeated on all axis
+
+	return( height_triplanar(weights, height.r, height.r, height.r) );
+}
+// shadertoy - https://www.shadertoy.com/view/dslSzN - Mario8664
+#define PARALLAX_HEIGHT 0.001f
+#define PARALLAX_LAYERS 32.0f
+vec2 parallax(in const vec2 uv, in const vec2 iV, in const vec3 weights)
+{
+	//parallax occlusion mapping
+    const float layerDepth = 1.0f / PARALLAX_LAYERS;
+
+    float lastHeight, lastDepth;
+
+    vec2 offset = iV * PARALLAX_HEIGHT;
+
+    for(float depth = 1.0; depth >= 0.0; depth -= layerDepth)
+    {
+        float currentHeight = getHeight(uv + offset * depth, weights);
+        if(depth < currentHeight)
+        {
+            const float c = currentHeight - depth;
+            const float l = lastDepth - lastHeight;
+            offset = mix(offset * depth, offset * lastDepth, c / (c + l)); // intersection between last offset and current offset
+            break;
+        }
+        lastHeight = currentHeight;
+        lastDepth = depth;
+    }
+
+	//return clamp(uv + offset, 0.0f, 1.0f);
+	//return smoothstep(0.2f,0.8f, uv + offset);
+	const vec2 parallax_uv = uv + offset;
+	return mix(uv, parallax_uv, bvec2((parallax_uv.x >= 0.0f && parallax_uv.y >= 0.0f && parallax_uv.x <= 1.0f && parallax_uv.y <= 1.0f)));
 }
 
 // FRAGMENT - - - - In = xzy view space
 //					all calculation in this shader remain in xzy view space, 3d textures are all in xzy space
 //			--------Out = screen space
 void main() {
-
-	vec3 N, gradient;
-	float height;
-
+	
+	// ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	// ** do not change N0 & N - for ground voxels the face shading hides the actual "box" surface by leveraging the sampled heightmap here In
+	// the fragment shader. This allows a much higher render resolution independent interpolation of the normal.
+	// N0 - actual normal, N is fixed to -up.
+	// only triplanar surface generation uses the actual normal (required)
+	// the surface gradient starts out fixed to up, when the surface gradient is then available duriing the base heightmap sampling. This defines a new normal
+	// This hiresolution normal is because of the available data: height (16bit) & derivative map - which is generated from a normal map.
+	// Turning off independent face lighting for ground voxels at the "non-detail" stage looks a lot better and is technically more volumetric.
+	// Nice interpolated regions for the ground voxels rather than a aliased blocky mess with distracting lighting information.
+	// Detail is the next stage, where the actual normal is needed again, only for triplanar surface gradient generation. Perturbing a normal still maintains
+	// the last state of N. N is the fixed up -> hi resolution normal -> detailed hi resolution normal
+	// that we have been perturbing all along. Keeping N0 & N seperate enables the surface "filtering / interpolation"
+	//
+	// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	
 	// **swizzle to Y Is Up**	        // <---
 	const vec3 uvw = In.world_uvw.xzy; // make it xyz
-	const vec3 duvdx = dFdxFine(uvw),
-	           duvdy = dFdyFine(uvw);
-
+	
 	// **swizzle to Y Is Up**	        // <---
-	N = normalize(In.N.xyz).xzy; // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
+	const vec3 N0 = normalize(In.N.xyz).xzy; // the derivative map is derived from a normal map that has Y Axis As Up, input normal to fragment shader uses Z As Up - must swizzle input normal. 
+	vec3 V = normalize(In.V.xyz).xzy;        // <---
 
 #ifdef DEBUG_SHADER
 	outColor = unpackColor(In._color); // debug mode - color output of normal direction (xyz order)
 	return;
 #endif
 
-	// temporarily invert Y (negative->positive) vulkan
-	//N.y = -N.y;
 
-	// apply surface gradient
-	//gradient = surface_gradient(dFdxFine(world_uvw), dFdyFine(world_uvw), N, derivative); 
+	// common partial derivatives
+	const vec3 duvdx = dFdxFine(uvw),  // *bugfix - using original partial derivatives rather than recalculating them again with the parallax uv's produces effective anti-aliasing.
+		       duvdy = dFdyFine(uvw);
 
 	// common triplanar weights
-	const vec3 weights = triplanar_weights(N, TRIPLANAR_BLEND_WEIGHT);
+	const vec3 weights = triplanar_weights(N0, TRIPLANAR_BLEND_WEIGHT);
 
+	vec3 N;
+	float height;
 	// -------------------------16K SURFACE //
 	{
+		// parallax uv's
+		const vec2 uv = parallax(uvw.xz, -V.xz, weights);
+
 		// xz (y axis)
-		const vec3 height_derivative_xz = texture(_texArray[TEX_TERRAIN], vec3(uvw.xz, 0)).rgb; // repeated on all axis
+		const vec3 height_derivative_xz = texture(_texArray[TEX_TERRAIN], vec3(uv, 0)).rgb; // repeated on all axis
 
 		height = height_triplanar(weights, height_derivative_xz.r, height_derivative_xz.r, height_derivative_xz.r);
-		const vec2 derivative = derivatives(uvw.xz, TextureDimensions, duvdx.xz, duvdy.xz, height_derivative_xz.gb);  // 11585.0
+		const vec2 derivative = derivatives(uvw.xz, TextureDimensions, duvdx.xz, duvdx.xz, height_derivative_xz.gb);  // 11585.0
 
 		// apply triplanar surface gradient
-		gradient = surface_gradient_triplanar(N, weights, derivative, derivative, derivative); // tricks for "triplanar projection of the same axis"
-		N = perturb_normal(N, gradient);
+		const vec3 gradient = surface_gradient_triplanar(N0, weights, derivative, derivative, derivative); // tricks for "triplanar projection of the same axis"
+		N = perturb_normal(vec3(0,-1,0), gradient);
 	}
 
 	//outColor = height.xxx;
 	//return;
 
 	// -------------------------DETAIL SURFACE //
+	float height_detail;
 	{
+		// parallax uv's
 		const float normalized_height = abs(uvw.y);
-		vec2 scale, uv, dvdx, dvdy;
+
+		// scale TextureDimensions (global variable) is 16384x16384  - the detail texture is always 512x512  - if projecting right, forward the Y Axis scale needs to match
+		// the scale used for when projecting *up*. 1.0 is not it. it's set as DETAIL_SCALE for both components (x,y) in the uv's projecting up. However this has to change
+		// for the other projections. We don't want to repeat the texture like 512.0 would do (512 times) this is over a distance 16384.0 (TextureDimensions). The distance
+		// on the up axis is normalized 0.0 .. 1.0 so by what factor do we scale the height/up axis/yaxis ? 
+		const vec2 detail_dimensions = vec2(DETAIL_DIMENSIONS);
+		vec3 detail_derivative_zy, detail_derivative_xz, detail_derivative_xy;
+
+		//temporary
+#define STEEP_SLIDER_SCALE 80.0f
 
 		// zy (x axis)
-		scale = vec2(DETAIL_SCALE, 1.0f);
-		uv = uvw.zy * scale;
-		dvdx = duvdx.zy * scale;
-		dvdy = duvdy.zy * scale;
+		{
+			const vec2 scale = vec2(DETAIL_SCALE, (1.0f + normalized_height) * STEEP_SLIDER_SCALE * (DETAIL_SCALE/TextureDimensionsU));
 
-		const vec3 detail_derivative_zy = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
-		const vec2 derivative_zy = derivatives(uv, vec2(DETAIL_DIMENSIONS, 1.0f), dvdx, dvdy, detail_derivative_zy.gb);
+			detail_derivative_zy = textureNoTile(uvw.zy * scale, normalized_height, duvdx.zy * scale, duvdy.zy * scale);
+			detail_derivative_zy.gb = derivatives(uvw.zy * scale, detail_dimensions, duvdx.zy * scale, duvdy.zy * scale, detail_derivative_zy.gb);
+		}
 
 		// xz (y axis)
-		scale = vec2(DETAIL_SCALE);
-		uv = uvw.xz * scale;
-		dvdx = duvdx.xz * scale;
-		dvdy = duvdy.xz * scale;
+		{
+			const vec2 scale = vec2(DETAIL_SCALE);
 
-		const vec3 detail_derivative_xz = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
-		const vec2 derivative_xz = derivatives(uv, vec2(DETAIL_DIMENSIONS), dvdx, dvdy, detail_derivative_xz.gb);
+			detail_derivative_xz = textureNoTile(uvw.xz * scale, normalized_height, duvdx.xz * scale, duvdy.xz * scale);
+			detail_derivative_xz.gb = derivatives(uvw.xz * scale, detail_dimensions, duvdx.xz * scale, duvdy.xz * scale, detail_derivative_xz.gb);
+		}
 
 		// xy (z axis)
-		scale = vec2(DETAIL_SCALE, 1.0f);
-		uv = uvw.xy * scale;
-		dvdx = duvdx.xy * scale;
-		dvdy = duvdy.xy * scale;
+		{
+			const vec2 scale = vec2(DETAIL_SCALE, (1.0f + normalized_height) * STEEP_SLIDER_SCALE * (DETAIL_SCALE/TextureDimensionsV));
 
-		const vec3 detail_derivative_xy = textureNoTile(uv, normalized_height, dvdx, dvdy, 0.5f);
-		const vec2 derivative_xy = derivatives(uv, vec2(DETAIL_DIMENSIONS, 1.0f), dvdx, dvdy, detail_derivative_xy.gb);
+			detail_derivative_xy = textureNoTile(uvw.xy * scale, normalized_height, duvdx.xy * scale, duvdy.xy * scale);
+			detail_derivative_xy.gb = derivatives(uvw.xy * scale, detail_dimensions, duvdx.xy * scale, duvdy.xy * scale, detail_derivative_xy.gb);
+		}
 
-		height *= height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
+		height_detail = height_triplanar(weights, detail_derivative_zy.r, detail_derivative_xz.r, detail_derivative_xy.r);
 
 		// apply triplanar surface gradient
-		gradient = surface_gradient_triplanar(N, weights, derivative_zy, derivative_xz, derivative_xy);
-		N = perturb_normal(N, gradient).xzy;  // <---
+		const vec3 gradient = surface_gradient_triplanar(N, weights, detail_derivative_zy.gb, detail_derivative_xz.gb, detail_derivative_xy.gb); 
+		N = perturb_normal(N, gradient);
+		
+		N = normalize(N.xzy);	// <---
+		V = V.xzy;  // <---
+		//uvw is dropped here, use In.world_uvw.xyz instead
 		// **swizzled back to Z Is Up**
-		// restore invert Y (positive->negative) vulkan
-		//N.z = -N.z;
 	}
-
-	outColor = pow(height, 1.0f/2.2f).xxx;
-	return;
+	
+	//outColor = height.xxx;
+	//return;
 
 	//outColor = N.xzy * 0.5f + 0.5f;
 	//return;
 
 	// lighting
-	const vec3 V = normalize(In.V.xyz);
-	const vec2 albedo_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rg;
+	const vec3 albedo_rough_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rgb;
 
 	vec3 color = vec3(0);
 	
-	const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
+	//const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
 	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
 	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
 
-	const float albedo = pow(albedo_ao.x * height, 1.0f/2.2f);
+	const float star_color = texture(reflectionCubeMap, normalize(reflect(V, N))).r;
 
 	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo.xxx, make_material(0.75f, 0.0f, roughness), vec3(1),				 
-				      albedo_ao.y, getAttenuation((1.0f - height) * InvVolumeDimensions, VolumeDimensions), // on a single voxel
-				      vec3(0,0,1), N, V, false); // don't want to double-add reflections
+	color.rgb += lit( albedo_rough_ao.xxx, make_material(star_color * 0.1f, 0.0f, albedo_rough_ao.y), star_color.xxx * 10.0f + 0.8f,				 
+				      albedo_rough_ao.z, getAttenuation(InvVolumeDimensions * (1.0f - (height_detail * InvVolumeDimensions + height * InvVolumeDimensions)), VolumeDimensions), // on a single voxel
+				      vec3(0,0,-1), N, V, false); // don't want to double-add reflections
 
 	// regular terrain lighting
 	vec3 light_color;
@@ -499,8 +541,8 @@ void main() {
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 						// only emissive can have color
-	color.rgb += lit( mix(albedo.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, roughness), light_color,		
-					  getOcclusion(In.uv.xyz), Ld.att,
+	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
+					  albedo_rough_ao.z, Ld.att,
 					  -Ld.dir, N, V, true);
 
 	outColor.rgb = color;
@@ -524,7 +566,7 @@ void main() {
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
-						getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
+						1.0f, getAttenuation(Ld.dist, VolumeLength),
 						-Ld.dir, N, V, true);
 
 	//outColor.rgb = vec3(attenuation);
@@ -538,7 +580,7 @@ void main() {
 
 	float fresnelTerm;  // feedback from lit      
 	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
-						    getOcclusion(In.uv.xyz), getAttenuation(Ld.dist, VolumeLength),
+						    1.0f, getAttenuation(Ld.dist, VolumeLength),
 						    -Ld.dir, N, V, true, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //

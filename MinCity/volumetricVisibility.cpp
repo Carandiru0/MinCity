@@ -38,7 +38,7 @@ namespace Volumetric
 
 		// return new projection matrix - jitter applied - Temporal Antialiasing Post Process shader can use the subpixel jitter and produce a better neighbourhood clamping result. Effectively the subpixel component of the anti-aliasing.
 		return(getProjectionMatrix(SFM::__fma(fAspect, ZoomFactor, vJitterSz.x), ZoomFactor + vJitterSz.y,
-			                       Globals::MINZ_DEPTH*Iso::VOX_MINZ_SCALAR, Globals::MAXZ_DEPTH));
+			                       Iso::VOX_MINZ_SCALAR * Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
 	}
 
 	namespace radius { // private to this file

@@ -121,7 +121,7 @@ namespace // private to this file (anonymous)
 
 } // end ns
 
-/* deprecated, moved to full 8bit heightstep
+/* deprecated, moved to full 16bit heightstep
 namespace // private to this file (anonymous)
 {
 	static inline uint32_t const GROUND_HEIGHT_NOISE[NUM_DISTINCT_GROUND_HEIGHTS] = {
@@ -148,6 +148,33 @@ namespace // private to this file (anonymous)
 static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) // Adjacency is only used during Rendering to cull hidden faces.
 {                                                                              // *bugfix - Dynamically called during run-time -- faster than before where it was pre-computed before & terrain height updates are seamless with adjacency no longer being updated seperately, 
 	                                                                           // it's automatic now. Also no longer have huge memory spike at loadtime when generating ground! Was 21GB!! 
+
+	// Therefore the neighbours of a voxel, follow same isometric layout/order //
+	/*
+
+								NBR_TR
+					[NBR_T]				   [NBR_R]
+		NBR_TL					VOXEL					NBR_BR
+					[NBR_L]				   [NBR_B]
+								NBR_BL
+	*/
+																			   // @TODO - Occlusion could be passed to the gpu here for every voxel based on adjacency of neighbours, and if that neighbouring voxel is of greater height than the current voxel.
+	// Adjacency - that is sent to the gpu already - does this already, with face culling.
+	// This gives information for 4 adjacent voxels being greater in height or not
+	// Each corners' occlusion value, 4 vertices per face, can than be deduced (applies only from perspective of the top face, sides would be different on a voxel)
+	
+	// [  faces  ]              [ vertex ]
+	// 0.5 * (top + left)     = top left vertex occlusion
+	// 0.5 * (top + right)    = top right vertex ""     ""
+	// 0.5 * (bottom + left)  = bottom left vertex ""   ""
+	// 0.5 * (bottom + right) = bottom right vertex  "" ""
+	
+	// where the face (top, right, bottom, left) is either a 1.0 or 0.0
+	// this would also be computed in the geometry shader, for the top face.
+	// the fragment shader will then naturally interpolate between vertices (aka vertex lighting) for the entire face.
+	// the fragment shader should raise the pow() of these linear occlusion values to finish faking the occlusion and making it look proper for what ambient occlusion looks like (lots of white, minimal greys and blacks - representing the occluded area)
+	// shading would be along the edges of voxels and it's neighbours and not extend to far into the face from the edge. some multiplied noise, for occluded areas, may look less repetitive and give the occlusion some variance.
+	// ...as for the combinations of faces to vertices for the sides of the voxel, well it may not be worth it. good for terrain only! and only if this type of edge occlusion is desirable for every terrain voxel.... (local occlusion)
 
 	uint32_t const curVoxelHeightStep(::Iso::getHeightStep(voxelIndex));
 	uint32_t Adjacency(0);
@@ -261,7 +288,7 @@ namespace // private to this file (anonymous)
 
 static uint32_t const RenderNoiseImagePixel(float const u, float const v, float const in, supernoise::interpolator::functor const& interp)
 {
-	static constexpr float const NOISE_SCALAR_HEIGHT = 1.0f * (Iso::WORLD_GRID_FSIZE / 512.0f); // fixed so scale of terrain height is constant irregardless of width/depth of map
+	// static constexpr float const NOISE_SCALAR_HEIGHT = 1.0f * (Iso::WORLD_GRID_FSIZE / 512.0f); // fixed so scale of terrain height is constant irregardless of width/depth of map
 																								 // 512 happens to be the right number / base number *do not change*
 																								 // *can change the first number only*
 																								 // less = lower frequency of change in elevation
@@ -289,24 +316,16 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 #endif
 #endif
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(20));
-		Imaging resampledImg(nullptr);
-
 		// bilateral filter removed - bug fix was not 16bit comptabile, terrain detail is better w/o the filter.
 
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(25));
 
 		// resample terrain image to world grid dimensions
-		if (Iso::WORLD_GRID_SIZE != imageTerrain->xsize || Iso::WORLD_GRID_SIZE != imageTerrain->ysize) {
-			
-			resampledImg = ImagingBits_16To32(imageTerrain);
-			ImagingDelete(imageTerrain); imageTerrain = resampledImg;
+		if (Iso::WORLD_GRID_WIDTH != imageTerrain->xsize || Iso::WORLD_GRID_HEIGHT != imageTerrain->ysize) {
 
 			// resample to required dimensions
-			resampledImg = ImagingResample(imageTerrain, Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, IMAGING_TRANSFORM_BILINEAR);
-			ImagingDelete(imageTerrain); imageTerrain = nullptr;
-
-			imageTerrain = ImagingBits_32To16(resampledImg);
-			ImagingDelete(resampledImg); resampledImg = nullptr;
+			Imaging resampledImg = ImagingResample(imageTerrain, Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT, IMAGING_TRANSFORM_BILINEAR);
+			ImagingDelete(imageTerrain); imageTerrain = resampledImg;
 		}
 
 		// not customizing with additional features, using real moon heightmap data
@@ -335,7 +354,7 @@ void cVoxelWorld::GenerateGround() // *bugfix - much much faster now and real lu
 	FMT_LOG_OK(GAME_LOG, "Generated Ground");
 }
 
-XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
+void cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 {
 	static constexpr milliseconds const
 		SMOOTH_MS_ZOOM{ 200 },
@@ -360,8 +379,8 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 			float const tInvDelta = SFM::saturate(time_to_float(tDelta / tSmooth));
 			XMVECTOR xmInterpPosition(SFM::lerp(XMLoadFloat2A(&oCamera.PrevPosition), targetPosition, tInvDelta));
 			// wrap around camera coords //
-			XMVECTOR const xmHalfExtent(XMVectorSet(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE, 0.0f, 0.0f));
-			xmInterpPosition = XMVectorSubtract(XMVectorMod(XMVectorAdd(xmInterpPosition, xmHalfExtent), XMVectorSet(Iso::WORLD_GRID_SIZE, Iso::WORLD_GRID_SIZE, 1.0f, 1.0f)), xmHalfExtent);
+			XMVECTOR const xmHalfExtent(XMVectorSet(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
+			xmInterpPosition = XMVectorSubtract(XMVectorMod(XMVectorAdd(xmInterpPosition, xmHalfExtent), XMVectorSet(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 1.0f, 1.0f)), xmHalfExtent);
 			Interpolator.set(oCamera.Origin, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W >(xmInterpPosition));
 			//oCamera.Yaw = v2_rotation_t(); // eliminate any camera rotation ?
 		}
@@ -481,12 +500,11 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	// range is (-144,-144) TopLeft, to (144,144) BottomRight
 	//
 	// Clamp Camera Origin and update //
-	XMVECTOR const xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin));
+	XMVECTOR const xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin));  // only care about xz components, make it a 2D vector
 	
 	point2D_t voxelIndex(v2_to_p2D(xmOrigin));
 	// wrap bounds //
-	voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-	voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+	voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	point2D_t const visibleRadius(p2D_half(point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z))); // want radius, hence the half value
 
@@ -494,27 +512,25 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 	voxelIndex = p2D_sub(voxelIndex, visibleRadius);
 	
 	// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-	point2D_t const voxelIndex_TopLeft = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE));
+	point2D_t const voxelIndex_TopLeft = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 	oCamera.voxelIndex_TopLeft = p2D_sub(voxelIndex_TopLeft, Iso::GRID_OFFSET);
 	// wrap bounds //
-	oCamera.voxelIndex_TopLeft.x = oCamera.voxelIndex_TopLeft.x & (Iso::WORLD_GRID_SIZE - 1);
-	oCamera.voxelIndex_TopLeft.y = oCamera.voxelIndex_TopLeft.y & (Iso::WORLD_GRID_SIZE - 1);
+	oCamera.voxelIndex_TopLeft = p2D_wrap_pow2(oCamera.voxelIndex_TopLeft, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	point2D_t voxelIndex_Center( oCamera.voxelIndex_TopLeft.v );
 	// Change from  (0,0) => (x,y) to  (-x,-y) => (x,y)
-	oCamera.voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALFSIZE));
+	oCamera.voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 	// wrap bounds //
-	oCamera.voxelIndex_Center.x = oCamera.voxelIndex_Center.x & (Iso::WORLD_GRID_SIZE - 1);
-	oCamera.voxelIndex_Center.y = oCamera.voxelIndex_Center.y & (Iso::WORLD_GRID_SIZE - 1);
+	oCamera.voxelIndex_Center = p2D_wrap_pow2(oCamera.voxelIndex_Center, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	// Convert Fractional component from GridSpace
 	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin)));  // FOR TRUE SMOOTH SCROLLING //
 	/* important output */
-	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFract)); // store fractional offset always negated and swizzled to x,z components
-	/* important output */
-
+	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, XMVectorSetY(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFract), 0.0f)); // store fractional offset always negated and swizzled to x,z components
+	/* important output */                                                                                                                                    // *bugfix - important to zero the y component, otherwise the "staircase effect" in motion for elevation occurs.
+	                                                                                                                                                          // otherwise the component gets added incorrectly *twice* for the *actual* camera origin.
 #ifndef NDEBUG
-	static XMVECTOR DebugVariable;
+	static XMVECTOR DebugVariable; 
 	DebugVariable = XMLoadFloat3A(&oCamera.voxelFractionalGridOffset);
 	setDebugVariable(XMVECTOR, DebugLabel::CAMERA_FRACTIONAL_OFFSET, DebugVariable);
 #endif
@@ -528,7 +544,6 @@ XMVECTOR const XM_CALLCONV cVoxelWorld::UpdateCamera(tTime const& __restrict tNo
 
 		rotateCamera(time_to_float(fp_seconds(MinCity::critical_delta())));
 	}
-	return(xmOrigin);
 }
 void cVoxelWorld::setCameraTurnTable(bool const enable)
 {
@@ -536,32 +551,22 @@ void cVoxelWorld::setCameraTurnTable(bool const enable)
 }
 
 // Camera follow always keeps user ship in view, never offscreen even if ship changes elevation! Follows elevation too.
-void __vectorcall cVoxelWorld::updateCameraFollow(XMVECTOR xmPosition, XMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta) // expects 3D coordinates
+void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta) // expects 3D coordinates
 {	
 	rect2D_t const vLocalArea(instance->getModel()._LocalArea);			   // convert to voxel index
 	int32_t volume_visible = world::testVoxelsAt(r2D_add(vLocalArea, v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition))), instance->getYaw()); // *major* prevents ship passing outside the "visible volume", which at high heights can be very near to the center of the screen. Glitches, missing rasterization vs raymarch is now gone for camera followed ship!
 
-	xmVelocity = XMVectorSetY(xmVelocity, 0.0f); // only xz
+	//xmVelocity = XMVectorSetY(xmVelocity, 0.0f); // only xz
 
 	float const max_speed(time_to_float(tDelta * 1.0 / duration_cast<fp_seconds>(critical_delta())));
 
-	float const elevation(SFM::max(0.0f, XMVectorGetY(xmPosition)));
-	XMVECTOR const xmElevationOffset(XMVectorSet(elevation, 0.0f, elevation, 0.0f));
-
-	xmPosition = XMVectorAdd(xmPosition, xmElevationOffset);
 	XMVECTOR const xmFutureFocusPosition(SFM::__fma(xmVelocity, XMVectorReplicate(max_speed), xmPosition));
 
 	float const current_speed(XMVectorGetX(XMVector3Length(xmVelocity)) * time_to_float(tDelta));
 	float const t = SFM::__exp(-10.0f * (current_speed / max_speed + (float)(volume_visible <= 0)));
 
-	XMVECTOR xmInterpPosition(XMVectorSetY(SFM::lerp(xmPosition, xmFutureFocusPosition, t), 0.0f)); // only xz for camera store
-	
-	// wrap around camera coords // -- causes camera movement spike when actively wrapping.
-	//XMVECTOR const xmHalfExtent(XMVectorSet(Iso::WORLD_GRID_HALFSIZE, 0.0f, Iso::WORLD_GRID_HALFSIZE, 0.0f));
-	//xmInterpPosition = XMVectorSubtract(XMVectorMod(XMVectorAdd(xmInterpPosition, xmHalfExtent), XMVectorSet(Iso::WORLD_GRID_SIZE, 1.0f, Iso::WORLD_GRID_SIZE, 1.0f)), xmHalfExtent);
-	
 	//Interpolator very smooth :)
-	Interpolator.set(oCamera.Origin, xmInterpPosition);
+	Interpolator.set(oCamera.Origin, SFM::lerp(xmPosition, xmFutureFocusPosition, t));
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -933,10 +938,10 @@ namespace world
 																	// exclusivity is strictly maintained here, so the other zoning operations work without having to worry about it
 		{															// as from this point on it's an impossible state to have bits set for the same voxel in more than one zoning type.
 			// clamp to world/minmax coords
-			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+			voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 			uint32_t const zoning(Iso::MASK_ZONING & (zone_type + 1));
 			point2D_t voxelIterate;
@@ -997,10 +1002,10 @@ namespace world
 		void dezoneArea(rect2D_t voxelArea) // area dezones if not built, bulldozing must be done first otherwise. automatic zoning type handling.
 		{
 			// clamp to world/minmax coords
-			voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+			voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 			// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+			voxelArea = r2D_add(voxelArea, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 			point2D_t voxelIterate;
 
@@ -1027,11 +1032,10 @@ namespace world
 	uint32_t const __vectorcall getVoxelHeightAt(point2D_t voxelIndex)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 		// wrap bounds //
-		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 		return(Iso::getHeightStep(voxelIndex));
 	}
@@ -1039,23 +1043,21 @@ namespace world
 	Iso::Voxel const __vectorcall getVoxelAt(point2D_t voxelIndex)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 		// wrap bounds //
-		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
-		return(((StreamingGrid* const)::grid)->getVoxel(voxelIndex));
+		return(((StreamingGrid const* const __restrict)::grid)->getVoxel(voxelIndex));
 	}
 
 	point2D_t const __vectorcall getLocalVoxelIndexAt(point2D_t voxelIndex)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 		// wrap bounds //
-		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 		return(voxelIndex);
 	}
@@ -1068,16 +1070,15 @@ namespace world
 	Iso::Voxel const __vectorcall getVoxelAtLocal(point2D_t voxelIndex)
 	{
 		// wrap bounds //
-		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
-		return(((StreamingGrid* const)::grid)->getVoxel(voxelIndex));
+		return(((StreamingGrid const* const __restrict)::grid)->getVoxel(voxelIndex));
 	}
 
 	uint32_t const getVoxelsAt_AverageHeight(rect2D_t voxelArea)
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -1144,7 +1145,7 @@ namespace world
 	void setVoxelsHeightAt(rect2D_t voxelArea, uint32_t const heightstep)
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -1166,11 +1167,10 @@ namespace world
 	void __vectorcall setVoxelAt(point2D_t voxelIndex, Iso::Voxel const&& __restrict newData)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 		// wrap bounds //
-		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 		// Update Voxel
 		((StreamingGrid* const)::grid)->setVoxel(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(newData));
@@ -1186,17 +1186,16 @@ namespace world
 	void __vectorcall setVoxelAtLocal(point2D_t voxelIndex, Iso::Voxel const&& __restrict newData)
 	{
 		// wrap bounds //
-		voxelIndex.x = voxelIndex.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelIndex.y = voxelIndex.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelIndex = p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 		// Update Voxel
-		((StreamingGrid* const)::grid)->setVoxel(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(newData));
+		((StreamingGrid* const __restrict)::grid)->setVoxel(voxelIndex, std::forward<Iso::Voxel const&& __restrict>(newData));
 	}
 
 	void __vectorcall setVoxelsAt(rect2D_t voxelArea, Iso::Voxel const&& __restrict voxelReference)
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -1219,7 +1218,7 @@ namespace world
 	void __vectorcall setVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash) // static only
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -1351,7 +1350,7 @@ namespace world
 	static void __vectorcall clearVoxelsAt(rect2D_t voxelArea) // resets to "ground only"
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -1379,7 +1378,7 @@ namespace world
 	void __vectorcall resetVoxelsHashAt(rect2D_t voxelArea, uint32_t const hash) // static only
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -1453,17 +1452,13 @@ namespace world
 		}
 	}
 
-	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	point2D_t const getNeighbourLocalVoxelIndex(point2D_t voxelIndex, point2D_t const relativeOffset)
+	// Grid Space (0,0) to (X, Y) Coordinates Only
+	point2D_t const getNeighbourLocalVoxelIndex(point2D_t const voxelIndex, point2D_t const relativeOffset)
 	{
-		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
-
 		point2D_t voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
 
 		// wrap bounds //
-		voxelNeighbour.x = voxelNeighbour.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelNeighbour.y = voxelNeighbour.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelNeighbour = p2D_wrap_pow2(voxelNeighbour, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 		// this function will also return the owning voxel
 		// if zero,zero is passed in for the relative offset
@@ -1474,7 +1469,7 @@ namespace world
 	Iso::Voxel const getNeighbour(point2D_t voxelIndex, point2D_t const relativeOffset)
 	{
 		// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALFSIZE, Iso::WORLD_GRID_HALFSIZE));
+		voxelIndex = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 
 		point2D_t voxelNeighbour(p2D_add(voxelIndex, relativeOffset));
 
@@ -1482,10 +1477,9 @@ namespace world
 		// if zero,zero is passed in for the relative offset
 
 		// wrap bounds //
-		voxelNeighbour.x = voxelNeighbour.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelNeighbour.y = voxelNeighbour.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelNeighbour = p2D_wrap_pow2(voxelNeighbour, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
-		return(((StreamingGrid* const)::grid)->getVoxel(voxelNeighbour));
+		return(((StreamingGrid const* const __restrict)::grid)->getVoxel(voxelNeighbour));
 	}
 	// Grid Space (0,0) to (X, Y) Coordinates Only
 	Iso::Voxel const getNeighbourLocal(point2D_t const voxelIndex, point2D_t const relativeOffset)
@@ -1496,10 +1490,9 @@ namespace world
 		// if zero,zero is passed in for the relative offset
 
 		// wrap bounds //
-		voxelNeighbour.x = voxelNeighbour.x & (Iso::WORLD_GRID_SIZE - 1);
-		voxelNeighbour.y = voxelNeighbour.y & (Iso::WORLD_GRID_SIZE - 1);
+		voxelNeighbour = p2D_wrap_pow2(voxelNeighbour, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
-		return(((StreamingGrid* const)::grid)->getVoxel(voxelNeighbour));
+		return(((StreamingGrid const* const __restrict)::grid)->getVoxel(voxelNeighbour));
 	}
 	
 	static void smoothRow(point2D_t start, int32_t width)  // iterates from start.x to start.x + width (Left 2 Right)
@@ -1582,7 +1575,7 @@ namespace world
 		voxelArea = voxelArea_grow(voxelArea, point2D_t(1,1));
 
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t const width_height(voxelArea.width_height());
 		// Left
@@ -1689,8 +1682,8 @@ namespace world
 			}
 
 			// clamp to world grid
-			selected_area = r2D_min(selected_area, Iso::MAX_VOXEL_COORD);
-			selected_area = r2D_max(selected_area, Iso::MIN_VOXEL_COORD);
+			selected_area = r2D_min(selected_area, point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
+			selected_area = r2D_max(selected_area, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V));
 
 			bInvalidDirection = ((0 == selected_area.width()) | (0 == selected_area.height()));
 
@@ -1747,8 +1740,6 @@ namespace // private to this file (anonymous)
 	{
 		constinit static struct
 		{
-			uint32_t road_tiles_visible = 0;
-
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
 			size_t	numDynamicVoxelsRendered = 0,
@@ -1768,7 +1759,7 @@ namespace // private to this file (anonymous)
 			tbb::cache_aligned_allocator<VoxelLocalBatch>,
 			tbb::ets_key_per_instance >;
 
-		static inline VoxelThreadBatch batchedGround, batchedRoad, batchedRoadTrans;
+		static inline VoxelThreadBatch batchedGround;
 
 
 		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, // voxelIndex is already transformed local
@@ -1794,7 +1785,7 @@ namespace // private to this file (anonymous)
 				groundHash |= (emissive << 8);						// 0000 0001	xxxx xxxx
 				groundHash |= (uint32_t(Iso::Voxel::HeightMap(voxelIndex)) << 12);	// 1111 RRRx	xxxx xxxx
 
-				XMVECTOR xmUVs(XMVectorScale(p2D_to_v2(voxelIndex), Iso::INVERSE_WORLD_GRID_FSIZE));
+				XMVECTOR xmUVs(XMVectorMultiply(p2D_to_v2(voxelIndex), XMVectorSet(Iso::INVERSE_WORLD_GRID_FWIDTH, Iso::INVERSE_WORLD_GRID_FHEIGHT, 0.0f, 0.0f)));
 
 				xmUVs = XMVectorSetW(xmUVs, ((float)color));
 
@@ -1832,7 +1823,7 @@ namespace // private to this file (anonymous)
 
 			if (FoundModelInstance) {
 
-				bool const emission_only(FoundModelInstance->isEmissionOnly());
+				bool const emission_only(FoundModelInstance->isEmissionOnly()); // save to restore value after temp change
 
 				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
 				XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
@@ -1938,8 +1929,6 @@ namespace // private to this file (anonymous)
 
 				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
 
-					static constexpr size_t const WORLD_GRID_SIZE_BITS = size_t(Iso::WORLD_GRID_SIZE_BITS);
-
 					VoxelLocalBatch& __restrict localGround(batchedGround.local());
 
 					int32_t const	// pull out into registers from memory
@@ -1958,10 +1947,11 @@ namespace // private to this file (anonymous)
 							// calculate origin from relative row,col
 							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. don't fuck with the fractional offset, it's not required here
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)))); // make relative to render start position
+
 							bool bRenderVisible(false);
 
 							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
-							point2D_t const voxelIndexWrapped(p2D_wrap_pow2(voxelIndex, Iso::WORLD_GRID_SIZE));
+							point2D_t const voxelIndexWrapped(p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT)));
 
 							Iso::Voxel const oVoxel(streamingGrid->getVoxel(voxelIndexWrapped));
 
@@ -2247,7 +2237,7 @@ namespace world
 #endif
 		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture, TEX_TERRAIN);
 
-		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture2, TEXTURE_DIR "moon_albedo_ao.ktx");
+		MinCity::TextureBoy->LoadKTXTexture(_terrainTexture2, TEXTURE_DIR "moon_albedo_rough_ao.ktx");
 
 		MinCity::TextureBoy->AddTextureToTextureArray(_terrainTexture2, TEX_TERRAIN2);
 
@@ -2306,7 +2296,7 @@ namespace world
 		OutputVoxelStats();
 #endif
 		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(), MinCity::Vulkan->computeQueue(), MinCity::getFramebufferSize(), MinCity::hardware_concurrency());
-		MinCity::PostProcess->create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), MinCity::getFramebufferSize());
+		MinCity::PostProcess->create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), MinCity::getFramebufferSize(), MinCity::Vulkan->isHDR());
 		createAllBuffers(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue());
 		
 		Volumetric::LoadAllVoxelModels();
@@ -2857,11 +2847,6 @@ namespace world
 
 namespace world
 {
-	uint32_t const cVoxelWorld::getRoadVisibleCount() const // *do not call inside of RenderGrid(), state is undefined! Ok for game logic, etc.
-	{
-		return(voxelRender::render_state.road_tiles_visible);
-	}
-
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
 	size_t const cVoxelWorld::numDynamicVoxelsRendered() const
@@ -2894,13 +2879,8 @@ namespace world
 	}
 	rect2D_t const __vectorcall cVoxelWorld::getVisibleGridBoundsClamped() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
-		rect2D_t area(getVisibleGridBounds());
-
 		// clamp to world grid
-		area = r2D_min(area, Iso::MAX_VOXEL_COORD);
-		area = r2D_max(area, Iso::MIN_VOXEL_COORD);
-
-		return(area);
+		return(r2D_clamp(getVisibleGridBounds(), point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V)));
 	}
 	point2D_t const __vectorcall cVoxelWorld::getVisibleGridCenter() const // Grid Space (-x,-y) to (x, y) Coordinates Only
 	{
@@ -3618,7 +3598,7 @@ namespace world
 				xmVoxelIndex = XMVectorScale(xmVoxelIndex, INV_MAX_VALUE);
 
 				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
-				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set1_ps(Iso::WORLD_GRID_FSIZE), _mm_set1_ps(Iso::WORLD_GRID_FHALFSIZE));
+				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set_ps(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 0.0f, 0.0f), _mm_set_ps(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
 
 				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
@@ -3632,7 +3612,7 @@ namespace world
 				xmVoxelIndex = XMVectorScale(xmVoxelIndex, INV_MAX_VALUE);
 
 				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
-				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set1_ps(Iso::WORLD_GRID_FSIZE), _mm_set1_ps(Iso::WORLD_GRID_FHALFSIZE));
+				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set_ps(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 0.0f, 0.0f), _mm_set_ps(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
 
 				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
@@ -3690,7 +3670,7 @@ namespace world
 	void __vectorcall cVoxelWorld::UpdateUniformState(float const tRemainder)  // interpolated sub frame state also containing anything that needs to be updated every frame
 	{
 		static constexpr float const MAX_DELTA = time_to_float(duration_cast<fp_seconds>(fixed_delta_x2_duration)),		// 66ms
-									 MIN_DELTA = MAX_DELTA * 0.125;														// 8ms
+									 MIN_DELTA = MAX_DELTA * 0.125f;														// 8ms
 		constinit static float time_last(0.0f), // last interpolated time
 							   time_delta_last(0.0f); // last interpolated time delta
 
@@ -3709,14 +3689,16 @@ namespace world
 
 		// view matrix derived from eyePos
 		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
+		float const camera_elevation_delta = XMVectorGetW(xmEyePos);
+		XMVECTOR const xmLookAt = XMVectorSet(0.0f, camera_elevation_delta, 0.0f, 0.0f);
 
 		// In the ening these must be w/o fractional offset - no jitter on lighting and everything else that uses these uniform variables (normal usage via uniform buffer in shader)
 		_currentState.Uniform.eyePos = xmEyePos;
-		_currentState.Uniform.eyeDir = XMVector3Normalize(_currentState.Uniform.eyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(_currentState.Uniform.eyePos, xmLookAt)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
-		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, xmLookAt, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		// *bugfix - ***do not change***
 		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
@@ -3733,7 +3715,7 @@ namespace world
 																										// from there base components
 
 		// should be done last
-		Interpolator.interpolate(0.5f);
+		Interpolator.interpolate(0.5f * Globals::INTERPOLATION_TIME_SCALAR); // *bugfix - using tRemainder here is unstable - motion jitters or oscilates... 0.5f is where time ticks normally in regards to the interpolation of motion between frames, slow-motion is possible with small values (time scalar)
 
 	}
 	void __vectorcall cVoxelWorld::UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate) // fixed timestep state
@@ -3741,11 +3723,15 @@ namespace world
 		_lastState = _targetState;
 
 		_targetState.time = time_to_float(fp_seconds(tNow - tStart));
+		// important - negation for -Y is up in Vulkan *here*
+		float const camera_elevation_delta = -XMVectorGetY(XMLoadFloat3A((XMFLOAT3A const* const)&oCamera.Origin));
 
 		// "XMMatrixInverse" found to be imprecise for acquiring vector components (forward, direction)
 		// using original values instead (-----precise))
-		_targetState.Uniform.eyePos = v3_rotate_yaw(XMVectorAdd(Iso::xmEyePt_Iso, getFractionalOffset()), oCamera.Yaw); // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (Yaw) - don't fuck with the fractional offset, it *is* required here.
-																																// this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
+		_targetState.Uniform.eyePos = XMVectorSetW(v3_rotate_yaw(XMVectorAdd(XMVectorAdd(Iso::xmEyePt_Iso, XMVectorSet(0.0f, camera_elevation_delta, 0.0f, 0.0f)),
+			                                                                 getFractionalOffset()), oCamera.Yaw),
+			                                       camera_elevation_delta); // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (Yaw) - don't fuck with the fractional offset, it *is* required here.
+																			// this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
 		_targetState.zoom = oCamera.ZoomFactor;
 		
 		// move state to last target
@@ -3799,7 +3785,7 @@ namespace world
 		tTime const tStart(start());
 
 		// ***** Anything that will affect uniform state BEFORE
-		/*XMVECTOR const xmOrigin =*/ UpdateCamera(tNow, tDelta);
+		UpdateCamera(tNow, tDelta);
 
 		//###########################################################//
 		UpdateUniformStateTarget(tNow, tStart, bJustLoaded);
@@ -3943,15 +3929,12 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size
 		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)(Volumetric::voxelOpacity::getLightSize())));   // should be 1.0 / light volume size
 
-		// world grid dimensions //
-		constants.emplace_back(vku::SpecializationConstant(9, (float)(Iso::WORLD_GRID_FSIZE)));
-
 		// For depth reconstruction from hardware depth buffer
 		// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 		constexpr double ZFar = Globals::MAXZ_DEPTH;
 		constexpr double ZNear = Globals::MINZ_DEPTH * Iso::VOX_MINZ_SCALAR;
-		constants.emplace_back(vku::SpecializationConstant(10, (float)ZFar)); 
-		constants.emplace_back(vku::SpecializationConstant(11, (float)ZNear));
+		constants.emplace_back(vku::SpecializationConstant(9, (float)ZFar)); 
+		constants.emplace_back(vku::SpecializationConstant(10, (float)ZNear));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Nuklear_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4044,7 +4027,7 @@ namespace world
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE * MINIVOXEL_FACTORF); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(8, (int)MINIVOXEL_FACTOR));	
@@ -4057,7 +4040,7 @@ namespace world
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE * MINIVOXEL_FACTORF); // virtual scale of terrain needs scaling for rendering to extend to volume size visually
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
@@ -4194,14 +4177,10 @@ namespace world
 		dsu.beginImages(4U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(4U, 2, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Reflection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(4U, 3, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearClamp, _spaceCubemapTexture->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
+		dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
 		dsu.image(nullptr, halfreflectionImageView, vk::ImageLayout::eGeneral);
-		dsu.beginImages(6U, 1, vk::DescriptorType::eStorageImage);
+		dsu.beginImages(5U, 1, vk::DescriptorType::eStorageImage);
 		dsu.image(nullptr, halfvolumetricImageView, vk::ImageLayout::eGeneral);
 		
 #ifdef DEBUG_VOLUMETRIC
@@ -4284,8 +4263,6 @@ namespace world
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 2, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(4U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
@@ -4315,6 +4292,9 @@ namespace world
 
 		dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerAnisoRepeat, _terrainDetail->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerAnisoRepeat, _spaceCubemapTexture->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
 	void cVoxelWorld::UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_LINEAR)
 	{
@@ -4365,7 +4345,7 @@ namespace world
 	uint32_t const cVoxelWorld::hasVoxelModelInstanceAt(rect2D_t voxelArea, int32_t const modelGroup, uint32_t const modelIndex) const
 	{
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -4451,7 +4431,7 @@ namespace world
 		bool bExisting(false);
 
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());
@@ -4534,7 +4514,7 @@ namespace world
 		bool bExisting(false);
 
 		// clamp to world/minmax coords
-		voxelArea = r2D_clamp(voxelArea, Iso::MIN_VOXEL_COORD, Iso::MAX_VOXEL_COORD);
+		voxelArea = r2D_clamp(voxelArea, point2D_t(Iso::MIN_VOXEL_COORD_U, Iso::MIN_VOXEL_COORD_V), point2D_t(Iso::MAX_VOXEL_COORD_U, Iso::MAX_VOXEL_COORD_V));
 
 		point2D_t voxelIterate(voxelArea.left_top());
 		point2D_t const voxelEnd(voxelArea.right_bottom());

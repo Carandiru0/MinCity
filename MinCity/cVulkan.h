@@ -976,7 +976,7 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 
 	uint32_t ActiveMaskCount(0);
 
-	/*if (0 != s.resource_index) //// WHY alternate from ZONLY to MOUSE frame by frame? Is this required for mouse input?
+	if (0 != s.resource_index) //// alternate from ZONLY to MOUSE frame by frame Is required for mouse input!
 	{
 		// static voxels //
 		renderStaticVoxels<ZONLY>(s);
@@ -984,14 +984,14 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 		// dynamic voxels //
 		ActiveMaskCount = renderDynamicVoxels<ZONLY, numChildMasks>(s, deferredChildMasks);
 	}
-	else {*/
+	else {
 
 		// static voxels //
 		renderStaticVoxels<MOUSE>(s);
 		
 		// dynamic voxels //
 		ActiveMaskCount = renderDynamicVoxels<MOUSE, numChildMasks>(s, deferredChildMasks);
-	//}
+	}
 
 	return(ActiveMaskCount);
 }

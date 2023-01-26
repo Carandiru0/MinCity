@@ -291,7 +291,6 @@ void cVulkan::CreateComputeResources()
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
 			dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
-			dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 8bpc output (reflection color)
 			
 			_comData.light.descLayout = dslm.createUnique(_device);
 		}
@@ -413,13 +412,21 @@ void cVulkan::CreateVolumetricResources()
 	MinCity::VoxelWorld->SetSpecializationConstants_VolumetricLight_VS(constantsVS);
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "volumetric.vert.bin", constantsVS };
 
+	std::wstring szShaderFilenamePath(SHADER_BINARY_DIR);
+	{
+		std::wstring const szHDR((isHDR() ? L".hdr" : L""));
+	
+		szShaderFilenamePath += L"volumetric";
+		szShaderFilenamePath += szHDR;
+		szShaderFilenamePath += L".frag.bin";
+	}
 	MinCity::VoxelWorld->SetSpecializationConstants_VolumetricLight_FS(constantsFS);
-	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "volumetric.frag.bin", constantsFS };
+	vku::ShaderModule const frag_{ _device, szShaderFilenamePath, constantsFS };
 
 	// Build a template for descriptor sets that use these shaders.
 	auto const samplers{ getSamplerArray
 			<eSamplerAddressing::CLAMP>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
 			)
 	};
 	vku::DescriptorSetLayoutMaker	dslm;
@@ -427,9 +434,8 @@ void cVulkan::CreateVolumetricResources()
 	dslm.image(1U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);  // half-res depth
 	dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getNearestSampler<eSamplerAddressing::REPEAT>());  // blue noise
 	dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());  // view space normals	
-	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 4, samplers);  // lightmap volume textures (distance & direction), (color) + opacity volume texture
-	dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());  // reflection cube map
-	dslm.image(6U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
+	dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 3, samplers);  // lightmap volume textures (distance & direction), (light color) + (opacity) volume texture
+	dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eFragment, 2); // writeonly bounce light (reflection), volumetrics output
 #ifdef DEBUG_VOLUMETRIC
 	dslm.buffer(10U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 #endif	
@@ -453,7 +459,6 @@ void cVulkan::CreateVolumetricResources()
 
 	_volData.pipelineLayout = plm.createUnique(_device);
 
-	// todo:  Unit Cube static vbo & ibo here
 	// Setup vertices indices for a cube
 	{
 		VertexDecl::just_position const vertices[] = {
@@ -863,6 +868,9 @@ void cVulkan::CreatePostAAResources()
 		_aaData.pipelineLayout[sPOSTAADATA::eStage::Final] = plm.createUnique(_device);
 	}
 	
+	std::wstring const szHDR((isHDR() ? L".hdr" : L""));
+	std::wstring szShaderFilenamePath(L"");
+
 	std::vector< vku::SpecializationConstant > constants;
 
 	// Create two unique shaders per pass, vertex and fragment. 
@@ -881,8 +889,14 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaatmp.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
+		{
+			szShaderFilenamePath = SHADER_BINARY_DIR;
+			szShaderFilenamePath += L"postaatmp";
+			szShaderFilenamePath += szHDR;
+			szShaderFilenamePath += L".frag.bin";
+		}
+		vku::ShaderModule const frag_{ _device, szShaderFilenamePath, constants };
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
@@ -900,8 +914,14 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp0.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
+		{
+			szShaderFilenamePath = SHADER_BINARY_DIR;
+			szShaderFilenamePath += L"postaapp0";
+			szShaderFilenamePath += szHDR;
+			szShaderFilenamePath += L".frag.bin";
+		}
+		vku::ShaderModule const frag_{ _device, szShaderFilenamePath, constants };
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
@@ -919,8 +939,14 @@ void cVulkan::CreatePostAAResources()
 		pm.frontFace(vk::FrontFace::eClockwise);
 		pm.subPass(0);
 
-		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "postaapp1.frag.bin", constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vertcommon_);
+		{
+			szShaderFilenamePath = SHADER_BINARY_DIR;
+			szShaderFilenamePath += L"postaapp1";
+			szShaderFilenamePath += szHDR;
+			szShaderFilenamePath += L".frag.bin";
+		}
+		vku::ShaderModule const frag_{ _device, szShaderFilenamePath, constants };
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
@@ -950,16 +976,15 @@ void cVulkan::CreatePostAAResources()
 		pm.blendBegin(VK_FALSE);
 		pm.blendBegin(VK_FALSE);
 		
-		std::wstring szFragShader;
-		if (isHDR()) { // select shader
-			szFragShader = SHADER_BINARY_DIR "postaapp2_hdr.frag.bin";
-		}
-		else {
-			szFragShader = SHADER_BINARY_DIR "postaapp2.frag.bin";
-		}
 		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquadpp2.vert.bin" };
-		vku::ShaderModule const frag_{ _device, szFragShader, constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
+		{
+			szShaderFilenamePath = SHADER_BINARY_DIR;
+			szShaderFilenamePath += L"postaapp2";
+			szShaderFilenamePath += szHDR;
+			szShaderFilenamePath += L".frag.bin";
+		}
+		vku::ShaderModule const frag_{ _device, szShaderFilenamePath, constants };
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		// Create a pipeline using a renderPass
@@ -976,16 +1001,15 @@ void cVulkan::CreatePostAAResources()
 		pm.cullMode(vk::CullModeFlagBits::eBack);
 		pm.frontFace(vk::FrontFace::eClockwise);
 		
-		std::wstring szFragShader;
-		if (isHDR()) { // select shader
-			szFragShader = SHADER_BINARY_DIR "postaaoverlay_hdr.frag.bin";
-		}
-		else {
-			szFragShader = SHADER_BINARY_DIR "postaaoverlay.frag.bin";
-		}
 		vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_overlay.vert.bin" };
-		vku::ShaderModule const frag_{ _device, szFragShader, constants };
 		pm.shader(vk::ShaderStageFlagBits::eVertex, vert_);
+		{
+			szShaderFilenamePath = SHADER_BINARY_DIR;
+			szShaderFilenamePath += L"postaaoverlay";
+			szShaderFilenamePath += szHDR;
+			szShaderFilenamePath += L".frag.bin";
+		}
+		vku::ShaderModule const frag_{ _device, szShaderFilenamePath, constants };
 		pm.shader(vk::ShaderStageFlagBits::eFragment, frag_);
 
 		pm.blendBegin(VK_TRUE);
@@ -1252,11 +1276,12 @@ void cVulkan::CreateSharedVoxelResources()
 		vku::DescriptorSetLayoutMaker	dslm;
 		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eGeometry, 1);
 		dslm.buffer(1U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex, 1);
-		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 3, samplers_common);							               // 3d textures (light & opacity)
+		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers_common);							               // 3d textures (direction/distance & light color)
 		dslm.image(4U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);											                   // 2d texture(ambient light reflection)
 		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, TEXTURE_ARRAY_LENGTH, samplers_tex_array);			       // 2d texture array
 		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &samplers_common[0]);					                   // 2d texture (last color backbuffer) - transparent voxels only
 		dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getAnisotropicSampler<eSamplerAddressing::REPEAT>());	   // 3d texture (terrain detail & derivative maps) - terrain voxels only
+		dslm.image(8U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());          // reflection cube map
 		_rtSharedData.descLayout[eVoxelDescSharedLayout::VOXEL_COMMON] = dslm.createUnique(_device);
 	}
 
@@ -2110,8 +2135,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 		{ // [acquire image barrier]
 			using afb = vk::AccessFlagBits;
 
-			static constexpr size_t const image_count(3ULL); // batched
-			std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color, volume_set.LightMap->Reflection };
+			static constexpr size_t const image_count(2ULL); // batched
+			std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color };
 			std::array<vk::ImageMemoryBarrier, image_count> imbs{};
 
 			for (uint32_t i = 0; i < image_count; ++i) {
@@ -2137,7 +2162,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // *bugfix for tricky validation error
 		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
-		volume_set.LightMap->Reflection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
 
 	UpdateIndirectActiveCountBuffer(s.cb, resource_index); // indirect draw active counts are transferred here, they are then only used by the clear opacity map operation in the final pass / present.

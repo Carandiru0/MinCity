@@ -20,7 +20,9 @@ class no_vtable cTextureBoy : no_copy
 {
 	static constexpr uint32_t const NOISE_TEXTURE_SIZE = 128; // should be a power of 2
 private:
-	template<typename T, uint32_t const version = 1>
+	template<typename T, uint32_t const version>
+	void LoadKTXTexture(T*& __restrict texture, KTXFileLayout<version> const& __restrict ktxFile, uint8_t const* const __restrict pReadPointer);
+	template<typename T>
 	bool const LoadKTXTexture(T*& __restrict texture, std::wstring_view const path);
 public:
 	// ######################################################################################
@@ -43,11 +45,7 @@ public:
 	bool const LoadKTXTexture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path);
 	bool const LoadKTXTexture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path);
-	bool const LoadKTX2Texture(vku::TextureImageCube*& __restrict texture, std::wstring_view const path);
-	bool const LoadKTX2Texture(vku::TextureImage3D*& __restrict texture, std::wstring_view const path);
-	bool const LoadKTX2Texture(vku::TextureImage2D*& __restrict texture, std::wstring_view const path);
-	bool const LoadKTX2Texture(vku::TextureImage2DArray*& __restrict texture, std::wstring_view const path);
-
+	
 	// simplest way to create a blank placeholder texture is to leverage the ImagingToTexture functions, with image initialized to blank memory
 
 	// all of the ImagingToTexture functions are 
@@ -418,65 +416,224 @@ __inline void cTextureBoy::ImagingToTexture(ImagingLUT const* const image, vku::
 }
 
 template<typename T, uint32_t const version>
+void cTextureBoy::LoadKTXTexture(T*& __restrict texture, KTXFileLayout<version> const& __restrict ktxFile, uint8_t const* const __restrict pReadPointer)
+{
+	vk::CommandPool const* __restrict commandPool(&transientPool());
+	vk::Queue const* __restrict queue(&graphicsQueue());
+
+	static constexpr uint32_t const promote_rgb8(1), promote_rgb16(2);
+	vk::Format format(vk::Format(ktxFile.vkformat())); // this is a stupid cast required to construct
+	uint32_t bPromoteRGB(0);
+
+	// *bugfix - handle files with only 3 components instead of 4
+	switch (format) // promote format for texture image.
+	{
+	case vk::Format::eR8G8B8Unorm:
+		format = vk::Format::eR8G8B8A8Unorm;
+		bPromoteRGB = promote_rgb8;
+		break;
+	case vk::Format::eR8G8B8Srgb:
+		format = vk::Format::eR8G8B8A8Srgb;
+		bPromoteRGB = promote_rgb8;
+		break;
+	case vk::Format::eB8G8R8Unorm:
+		format = vk::Format::eB8G8R8A8Unorm;
+		bPromoteRGB = promote_rgb8;
+		break;
+	case vk::Format::eB8G8R8Srgb:
+		format = vk::Format::eB8G8R8A8Srgb;
+		bPromoteRGB = promote_rgb8;
+		break;
+	case vk::Format::eR16G16B16Unorm:
+		format = vk::Format::eR16G16B16A16Unorm;
+		bPromoteRGB = promote_rgb16;
+		break;
+	case vk::Format::eR16G16B16Snorm:
+		format = vk::Format::eR16G16B16A16Snorm;
+		bPromoteRGB = promote_rgb16;
+		break;
+	default:
+		break;
+	}
+
+	// 3D
+	if constexpr (std::is_same<T, vku::TextureImage3D>::value) {
+		uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0)), depth(ktxFile.depth(0));
+
+		if ((0 == width % 8) && (0 == height % 8) && (0 == depth % 8)) {
+			commandPool = &dmaTransferPool();
+			queue = &transferQueue();
+		}
+		texture = new T(_device, width, height, depth, ktxFile.mipLevels(), format);
+	}
+	else { // 2D
+		uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0));
+
+		if ((0 == width % 8) && (0 == height % 8)) {
+			commandPool = &dmaTransferPool();
+			queue = &transferQueue();
+		}
+
+		if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
+			texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.mipLevels(), format);
+		}
+		else { // vku::TextureImage2D or vku::TextureImageCube
+			texture = new T(_device, width, height, ktxFile.mipLevels(), format);
+		}
+	}
+
+	if (texture) {
+
+		// upload to gpu
+		uint32_t totalActualSize(0);
+
+		for (auto const& size : ktxFile.sizes()) {
+			totalActualSize += size;
+		}
+
+		if (0 == totalActualSize)
+			return;
+
+		auto const bp = vku::getBlockParams(format); // *bugfix - override required for proper final format in RGB --> BGRA promotion
+
+		// bugfix: sometimes the image size is greater than the actual binary size of the data, due to an "upgrade" in alignment
+		// so source buffer must have the same size as the image being copied too. The copy into the source buffer only copies the actual size of data,
+		// with the rest being zeroed out.
+		vk::DeviceSize const alignedSize((uint64_t)SFM::roundToMultipleOf<true>((int64_t)texture->size(), (int64_t)bp.bytesPerBlock));
+
+		vku::GenericBuffer stagingBuffer((vk::BufferUsageFlags)vk::BufferUsageFlagBits::eTransferSrc, alignedSize, vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, vku::eMappedAccess::Sequential);
+
+		uint32_t const baseOffset(ktxFile.offset(0, 0, 0));
+
+		if (!bPromoteRGB) {
+			// now loading file data to stagingbuffer
+			stagingBuffer.updateLocal(pReadPointer + baseOffset, totalActualSize);
+		}
+		else { // promote RGB data (pReadPointer) to BGRA (stagingBuffer)
+
+			// lock, clear, convert, copy, unlock, flush the output staging buffer
+			uint8_t* const __restrict ptr(static_cast<uint8_t* const __restrict>(stagingBuffer.map()));
+
+			memset(ptr, 0, (size_t)stagingBuffer.maxsizebytes());
+
+			uint32_t image_output_offset(0);
+
+			for (uint32_t mipLevel = 0; mipLevel != ktxFile.mipLevels(); ++mipLevel) {
+				auto const width = ktxFile.width(mipLevel);
+				auto const height = ktxFile.height(mipLevel);
+
+				uint32_t layer_output_size(ktxFile.layer_size(mipLevel));
+				layer_output_size += layer_output_size / 3 + layer_output_size % 3; // add alpha component (exact) for every pixel in layer
+
+				for (uint32_t layer = 0; layer != ktxFile.arrayLayers(); ++layer) {
+
+					if (promote_rgb16 == bPromoteRGB) {
+						ImagingFastRGB16TOBGRX16(reinterpret_cast<uint16_t* const __restrict>(ptr + image_output_offset),
+							                     reinterpret_cast<uint16_t const* const __restrict>(pReadPointer + (ktxFile.offset(mipLevel, layer, 0))), width, height);
+					}
+					else { // promote_rgb8
+						ImagingFastRGBTOBGRX(ptr + image_output_offset,
+							                 pReadPointer + (ktxFile.offset(mipLevel, layer, 0)), width, height);
+					}
+
+					image_output_offset += layer_output_size;
+
+					// reference:
+					//texture->copy(cb, buf, mipLevel, layer, width, height, depth, (uint64_t)SFM::roundToMultipleOf<true>((int64_t)(ktxFile.offset(mipLevel, layer, 0) - baseOffset), (int64_t)bp.bytesPerBlock));
+				}
+			}
+			stagingBuffer.unmap();
+			stagingBuffer.flush(stagingBuffer.maxsizebytes());
+		}
+		// now loading stagingbuffer to image
+
+		// Copy the staging buffer to the GPU texture and set the layout.
+		vku::executeImmediately<false>(_device, *commandPool, *queue, [&](vk::CommandBuffer cb) {
+			vk::Buffer buf = stagingBuffer.buffer();
+			for (uint32_t mipLevel = 0; mipLevel != ktxFile.mipLevels(); ++mipLevel) {
+				auto const width = ktxFile.width(mipLevel);
+				auto const height = ktxFile.height(mipLevel);
+				auto const depth = ktxFile.depth(mipLevel);
+				for (uint32_t layer = 0; layer != ktxFile.arrayLayers(); ++layer) {
+					texture->copy(cb, buf, mipLevel, layer, width, height, depth, (uint64_t)SFM::roundToMultipleOf<true>((int64_t)(ktxFile.offset(mipLevel, layer, 0) - baseOffset), (int64_t)bp.bytesPerBlock));
+				}
+			}
+		});
+
+		// finalize texture
+		vku::executeImmediately(_device, transientPool(), graphicsQueue(), [&](vk::CommandBuffer cb) { // must be graphics queue for shaderreadonly to be set
+
+			texture->setLayout(cb, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+		});
+	}
+}
+template<typename T>
 bool const cTextureBoy::LoadKTXTexture(T*& __restrict texture, std::wstring_view const path)
 {
-	std::error_code error{};
+	static constexpr wchar_t const* const EXTENSION_KTX1 = L".ktx";
+	static constexpr wchar_t const* const EXTENSION_KTX2 = L".ktx2";
 
-	mio::mmap_source mmap = mio::make_mmap_source(path, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error);
-	if (!error) {
+	std::filesystem::path const filename(path);
 
-		if (mmap.is_open() && mmap.is_mapped()) {
-			___prefetch_vmem(mmap.data(), mmap.size());
+	uint32_t version(0);
 
-			uint8_t const* const pReadPointer((uint8_t*)mmap.data());
+	if (std::filesystem::exists(filename)) {
 
-			vku::KTXFileLayout<version> const ktxFile(pReadPointer, pReadPointer + mmap.length());
+		if (filename.extension() == EXTENSION_KTX1) {
+			version = KTX_VERSION::KTX1;
+		}
+		else if (filename.extension() == EXTENSION_KTX2) {
+			version = KTX_VERSION::KTX2;
+		}
+	}
+	else {
+		FMT_LOG_FAIL(TEX_LOG, "KTX file  {:s}  does not exist", stringconv::ws2s(path));
+		return(false);
+	}
 
-			if (ktxFile.ok()) {
+	if (0 != version) {
+		std::error_code error{};
 
-				vk::CommandPool const* __restrict commandPool(&transientPool());
-				vk::Queue const* __restrict queue(&graphicsQueue());
+		mio::mmap_source mmap = mio::make_mmap_source(path, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error);
+		if (!error) {
 
-				// 3D
-				if constexpr (std::is_same<T, vku::TextureImage3D>::value) {
-					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0)), depth(ktxFile.depth(0));
+			if (mmap.is_open() && mmap.is_mapped()) {
+				___prefetch_vmem(mmap.data(), mmap.size());
 
-					if ((0 == width % 8) && (0 == height % 8) && (0 == depth % 8)) {
-						commandPool = &dmaTransferPool();
-						queue = &transferQueue();
+				uint8_t const* const pReadPointer((uint8_t*)mmap.data());
+
+				if (KTX_VERSION::KTX1 == version) {
+					KTXFileLayout<KTX_VERSION::KTX1> const ktxFile(pReadPointer, pReadPointer + mmap.length());
+
+					if (ktxFile.ok()) {
+
+						LoadKTXTexture<T, KTX_VERSION::KTX1>(texture, ktxFile, pReadPointer);
+						FMT_LOG_OK(TEX_LOG, "loaded KTX texture [{:s}] {:s}", vk::to_string(vk::Format(ktxFile.vkformat())), stringconv::ws2s(path));
+						return(true);
 					}
-					texture = new T(_device, width, height, depth, ktxFile.mipLevels(), ktxFile.format());
 				}
-				else { // 2D
-					uint32_t const width(ktxFile.width(0)), height(ktxFile.height(0));
-					
-					if ((0 == width % 8) && (0 == height % 8)) {
-						commandPool = &dmaTransferPool();
-						queue = &transferQueue();
-					}
-					
-					if constexpr (std::is_same<T, vku::TextureImage2DArray>::value) {
-						texture = new T(_device, width, height, ktxFile.arrayLayers(), ktxFile.mipLevels(), ktxFile.format());
-					}
-					else { // vku::TextureImage2D or vku::TextureImageCube
-						texture = new T(_device, width, height, ktxFile.mipLevels(), ktxFile.format());
-					}
-				}
-				// must use the upload in KTXFile
-				ktxFile.upload(_device, *texture, pReadPointer, *commandPool, *queue);
-				ktxFile.finalizeUpload(_device, *texture, transientPool(), graphicsQueue()); // must be graphics queue for shaderreadonly to be set
+				else {
+					KTXFileLayout<KTX_VERSION::KTX2> const ktx2File(pReadPointer, pReadPointer + mmap.length());
 
-				FMT_LOG_OK(TEX_LOG, "loaded KTX texture [{:s}] {:s}", vk::to_string(ktxFile.format()), stringconv::ws2s(path));
-				return(true);
+					if (ktx2File.ok()) {
+
+						LoadKTXTexture<T, KTX_VERSION::KTX2>(texture, ktx2File, pReadPointer);
+						FMT_LOG_OK(TEX_LOG, "loaded KTX texture [{:s}] {:s}", vk::to_string(vk::Format(ktx2File.vkformat())), stringconv::ws2s(path));
+						return(true);
+					}
+					else
+						FMT_LOG_FAIL(TEX_LOG, "unable to parse KTX file: {:s}", stringconv::ws2s(path));
+				}
 			}
 			else
-				FMT_LOG_FAIL(TEX_LOG, "unable to parse KTX file: {:s}", stringconv::ws2s(path));
+				FMT_LOG_FAIL(TEX_LOG, "unable to open or mmap KTX file: {:s}", stringconv::ws2s(path));
 		}
 		else
-			FMT_LOG_FAIL(TEX_LOG, "unable to open or mmap KTX file: {:s}", stringconv::ws2s(path));
+			FMT_LOG_FAIL(TEX_LOG, "unable to open KTX file: {:s}", stringconv::ws2s(path));
 	}
 	else
-		FMT_LOG_FAIL(TEX_LOG, "unable to open KTX file: {:s}", stringconv::ws2s(path));
+		FMT_LOG_FAIL(TEX_LOG, "unable to version KTX file: {:s}", stringconv::ws2s(path));
 
 	return(false);
 }

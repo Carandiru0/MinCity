@@ -21,9 +21,11 @@ void main() {
  			
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 
-	precise vec3 volume_translation = vec3(WorldDimensions * 0.5f, WorldDimensions, WorldDimensions * 0.5f);
+	//precise vec3 volume_translation = vec3(WorldDimensions * 0.5f, WorldDimensions, WorldDimensions * 0.5f);
+	//volume_translation = (-0.5f - (volume_translation - inPos.xyz)) + vec3(-0.25f,-0.25f,0.25f); // this perfectly aligns the center of the volume *do not change* *verified*
 
-	volume_translation = (-0.5f - (volume_translation - inPos.xyz)) + vec3(-0.25f,-0.25f,0.25f); // this perfectly aligns the center of the volume *do not change* *verified*
+	precise vec3 volume_translation = 0.5f - (WorldDimensions.xxx * 0.5f);
+	volume_translation.y += WorldDimensions * -0.5f;
 
 	precise vec3 position = 0.5f * fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
@@ -31,9 +33,12 @@ void main() {
 	gl_Position = u._viewproj * vec4(position, 1.0f);
 
 	// Compute eye position and ray directions in the unit cube space
-	
-	precise const vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*
-	Out.rd.xzy = normalize(inPos.xyz - eyePos); // should be renormalized in fragment shader
+	precise vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*
+	precise float cameraHeight = u._eyePos.w / WorldDimensions;
+
+	precise vec3 lookAt = mix(/*vec3(0) +*/inPos.xyz, vec3(0.0f, -cameraHeight, 0.0f) + inPos.xyz, abs(cameraHeight));
+
+	Out.rd.xzy = normalize(lookAt - eyePos); // should be renormalized in fragment shader
 	Out.eyePos.xzy = eyePos;
 
 	// fragment shaders always sample with height being z component

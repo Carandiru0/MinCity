@@ -757,6 +757,7 @@ void cMinCity::UpdateWorld()
 	}
 	
 	// fractional amount for render path (uniform shader variables)
+	tAccumulate = std::max(zero_time_duration, tAccumulate); // *bugfix - ensure no negative values
 	VoxelWorld->UpdateUniformState(time_to_float(fp_seconds(tAccumulate) / fp_seconds(critical_delta()))); // always update everyframe - this is exploited between successive renders with no update() in between (when tAccumulate < delta() or bFirstUpdate is true)
 
 	// *fifth*
@@ -1158,7 +1159,7 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					--logical_processor_count_used;
 				}
 
-				// any new threads are limited to remaining hw cores not the same as the main thread, and if hyperthreading in on - limited to the actual hw cores first thread/logical core.
+				// any new threads are limited to remaining hw cores not the same as the main thread
 				if (logical_processors.size() > 1) {
 					SetProcessDefaultCpuSets(hProcess, logical_processors.data(), (unsigned long)logical_processors.size());
 				}
@@ -1184,7 +1185,8 @@ __declspec(noinline) int32_t const cMinCity::SetupEnvironment() // main thread a
 					async_threads_started = async_long_task::initialize(cores, ASYNC_THREAD_STACK_SIZE);
 				}
 
-				// no more limiting needed. Locking to hw cores only results in worse performance.
+				// - no more limiting needed. Locking to hw cores only results in worse performance.  
+				// - Turning off Hyperthreading in bios, yields no thread convoying and greatly decreased cache thrashing. performmance is observed to be the same, or slightly faster with HT on, go figure....
 			}
 		}
 	}
@@ -1243,7 +1245,7 @@ cVulkan const& cMinCity::Priv_Vulkan() { return(_.Vulkan); }
 
 // *********************************************************************************************************************************************************************************************************************************************************************** //
 
-extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, uint32_t const thread_count = -1, uint32_t const thread_stack_size = 0);  // external forward decl
+extern __declspec(noinline) void global_init_tbb_floating_point_env(tbb::task_scheduler_init*& TASK_INIT, uint32_t const thread_stack_size = 0);  // external forward decl
 __declspec(noinline) void cMinCity::CriticalInit()
 {
 #ifdef SECURE_DYNAMIC_CODE_NOT_ALLOWED
@@ -1295,7 +1297,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 		m_hwCoreCount = std::max(m_hwCoreCount, (size_t)std::thread::hardware_concurrency()); // can return 0 on failure, so keep the highest core count. default of 1 is set for m_hwCoreCount.
 	}
 
-	global_init_tbb_floating_point_env(TASK_INIT, m_hwCoreCount, Globals::DEFAULT_STACK_SIZE);
+	global_init_tbb_floating_point_env(TASK_INIT, Globals::DEFAULT_STACK_SIZE);
 
 #if !defined(NDEBUG) || defined(DEBUG_CONSOLE)
 	RedirectIOToConsole();	// always on in debug builds, conditionally on in release builds with DEBUG_CONSOLE

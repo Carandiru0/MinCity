@@ -55,7 +55,7 @@ layout (binding = 3) uniform sampler2D fullMap[2]; // full resolution checkered 
 
 float fetch_bluenoise_scaled(in const vec2 uv, in const float slice)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, slice), 0).r * 0.5f); // better to use textureLod, point/nearest sampling
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling *bugfix - really needs tooo be scaled * 0.5f + 0.5f, otherwise checkerboard reconstruction partially fails *do not change*
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv, in const float scaled_bluenoise )
@@ -74,7 +74,7 @@ vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv,
 
 	return(color);
 }
-
+/* reconstruct is sharper
 // full optimal gaussian offsets & kernel for denoise
 const vec2 offset[25] = vec2[25](
 	vec2(-1,-1),
@@ -183,7 +183,7 @@ vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_cu
 	const float p = exp(-d); 
 
 	return mix(sf0/wf, sf1/wf, p);
-}
+}*/
 
 void main() {
 	
@@ -283,17 +283,13 @@ void main() {
 		{
 			const float inv_weight = 1.0f / (depthWeights.x + depthWeights.y + depthWeights.z + depthWeights.w);
 
-			// sampling alpha channel with jittered (blue noise) offset - 4 samples in textureGather - close to super sampling convolution
-			// this eliminates the disconuitity of the edges not matching geometry (difference between volumetric opacity and actual opacity derived from depth buffer)
-			// good quality removing the artifact with negilble visible noise
-			// this results in superior bilateral filtering
-			const vec2 jittered_uv = (In.uv * ScreenResDimensions + fetch_bluenoise_scaled(In.uv)) * InvScreenResDimensions;
+			// *bugfix - jittering uv results in larger more blocky voxels being masked into the volumetrics, looks like shit - lower resolution
 
 			// accumulate alpha weighted by corresponding depth weight
-			alphaSumV = dot(textureGather(volumetricMap, jittered_uv, 3), depthWeights); // use texture gather for alpha for best result here
+			alphaSumV = dot(textureGather(volumetricMap, In.uv, 3), depthWeights); // use texture gather for alpha for best result here
 			alphaSumV *= inv_weight;	// average final alpha
 
-			const vec4 alphaSamplesR = textureGather(reflectionMap, jittered_uv, 3);
+			const vec4 alphaSamplesR = textureGather(reflectionMap, In.uv, 3);
 			alphaSumR_Blur = dot(1.0f - alphaSamplesR, depthWeights);
 			alphaSumR_Blur *= inv_weight;	// average final alpha
 			alphaSumR_Fade = dot(alphaSamplesR, depthWeights);
@@ -301,11 +297,12 @@ void main() {
 		}
 	}
 
-	const vec4 vdFd = vec4(dFdx(In.uv), dFdy(In.uv));
+	const vec4 vdFd = vec4(dFdxFine(In.uv), dFdyFine(In.uv));
 
+	vec3 volume_color;
 	{ // Volumetrics
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
-		vec3 volume_color = supersample(volumetricMap, In.uv, vdFd);
+		volume_color = supersample(volumetricMap, In.uv, vdFd);
 
 		expandAA(volumetricMap, volume_color, In.uv);
 
@@ -313,24 +310,27 @@ void main() {
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
 	}
 	
+	vec3 bounce_color;
 	{ // Reflection
 		// Reflection map extra AA filtering and blur //      
-		vec3 bounce_color = supersample(reflectionMap, In.uv, vdFd);
+		bounce_color = supersample(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
 		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
-	
-		bounce_color.rgb *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha
+		expandAA(reflectionMap, bounce_color, In.uv);
+
+		bounce_color *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha -- value is half-as-bright vs original (darker-reflection) 
 		outReflection = vec4(bounce_color, alphaSumR_Fade);
+	}
 
-		if (subgroupElect())
-		{
-			bounce_color = bounce_color + subgroupQuadSwapHorizontal(bounce_color);
-			bounce_color = bounce_color + subgroupQuadSwapVertical(bounce_color);
+	if (subgroupElect())
+	{
+		vec3 ambient_color = volume_color + bounce_color;
+		ambient_color = ambient_color + subgroupQuadSwapHorizontal(ambient_color);
+		ambient_color = ambient_color + subgroupQuadSwapVertical(ambient_color);
 
-			atomicAdd(b.average_reflection_count, 1U);
-			b.average_reflection_color.rgb += bounce_color; // ok to add out of order, vertex shader uniforms.vert is after which uses the count and the total sum.
-		}
+		atomicAdd(b.average_reflection_count, 2U); // bounce color + volume color (the average calc is in the voxel vertex shader, and yes it accounts for the quad 
+		b.average_reflection_color.rgb += ambient_color; // ok to add out of order, vertex shader uniforms.vert is after which uses the count and the total sum.
 	}
 
 	// NO ALIASING !!!

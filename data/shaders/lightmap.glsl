@@ -13,7 +13,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #define DD 0
 #define COLOR 1
-#define REFLECT 2
 
 #include "light.glsl"
 
@@ -43,16 +42,6 @@ void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_colo
 	light_distance = light_distance * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
-}
-
-void lightmap_internal_fetch_reflection_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
-	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
-
-	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
-	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
-
-	light_color = textureLod(volumeMap[REFLECT], voxel_coord, 0).rgb;
 }
 
 // natural neighbour sampling of light volume
@@ -164,11 +153,6 @@ void getLightMapFast( out float light_distance, out vec3 light_color, in const v
 	// linear sampling
 	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
-void getReflectionLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
-{
-	// linear sampling
-	lightmap_internal_fetch_reflection_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
-}
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
@@ -217,13 +201,6 @@ void getLightFast(out vec3 light_color, out float light_distance, in const vec3 
 {
 	getLightMapFast(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
 	
-	// light_direction_distance.a = normalized [0...1] distance
-}
-void getReflectionLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
-{
-	getReflectionLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	
-	light_direction_distance.xyz = normalize(light_direction_distance.xyz); // light direction is stored in view space natively in xzy form
 	// light_direction_distance.a = normalized [0...1] distance
 }
 

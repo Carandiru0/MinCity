@@ -19,7 +19,7 @@ cPostProcess::cPostProcess()
 
 }
 
-void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize) {
+void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize, bool const bHDROn) {
 
 	// LUT's
 	if (!LoadLUT(TEXTURE_DIR COLOR_LUT_FILE)) {
@@ -27,17 +27,17 @@ void cPostProcess::create(vk::Device const& __restrict device, vk::CommandPool c
 	}
 
 	_temporalColorImage = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
-		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, false, true);
+		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, (bHDROn ? vk::Format::eR16G16B16A16Unorm : vk::Format::eR8G8B8A8Unorm), false, true);
 	
 	_anamorphicFlare[0] = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
-		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8Unorm);
+		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, (bHDROn ? vk::Format::eR16Unorm : vk::Format::eR8Unorm));
 	_anamorphicFlare[1] = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
-		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8Unorm);
+		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, (bHDROn ? vk::Format::eR16Unorm : vk::Format::eR8Unorm));
 
 	_blurStep[0] = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
-		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, false, true);
+		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, (bHDROn ? vk::Format::eR16G16B16A16Unorm : vk::Format::eR8G8B8A8Unorm), false, true);
 	_blurStep[1] = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device,
-		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Unorm, false, true);
+		frameBufferSize.x, frameBufferSize.y, 1U, vk::SampleCountFlagBits::e1, (bHDROn ? vk::Format::eR16G16B16A16Unorm : vk::Format::eR8G8B8A8Unorm), false, true);
 
 	vku::executeImmediately(device, commandPool, queue, [&](vk::CommandBuffer cb) {
 		// image layout initial startup requirement

@@ -59,8 +59,9 @@ namespace world
 		{
 			UniformDecl::VoxelSharedUniform		Uniform;
 			
-			float							time;
-			float							zoom;
+			float							    time;
+			float							    zoom;
+
 		} UniformState;
 
 		typedef struct Buffers
@@ -74,7 +75,6 @@ namespace world
 
 	public:
 		// Accesssors //
-		uint32_t const						getRoadVisibleCount() const; // can be accessed in any function not in the internal RenderGrid()
 		rect2D_t const __vectorcall			getVisibleGridBounds() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		rect2D_t const __vectorcall			getVisibleGridBoundsClamped() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
 		point2D_t const __vectorcall		getVisibleGridCenter() const; // Grid Space (-x,-y) to (x, y) Coordinates Only
@@ -105,7 +105,7 @@ namespace world
 		void resetCameraAngleZoom(); // gradual over time
 		void resetCamera(); // immediatte
 		void setCameraTurnTable(bool const enable);
-		void __vectorcall updateCameraFollow(XMVECTOR xmPosition, XMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta); // expects 3D coordinates
+		void __vectorcall updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta); // expects 3D coordinates
 
 		// Main Methods //
 		void LoadTextures(); // 1st
@@ -294,7 +294,7 @@ namespace world
 		void RenderTask_Minimap() const;
 		void GenerateGround();
 		
-		XMVECTOR const XM_CALLCONV UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
+		void UpdateCamera(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta);
 		void XM_CALLCONV HoverVoxel();
 		
 		bool const destroyVoxelModelInstanceAt(Iso::Voxel const& oVoxel, uint32_t const hashTypes);

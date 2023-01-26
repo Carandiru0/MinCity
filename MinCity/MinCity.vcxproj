@@ -83,7 +83,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
-    <IncludePath>D:\boost_1_79_0;X:\tbb\include;X:\mimalloc\include;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
     <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
@@ -93,7 +93,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>D:\boost_1_79_0;X:\tbb\include;X:\mimalloc\include;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
@@ -610,13 +610,15 @@
     <CustomBuild Include="..\Data\Shaders\volumetric.frag">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DHDR --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename).hdr%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename).hdr%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe"  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)%(Extension).bin"
+"$(VULKAN_SDK)\bin\glslangValidator.exe"  -DHDR --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename).hdr%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)%(Extension).bin;%(FullPath)\..\Binary\%(Filename).hdr%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
@@ -693,24 +695,48 @@
     <CustomBuild Include="..\Data\Shaders\postaa.frag">
       <FileType>Document</FileType>
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTMP_PASS  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DTMP_PASS  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)tmp.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_0  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_0  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_1  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_1  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_2  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin"
-"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_2  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2_hdr%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_2  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DOVERLAY  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin"
-"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DOVERLAY  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay_hdr%(Extension).bin"</Command>
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DOVERLAY  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay.hdr%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2_hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay_hdr%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin;%(FullPath)\..\Binary\%(Filename)tmp.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay.hdr%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(VULKAN_SDK)\bin\glslangValidator.exe" -DTMP_PASS  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DTMP_PASS  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)tmp.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_0  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_0  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp0.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_1  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_1  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp1.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DSMAA_PASS_2  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin"
-"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_2  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2_hdr%(Extension).bin"
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DSMAA_PASS_2  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)pp2.hdr%(Extension).bin"
+
 "$(VULKAN_SDK)\bin\glslangValidator.exe" -DOVERLAY  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin"
-"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DOVERLAY  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay_hdr%(Extension).bin"</Command>
+
+"$(VULKAN_SDK)\bin\glslangValidator.exe" -DHDR -DOVERLAY  --target-env vulkan1.3 "%(FullPath)" -o "%(FullPath)\..\Binary\%(Filename)overlay.hdr%(Extension).bin"</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling %(Identity) to spirv</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2_hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay_hdr%(Extension).bin</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(FullPath)\..\Binary\%(Filename)tmp%(Extension).bin;%(FullPath)\..\Binary\%(Filename)tmp.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp0.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp1.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2%(Extension).bin;%(FullPath)\..\Binary\%(Filename)pp2.hdr%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay%(Extension).bin;%(FullPath)\..\Binary\%(Filename)overlay.hdr%(Extension).bin</Outputs>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BuildInParallel>
       <BuildInParallel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</BuildInParallel>

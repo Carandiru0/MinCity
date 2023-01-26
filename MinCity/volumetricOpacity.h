@@ -40,9 +40,6 @@ namespace Volumetric
 		vku::TextureImageStorage3D
 			* __restrict Color;
 
-		vku::TextureImageStorage3D
-			* __restrict Reflection;
-
 	} voxelLightmapSet;
 
 	typedef struct voxelVolumeSet {
@@ -186,7 +183,6 @@ namespace Volumetric
 
 			SAFE_RELEASE_DELETE(LightMap.DistanceDirection);
 			SAFE_RELEASE_DELETE(LightMap.Color);
-			SAFE_RELEASE_DELETE(LightMap.Reflection);
 
 			VolumeSet.OpacityMap = nullptr;
 			SAFE_RELEASE_DELETE(OpacityMap);
@@ -249,13 +245,10 @@ namespace Volumetric
 				LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Snorm, false, true); // only signed normalized values
 			LightMap.Color = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 				LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Sfloat, false, true);
-			LightMap.Reflection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-				LightSize, LightSize, LightSize, 1U, vk::Format::eR8G8B8A8Unorm, false, true);
 			VolumeSet.LightMap = &LightMap;
 
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.DistanceDirection->image(), vkNames::Image::LightMap_DistanceDirection);
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Color->image(), vkNames::Image::LightMap_Color);
-			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Reflection->image(), vkNames::Image::LightMap_Reflection);
 
 			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 				Size, Size, Size, 1U, vk::Format::eR8Unorm, false, true);
@@ -264,7 +257,7 @@ namespace Volumetric
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)OpacityMap->image(), vkNames::Image::OpacityMap);
 
 			FMT_LOG(TEX_LOG, "LightProbe Volumetric data: {:n} bytes", LightProbeMap.imageGPUIn->size());
-			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size() + LightMap.Reflection->size());
+			FMT_LOG(TEX_LOG, "Lightmap [GPU Resident Only] Volumetric data: {:n} bytes", PingPongMap[0]->size() + PingPongMap[1]->size() + LightMap.DistanceDirection->size() + LightMap.Color->size());
 			FMT_LOG(TEX_LOG, "Opacitymap [GPU Resident Only] Volumetric data: {:n} bytes", OpacityMap->size());
 
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -281,7 +274,6 @@ namespace Volumetric
 
 				LightMap.DistanceDirection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);		// the final oututs are never "read" in compute shaders
 				LightMap.Color->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);					// *only* read by fragment shaders
-				LightMap.Reflection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);				// *only* read by fragment shaders
 
 				PingPongMap[0]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 				PingPongMap[1]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
@@ -322,9 +314,6 @@ namespace Volumetric
 
 			dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
-
-			dsu.beginImages(6U, 0, vk::DescriptorType::eStorageImage);
-			dsu.image(nullptr, LightMap.Reflection->imageView(), vk::ImageLayout::eGeneral);
 		}
 
 		__inline bool const renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
@@ -555,8 +544,8 @@ namespace Volumetric
 				// set pipeline barriers only once before ping pong begins
 
 				{
-					static constexpr size_t const image_count(3ULL); // batched
-					std::array<vku::GenericImage* const, image_count> const images{ LightMap.DistanceDirection, LightMap.Color, LightMap.Reflection };
+					static constexpr size_t const image_count(2ULL); // batched
+					std::array<vku::GenericImage* const, image_count> const images{ LightMap.DistanceDirection, LightMap.Color };
 
 					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY);
 				}
@@ -654,8 +643,8 @@ namespace Volumetric
 				// [release image barrier]
 				using afb = vk::AccessFlagBits;
 
-				static constexpr size_t const image_count(3ULL); // batched
-				std::array<vku::GenericImage* const, image_count> const images{ LightMap.DistanceDirection, LightMap.Color, LightMap.Reflection };
+				static constexpr size_t const image_count(2ULL); // batched
+				std::array<vku::GenericImage* const, image_count> const images{ LightMap.DistanceDirection, LightMap.Color };
 				std::array<vk::ImageMemoryBarrier, image_count> imbs{};
 
 				for (uint32_t i = 0; i < image_count; ++i) {
@@ -687,7 +676,6 @@ namespace Volumetric
 			LightProbeMap.imageGPUIn->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
 			LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
 			LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
-			LightMap.Reflection->setCurrentLayout(vk::ImageLayout::eGeneral);
 
 			return(true);
 		}

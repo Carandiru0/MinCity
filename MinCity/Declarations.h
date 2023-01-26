@@ -90,7 +90,7 @@ namespace UniformDecl
 		XMMATRIX	view;
 		XMMATRIX	inv_view;
 		XMMATRIX	proj;
-		XMVECTOR	eyePos;
+		XMVECTOR	eyePos;         // .w = camera elevation delta
 		XMVECTOR	eyeDir;
 		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
 

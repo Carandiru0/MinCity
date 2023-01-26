@@ -394,6 +394,7 @@ namespace world
 		}
 		
 		// Angular // Sphere Thruster Engines // 
+		XMFLOAT3A vAngles;
 		{
 			XMVECTOR const xmThrust(XMLoadFloat3A(&_body.angular_thrust));
 
@@ -412,10 +413,7 @@ namespace world
 
 			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmDir);
 
-			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
-
-			Instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
@@ -423,9 +421,10 @@ namespace world
 		}
 
 		// Linear // Main Thruster //
+		XMVECTOR xmPosition(Instance->getLocation());
 		{
 			// Orient linear thrust to ship orientation always. *do not change*
-			quat_t const qOrient(Instance->getPitch().angle(), Instance->getYaw().angle(), Instance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
+			quat_t const qOrient(vAngles.x, vAngles.y, vAngles.z); // *bugfix - using quaternion on world transform (no gimbal lock)
 			XMVECTOR const xmThrust(v3_rotate(XMLoadFloat3A(&_body.thrust), qOrient));
 			
 			XMVECTOR const xmForce(XMVectorAdd(xmThrust, XMLoadFloat3A(&_body.force[in]))); // adding external forces in
@@ -439,16 +438,14 @@ namespace world
 			//									dt
 			XMStoreFloat3A(&_body.force[out], XMVectorScale(XMVectorDivide(XMVectorSubtract(xmVelocity, xmInitialVelocity), XMVectorReplicate(tD)), _body.mass));
 
-			XMVECTOR xmPosition(Instance->getLocation());
-
 			xmPosition = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmPosition);
-
-			Instance->setLocation(xmPosition);
 
 			XMStoreFloat3A(&_body.velocity, xmVelocity);
 			XMStoreFloat3A(&_body.thrust, XMVectorZero()); // reset required
 			XMStoreFloat3A(&_body.force[in], XMVectorZero()); // reset required
 		}
+
+		Instance->setTransform(xmPosition, v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 		/*{
 			// current forces, and each thruster and elevation normalized
@@ -456,11 +453,11 @@ namespace world
 
 			float const elevation = SFM::linearstep(current_ground_clearance, maximum_clearance, Instance->getElevation());
 
-			FMT_NUKLEAR_DEBUG(false, "velocity{:.3f}   main{:.3f}   up{:.3f}  elevation{:.3f}   {:d}times", 
+			FMT_NUKLEAR_DEBUG(false, "velocity{:.3f}   main{:.3f}   up{:.3f}  elevation{:.3f} elevation{:.6f} {:d}times", 
 				_body.velocity.y,
 				(XMVectorGetX(XMVector3Length(XMLoadFloat3A(&_thruster[MAIN].thrust))) / _body.mass),
 				(_thruster[UP].thrust.y / _body.mass),
-				elevation, integrations
+				elevation, Instance->getElevation(), integrations
 			);
 		}*/
 	}

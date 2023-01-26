@@ -45,50 +45,60 @@ public: // only constant access
 // if it crashes, there was no removal of the interpolator before or during the objects destruction. Any object or usage of an interpolator requires the owner to remove the interpolator when it is destroyed. 
 class alignas(CACHE_LINE_BYTES) interpolator
 {
+	static constexpr uint32_t const
+		INTERP_COMPONENT_X = 1 << 0,
+		INTERP_COMPONENT_Y = 1 << 1,
+		INTERP_COMPONENT_Z = 1 << 2,
+		INTERP_COMPONENT_W = 1 << 3;
+
 private:
 	template<typename T> // type must be compatible with SFM::lerp, float or XMFLOAT4A, 3A, etc
 	struct range
 	{
 		T					last, target;
 		interpolated<T>*	current;
+		uint32_t            interp;
 
 		void __vectorcall lerp(float const t) {
 			if constexpr (std::is_same<T,XMFLOAT4A>::value) {
-				XMStoreFloat4A(&current->value, SFM::lerp(XMLoadFloat4A(&last), XMLoadFloat4A(&target), t));
+				XMStoreFloat4A(&current->value, SFM::lerp(XMLoadFloat4A(&last), XMLoadFloat4A(&target), t)); interp = (INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z | INTERP_COMPONENT_W);
 			}
 			else if constexpr (std::is_same<T, XMFLOAT3A>::value) {
-				XMStoreFloat3A(&current->value, SFM::lerp(XMLoadFloat3A(&last), XMLoadFloat3A(&target), t));
+				XMStoreFloat3A(&current->value, SFM::lerp(XMLoadFloat3A(&last), XMLoadFloat3A(&target), t)); interp = (INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z);
 			}
 			else if constexpr (std::is_same<T, XMFLOAT2A>::value) {
-				XMStoreFloat2A(&current->value, SFM::lerp(XMLoadFloat2A(&last), XMLoadFloat2A(&target), t));
+				XMStoreFloat2A(&current->value, SFM::lerp(XMLoadFloat2A(&last), XMLoadFloat2A(&target), t)); interp = (INTERP_COMPONENT_X | INTERP_COMPONENT_Y);
 			}
 			else {
-				current->value = SFM::lerp(last, target, t);
+				current->value = SFM::lerp(last, target, t); interp = INTERP_COMPONENT_X;
 			}
-		}
-
-		void set(T const& target_) {
-			last = current->value;			// last becomes what is current
-			current->value = target;		// current always transitions to target
-			target = target_;				// set new target
 		}
 
 		void __vectorcall set(FXMVECTOR target_) {
 
 			if constexpr (std::is_same<T, XMFLOAT4A>::value) {
-				XMStoreFloat4A(&last, XMLoadFloat4A(&current->value));
-				XMStoreFloat4A(&current->value, XMLoadFloat4A(&target));
+				if ((INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z | INTERP_COMPONENT_W) & interp) {
+					XMStoreFloat4A(&last, XMLoadFloat4A(&current->value));
+					XMStoreFloat4A(&current->value, XMLoadFloat4A(&target));
+				}
 				XMStoreFloat4A(&target, target_);
+				interp = 0; // reset
 			}
 			else if constexpr (std::is_same<T, XMFLOAT3A>::value) {
-				XMStoreFloat3A(&last, XMLoadFloat3A(&current->value));
-				XMStoreFloat3A(&current->value, XMLoadFloat3A(&target));
+				if ((INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z) & interp) {
+					XMStoreFloat3A(&last, XMLoadFloat3A(&current->value));
+					XMStoreFloat3A(&current->value, XMLoadFloat3A(&target));
+				}
 				XMStoreFloat3A(&target, target_);
+				interp = 0; // reset
 			}
 			else if constexpr (std::is_same<T, XMFLOAT2A>::value) {
-				XMStoreFloat2A(&last, XMLoadFloat2A(&current->value));
-				XMStoreFloat2A(&current->value, XMLoadFloat2A(&target));
+				if ((INTERP_COMPONENT_X | INTERP_COMPONENT_Y) & interp) {
+					XMStoreFloat2A(&last, XMLoadFloat2A(&current->value));
+					XMStoreFloat2A(&current->value, XMLoadFloat2A(&target));
+				}
 				XMStoreFloat2A(&target, target_);
+				interp = 0; // reset
 			}
 
 		 	// last becomes what is current
@@ -96,51 +106,75 @@ private:
 			// set new target
 		}
 
+		void set(float const& target_) {
+			if (INTERP_COMPONENT_X & interp) {
+				last = current->value;			// last becomes what is current
+				current->value = target;		// current always transitions to target
+			}
+			target = target_;				// set new target
+			interp = 0; // reset
+		}
+
 		template<uint32_t const component> 
 		void set_component(float const target_)
 		{
 			if constexpr (COMPONENT_X == component) {
-				last.x = current->value.x;
-				current->value.x = target.x;
+				if (INTERP_COMPONENT_X & interp) {
+					last.x = current->value.x;
+					current->value.x = target.x;
+				}
 				target.x = target_;
+				interp &= ~INTERP_COMPONENT_X;
 			}
 			else if constexpr (COMPONENT_Y == component) {
-				last.y = current->value.y;
-				current->value.y = target.y;
+				if (INTERP_COMPONENT_Y & interp) {
+					last.y = current->value.y;
+					current->value.y = target.y;
+				}
 				target.y = target_;
+				interp &= ~INTERP_COMPONENT_Y;
 			}
 			else if constexpr (COMPONENT_Z == component) {
-				last.z = current->value.z;
-				current->value.z = target.z;
+				if (INTERP_COMPONENT_Z & interp) {
+					last.z = current->value.z;
+					current->value.z = target.z;
+				}
 				target.z = target_;
+				interp &= ~INTERP_COMPONENT_Z;
 			}
 			else if constexpr (COMPONENT_W == component) {
-				last.w = current->value.w;
-				current->value.w = target.w;
+				if (INTERP_COMPONENT_W & interp) {
+					last.w = current->value.w;
+					current->value.w = target.w;
+				}
 				target.w = target_;
+				interp &= ~INTERP_COMPONENT_W;
 			}
 		}
 
-		void reset(T const& all_) {
-			last = target = current->value = all_;
-		}
 		void __vectorcall reset(FXMVECTOR all_) {
 
 			if constexpr (std::is_same<T, XMFLOAT4A>::value) {
 				XMStoreFloat4A(&last, all_);
 				XMStoreFloat4A(&current->value, all_);
 				XMStoreFloat4A(&target, all_);
+				interp |= (INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z | INTERP_COMPONENT_W);
 			}
 			else if constexpr (std::is_same<T, XMFLOAT3A>::value) {
 				XMStoreFloat3A(&last, all_);
 				XMStoreFloat3A(&current->value, all_);
 				XMStoreFloat3A(&target, all_);
+				interp |= (INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z);
 			}
 			else if constexpr (std::is_same<T, XMFLOAT2A>::value) {
 				XMStoreFloat2A(&last, all_);
 				XMStoreFloat2A(&current->value, all_);
 				XMStoreFloat2A(&target, all_);
+				interp |= (INTERP_COMPONENT_X | INTERP_COMPONENT_Y);
 			}
+		}
+		void reset(float const& all_) {
+			last = target = current->value = all_; interp = INTERP_COMPONENT_X;
 		}
 
 		template<uint32_t component>
@@ -148,20 +182,24 @@ private:
 			
 			if constexpr (COMPONENT_X == component) {
 				last.x = target.x = current->value.x = all_;
+				interp |= INTERP_COMPONENT_X;
 			}
 			else if constexpr (COMPONENT_Y == component) {
 				last.y = target.y = current->value.y = all_;
+				interp |= INTERP_COMPONENT_Y;
 			}
 			else if constexpr (COMPONENT_Z == component) {
 				last.z = target.z = current->value.z = all_;
+				interp |= INTERP_COMPONENT_Z;
 			}
 			else if constexpr (COMPONENT_W == component) {
 				last.w = target.w = current->value.w = all_;
+				interp |= INTERP_COMPONENT_W;
 			}
 		}
 
 		range(interpolated<T>* const initial)
-			: current{initial}, last{*initial}, target{*initial}
+			: current{initial}, last{*initial}, target{*initial}, interp(INTERP_COMPONENT_X | INTERP_COMPONENT_Y | INTERP_COMPONENT_Z | INTERP_COMPONENT_W) // initial
 		{}
 	};
 
