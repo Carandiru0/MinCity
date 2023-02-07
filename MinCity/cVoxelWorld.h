@@ -179,8 +179,6 @@ namespace world
 		void SetSpecializationConstants_Voxel_GS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_Voxel_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 
-		void SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants);
-
 		void SetSpecializationConstants_Voxel_ClearMask_FS(std::vector<vku::SpecializationConstant>& __restrict constants);
 		
 		// [[deprecated]] void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
@@ -286,7 +284,7 @@ namespace world
 		void setOcclusionInstances();
 		void updateMouseOcclusion(bool const bPaused);
 
-		void __vectorcall UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate = false);
+		void __vectorcall UpdateUniformStateTarget(tTime const& __restrict tNow, bool const bFirstUpdate = false);
 		
 		void createAllBuffers(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue);
 		void OutputVoxelStats() const;

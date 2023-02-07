@@ -83,7 +83,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
-    <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;C:\tracy-master\public;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
     <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
@@ -93,7 +93,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;C:\tracy-master\public;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
@@ -136,7 +136,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <CallingConvention>Cdecl</CallingConvention>
-      <AdditionalOptions>/D_WIN32_WINNT=0x0A00 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/D_WIN32_WINNT=0x0A00   %(AdditionalOptions)</AdditionalOptions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <MinimalRebuild>false</MinimalRebuild>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -164,6 +164,7 @@
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <ForceSymbolReferences>
       </ForceSymbolReferences>
+      <UACExecutionLevel>AsInvoker</UACExecutionLevel>
     </Link>
     <Manifest>
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
@@ -219,7 +220,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw    %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw        %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>
       </DisableSpecificWarnings>
       <CallingConvention>Cdecl</CallingConvention>
@@ -240,7 +241,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib</AdditionalDependencies>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib;micro-profiler_$(PlatformName).lib</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <Profile>false</Profile>
@@ -260,6 +261,7 @@
       <SupportNobindOfDelayLoadedDLL>true</SupportNobindOfDelayLoadedDLL>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <SupportUnloadOfDelayLoadedDLL>true</SupportUnloadOfDelayLoadedDLL>
+      <UACExecutionLevel>AsInvoker</UACExecutionLevel>
     </Link>
     <Manifest>
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
@@ -369,6 +371,10 @@
     <ClInclude Include="X:\Vulkan\Vookoo\include\vku\vku_framework.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\tracy-master\public\TracyClient.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="cAbstractToolMethods.cpp" />
     <ClCompile Include="cAIMover.cpp" />
     <ClCompile Include="cAISkyMover.cpp" />
@@ -429,6 +435,7 @@
       <FloatingPointModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Precise</FloatingPointModel>
     </ClCompile>
     <ClCompile Include="types.cpp" />
+    <ClCompile Include="volumetricOpacity.cpp" />
     <ClCompile Include="volumetricVisibility.cpp" />
     <ClCompile Include="voxBinary.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(PreprocessorDefinitions)</PreprocessorDefinitions>

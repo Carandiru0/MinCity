@@ -5,6 +5,7 @@
 #include "cPhysics.h"
 #include "cUser.h"
 
+#include "tracy.h"
 
 namespace world
 {
@@ -78,7 +79,7 @@ namespace world
 
 		_body.mass = voxels_to_kg((float)getModelInstance()->getVoxelCount());
 
-		float const fElevation(Iso::WORLD_MAX_HEIGHT * Iso::VOX_STEP * 0.5f);
+		float const fElevation(Iso::TERRAIN_MAX_HEIGHT * Iso::VOX_STEP * 0.5f);
 		
 		instance_->resetElevation(fElevation);
 	}
@@ -303,6 +304,8 @@ namespace world
 	}
 	void cYXIGameObject::OnUpdate(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 	{
+		ZoneScoped;
+
 		[[unlikely]] if (!Validate()) {
 
 			if (nullptr != _parent) {
@@ -343,7 +346,7 @@ namespace world
 		if (!bCollision) {
 
 			static constexpr float const one_second = time_to_float(duration_cast<fp_seconds>(milliseconds(1000)));
-			static constexpr float const one_second_part = one_second / 10.0f;
+			static constexpr float const one_second_part = one_second / 3.0f;
 
 			// future ground clearance integration testing
 			float maximum_future_ground_clearance(0.0f);
@@ -446,7 +449,7 @@ namespace world
 		}
 
 		Instance->setTransform(xmPosition, v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
-
+		   
 		/*{
 			// current forces, and each thruster and elevation normalized
 			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT * 0.75f, Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y * 2.0f);

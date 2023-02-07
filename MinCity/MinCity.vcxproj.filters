@@ -515,6 +515,12 @@
     <ClCompile Include="X:\mimalloc\src\static.c">
       <Filter>Source Files\MemoryCore</Filter>
     </ClCompile>
+    <ClCompile Include="volumetricOpacity.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tracy-master\public\TracyClient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\Data\Shaders\uniforms.vert">

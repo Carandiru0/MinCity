@@ -27,9 +27,10 @@
 #include "Adjacency.h"
 #include "eDirection.h"
 
-#include "cHeliumGasGameObject.h"
+#include "cExplosionGameObject.h"
 
 #include <queue>
+#include <tracy.h>
 
 // for the texture indices used in large texture array
 #include "../Data/Shaders/texturearray.glsl"
@@ -512,16 +513,16 @@ void cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& _
 	voxelIndex = p2D_sub(voxelIndex, visibleRadius);
 	
 	// Change from(-x,-y) => (x,y)  to (0,0) => (x,y)
-	point2D_t const voxelIndex_TopLeft = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
-	oCamera.voxelIndex_TopLeft = p2D_sub(voxelIndex_TopLeft, Iso::GRID_OFFSET);
+	point2D_t voxelIndex_TopLeft = p2D_add(voxelIndex, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
+	voxelIndex_TopLeft = p2D_sub(voxelIndex_TopLeft, Iso::GRID_OFFSET);
 	// wrap bounds //
-	oCamera.voxelIndex_TopLeft = p2D_wrap_pow2(oCamera.voxelIndex_TopLeft, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
+	oCamera.voxelIndex_TopLeft = p2D_wrap_pow2(voxelIndex_TopLeft, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	point2D_t voxelIndex_Center( oCamera.voxelIndex_TopLeft.v );
 	// Change from  (0,0) => (x,y) to  (-x,-y) => (x,y)
-	oCamera.voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
+	voxelIndex_Center = p2D_sub(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_HALF_WIDTH, Iso::WORLD_GRID_HALF_HEIGHT));
 	// wrap bounds //
-	oCamera.voxelIndex_Center = p2D_wrap_pow2(oCamera.voxelIndex_Center, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
+	oCamera.voxelIndex_Center = p2D_wrap_pow2(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	// Convert Fractional component from GridSpace
 	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin)));  // FOR TRUE SMOOTH SCROLLING //
@@ -701,8 +702,8 @@ void cVoxelWorld::OnMouseRightClick()
 	if (eInputEnabledBits::MOUSE_BUTTON_RIGHT != (_inputEnabledBits & eInputEnabledBits::MOUSE_BUTTON_RIGHT))
 		return; // input disabled!
 
-	placeUpdateableInstanceAt<cHeliumGasGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::HELIUM_GAS, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+	placeUpdateableInstanceAt<cExplosionGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::GROUND_EXPLOSION, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
 }
 void cVoxelWorld::OnMouseScroll(float const delta)
 {
@@ -912,7 +913,7 @@ namespace world
 	}
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex)
+	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex)   /// todo - needs to be tested again. second isVoxelVisible working proof in usage during RenderGrid
 	{
 		auto const localvoxelIndex(world::getLocalVoxelIndexAt(voxelIndex));
 
@@ -923,12 +924,12 @@ namespace world
 		// need to transform grid space coordinates to world space coordinates
 		xmLocation = XMVectorSubtract(xmLocation, world::getOrigin());
 
-		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmLocation, Volumetric::volumetricVisibility::getVoxelRadius()));
+		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, Volumetric::volumetricVisibility::getVoxelRadius()));
 	}
 	// World Space Coordinates Only
-	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius)
+	bool const __vectorcall isVoxelVisible(FXMVECTOR const xmLocation, float const voxelRadius) // working w/ voxel height adjustment - see usage in RenderGrid
 	{
-		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum<true>(xmLocation, voxelRadius));
+		return(Volumetric::VolumetricLink->Visibility.SphereTestFrustum(xmLocation, voxelRadius));
 	}
 
 	namespace zoning
@@ -1259,16 +1260,10 @@ namespace world
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-					Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
-					if (pVoxel) {
-						Iso::Voxel oVoxel(*pVoxel);
-						if (!Iso::isRoad(oVoxel)) // not accidentally highlighting roads
-						{
-							Iso::setColor(oVoxel, 0x00ff0000); // bgr
-							Iso::setEmissive(oVoxel);
-							setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
-						}
-					}
+					Iso::Voxel oVoxel(getVoxelAt(point2D_t(p.x, p0.y)));
+					Iso::setColor(oVoxel, 0x00ff0000); // bgr
+					Iso::setEmissive(oVoxel);
+					setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
 #endif
 #endif
 				}
@@ -1278,16 +1273,10 @@ namespace world
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-				Iso::Voxel const* const pVoxel = getVoxelAt(p);
-				if (pVoxel) {
-					Iso::Voxel oVoxel(*pVoxel);
-					if (!Iso::isRoad(oVoxel)) // not accidentally highlighting roads
-					{
-						Iso::setColor(oVoxel, 0x00ff0000); // bgr
-						Iso::setEmissive(oVoxel);
-						setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
-					}
-				}
+				Iso::Voxel oVoxel(getVoxelAt(p));
+				Iso::setColor(oVoxel, 0x00ff0000); // bgr
+				Iso::setEmissive(oVoxel);
+				setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
 #endif
 #endif
 
@@ -1419,13 +1408,10 @@ namespace world
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-					Iso::Voxel const* const pVoxel = getVoxelAt(point2D_t(p.x, p0.y));
-					if (pVoxel) {
-						Iso::Voxel oVoxel(*pVoxel);
-						Iso::setColor(oVoxel, 0); // bgr
-						Iso::clearEmissive(oVoxel);
-						setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
-					}
+					Iso::Voxel oVoxel(getVoxelAt(point2D_t(p.x, p0.y)));
+					Iso::setColor(oVoxel, 0); // bgr
+					Iso::clearEmissive(oVoxel);
+					setVoxelAt(point2D_t(p.x, p0.y), std::forward<Iso::Voxel const&&>(oVoxel));
 #endif
 #endif
 				}
@@ -1435,13 +1421,10 @@ namespace world
 
 #ifndef NDEBUG // setting emission when setting hash for model instances (dynamic only)
 #ifdef DEBUG_HIGHLIGHT_BOUNDING_RECTS
-				Iso::Voxel const* const pVoxel = getVoxelAt(p);
-				if (pVoxel) {
-					Iso::Voxel oVoxel(*pVoxel);
-					Iso::setColor(oVoxel, 0); // bgr
-					Iso::clearEmissive(oVoxel);
-					setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
-				}
+				Iso::Voxel oVoxel(getVoxelAt(p));
+				Iso::setColor(oVoxel, 0); // bgr
+				Iso::clearEmissive(oVoxel);
+				setVoxelAt(p, std::forward<Iso::Voxel const&&>(oVoxel));
 #endif
 #endif
 
@@ -1787,7 +1770,7 @@ namespace // private to this file (anonymous)
 
 				XMVECTOR xmUVs(XMVectorMultiply(p2D_to_v2(voxelIndex), XMVectorSet(Iso::INVERSE_WORLD_GRID_FWIDTH, Iso::INVERSE_WORLD_GRID_FHEIGHT, 0.0f, 0.0f)));
 
-				xmUVs = XMVectorSetW(xmUVs, ((float)color));
+				xmUVs = XMVectorSetW(xmUVs, SFM::uintBitsToFloat(color));
 
 				localGround.emplace_back(
 					voxelGround,
@@ -1800,7 +1783,7 @@ namespace // private to this file (anonymous)
 				if (emissive) {
 
 					// add light, offset to the height of this ground voxel
-					Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, Iso::getRealHeight(voxelIndex) + 1.0f), color); // transform, so its on the top effectively applies proper height for light
+					Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, Iso::getRealHeight(voxelIndex) / Iso::VOX_SIZE + 1.0f), color); // transform, so its on the top effectively applies proper height for light
 				}
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -1812,12 +1795,11 @@ namespace // private to this file (anonymous)
 
 		template<bool const Dynamic>
 		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint32_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
-			Iso::Voxel const& __restrict oVoxel,
+			Iso::Voxel const& __restrict oVoxel, bool bVisible,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
 		{
-			bool bVisible(false);
 			auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
 			auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
 
@@ -1833,7 +1815,8 @@ namespace // private to this file (anonymous)
 
 				xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
 
-				if (!(bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP)))) {
+				// skip visibility check if already known that voxel (ground) is visible, or a previous call to RenderModel determined it was visible.
+				if (!bVisible && !(bVisible |= Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP)))) {
 					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
 					// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 				}
@@ -1871,6 +1854,7 @@ namespace // private to this file (anonymous)
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
 		{
+			ZoneScopedN("RenderGrid");
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
 			render_state.numDynamicVoxelsRendered = 0,
@@ -1907,7 +1891,7 @@ namespace // private to this file (anonymous)
 
 			private:
 				point2D_t const 								voxelStart;
-				StreamingGrid* const __restrict				    streamingGrid;
+				StreamingGrid const* const __restrict		    streamingGrid;
 
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
@@ -1915,10 +1899,14 @@ namespace // private to this file (anonymous)
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
 				
 				sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
+
+				// shared constants
+				float const ground_voxel_radius = Volumetric::volumetricVisibility::getVoxelRadius();
+
 			public:
 				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
 					point2D_t const voxelStart_,
-					StreamingGrid* const __restrict streamingGrid_,
+					StreamingGrid const* const __restrict streamingGrid_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
@@ -1943,17 +1931,16 @@ namespace // private to this file (anonymous)
 					{
 						for (voxelIndex.x = x_begin; voxelIndex.x < x_end; ++voxelIndex.x)
 						{
-							// Make index (row,col)relative to starting index voxel
+							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
+							point2D_t const voxelIndexWrapped(p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT)));
+							
+							// Make index(row, col)relative to starting index voxel
 							// calculate origin from relative row,col
 							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. don't fuck with the fractional offset, it's not required here
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)))); // make relative to render start position
 
-							bool bRenderVisible(false);
-
-							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
-							point2D_t const voxelIndexWrapped(p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT)));
-
-							Iso::Voxel const oVoxel(streamingGrid->getVoxel(voxelIndexWrapped));
+							// test ground voxel visiible at ground height
+							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped)), ground_voxel_radius));
 
 							/* @todo (optional)
 							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
@@ -1970,14 +1957,12 @@ namespace // private to this file (anonymous)
 								}
 							} // extended
 							*/
-
-							// ***Ground always exists*** // *bugfix: frustum culling ground leaves empty space in an undefined state. for example, raymarched reflections disappear if camera is too close *do not change*
-							RenderGround(xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelGround, localGround);
+							Iso::Voxel const oVoxel(streamingGrid->getVoxel(voxelIndexWrapped));
 
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, bRenderVisible, voxelStatic, voxelDynamic, voxelTrans);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -1985,9 +1970,13 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, bRenderVisible, voxelStatic, voxelDynamic, voxelTrans);
 									}
 								}
+							}
+
+							if (bRenderVisible) {
+								RenderGround(xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelGround, localGround);
 							}
 						} // for
 
@@ -2006,7 +1995,7 @@ namespace // private to this file (anonymous)
 				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-					RenderFuncBlockChunk(voxelStart, ((StreamingGrid* const)::grid), voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
+					RenderFuncBlockChunk(voxelStart, ((StreamingGrid const* const __restrict)::grid), voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
 				);
 			}
 			// ####################################################################################################################
@@ -2128,21 +2117,17 @@ namespace Iso
 		}
 	}*/
 
-	heightstep const __vectorcall Voxel::HeightMap(point2D_t const voxelIndex)
+	__declspec(safebuffers) heightstep const __vectorcall Voxel::HeightMap(point2D_t const voxelIndex)
 	{
-		auto const& image(HeightMap());
+		uint16_t const* const __restrict heights((uint16_t const* const __restrict)HeightMap()->block);
 
-		uint16_t const* const* const heights((uint16_t**)image->image32);
-
-		return{ *(heights[voxelIndex.y] + voxelIndex.x) };
+		return{ heights[voxelIndex.y * Iso::WORLD_GRID_WIDTH + voxelIndex.x] };
 	}
-	heightstep* const __restrict __vectorcall Voxel::HeightMapReference(point2D_t const voxelIndex)
+	__declspec(safebuffers) heightstep* const __restrict __vectorcall Voxel::HeightMapReference(point2D_t const voxelIndex)
 	{
-		auto const& image(HeightMap());
+		uint16_t* const __restrict heights((uint16_t* const __restrict)HeightMap()->block);
 
-		uint16_t** const heights((uint16_t**)image->image32);
-
-		return( (heights[voxelIndex.y] + voxelIndex.x) );
+		return( &heights[voxelIndex.y * Iso::WORLD_GRID_WIDTH + voxelIndex.x] );
 	}
 } // end ns
 
@@ -2295,7 +2280,7 @@ namespace world
 #ifndef NDEBUG
 		OutputVoxelStats();
 #endif
-		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(), MinCity::Vulkan->computeQueue(), MinCity::getFramebufferSize(), MinCity::hardware_concurrency());
+		_OpacityMap.create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->computePool(), MinCity::Vulkan->computeQueue(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), MinCity::getFramebufferSize(), MinCity::hardware_concurrency());
 		MinCity::PostProcess->create(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue(), MinCity::getFramebufferSize(), MinCity::Vulkan->isHDR());
 		createAllBuffers(MinCity::Vulkan->getDevice(), MinCity::Vulkan->transientPool(), MinCity::Vulkan->graphicsQueue());
 		
@@ -2905,19 +2890,19 @@ namespace world
 		// *** these staging buffers are dynamic, the active size is reset to zero for a reason here.
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
 			voxels.visibleDynamic.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), vku::eMappedAccess::Random, true, true);
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), vku::eMappedAccess::Sequential, true, true);
 			voxels.visibleDynamic.opaque.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleDynamic.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), vku::eMappedAccess::Random, true, true);
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), vku::eMappedAccess::Sequential, true, true);
 			voxels.visibleDynamic.trans.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleStatic.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), vku::eMappedAccess::Random, true, true);
+				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), vku::eMappedAccess::Sequential, true, true);
 			voxels.visibleStatic.stagingBuffer[i].setActiveSizeBytes(0);
 
 			voxels.visibleTerrain.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), vku::eMappedAccess::Random, true, true);
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), vku::eMappedAccess::Sequential, true, true);
 			voxels.visibleTerrain.stagingBuffer[i].setActiveSizeBytes(0);
 		}
 
@@ -2970,6 +2955,8 @@ namespace world
 
 	void cVoxelWorld::RenderTask_Normal(uint32_t const resource_index) const // OPACITY is enabled for update, and reources are mapped during normal rendering
 	{
+		ZoneScopedN("Stage Resources");
+
 		// mapping //
 		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.stagingBuffer[resource_index].map();
 		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Terrain(MappedVoxels_Terrain_Start);
@@ -3589,7 +3576,8 @@ namespace world
 			static constexpr int32_t const MAX_VALUE(UINT16_MAX);
 			static constexpr float const INV_MAX_VALUE(1.0f / float(MAX_VALUE));
 
-			point2D_t const rawData[2]{ MinCity::Vulkan->queryMouseBuffer(XMLoadFloat2A(&_vMouse), 1), MinCity::Vulkan->queryMouseBuffer(XMLoadFloat2A(&_vMouse), 0) };
+			XMVECTOR const xmMouse(XMLoadFloat2A(&_vMouse));
+			point2D_t const rawData[2]{ MinCity::Vulkan->queryMouseBuffer(xmMouse, 1), MinCity::Vulkan->queryMouseBuffer(xmMouse, 0) };
 
 			if (!rawData[0].isZero()) { // bugfix for when mouse hovers out of grid bounds 
 
@@ -3598,7 +3586,7 @@ namespace world
 				xmVoxelIndex = XMVectorScale(xmVoxelIndex, INV_MAX_VALUE);
 
 				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
-				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set_ps(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 0.0f, 0.0f), _mm_set_ps(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
+				xmVoxelIndex = SFM::__fms(xmVoxelIndex, XMVectorSet(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 0.0f, 0.0f), XMVectorSet(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
 
 				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
@@ -3612,7 +3600,7 @@ namespace world
 				xmVoxelIndex = XMVectorScale(xmVoxelIndex, INV_MAX_VALUE);
 
 				// change normalized range to voxel grid range [0.0f....1.0f] to [-WORLD_GRID_FHALFSIZE, WORLD_GRID_FHALFSIZE]
-				xmVoxelIndex = SFM::__fms(xmVoxelIndex, _mm_set_ps(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 0.0f, 0.0f), _mm_set_ps(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
+				xmVoxelIndex = SFM::__fms(xmVoxelIndex, XMVectorSet(Iso::WORLD_GRID_FWIDTH, Iso::WORLD_GRID_FHEIGHT, 0.0f, 0.0f), XMVectorSet(Iso::WORLD_GRID_FHALF_WIDTH, Iso::WORLD_GRID_FHALF_HEIGHT, 0.0f, 0.0f));
 
 				point2D_t const voxelIndex(v2_to_p2D_rounded(xmVoxelIndex)); // *** MUST BE ROUNDED FOR SELECTION PRECISION *** //
 
@@ -3674,6 +3662,9 @@ namespace world
 		constinit static float time_last(0.0f), // last interpolated time
 							   time_delta_last(0.0f); // last interpolated time delta
 
+		// should be done first
+		Interpolator.interpolate(0.5f * Globals::INTERPOLATION_TIME_SCALAR); // *bugfix - using tRemainder here is unstable - motion jitters or oscilates... 0.5f is where time ticks normally in regards to the interpolation of motion between frames, slow-motion is possible with small values (time scalar)
+
 		_currentState.time = SFM::lerp(_lastState.time, _targetState.time, tRemainder);
 
 		// clamp at the 2x step size, don't care or want spurious spikes of time
@@ -3688,17 +3679,15 @@ namespace world
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
 		// view matrix derived from eyePos
-		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
-		float const camera_elevation_delta = XMVectorGetW(xmEyePos);
-		XMVECTOR const xmLookAt = XMVectorSet(0.0f, camera_elevation_delta, 0.0f, 0.0f);
+		XMVECTOR const xmEyePos(XMVectorSubtract(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder), getFractionalOffset()));
 
 		// In the ening these must be w/o fractional offset - no jitter on lighting and everything else that uses these uniform variables (normal usage via uniform buffer in shader)
 		_currentState.Uniform.eyePos = xmEyePos;
-		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(_currentState.Uniform.eyePos, xmLookAt)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+		_currentState.Uniform.eyeDir = XMVector3Normalize(xmEyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
-		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, xmLookAt, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		// *bugfix - ***do not change***
 		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
@@ -3713,25 +3702,18 @@ namespace world
 		_currentState.Uniform.proj = _Visibility.getProjectionMatrix();
 		_currentState.Uniform.viewproj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);			// matrices can not be interpolated effectively they must be recalculated
 																										// from there base components
-
-		// should be done last
-		Interpolator.interpolate(0.5f * Globals::INTERPOLATION_TIME_SCALAR); // *bugfix - using tRemainder here is unstable - motion jitters or oscilates... 0.5f is where time ticks normally in regards to the interpolation of motion between frames, slow-motion is possible with small values (time scalar)
-
 	}
-	void __vectorcall cVoxelWorld::UpdateUniformStateTarget(tTime const& __restrict tNow, tTime const& __restrict tStart, bool const bFirstUpdate) // fixed timestep state
+	void __vectorcall cVoxelWorld::UpdateUniformStateTarget(tTime const& __restrict tNow, bool const bFirstUpdate) // fixed timestep state
 	{
 		_lastState = _targetState;
 
-		_targetState.time = time_to_float(fp_seconds(tNow - tStart));
-		// important - negation for -Y is up in Vulkan *here*
-		float const camera_elevation_delta = -XMVectorGetY(XMLoadFloat3A((XMFLOAT3A const* const)&oCamera.Origin));
+		_targetState.time = time_to_float(fp_seconds(tNow - start()));
 
 		// "XMMatrixInverse" found to be imprecise for acquiring vector components (forward, direction)
 		// using original values instead (-----precise))
-		_targetState.Uniform.eyePos = XMVectorSetW(v3_rotate_yaw(XMVectorAdd(XMVectorAdd(Iso::xmEyePt_Iso, XMVectorSet(0.0f, camera_elevation_delta, 0.0f, 0.0f)),
-			                                                                 getFractionalOffset()), oCamera.Yaw),
-			                                       camera_elevation_delta); // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (Yaw) - don't fuck with the fractional offset, it *is* required here.
-																			// this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
+		_targetState.Uniform.eyePos = v3_rotate_yaw(Iso::xmEyePt_Iso, oCamera.Yaw);
+			                                       // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (Yaw) - don't fuck with the fractional offset, it *is* required here.
+												   // this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
 		_targetState.zoom = oCamera.ZoomFactor;
 		
 		// move state to last target
@@ -3782,13 +3764,13 @@ namespace world
 	}
 	void cVoxelWorld::Update(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta, bool const bPaused, bool const bJustLoaded)
 	{
-		tTime const tStart(start());
+		ZoneScopedN("Update");
 
 		// ***** Anything that will affect uniform state BEFORE
 		UpdateCamera(tNow, tDelta);
 
 		//###########################################################//
-		UpdateUniformStateTarget(tNow, tStart, bJustLoaded);
+		UpdateUniformStateTarget(tNow, bJustLoaded);
 		//###########################################################//
 
 #ifndef NDEBUG
@@ -3855,6 +3837,11 @@ namespace world
 					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
+				{
+					// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
+					getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+				}
+
 			});
 		}
 		else {
@@ -3881,14 +3868,16 @@ namespace world
 					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
+				{
+					// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
+					getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+				}
+
 			});
 		}
-
-		// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
-		getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
 	}
 		
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE / MINIVOXEL_FACTORF; // should be minivox size (affects light attenuation *only*)
+	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE; // should be minivox size (affects light attenuation *only*)
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4105,11 +4094,6 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
 		constants.emplace_back(vku::SpecializationConstant(8, 1.0f / (float)Volumetric::voxelOpacity::getLightSize())); // should be inv light volume size
-	}
-
-	void cVoxelWorld::SetSpecializationConstants_VoxelRain_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
-		constants.emplace_back(vku::SpecializationConstant(0, (float)(Iso::MINI_VOX_SIZE * Volumetric::Konstants::VOXEL_RAIN_SCALE))); // VS is dependent on type of voxel for geometry size
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_ClearMask_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4646,8 +4630,6 @@ namespace world
 
 	void cVoxelWorld::CleanUp()
 	{
-		async_long_task::wait<background_critical>(_AsyncClearTaskID, "async clears"); // ensure the async clears are done
-
 		// cleanup special instances
 		
 		// _currentVoxelIndexPixMap is released auto-magically - virtual memory

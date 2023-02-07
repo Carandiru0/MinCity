@@ -50,6 +50,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #include "RedirectIO.h"
 
+#include <tracy.h>
+
 // private global variables //
 namespace // private to this file (anonymous)
 {
@@ -124,6 +126,11 @@ void cMinCity::LoadINI()
 
 	uint32_t const uiHDRNits = (uint32_t)GetPrivateProfileInt(L"RENDER_SETTINGS", L"HDR_NITS", TRUE, szINIFile);
 	Vulkan->setHDREnabled(0 != uiHDRNits, uiHDRNits);
+
+	bool const bForceVsync = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"FORCE_VSYNC", FALSE, szINIFile);
+	if (bForceVsync) {
+		Vulkan->ForceVsync();
+	}
 
 	bool const bDPIAware = (bool)GetPrivateProfileInt(L"RENDER_SETTINGS", L"DPI_AWARE", TRUE, szINIFile);
 	Nuklear->setFrameBufferDPIAware(bDPIAware);
@@ -686,6 +693,8 @@ NO_INLINE static bool const GradualStartUp(size_t const frameCount, bool const& 
 
 void cMinCity::UpdateWorld()
 {
+	ZoneScopedN("UpdateWorld");
+
 	constinit static bool bWasPaused(false);
 	constinit static tTime
 		tLast{ zero_time_point },
@@ -789,7 +798,7 @@ void cMinCity::StageResources(uint32_t const resource_index)
 
 		// bring down cpu & power usage when standing by //
 		[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
-			_mm_pause();
+			
 			Sleep(((DWORD const)duration_cast<milliseconds>(critical_delta()).count()));
 		}
 		return;
@@ -802,6 +811,8 @@ void cMinCity::StageResources(uint32_t const resource_index)
 
 void cMinCity::Render()
 {
+	ZoneScopedN("Vulkan Render");
+
 	static constexpr size_t const MAGIC_NUM = 67108860;
 
 	Vulkan->Render();
@@ -1366,7 +1377,9 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
 	(void)UNREFERENCED_PARAMETER(lpCmdLine);
 	(void)UNREFERENCED_PARAMETER(nCmdShow);
 	g_hInstance = hInstance;
-	
+
+	__SetThreadName("main thread");
+
 	cMinCity::CriticalInit();
 
 #ifndef NDEBUG // use quick_exit(0) at point where bug has been successfully passed, quick_exit(1) happens in the validation callback when BREAK_ON_VALIDATION_ERROR is equal to 1 in vku.hpp (for isolating sync validation errors with automation using debug_sync program)
@@ -1379,8 +1392,11 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
 	// Loop waiting for the window to close, exit of program, etc
 	while (cMinCity::isRunning()) {
 
+		ZoneScopedN("Root");
+
 		cMinCity::UpdateWorld();
 		cMinCity::Render();
+		FrameMark;
 	}
 
 	cMinCity::Cleanup(g_glfwwindow);

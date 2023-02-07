@@ -243,7 +243,7 @@ namespace Volumetric
 
 		LoadModelSequenceNamed<DYNAMIC>("main_thrust");
 		LoadModelSequenceNamed<DYNAMIC>("up_thrust");
-		LoadModelSequenceNamed<DYNAMIC>("helium_gas");
+		//LoadModelSequenceNamed<DYNAMIC>("helium_gas");      // vdb and v1xa backed up, all 10.2GB+, removed from build as backups are taking up to much space. *remeber* to use lower resolution and less frames to optimize vdb size. once vdb is converted to v1xa, the size is much much smaller. So the vdb is not required in release version @TODO
 		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC>("tiny_explosion");
 

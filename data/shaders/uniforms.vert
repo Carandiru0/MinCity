@@ -129,7 +129,7 @@ const float INV_MAX_TRANSPARENCY = (1.0f / 4.0f);	// 4 levels of transparency (0
 
 #if defined(DYNAMIC)
 
-// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
+// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. w is color, however the sign is used for decoding the quaternion. see uniforms.vert - decode_quaternion() [bandwidth optimization]
 vec4 decode_quaternion(in const vec3 xyz, in const float sgn)
 {
 	// 1.0 = x^2 + y^2 + z^2 + w^2
@@ -171,7 +171,7 @@ void main() {
 #if defined(HEIGHT) // terrain only
   const uint uheightstep = 0xffffu & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
   const float heightstep = float(uheightstep) / 65535.0f; // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
-  const float real_height = max(VOX_SIZE / float(MINIVOXEL_FACTOR), (TERRAIN_MAX_HEIGHT * heightstep) * (VOX_SIZE / float(MINIVOXEL_FACTOR))) * float(MINIVOXEL_FACTOR);
+  const float real_height = max(1.0f, TERRAIN_MAX_HEIGHT * heightstep) * size;
   Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
   Out.right   = vec3(size, 0.0f, 0.0f);
   Out.forward = vec3(0.0f, 0.0f, size);
@@ -221,7 +221,7 @@ void main() {
 
 #endif
 #endif // clear
-
+ 
 // applies to ground and regular voxels only
 #ifdef BASIC
 #if !defined(CLEAR) && !defined(TRANS)
@@ -229,7 +229,7 @@ void main() {
 	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
 #endif
 #else
-	Out.color = packColor(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
+	Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
 #endif
 
 #if defined(BASIC) && !defined(TRANS) // only basic past this point
@@ -237,22 +237,24 @@ void main() {
 	// derive the normalized index
 	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
 
+  // *** never write to slice 0 (slice 0 contains the always on and filled world ground plane) ***
+
 #if !defined(HEIGHT)
-  const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions).xzy);
+  const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions));
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
 #if defined(CLEAR) // erase
-  imageStore(opacityMap, ivoxel, vec4(0));
+  imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, vec4(0));
 #else
-  imageStore(opacityMap, ivoxel, opacity.rrrr);
+  imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, opacity.rrrr);
 #endif
 
 #ifdef DYNAMIC // dynamic voxels only
   // hole filling for rotated (xz) voxels (simplified and revised portion of novel oriented rect algorithm)
 #if defined(CLEAR) // erase
-   imageStore(opacityMap, ivec3(ivoxel.x, ivoxel.y - 1, ivoxel.z), vec4(0));			// this is suprisingly coherent 
-#else																					// and works by layer, resulting in bugfix for hole filling.
-   imageStore(opacityMap, ivec3(ivoxel.x, ivoxel.y - 1, ivoxel.z), opacity.rrrr);		// reflections on rotated models are no longer distorted.
+   imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, vec4(0));			// this is suprisingly coherent 
+#else																					            // and works by layer, resulting in bugfix for hole filling.
+   imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, opacity.rrrr);		// reflections on rotated models are no longer distorted.
 #endif
 #endif // dynamic 
 
@@ -260,8 +262,8 @@ void main() {
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
  
   ivec3 iminivoxel;
-									
-  [[dependency_infinite]] for( iminivoxel.y = 1/*int(floor((heightstep * VolumeDimensions) / MINIVOXEL_FACTOR)) - 1*/; iminivoxel.y >= 0 ; --iminivoxel.y ) {				// slice
+									                                                                                // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
+  [[dependency_infinite]] for( iminivoxel.y = int(floor(heightstep * TERRAIN_MAX_HEIGHT)) - 1; iminivoxel.y > 0 ; --iminivoxel.y ) { // slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 

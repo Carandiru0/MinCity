@@ -31,7 +31,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #endif
 
 // ################ *bugfix - do *not* change the type of mutex used per Chunk ################# //
-
+// ** During Garbage Collection or any closing of Chunks, there can be simultaneous access async with getVoxel / setVoxel ***
 
 namespace // private to this file (anonymous)
 {
@@ -42,27 +42,27 @@ namespace // private to this file (anonymous)
 	typedef struct no_vtable alignas(64) Chunk { // ordering - most frequently accessed - not size
 
 		// temporal (time) //
-		struct {
-			std::atomic_flag       _state;
-			tbb::queuing_rw_mutex  _lock; // should be queueing_rw_mutex *bugfix - do not change type of mutex, StreamingGrid leverages the fact that this type of mutex is [fair], scalable.
-			std::atomic<tTime>     _last_access;
+		struct alignas(64) {
+			std::atomic_flag       _state;            // *bugfix - mutex no longer required. Concurrent access is only during RenderGrid, and all streaming grid access at that time is read-only. All other time during a frame there is no concurrent access to the grid.
+			std::atomic<tTime>     _last_access;      //         - close() also has all unique write locations. the grid maintains an embarrisingly parallel coherence  (with the usage of thread_local decompression and compression buffers) 
 		}; // 24 bytes
 		
 		// space //
-		struct {
+		struct alignas(64) {
 			uint8_t*               _data; // data is compressed if CLOSED, or, data is decompressed if OPEN
 			uint16_t               _compressed_size;
 		}; // 16 bytes
 
 	private:
-		void open(tbb::queuing_rw_mutex::scoped_lock& lock);
+		__declspec(safebuffers) void open();
+
 	public:
-		Iso::Voxel const open(uint32_t const index);
-		void update(uint32_t const index, Iso::Voxel const&& oVoxel);
-		void close();
+		__declspec(safebuffers) Iso::Voxel const open(uint32_t const index);
+		__declspec(safebuffers) void update(uint32_t const index, Iso::Voxel const&& oVoxel);
+		__declspec(safebuffers) void close();
 
 	} Chunk; // 128 bytes
-	static_assert(sizeof(Chunk) <= 64); // Ensure Chunk is correct size @ compile time
+	static_assert(sizeof(Chunk) <= 128); // Ensure Chunk is correct size @ compile time
 
 	static inline thread_local struct no_vtable alignas(64) {
 
@@ -70,7 +70,7 @@ namespace // private to this file (anonymous)
 			DECOMPRESS_SAFE_BUFFER_SIZE = 2304;  // 2304 is a safe decompression size for density for 2048 bytes below in chunk
 
 		struct {
-			uint8_t    buffer[DECOMPRESS_SAFE_BUFFER_SIZE]{};          // 4400 is a safe decompression size for density for 2048 bytes above in chunk
+			uint8_t    buffer[DECOMPRESS_SAFE_BUFFER_SIZE]{};          // 2304 is a safe decompression size for density for 2048 bytes above in chunk
 		} safe;
 
 	} thread_local_decompress_chunks;
@@ -81,7 +81,7 @@ namespace // private to this file (anonymous)
 			COMPRESS_SAFE_BUFFER_SIZE = 2784;    // 2784 ""    ""  compression    ""         ""        ""    ""    ""      ""
 
 		struct {
-			uint8_t    buffer[COMPRESS_SAFE_BUFFER_SIZE]{};          // 5344 is a safe compression size for density for 2048 bytes above in chunk
+			uint8_t    buffer[COMPRESS_SAFE_BUFFER_SIZE]{};          // 2784 is a safe compression size for density for 2048 bytes above in chunk
 		} safe;
 
 	} thread_local_compress_chunks;
@@ -117,14 +117,14 @@ namespace // private to this file (anonymous)
 	} world_grid{};
 
 	// private //
-	void Chunk::open(tbb::queuing_rw_mutex::scoped_lock& lock)
+	__declspec(safebuffers) void Chunk::open()
 	{
 		static constexpr size_t const ALIGNMENT = alignof(Iso::Voxel);
 
 		if (!_state.test_and_set()) { // CLOSED = false/clear
 
 			/**/ // OPEN = set // /**/
-			lock.upgrade_to_writer(); // write access
+			// write access
 
 			[[unlikely]] if (nullptr == _data) { // treat as OPEN & skip decompression
 				_data = (uint8_t* const __restrict)mi_zalloc_aligned(WorldGrid::CHUNK_SIZE, ALIGNMENT);
@@ -145,60 +145,55 @@ namespace // private to this file (anonymous)
 		}
 		else if (nullptr == _data) { // treat as OPEN & skip decompression
 
-			lock.upgrade_to_writer(); // write access
+			// write access
 			_data = (uint8_t* const __restrict)mi_zalloc_aligned(WorldGrid::CHUNK_SIZE, ALIGNMENT);
 		}
 
 	}
 
 	// public //
-	Iso::Voxel const Chunk::open(uint32_t const index)  // used by getVoxel() of StreamingGrid
+	__declspec(safebuffers) Iso::Voxel const Chunk::open(uint32_t const index)  // used by getVoxel() of StreamingGrid
 	{
-		tbb::queuing_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
+		// fast-path
+		open(); // open chunk
 
-		open(lock); // open chunk, ref existing lock
-
-		lock.downgrade_to_reader(); // read access
-		
 		_last_access = critical_now(); // atomic  [after read access]
 
 		Iso::Voxel const* const decompressed(reinterpret_cast<Iso::Voxel const* const>(_data));
 		return(decompressed[index]);
 	}
 
-	void Chunk::update(uint32_t const index, Iso::Voxel const&& oVoxel) // used by setVoxel() of StreamingGrid
+	__declspec(safebuffers) void Chunk::update(uint32_t const index, Iso::Voxel const&& oVoxel) // used by setVoxel() of StreamingGrid
 	{
-		tbb::queuing_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
-
-		open(lock); // open chunk, ref existing lock
+		// fast-path
+		open(); // open chunk
 
 		_last_access = critical_now(); // atomic  [before write access]
 
-		lock.upgrade_to_writer(); // write access
-
-		Iso::Voxel* const decompressed(reinterpret_cast<Iso::Voxel* const>(_data) );
+		Iso::Voxel* const decompressed(reinterpret_cast<Iso::Voxel* const>(_data));
 		decompressed[index] = std::move(oVoxel);
 	}
 
-	void Chunk::close() // used by GarbageCollection() of StreamingGrid
+	// mutex always enabled
+	__declspec(safebuffers) void Chunk::close() // used by GarbageCollection() of StreamingGrid
 	{
 		if (_state.test()) { // OPEN = true/set
 
 			/**/ // CLOSED = clear // /**/
 			_state.clear(); /**/
 
-			tbb::queuing_rw_mutex::scoped_lock lock(_lock, false); // read-only access //
+			// read-only access //
 
 			density_processing_result const result = density_compress_with_context(_data, // _data is decompressed
-				                                                                   WorldGrid::CHUNK_SIZE,
-				                                                                   thread_local_compress_chunks.safe.buffer, thread_local_compress_chunks.COMPRESS_SAFE_BUFFER_SIZE,
-				                                                                   ::world_grid._context);
+																					WorldGrid::CHUNK_SIZE,
+																					thread_local_compress_chunks.safe.buffer, thread_local_compress_chunks.COMPRESS_SAFE_BUFFER_SIZE,
+																					::world_grid._context);
 
 			if (!result.state) {
 
 				size_t const new_compressed_size(result.bytesWritten);
 
-				lock.upgrade_to_writer(); // write access //
+				// write access //
 
 				_data = (uint8_t* const __restrict)mi_realloc(_data, new_compressed_size); // _data becomes compressed
 
@@ -264,7 +259,7 @@ bool const StreamingGrid::Initialize()
 	return(bReturn);
 }
 
-Iso::Voxel const __vectorcall StreamingGrid::getVoxel(point2D_t const voxelIndex) const
+__declspec(safebuffers) Iso::Voxel const __vectorcall StreamingGrid::getVoxel(point2D_t const voxelIndex) const
 {
 	uint32_t const offset(voxelIndex.y * Iso::WORLD_GRID_WIDTH + voxelIndex.x);
 
@@ -274,7 +269,7 @@ Iso::Voxel const __vectorcall StreamingGrid::getVoxel(point2D_t const voxelIndex
 	return(chunk->open(offset & (StreamingGrid::CHUNK_VOXELS - 1)));
 }
 
-void __vectorcall StreamingGrid::setVoxel(point2D_t const voxelIndex, Iso::Voxel const&& oVoxel)
+__declspec(safebuffers) void __vectorcall StreamingGrid::setVoxel(point2D_t const voxelIndex, Iso::Voxel const&& oVoxel)
 {
 	uint32_t const offset(voxelIndex.y * Iso::WORLD_GRID_WIDTH + voxelIndex.x);
 
@@ -311,35 +306,52 @@ void StreamingGrid::Flush() // closes all chunks to "flush" any chunks that are 
 #endif
 
 }
-void StreamingGrid::GarbageCollect(tTime const tNow, nanoseconds const tDelta, bool const bForce)
+
+// ** During Garbage Collection or any closing of Chunks, there can be simultaneous access async with getVoxel / setVoxel ***
+__declspec(safebuffers) void StreamingGrid::GarbageCollect(tTime const tNow, nanoseconds const tDelta, bool const bForce)
 {
 	static constexpr milliseconds const interval(GARBAGE_COLLECTION_INTERVAL);
 	static constinit nanoseconds accumulator{};
 
 	if ((accumulator += tDelta) >= interval || bForce) {
 
-		static constinit bool mode{};
+		static constinit uint32_t mode{};
 
 		// load balancing //
-		uint32_t start(0), end(WorldGrid::CHUNK_COUNT >> 1);
-		if (mode) {
+		constexpr uint32_t const quadrant_size(WorldGrid::CHUNK_COUNT >> 2);
+		constexpr uint32_t const batch_size((uint32_t const)SFM::ct_sqrt(quadrant_size) + 1); // maximize partioning performance by having NxN seperated among tasks. worth the compile time sqrt here. +1 to slightly overlap, however no chunks are missed
+
+		uint32_t start(0), end(quadrant_size);
+		// select quadrant to scan for closures
+		for (uint32_t quadrant = 0; quadrant < mode; ++quadrant) {
 			start = end;
-			end = WorldGrid::CHUNK_COUNT;
+			end = start + quadrant_size;
 		}
-		mode = !mode;
-		
+		// update mode for next garbage collection
+		if (++mode >= 4) {
+			mode = 0;
+		}
+
 		// go thru all chunks, closing chunks that have exceeded the TTL (time to live)
-		tbb::parallel_for(start, end, [&](uint32_t const i) {
+		tbb::auto_partitioner part; // load-balancing
+		tbb::parallel_for(tbb::blocked_range<uint32_t>(start, end, batch_size), [&](tbb::blocked_range<uint32_t> const& r) {
 
-			Chunk& chunk(world_grid._chunks[i]);
+			uint32_t const	// pull out into registers from memory
+			    begin(r.begin()),
+			    end(r.end());
 
-			tTime const last_access(chunk._last_access);
+			for (uint32_t i = begin; i < end; ++i) {
 
-			if ((tNow - last_access) >= CHUNK_TTL || bForce) {
+				Chunk& chunk(world_grid._chunks[i]);
 
-				chunk.close(); // close the chunk
+				tTime const last_access(chunk._last_access);
+
+				if ((tNow - last_access) >= CHUNK_TTL || bForce) {
+
+					chunk.close(); // close the chunk
+				}
 			}
-		});
+		}, part);
 
 		accumulator -= interval;
 

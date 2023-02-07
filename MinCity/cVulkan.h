@@ -221,7 +221,8 @@ public:
 	// Main Methods //
 	void setFullScreenExclusiveEnabled(bool const bEnabled);
 	void setHDREnabled(bool const bEnabled, uint32_t const max_nits = 0);
-		
+	void ForceVsync();
+
 	bool const LoadVulkanFramework();
 	bool const LoadVulkanWindow(struct GLFWwindow* const glfwwindow);
 	void CreateResources();
@@ -348,8 +349,9 @@ private:
 
 	microseconds					_frameTimingAverage;
 
-	point2D_t						_mouse_query_cache[2];
+	bool                            _mouse_query_invalidated[2] = { false, false };
 	uint32_t						_current_free_resource_index = 0;
+	point2D_t						_mouse_query_cache[2];
 	
 	bool							_bFullScreenExclusiveAcquired = false,
 									_bRenderingEnabled = false,

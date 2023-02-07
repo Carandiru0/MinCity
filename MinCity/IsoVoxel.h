@@ -95,7 +95,7 @@ namespace Iso
 		INVERSE_MAX_VOXEL_COORD_V = 1.0f / (MAX_VOXEL_FCOORD_V);		// -- good for normalization in range -1.0f...1.0f
       
 	static constexpr double const
-		VOX_MINZ_SCALAR = ((double)Iso::MINI_VOX_SIZE) * SFM::GOLDEN_RATIO_ZERO;
+		VOX_MINZ_SCALAR = ((double)Iso::MINI_VOX_SIZE);
 
 	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD_U, WORLD_MAX_HEIGHT, MAX_VOXEL_FCOORD_V }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
@@ -174,8 +174,8 @@ namespace Iso
 	{
 	public:
 		static ImagingMemoryInstance* const& __restrict   HeightMap();
-		static heightstep const __vectorcall              HeightMap(point2D_t const voxelIndex);
-		static heightstep* const __restrict __vectorcall  HeightMapReference(point2D_t const voxelIndex);
+		__declspec(safebuffers) static heightstep const __vectorcall              HeightMap(point2D_t const voxelIndex);
+		__declspec(safebuffers) static heightstep* const __restrict __vectorcall  HeightMapReference(point2D_t const voxelIndex);
 
 		uint8_t Desc;								// Type of Voxel + Attributes
 		uint8_t MaterialDesc;						// Deterministic SubType + Emission
@@ -378,7 +378,7 @@ namespace Iso
 		float const fHeightStep(INV_RANGE_MAX * ((float)HeightStep)); // normalize range 0.0f ... 1.0f
 		// scale to maximum world space terrain height....
 		// glsl :
-		return(SFM::max(MINI_VOX_SIZE, (TERRAIN_MAX_HEIGHT * fHeightStep) * MINI_VOX_SIZE) * MINIVOXEL_FACTORF); // transform by voxel size and minivoxel size, minimum of 1 minivoxel (in world voxel space coordinates) for real height.
+		return(SFM::max(1.0f, TERRAIN_MAX_HEIGHT * fHeightStep) * Iso::VOX_SIZE); // transform by voxel size and minivoxel size, minimum of 1 minivoxel (in world voxel space coordinates) for real height.
 	}
 	STATIC_INLINE float const __vectorcall getRealHeight(point2D_t const voxelIndex)
 	{

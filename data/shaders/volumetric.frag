@@ -32,9 +32,9 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS VolumeDimensions
 
-float PHASE_FUNCTION(in const float emission) // t = max(0.0f, dot(rd, n))    [0.0f .... 1.0f]
+float PHASE_FUNCTION() // t = max(0.0f, dot(rd, n))    [0.0f .... 1.0f]
 {
-	return((1.0f + emission) / (GOLDEN_RATIO * PI)); // Isotropic
+	return(1.0f / (GOLDEN_RATIO * 4.0f * PI)); // Isotropic
 }
 
 #define EPSILON 0.000000001f
@@ -98,7 +98,7 @@ layout (constant_id = 10) precise const float ZNear = 0.0f;
 precise vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
 
 	precise const vec3 tmin_tmp = (0.0f - orig) / dir;
-	precise const vec3 tmax_tmp = (VolumeDimensions - orig) / dir;
+	precise const vec3 tmax_tmp = (1.0f - orig) / dir;
 	precise const vec3 tmin = min(tmin_tmp, tmax_tmp);
 	precise const vec3 tmax = max(tmin_tmp, tmax_tmp);
 
@@ -108,7 +108,7 @@ precise vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
 vec3 offset(in const vec3 uvw)
 {
 	return(uvw); // linear interpolation (best)
-	//return((uvw * (VolumeDimensions + In.fractional_offset / 0.25f)) * InvVolumeDimensions);
+	//return((uvw * VolumeDimensions + 0.5f) * InvVolumeDimensions);
 	//return((floor(uvw * VolumeDimensions)) * InvVolumeDimensions); // exact to the voxel but has banding
 }
 
@@ -281,13 +281,13 @@ void evaluateVolumetric(inout vec4 voxel, inout float opacity, in const vec3 p, 
 	const float sigmaE = max(EPSILON, sigmaS); // to avoid division by zero extinction
 
 	// Area Light-------------------------------------------------------------------------------
-    const vec3 Li = (sigmaS + attenuation) * light_color * PHASE_FUNCTION(emission); // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+    const vec3 Li = (sigmaS + attenuation) * light_color * PHASE_FUNCTION(); // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
 	const float sigma_dt = exp2(-sigmaS * attenuation);
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += voxel.tran * Sint; // accumulate and also`` take into account the transmittance from previous steps
 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran *= sigma_dt;
+	voxel.tran *= sigma_dt + emission;
 	// bugfix - adding emission*sigma_dt directly to transmission results in "transparent" sections around emissive light sources. The checkerboard pattern is exposed, and some times the ground is showing thru opaque voxels - no good
 }
 
@@ -374,7 +374,7 @@ vec4 traceReflection(in vec4 voxel, in vec3 rd, in vec3 p, in const vec3 n, in c
 		// find reflection
 		[[dont_unroll]] for( ; interval_remaining >= 0.0f ; ) {  // fast sign test
 
-			const float precision_dt = (1.0f - opacity) * dt; 
+			const float precision_dt = max(MIN_STEP, (1.0f - opacity) * dt); 
 
 			// hit opaque voxel ?
 			// extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
@@ -440,7 +440,7 @@ void main() {
 	precise float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
 	pre_dt = max(pre_dt, interval_length/MAX_STEPS);
 	// ----------------------------------- //
-	precise const float dt = max(pre_dt, MIN_STEP);// * GOLDEN_RATIO_ZERO * 0.5f; // fixes infinite loop bug, scaled by the golden ratio instead, placing each slice at intervals of the golden ratio (scaled). (accuracy++) (removes moirre effect in reflections)
+	precise const float dt = max(MIN_STEP, pre_dt); // fixes infinite loop bug
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth
@@ -486,20 +486,20 @@ void main() {
 		[[dont_unroll]] for( ; interval_remaining >= 0.0f ; ) {  // fast sign test
 		
 			// -------------------------------- part lighting ----------------------------------------------------
-			const float precision_dt = (1.0f - opacity) * dt;   // dt is smaller (smaller step) when opacity is higher == smaller steps when encountering opaque voxels to close in as close as possible by decreasing step size as opacity increases...
+			const float precision_dt = max(MIN_STEP, (1.0f - opacity) * dt);   // dt is smaller (smaller step) when opacity is higher == smaller steps when encountering opaque voxels to close in as close as possible by decreasing step size as opacity increases...
 
 			// ## evaluate light
 			evaluateVolumetric(voxel, opacity, p, precision_dt);
 
 			// ## test hit voxel
-			[[branch]] if( bounced(opacity) ) {	
+			[[branch]] if( bounced(opacity) || (voxel.tran - 0.01f) < 0.0f ) {	
 				break;	// stop raymarch, note: can't do lod here, causes aliasing
 			}
 
 			// ## step
 			p += precision_dt * rd;
 			interval_remaining -= precision_dt;
-
+			
 			// ---------------------------------- end one step -----------------------------------------------------
 
 			// *bugfix - skipping a step inserts gaps into the current integrated opacity

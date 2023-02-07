@@ -364,34 +364,36 @@ public:
 	}
 	void interpolate(float const t) {
 
-		[[likely]] if (0 != _v4interpolators.size()) {
-
-			tbb::parallel_for(uint32_t(0), uint32_t(_v4interpolators.size()), [this, t](uint32_t const i) {
-
-				_v4interpolators[i].lerp(t);
-			});
-		}
-		[[likely]] if (0 != _v3interpolators.size()) {
-
-			tbb::parallel_for(uint32_t(0), uint32_t(_v3interpolators.size()), [this, t](uint32_t const i) {
-
-				_v3interpolators[i].lerp(t);
-			});
-		}
-		[[likely]] if (0 != _v2interpolators.size()) {
-
-			tbb::parallel_for(uint32_t(0), uint32_t(_v2interpolators.size()), [this, t](uint32_t const i) {
-
-				_v2interpolators[i].lerp(t);
-			});
-		}
-		[[likely]] if (0 != _finterpolators.size()) {
-
-			tbb::parallel_for(uint32_t(0), uint32_t(_finterpolators.size()), [this, t](uint32_t const i) {
-
-				_finterpolators[i].lerp(t);
-			});
-		}
+		//tbb::parallel_invoke( // better distribution, was too fine grained before - disabled threading - not effective, not enough work says microprofiler
+			/*[&]*/ {
+				// 4 component vectors
+				size_t const count(_v4interpolators.size());
+				for (size_t i = 0; i < count; ++i) {
+					_v4interpolators[i].lerp(t);
+				}
+			}//,
+			/*[&]*/ {
+				// 3 component vectors
+				size_t const count(_v3interpolators.size());
+				for (size_t i = 0; i < count; ++i) {
+					_v3interpolators[i].lerp(t);
+				}
+			}//,
+			/*[&]*/ {
+				// 2 component vectors
+				size_t const count(_v2interpolators.size());
+				for (size_t i = 0; i < count; ++i) {
+					_v2interpolators[i].lerp(t);
+				}
+			}//,
+			/*[&]*/ {
+				// 1 component vectors
+				size_t const count(_finterpolators.size());
+				for (size_t i = 0; i < count; ++i) {
+					_finterpolators[i].lerp(t);
+				}
+			}
+		//);
 	}
 
 public:

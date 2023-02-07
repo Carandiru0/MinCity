@@ -73,7 +73,7 @@ namespace world
 					++it;
 				}
 			}
-
+			
 			// update all image animations //
 			{
 				auto it = ImageAnimation::begin();

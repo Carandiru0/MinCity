@@ -28,13 +28,13 @@ public:
 	static constexpr milliseconds const     GARBAGE_COLLECTION_INTERVAL = milliseconds(100), // garbage collection beat
 		                                    CHUNK_TTL = GARBAGE_COLLECTION_INTERVAL * 5; // time to live, chunk life when no recent access' are made
 public:
-	Iso::Voxel const __vectorcall getVoxel(point2D_t const voxelIndexWrapped) const;
-	void __vectorcall             setVoxel(point2D_t const voxelIndexWrapped, Iso::Voxel const&& oVoxel);
+	__declspec(safebuffers) Iso::Voxel const __vectorcall getVoxel(point2D_t const voxelIndexWrapped) const;
+	__declspec(safebuffers) void __vectorcall             setVoxel(point2D_t const voxelIndexWrapped, Iso::Voxel const&& oVoxel);
 
 	bool const Initialize();
 	
 	void Flush();
-	void GarbageCollect(tTime const tNow, nanoseconds const tDelta, bool const bForce = false); // see notes in cpp for proper usage
+	__declspec(safebuffers) void GarbageCollect(tTime const tNow, nanoseconds const tDelta, bool const bForce = false); // see notes in cpp for proper usage
 
 	void CleanUp();
 

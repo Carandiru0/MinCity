@@ -2062,7 +2062,7 @@ void cNuklear::do_cyberpunk_loadsave_window(bool const mode, std::string& __rest
 						if (MinCity::VoxelWorld->PreviewWorld(name_cities[index_city], std::forward<CityInfo&&>(_loadsaveWindow.info_cities[index_city]), _guiTextures.load_thumbnail.image[index_visible_slot])) {
 
 							// update texture for thumbnail from new imaging data returned from previewworld
-							MinCity::TextureBoy->ImagingToTexture<true>(_guiTextures.load_thumbnail.image[index_visible_slot], _guiTextures.load_thumbnail.texture[index_visible_slot], _guiTextures.load_thumbnail.stagingBuffer);
+							MinCity::TextureBoy->ImagingToTexture<true>(_guiTextures.load_thumbnail.image[index_visible_slot], _guiTextures.load_thumbnail.texture[index_visible_slot], (vk::ImageUsageFlagBits)0, _guiTextures.load_thumbnail.stagingBuffer);
 
 						}
 						else {
@@ -3475,10 +3475,10 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 #ifndef NDEBUG
 		if (nk_tree_push(_ctx, NK_TREE_TAB, "CAMERA", NK_MINIMIZED))
 		{
-			XMFLOAT2A vIsoCenterOffset;
+			XMFLOAT3A vIsoCenterOffset;
 			std::string szText;
 
-			XMStoreFloat2A(&vIsoCenterOffset, getDebugVariable(XMVECTOR, DebugLabel::CAMERA_FRACTIONAL_OFFSET));
+			XMStoreFloat3A(&vIsoCenterOffset, getDebugVariable(XMVECTOR, DebugLabel::CAMERA_FRACTIONAL_OFFSET));
 
 			//NK_PUSH_FONT(_ctx, eNK_FONTS::CRISP);
 
@@ -3511,11 +3511,11 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 			nk_layout_row_begin(_ctx, NK_STATIC, 32, 2);
 
 			nk_layout_row_push(_ctx, 550);
-			nk_slider_float(_ctx, 0.0f, &vIsoCenterOffset.y, 1.0f, 0.01f);
+			nk_slider_float(_ctx, 0.0f, &vIsoCenterOffset.z, 1.0f, 0.01f);
 
 			nk_layout_row_push(_ctx, 150);
 
-			szText = fmt::format(FMT_STRING("{:f}"), vIsoCenterOffset.y);
+			szText = fmt::format(FMT_STRING("{:f}"), vIsoCenterOffset.z);
 			nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 			nk_layout_row_end(_ctx);
@@ -3545,22 +3545,22 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 				std::string szText;
 
 				static tTime tLast(zero_time_point);
-				static XMFLOAT2A vMax, vMin;
+				static XMFLOAT3A vMax, vMin;
 				bool bSkipColor(false);
-				XMFLOAT2A voxelCameraOriginOffset;
+				XMFLOAT3A voxelCameraOriginOffset;
 
 				XMVECTOR const xmOffset = getDebugVariable(XMVECTOR, DebugLabel::CAMERA_FRACTIONAL_OFFSET);
 
 				if (tLocal - tLast >= milliseconds(MINMAX_REFRESH)) {
-					XMStoreFloat2A(&vMax, _mm_set1_ps(-FLT_MAX));
-					XMStoreFloat2A(&vMin, _mm_set1_ps(FLT_MAX));
+					XMStoreFloat3A(&vMax, _mm_set1_ps(-FLT_MAX));
+					XMStoreFloat3A(&vMin, _mm_set1_ps(FLT_MAX));
 					bSkipColor = true;
 					tLast = tLocal;
 				}
-				static XMFLOAT2A vLastMax, vLastMin;
+				static XMFLOAT3A vLastMax, vLastMin;
 
-				XMVECTOR xmMax = XMLoadFloat2A(&vMax);  xmMax = XMVectorMax(xmMax, xmOffset);
-				XMVECTOR xmMin = XMLoadFloat2A(&vMin);  xmMin = XMVectorMin(xmMin, xmOffset);
+				XMVECTOR xmMax = XMLoadFloat3A(&vMax);  xmMax = XMVectorMax(xmMax, xmOffset);
+				XMVECTOR xmMin = XMLoadFloat3A(&vMin);  xmMin = XMVectorMin(xmMin, xmOffset);
 
 				static PackedVector::XMCOLOR colorMinX, colorMinY, colorMaxX, colorMaxY;
 				static tTime tLastColor;
@@ -3568,35 +3568,35 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 				if (!bSkipColor && tLocal - tLastColor >= milliseconds(COLOR_REFRESH)) {
 
 					uint32_t Result;
-					XMVectorEqualR(&Result, XMVectorSplatX(xmMin), XMVectorSplatX(XMLoadFloat2A(&vLastMin)));
+					XMVectorEqualR(&Result, XMVectorSplatX(xmMin), XMVectorSplatX(XMLoadFloat3A(&vLastMin)));
 					if (XMComparisonAllFalse(Result)) {
 						XMStoreColor(&colorMinX, XMVectorSelect(DirectX::Colors::Red, DirectX::Colors::LimeGreen,
-							XMVectorGreater(XMVectorSplatX(xmMin), XMVectorSplatX(XMLoadFloat2A(&vLastMin)))));
+							XMVectorGreater(XMVectorSplatX(xmMin), XMVectorSplatX(XMLoadFloat3A(&vLastMin)))));
 					}
 					else {
 						colorMinX.r = colorMinX.g = colorMinX.b = colorMinX.a = 255;
 					}
-					XMVectorEqualR(&Result, XMVectorSplatY(xmMin), XMVectorSplatY(XMLoadFloat2A(&vLastMin)));
+					XMVectorEqualR(&Result, XMVectorSplatY(xmMin), XMVectorSplatY(XMLoadFloat3A(&vLastMin)));
 					if (XMComparisonAllFalse(Result)) {
 						XMStoreColor(&colorMinY, XMVectorSelect(DirectX::Colors::Red, DirectX::Colors::LimeGreen,
-							XMVectorGreater(XMVectorSplatY(xmMin), XMVectorSplatY(XMLoadFloat2A(&vLastMin)))));
+							XMVectorGreater(XMVectorSplatY(xmMin), XMVectorSplatY(XMLoadFloat3A(&vLastMin)))));
 					}
 					else {
 						colorMinY.r = colorMinY.g = colorMinY.b = colorMinY.a = 255;
 					}
 
-					XMVectorEqualR(&Result, XMVectorSplatX(xmMax), XMVectorSplatX(XMLoadFloat2A(&vLastMax)));
+					XMVectorEqualR(&Result, XMVectorSplatX(xmMax), XMVectorSplatX(XMLoadFloat3A(&vLastMax)));
 					if (XMComparisonAllFalse(Result)) {
 						XMStoreColor(&colorMaxX, XMVectorSelect(DirectX::Colors::Red, DirectX::Colors::LimeGreen,
-							XMVectorGreater(XMVectorSplatX(xmMax), XMVectorSplatX(XMLoadFloat2A(&vLastMax)))));
+							XMVectorGreater(XMVectorSplatX(xmMax), XMVectorSplatX(XMLoadFloat3A(&vLastMax)))));
 					}
 					else {
 						colorMaxX.r = colorMaxX.g = colorMaxX.b = colorMaxX.a = 255;
 					}
-					XMVectorEqualR(&Result, XMVectorSplatY(xmMax), XMVectorSplatY(XMLoadFloat2A(&vLastMax)));
+					XMVectorEqualR(&Result, XMVectorSplatY(xmMax), XMVectorSplatY(XMLoadFloat3A(&vLastMax)));
 					if (XMComparisonAllFalse(Result)) {
 						XMStoreColor(&colorMaxY, XMVectorSelect(DirectX::Colors::Red, DirectX::Colors::LimeGreen,
-							XMVectorGreater(XMVectorSplatY(xmMax), XMVectorSplatY(XMLoadFloat2A(&vLastMax)))));
+							XMVectorGreater(XMVectorSplatY(xmMax), XMVectorSplatY(XMLoadFloat3A(&vLastMax)))));
 					}
 					else {
 						colorMaxY.r = colorMaxY.g = colorMaxY.b = colorMaxY.a = 255;
@@ -3605,14 +3605,14 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 				}
 				vLastMax = vMax;
 				vLastMin = vMin;
-				XMStoreFloat2A(&vMax, xmMax);
-				XMStoreFloat2A(&vMin, xmMin);
-				XMStoreFloat2A(&voxelCameraOriginOffset, xmOffset);
+				XMStoreFloat3A(&vMax, xmMax);
+				XMStoreFloat3A(&vMin, xmMin);
+				XMStoreFloat3A(&voxelCameraOriginOffset, xmOffset);
 
 				szText = fmt::format(FMT_STRING("{:f}"), voxelCameraOriginOffset.x);
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
-				szText = fmt::format(FMT_STRING("{:f}"), voxelCameraOriginOffset.y);
+				szText = fmt::format(FMT_STRING("{:f}"), voxelCameraOriginOffset.z);
 				nk_text(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT);
 
 				nk_layout_row_dynamic(_ctx, 25, 4);
@@ -3623,10 +3623,10 @@ void cNuklear::do_debug_fps_window(tTime const tLocal)
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMaxX));
 
 
-				szText = fmt::format(FMT_STRING("MIN({:f})"), vMin.y);
+				szText = fmt::format(FMT_STRING("MIN({:f})"), vMin.z);
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMinY));
 
-				szText = fmt::format(FMT_STRING("MAX({:f})"), vMax.y);
+				szText = fmt::format(FMT_STRING("MAX({:f})"), vMax.z);
 				nk_text_colored(_ctx, szText.c_str(), szText.length(), NK_TEXT_ALIGN_LEFT, nk_rgb_from_XMCOLOR(colorMaxY));
 			}
 

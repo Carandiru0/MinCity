@@ -1,3 +1,13 @@
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
+
 #pragma once
 #include "cVulkan.h"
 
@@ -57,6 +67,12 @@ namespace Volumetric
 		XMVECTOR min, max;
 	};
 #endif
+
+	// opacity map initialization (internal methods)
+	namespace internal {
+		void InitializeOpacityMap(uint32_t const world_volume_size, vku::TextureImage2D*& srcGround);
+		void RenderInitializeOpacityMap(uint32_t const world_volume_size, vk::CommandBuffer& cb, vku::TextureImage2D const* const srcGround, vku::TextureImageStorage3D const* const dstVolume);
+	}
 
 	template< uint32_t const Size > // "uniform world volume size"
 	class alignas(16) volumetricOpacity
@@ -131,10 +147,6 @@ namespace Volumetric
 		__inline lightVolume const& __restrict		 getMappedVoxelLights() const { return(MappedVoxelLights); }
 		
 		// Mutators //
-		__inline void __vectorcall pushViewMatrixOffset(FXMMATRIX xmView, FXMVECTOR xmOffset) {
-			XMStoreFloat4x4(&PushConstants.view, xmView);   // view matrix stored in xyz form
-			XMStoreFloat3(&PushConstants.offset, XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOffset)); // offset properly swizzled to xzy form
-		}
 		
 #ifdef DEBUG_LIGHT_PROPAGATION
 		int32_t const getDebugSliceIndex() const {
@@ -218,13 +230,16 @@ namespace Volumetric
 		}
 
 	public:
-		void create(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, point2D_t const frameBufferSize, size_t const hardware_concurrency) {
+		void create(vk::Device const& __restrict device, 
+			        vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue, 
+			        vk::CommandPool const& __restrict commandPoolGraphics, vk::Queue const& __restrict queueGraphics, 
+			        point2D_t const frameBufferSize, size_t const hardware_concurrency) {
 
 			createIndirectDispatch(device, commandPool, queue);
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 
-				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Random, true, true);
+				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Sequential, true, true);
 			}
 			
 			LightProbeMap.imageGPUIn = new vku::TextureImage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,
@@ -250,7 +265,7 @@ namespace Volumetric
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.DistanceDirection->image(), vkNames::Image::LightMap_DistanceDirection);
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightMap.Color->image(), vkNames::Image::LightMap_Color);
 
-			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
+			OpacityMap = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,
 				Size, Size, Size, 1U, vk::Format::eR8Unorm, false, true);
 			VolumeSet.OpacityMap = OpacityMap;
 
@@ -266,11 +281,9 @@ namespace Volumetric
 			DebugTexture = new vku::TextureImageStorage2D(vk::ImageUsageFlagBits::eSampled, device, LightWidth, LightDepth, 1, vk::Format::eR8G8B8A8Unorm);
 			resetMinMax();
 #endif
+			vku::executeImmediately<false>(device, commandPool, queue, [&](vk::CommandBuffer cb) {
 
-			vku::executeImmediately(device, commandPool, queue, [&](vk::CommandBuffer cb) {
 				LightProbeMap.imageGPUIn->setLayout(cb, vk::ImageLayout::eTransferDstOptimal);  // required initial state
-
-				VolumeSet.OpacityMap->setLayout(cb, vk::ImageLayout::eGeneral);					   //    ""      ""      ""
 
 				LightMap.DistanceDirection->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);		// the final oututs are never "read" in compute shaders
 				LightMap.Color->setLayoutCompute(cb, vku::ACCESS_WRITEONLY);					// *only* read by fragment shaders
@@ -278,7 +291,33 @@ namespace Volumetric
 				PingPongMap[0]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 				PingPongMap[1]->setLayoutCompute(cb, vku::ACCESS_READWRITE);		// never changes
 
-				});
+				// initialize the first slice of opacitymap so there is always "ground" for all voxels that extend to the dimensions of the opacitymap plane/slice/widthxheight
+				// this slice is then always present, never overwritten, and solves a couple problems
+				//  - reflections are not present for bounces off offscreen voxels
+				//  - raymarch performance, ground "misses" extend the raymarch distance if no ground is present
+				//  - graphical glitch of no ground outside the view frustum
+				// 
+				// *bugfixes
+				//
+
+				VolumeSet.OpacityMap->setLayout(cb, vk::ImageLayout::eTransferDstOptimal);        // prepare for initialization
+			});
+
+			// temporary src texture for ground plane blit to opacity map.
+			vku::TextureImage2D* texture_ground_plane(nullptr);
+			internal::InitializeOpacityMap(Size, texture_ground_plane);
+
+			vku::executeImmediately<false>(device, commandPoolGraphics, queueGraphics, [&](vk::CommandBuffer cb) {
+
+				texture_ground_plane->setLayout(cb, vk::ImageLayout::eTransferSrcOptimal); // setup for copy/blit
+
+				internal::RenderInitializeOpacityMap(Size, cb, texture_ground_plane, VolumeSet.OpacityMap);
+
+			    VolumeSet.OpacityMap->setLayout(cb, vk::ImageLayout::eGeneral); // initial run-time rendering condition requirement
+		    });
+
+			// release temporary ground plane texture
+			SAFE_RELEASE_DELETE(texture_ground_plane);
 		}
 
 		void SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -349,8 +388,6 @@ namespace Volumetric
 															VolumeLength = (std::hypot(float(VolumeSize), float(VolumeSize), float(VolumeSize))),
 															InvVolumeLength = (1.0f / VolumeLength);
 
-		int32_t												ClearStage;
-
 		UniformDecl::ComputeLightPushConstants				PushConstants;
 #ifdef DEBUG_LIGHT_PROPAGATION
 		vk::Device const* DebugDevice;
@@ -364,8 +401,7 @@ namespace Volumetric
 			:
 			MappedVoxelLights(LightProbeMap.stagingBuffer),
 			ComputeLightDispatchBuffer{ nullptr }, LightMap{ nullptr }, OpacityMap{ nullptr },
-			VolumeSet{},
-			ClearStage(0)
+			VolumeSet{}
 
 #ifdef DEBUG_LIGHT_PROPAGATION
 			, DebugDevice(nullptr), DebugMinMaxBuffer(nullptr), DebugMinMax{ { 99999.0f, 99999.0f, 99999.0f }, { -99999.0f, -99999.0f, -99999.0f } }, DebugTexture(nullptr), DebugSlice(0)
@@ -692,8 +728,35 @@ namespace Volumetric
 		
 		// instead - brute force update of volume occurs every frame (currently 128x128x128 ~33MB to upload every frame (<2ms), **note if 256x256x256 instead the upload size is ~268MB per frame which is dog slow (>21ms))
 		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
+		constinit static uvec4_v last_max, last_min;
 
-		uvec4_v const current_max(MappedVoxelLights.getVolumeExtentsLimit().v/*MappedVoxelLights.getCurrentVolumeExtentsMax()*/), current_min(_mm_setzero_si128()/*MappedVoxelLights.getCurrentVolumeExtentsMin()*/); // no longer culling upload area to extents discovered by light volume occupancy - not worth the headache effects that are caused by this optimization.
+		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), current_min(MappedVoxelLights.getCurrentVolumeExtentsMin()); // adapt to current volume extents containing lights [optimization]
+
+		if (uvec4_v::any<3>(current_max != last_max)) {
+
+			uvec4_v const current(current_max);
+
+			if (uvec4_v::any<3>(current_max < last_max)) { // Required to "erase" lights that are no longer in the current bounds  (volume shrinked)
+				current_max = last_max;                    // set to last bounds
+			}
+
+			last_max = current; // always updated to latest
+			bRecorded[resource_index] = false; // require cb to be updated
+		} // if equal re-run the last recorded cb. 
+
+
+		if (uvec4_v::any<3>(current_min != last_min)) {   
+
+			uvec4_v const current(current_min);
+
+			if (uvec4_v::any<3>(current_min > last_min)) { // Required to "erase" lights that are no longer in the current bounds   (volume shrinked)
+				current_min = last_min;                    // set to last bounds
+			}
+
+			last_min = current; // always updated to latest
+			bRecorded[resource_index] = false; // require cb to be updated
+		} // if equal re-run the last recorded cb
+
 
 		// UPLOAD image already transitioned to transfer dest layout at this point
 		// ################################## //
@@ -771,7 +834,7 @@ namespace Volumetric
 				using psfb = vk::PipelineStageFlagBits;
 					
 				vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
-												dstStageMask(psfb::eTopOfPipe);
+											 dstStageMask(psfb::eTopOfPipe);
 					
 				cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
 			}

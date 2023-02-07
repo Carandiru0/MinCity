@@ -1,9 +1,8 @@
 #version 460
 #extension GL_GOOGLE_include_directive : enable
-//#extension GL_KHR_shader_subgroup_ballot : enable
 #extension GL_KHR_shader_subgroup_vote : enable
-#extension GL_KHR_shader_subgroup_ballot: enable
-#extension GL_KHR_shader_subgroup_arithmetic : enable
+//#extension GL_KHR_shader_subgroup_ballot: enable
+//#extension GL_KHR_shader_subgroup_arithmetic : enable
 //#extension GL_KHR_shader_subgroup_shuffle: enable
 //#extension GL_KHR_shader_subgroup_quad : enable
 #extension GL_EXT_control_flow_attributes : enable
@@ -23,6 +22,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "shareduniform.glsl"
 #include "light.glsl"
 
+//#define OPTIMIZE_TRILINEAR   not working,... yet
 #define GROUP_SIZE_XYZ 8
 
 layout (local_size_x = GROUP_SIZE_XYZ, local_size_y = GROUP_SIZE_XYZ, local_size_z = GROUP_SIZE_XYZ) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,8=256 tested optimal warp size at height 128 and 256 visible voxels
@@ -96,14 +96,13 @@ ivec3 next_neighbour_offset(const in int i) // constant values only (compile tim
 								 ivec3(1, 1, 1) );
 */
 
-
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location )
 {
-//#ifdef SEED
-//	return( textureLod(map, (read_location + 0.5f) * InvVolumeDimensions, 0) );
+//#if defined(SEED) || !defined(OPTIMIZE_TRILINEAR)
+    return( texelFetch(map, ivec3(floor(read_location - 0.5f)), 0) );
 //#else
-	return( texelFetch(map, ivec3(floor(read_location)), 0) );
+	//return( textureLod(map, (read_location - 0.5f) * InvVolumeDimensions, 0) );
 //#endif
 }
 #ifdef SEED
@@ -175,7 +174,7 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	[[branch]] if ( isLit(read_warp.packed_color) ) {	// new
+	[[branch]] if ( 0.0f != read_warp.packed_color ) {	// new
 			
 		const float read_distance = distance(read_warp.emitter_location, current_location);
 
@@ -188,7 +187,7 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 		warp = subgroupShuffle(read_warp, active_invocation_id);
 	}
 }
-*/
+
 
 /*
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
@@ -223,9 +222,14 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(i) * current_step); \
 	
 	// unrolled and compile time constant for offset generated. skip 13, self.
+#if defined(SEED) || !defined(OPTIMIZE_TRILINEAR)
 	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
 	T(9);  T(10); T(11); T(12); T(14); T(15); T(16); T(17); T(18);
-	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 27 - self
+	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 26 texel
+#else
+	//T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)
+	T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
+#endif
 
 	#undef T
 }
@@ -379,7 +383,7 @@ void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location); \
 	current_direction_distance.xyz = normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz); \
 	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w); \
-	current_color += unpackColor(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w); \
+	current_color += unpackColorHDR(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w); \
 
 	// unrolled and compile time constant for offset generated. skip 13, self.
 	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
@@ -398,7 +402,7 @@ void main()
 	}
 
 	const warp_local current_warp = texelFetch(pingpongTexture[pc.index_input], ivec3(gl_GlobalInvocationID.xyz), 0);
-	vec3 current_color = unpackColor(current_warp.packed_color);
+	vec3 current_color = unpackColorHDR(current_warp.packed_color);
 
 	// #################################################################################################################
 	{	// distance & direction ###

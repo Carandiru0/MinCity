@@ -525,13 +525,13 @@ void main() {
 	//const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
 	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
 	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
-
-	const float star_color = texture(reflectionCubeMap, normalize(reflect(V, N))).r;
+	const vec3 star_direction = normalize(reflect(V, N));
+	const float star_color = texture(reflectionCubeMap, star_direction).r;
 
 	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo_rough_ao.xxx, make_material(star_color * 0.1f, 0.0f, albedo_rough_ao.y), star_color.xxx * 10.0f + 0.8f,				 
+	color.rgb += lit( albedo_rough_ao.xxx, make_material(star_color, 0.0f, albedo_rough_ao.y), star_color.xxx * 10.0f + albedo_rough_ao.z,				 
 				      albedo_rough_ao.z, getAttenuation(InvVolumeDimensions * (1.0f - (height_detail * InvVolumeDimensions + height * InvVolumeDimensions)), VolumeDimensions), // on a single voxel
-				      vec3(0,0,-1), N, V, false); // don't want to double-add reflections
+				      star_direction, N, V, false); // don't want to double-add reflections
 
 	// regular terrain lighting
 	vec3 light_color;
@@ -541,7 +541,7 @@ void main() {
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 						// only emissive can have color
-	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColor(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
+	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
 					  albedo_rough_ao.z, Ld.att,
 					  -Ld.dir, N, V, true);
 
@@ -565,7 +565,7 @@ void main() {
 	
 #ifndef TRANS              
     
-	outColor.rgb = lit( unpackColor(In._color), In.material, light_color,
+	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,
 						1.0f, getAttenuation(Ld.dist, VolumeLength),
 						-Ld.dir, N, V, true);
 
@@ -579,7 +579,7 @@ void main() {
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 
 	float fresnelTerm;  // feedback from lit      
-	const vec3 lit_color = lit( unpackColor(In._color), In.material, light_color,
+	const vec3 lit_color = lit( unpackColorHDR(In._color), In.material, light_color,
 						    1.0f, getAttenuation(Ld.dist, VolumeLength),
 						    -Ld.dir, N, V, true, fresnelTerm );
 							             

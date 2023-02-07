@@ -112,7 +112,10 @@ void cVulkan::setHDREnabled(bool const bEnabled, uint32_t const max_nits)
 {
 	_fw.setHDREnabled(bEnabled, max_nits);
 }
-
+void cVulkan::ForceVsync() // only effective at loadtime from ini (before window creation, after framework creation)
+{
+	_fw.ForceVsyncOn();
+}
 bool const cVulkan::LoadVulkanWindow(GLFWwindow* const glfwwindow)
 {
 	// Create a window to draw into
@@ -1519,9 +1522,9 @@ void cVulkan::CreateResources()
 
 	// mouse gpu readback buffers
 	_mouseBuffer[0] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Random, true, true);
+		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true);
 	_mouseBuffer[1] = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
-		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Random, true, true);
+		pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true);
 
 	// offscreen gpu readback buffer
 	_offscreenBuffer = vku::GenericBuffer(buf::eTransferDst, framebufferSz.x * framebufferSz.y * sizeof(uint32_t),
@@ -1928,7 +1931,7 @@ void cVulkan::barrierMouseBuffer(vk::CommandBuffer& cb, uint32_t const resource_
 
 NO_INLINE point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const xmMouse, uint32_t const resource_index)
 {
-	if (resource_index == _current_free_resource_index) {
+	if (resource_index == _current_free_resource_index && _mouse_query_invalidated[resource_index]) {
 		
 		point2D_t const mouse_coord = v2_to_p2D_rounded(xmMouse);
 
@@ -1950,6 +1953,7 @@ NO_INLINE point2D_t const __vectorcall cVulkan::queryMouseBuffer(XMVECTOR const 
 
 		// converted: return mouse hovered voxel index
 		_mouse_query_cache[resource_index].v = point2D_t((aR16G16 & 0x0000FFFF), ((aR16G16 & 0xFFFF0000) >> 16)).v;
+		_mouse_query_invalidated[resource_index] = false;
 	}
 	
 	return(_mouse_query_cache[resource_index]); // correct order
@@ -2365,22 +2369,28 @@ inline void cVulkan::_renderClearCommandBuffer(vku::clear_renderpass&& __restric
 
 void cVulkan::renderComplete(uint32_t const resource_index) // triggered internally on Render Completion (after final queue submission / present by vku framework
 {
-	MinCity::OnRenderComplete(resource_index);
+	_mouse_query_invalidated[resource_index] = true; // important!
 
-	[[unlikely]] if ( _bOffscreenCopy ) { // single frame capture is a rare operation
+	[[unlikely]] if (_bOffscreenCopy) { // single frame capture is a rare operation
 
 		_OffscreenCopied.clear(); // signal copied / copy finished
 		_bOffscreenCopy = false; // only a single frame capture, reset always
 	}
+
+	MinCity::OnRenderComplete(resource_index);
 }
 
-static microseconds const frameTiming(tTime const& tNow) // real-time domain
+static NO_INLINE microseconds const frameTiming(tTime const& tNow) // real-time domain
 {
-	static constexpr milliseconds const PRINT_FRAME_INTERVAL = milliseconds(5500); // ms
+	static constexpr milliseconds const PRINT_FRAME_INTERVAL = milliseconds(6000); // ms
+	static constexpr uint32_t const OVERLAP_WEIGHT_CURRENT = 6, // frames
+		                            OVERLAP_WEIGHT_LAST = OVERLAP_WEIGHT_CURRENT >> 1; // frames
+
+	constinit static microseconds sum{}, peak{}, aboveaveragelevel{}, lastaverage{};
+	constinit static size_t framecount(0), aboveaveragecount(0), belowaveragecount(0);
+
 	static auto start = high_resolution_clock::now();
 	static auto lastPrint = high_resolution_clock::now();
-	static microseconds last{}, sum{}, peak{}, aboveaveragelevel{}, lastaverage{};
-	static size_t framecount(0), aboveaveragecount(0), belowaveragecount(0);
 
 	auto const deltaNano = tNow - start;
 	start = tNow;
@@ -2395,16 +2405,16 @@ static microseconds const frameTiming(tTime const& tNow) // real-time domain
 
 	++framecount;
 
+	microseconds const avgdelta = sum / framecount;
+
 	if (tNow - lastPrint > PRINT_FRAME_INTERVAL) {
 		lastPrint = tNow;
-		// uncomment to get frame time.
-		microseconds const avgdelta = sum / framecount;
 		
 		fmt::print(fg(fmt::color::magenta), "\n" "[ {:d} us, {:d} us peak ]\n", avgdelta.count(), peak.count());
 		if (aboveaveragecount && belowaveragecount) {
 
-			size_t const belowaverage = (belowaveragecount * 100) / framecount;
-			size_t const aboveaverage = (aboveaveragecount * 100) / framecount;
+			size_t const belowaverage = (belowaveragecount * 100) / framecount;   // percentage of frames below average
+			size_t const aboveaverage = (aboveaveragecount * 100) / framecount;   //  ""    ""  ""  "" "" avove ""   ""
 
 			fmt::print(fg(fmt::color::white), "[ ");
 			
@@ -2430,15 +2440,12 @@ static microseconds const frameTiming(tTime const& tNow) // real-time domain
 			fmt::print(fg(fmt::color::white), " ]\n");
 		}
 		
-		aboveaveragelevel = microseconds((avgdelta + peak).count() >> 1);
+		aboveaveragelevel = microseconds((avgdelta + peak).count() >> 1);                          // bugfix - there would be a large spike in framerate every print interval due to framecount being set to zero while the next starting sum contained the last average.
+		peak = microseconds(0); sum = (avgdelta * OVERLAP_WEIGHT_CURRENT + lastaverage * OVERLAP_WEIGHT_LAST); framecount = (OVERLAP_WEIGHT_CURRENT + OVERLAP_WEIGHT_LAST); aboveaveragecount = 0; belowaveragecount = 0;
 		lastaverage = avgdelta;
-		peak = microseconds(0); sum = lastaverage; framecount = 0; aboveaveragecount = 0; belowaveragecount = 0;
-
-		return(lastaverage);
 	}
 
-	last = sum / framecount;
-	return(last);
+	return(avgdelta);
 }
 
 void cVulkan::Render()

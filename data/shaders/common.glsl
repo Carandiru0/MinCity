@@ -288,15 +288,35 @@ float packColor(in const vec3 pushed) {
 	return(float(packUnorm4x8(vec4(pushed,0.0f))));
 }
 
+// 10bpc, no alpha, unpack/pack color:
+// Pack and unpack 3 uint10 <-> uint32
+uvec3 unpackUnorm_10bpc(in const uint a) { // internal usage only
+    return(uvec3( 
+                  a & 0x3FF
+                , (a >> 10) & 0x3FF
+                , (a >> 20) & 0x3FF ));
+}
+uint packUnorm_10bpc(in const uvec3 a) { // internal usage only
+    return(uint( 
+                 (a.b << 20)
+               | (a.g << 10)
+               |  a.r ));
+}
+
+// Pack and unpack 10bpc color in [0...1] <-> float (containing uint32)
+vec3  unpackColorHDR(in const float a) { return(vec3(unpackUnorm_10bpc(floatBitsToUint(a))) / 1023.0f); }
+float packColorHDR(in const vec3 a) { return(uintBitsToFloat(packUnorm_10bpc(uvec3(round(clamp(a, 0.0f, 1.0f) * 1023.0f))))); }
+
+
 // Converts a color from linear to sRGB (branchless)
-vec3 toSRGB(vec3 linearRGB)
+vec3 toSRGB(in const vec3 linearRGB)
 {
     const bvec3 cutoff = lessThan(linearRGB, vec3(0.0031308f));
     return mix(1.055f*pow(linearRGB, vec3(1.0f/2.4f)) - 0.055f, linearRGB * 12.92f, cutoff);
 }
 
 // Converts a color from sRGB to linear (branchless)
-vec3 toLinear(vec3 sRGB)
+vec3 toLinear(in const vec3 sRGB)
 {
     const bvec3 cutoff = lessThan(sRGB, vec3(0.04045f));
     return mix(pow((sRGB + vec3(0.055f)) / 1.055f, vec3(2.4f)), sRGB / 12.92f, cutoff);

@@ -119,7 +119,7 @@ template< typename XMFLOAT4A, uint32_t const LightWidth, uint32_t const LightHei
 							  uint32_t const Size>				 // uniform size ok for world visible volume
 struct lightBuffer3D : public writeonlyBuffer3D<XMFLOAT4A, LightWidth, LightHeight, LightDepth> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
-	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x00, 0xFF, 0xFF, 0xFF };
+	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x3FF, 0x3FF, 0x3FF, 0 };
 
 	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Size),  1.0f / float(Size),  1.0f / float(Size), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightWidth),  float(LightHeight),  float(LightDepth), 0.0f }; // needs to be xyz
@@ -133,7 +133,6 @@ public:
 
 	// methods //
 	__declspec(safebuffers) void __vectorcall clear(uint32_t const resource_index) {
-		// no need to clear main write-combined gpu staging buffer, it is fully replaced by _cache when comitted
 		_active_resource_index = resource_index;
 
 		// reset bounds
@@ -243,7 +242,7 @@ private:
 
 			// write-only position and packed color to gpu staging buffer
 			// stores are used instead of streaming, could potentially bbe a new load very soon
-			XMVECTOR const xmLight(XMVectorSetW(in, float(in_packed_color)));
+			XMVECTOR const xmLight(XMVectorSetW(in, SFM::uintBitsToFloat(in_packed_color)));
 			XMStoreFloat4A(_cache + index, xmLight);
 			local::lights.emplace_back(_staging[_active_resource_index], _cache, index);
 		}
@@ -252,22 +251,22 @@ private:
 #ifdef DEBUG_PERF_LIGHT_RELOADS
 			uint32_t reload_count = 0;
 #endif
-			for (;;)
+			for (;;) // lockless loop
 			{
 				XMVECTOR const xmSize(_mm_cvtepi32_ps(_mm_set1_epi32(size)));
 				XMVECTOR const xmInvSizePlusOne(SFM::rcp(_mm_cvtepi32_ps(_mm_set1_epi32(size + 1))));
 
-				XMVECTOR xmColor = _mm_cvtepi32_ps(_mm_and_si128(_mm_setr_epi32(/*(in_packed_color >> 24)*/0, (in_packed_color >> 16), (in_packed_color >> 8), in_packed_color), _xmMaskBits));
+				XMVECTOR xmColor = _mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (in_packed_color >> 20), (in_packed_color >> 10), in_packed_color), _xmMaskBits));
 
 				XMVECTOR xmPosition;
 				{
 					XMVECTOR const xmCombined = XMLoadFloat4A(_cache + index); // ok if staging cpu buffer ONLY
 
 					{
-						uint32_t const exist_packed_color = uint32_t(XMVectorGetW(xmCombined));
+						uint32_t const exist_color(SFM::floatBitsToUint(XMVectorGetW(xmCombined)));
 
 						//  (size * average + value) / (size + 1);
-						xmColor = XMVectorMultiply(SFM::__fma(_mm_cvtepi32_ps(_mm_and_si128(_mm_setr_epi32(/*(exist_packed_color >> 24)*/0, (exist_packed_color >> 16), (exist_packed_color >> 8), exist_packed_color), _xmMaskBits)),
+						xmColor = XMVectorMultiply(SFM::__fma(_mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (exist_color >> 20), (exist_color >> 10), exist_color), _xmMaskBits)),
 							xmSize, xmColor), xmInvSizePlusOne);
 					}
 
@@ -277,9 +276,9 @@ private:
 
 				// pack color
 				uvec4_t color;
-				SFM::saturate_to_u8(xmColor, color);
+				SFM::saturate_to_u16(xmColor, color);
 				// A //         // B //            // G //        // R //
-				uint32_t const new_packed_color(/*(color.x << 24) |*/ (color.y << 16) | (color.z << 8) | color.w);
+				uint32_t const new_packed_color(SFM::pack_rgb_hdr(color));
 
 				{
 					if (area->load(std::memory_order_relaxed) != size) { // invalid
@@ -291,7 +290,7 @@ private:
 					}
 					else { // done
 						// write-only position and packed color to gpu staging buffer
-						XMVECTOR const xmLight(XMVectorSetW(xmPosition, float(new_packed_color)));
+						XMVECTOR const xmLight(XMVectorSetW(xmPosition, SFM::uintBitsToFloat(new_packed_color)));
 						XMStoreFloat4A(_cache + index, xmLight);
 						local::lights.emplace_back(_staging[_active_resource_index], _cache, index);
 						break;

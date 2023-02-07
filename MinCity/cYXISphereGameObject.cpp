@@ -300,6 +300,7 @@ namespace world
 		}
 
 		// Angular //
+		XMFLOAT3A vAngles;
 		{
 			// radius (offset from origin to edge is where force is applied, affecting the force directly, greater radius means greater force) 
 			// T = F x r (Torque) [not using cross product, already done, just scale]
@@ -321,27 +322,25 @@ namespace world
 
 			xmDir = SFM::__fma(xmVelocity, XMVectorReplicate(tD), xmDir);
 
-			XMFLOAT3A vAngles;
 			XMStoreFloat3A(&vAngles, xmDir);
-
-			Instance->setPitchYawRoll(v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 
 			XMStoreFloat3A(&_body.angular_thrust, XMVectorZero()); // reset required
 			XMStoreFloat3A(&_body.angular_velocity, xmVelocity);
 		}
 
 		// inherit  
+		XMVECTOR xmPosition(Instance->getLocation());
 		{ // parent translation (which includes all forces that are applied to parent) (rotation is not inherited - these are "gyro" sphere engines)
 			
 			quat_t const qOrient(parentInstance->getPitch().angle(), parentInstance->getYaw().angle(), parentInstance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
 
 			XMVECTOR const xmParentLocation(parentInstance->getLocation());
-			XMVECTOR xmSphere(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));
+			XMVECTOR const xmSphere(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));
 
-			xmSphere = v3_rotate(xmSphere, xmParentLocation, qOrient);
-
-			Instance->setLocation(xmSphere);
+			xmPosition = v3_rotate(xmSphere, xmParentLocation, qOrient);
 		}
+
+		Instance->setTransform(xmPosition, v2_rotation_t(vAngles.x), v2_rotation_t(vAngles.y), v2_rotation_t(vAngles.z));
 	}
 
 	void __vectorcall cYXISphereGameObject::startThruster(FXMVECTOR xmThrust, bool const auto_leveling_enable)

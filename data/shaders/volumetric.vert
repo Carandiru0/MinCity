@@ -34,11 +34,7 @@ void main() {
 
 	// Compute eye position and ray directions in the unit cube space
 	precise vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*
-	precise float cameraHeight = u._eyePos.w / WorldDimensions;
-
-	precise vec3 lookAt = mix(/*vec3(0) +*/inPos.xyz, vec3(0.0f, -cameraHeight, 0.0f) + inPos.xyz, abs(cameraHeight));
-
-	Out.rd.xzy = normalize(lookAt - eyePos); // should be renormalized in fragment shader
+	Out.rd.xzy = normalize(inPos.xyz - eyePos); // should be renormalized in fragment shader
 	Out.eyePos.xzy = eyePos;
 
 	// fragment shaders always sample with height being z component
