@@ -30,27 +30,28 @@ layout(location = 0) in vec4 inWorldPos;
 layout(location = 1) in vec4 inUV;
 
 layout (constant_id = 0) const float VOX_SIZE = 0.0f;
+layout (constant_id = 1) const float VOX_STEP = 0.0f;
 
 #if defined(BASIC)
 
 layout (binding = 1, r8) writeonly restrict uniform image3D opacityMap;
 
-layout (constant_id = 1) const float VolumeDimensions = 0.0f;
+layout (constant_id = 2) const float VolumeDimensions = 0.0f;
 
 // corresponding to volume dimensions
 const vec3 TransformToIndexScale = vec3(2.0f, -2.0f, 2.0f);
-layout (constant_id = 2) const float TransformToIndexBias_X = 0.0f;
-layout (constant_id = 3) const float TransformToIndexBias_Y = 0.0f;
-layout (constant_id = 4) const float TransformToIndexBias_Z = 0.0f;
+layout (constant_id = 3) const float TransformToIndexBias_X = 0.0f;
+layout (constant_id = 4) const float TransformToIndexBias_Y = 0.0f;
+layout (constant_id = 5) const float TransformToIndexBias_Z = 0.0f;
 #define TransformToIndexBias vec3(TransformToIndexBias_X, TransformToIndexBias_Y, TransformToIndexBias_Z)
-layout (constant_id = 5) const float InvToIndex_X = 0.0f;
-layout (constant_id = 6) const float InvToIndex_Y = 0.0f;
-layout (constant_id = 7) const float InvToIndex_Z = 0.0f;
+layout (constant_id = 6) const float InvToIndex_X = 0.0f;
+layout (constant_id = 7) const float InvToIndex_Y = 0.0f;
+layout (constant_id = 8) const float InvToIndex_Z = 0.0f;
 #define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
 #elif defined(HEIGHT) // NOT BASIC:
 
-layout (constant_id = 1) const float VolumeDimensions = 0.0f;
+layout (constant_id = 2) const float VolumeDimensions = 0.0f;
 
 #endif // BASIC
 
@@ -59,7 +60,7 @@ writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat uint   adjacency;
-	flat vec3	world_uvw;
+	flat vec4	world_uvw;
 #ifndef BASIC
 	flat float   ambient;
 	flat float   color;
@@ -84,24 +85,22 @@ writeonly layout(location = 0) out streamOut
 
 
 #if defined(HEIGHT)
+
 #ifdef BASIC
-layout (constant_id = 8) const int MINIVOXEL_FACTOR = 1;
-layout (constant_id = 9) const float TERRAIN_MAX_HEIGHT = 1;
+layout (constant_id = 9) const int MINIVOXEL_FACTOR = 0;
+layout (constant_id = 10) const float TERRAIN_MAX_HEIGHT = 0;
 #else
-layout (constant_id = 2) const int MINIVOXEL_FACTOR = 1;
-layout (constant_id = 3) const float TERRAIN_MAX_HEIGHT = 1;
+layout (constant_id = 3) const int MINIVOXEL_FACTOR = 0;
+layout (constant_id = 4) const float TERRAIN_MAX_HEIGHT = 0;
 #endif
 
-#define SHIFT_EMISSION 8U
-#define SHIFT_HEIGHTSTEP 12U
-const uint MASK_ADJACENCY = 0x3FU;		/*			 0000 0000 0011 1111 */
-const uint MASK_RESERVED = 0xC0U;		/*           0000 0000 RRxx xxxx */ // free to use
-const uint MASK_EMISSION = 0x100U;		/*           0000 0001 xxxx xxxx */
-const uint MASK_HEIGHTSTEP = 0x0FFFF000U;	/*			 1111 000x xxxx xxxx */
-#if defined(DYNAMIC) && defined(TRANS)  
-#define SHIFT_TRANSPARENCY 9U
-const uint MASK_TRANSPARENCY = 0x600U;	/*			 xxxx 011x xxxx xxxx */
-#endif
+#define SHIFT_EMISSION 6U
+#define SHIFT_HEIGHTSTEP 8U
+#define SHIFT_MINHEIGHTSTEP 24U
+const uint MASK_ADJACENCY = 0x3FU;		         /*			  0000 0000 0011 1111 */
+const uint MASK_EMISSION = 0x40U;		         /*           0000 0000 01xx xxxx */    
+const uint MASK_HEIGHTSTEP = 0x00FFFF00U;	     /* 1111 1111 1111 1111 Rxxx xxxx */   // free to use R
+const uint MASK_MINHEIGHTSTEP = 0xFF000000U;     /* remaining high bits (8)       */
 
 #else // not HEIGHT
 
@@ -168,9 +167,10 @@ void main() {
   const uint hash = floatBitsToUint(inWorldPos.w);
   Out.adjacency = (hash & MASK_ADJACENCY);
 
-#if defined(HEIGHT) // terrain only
-  const uint uheightstep = 0xffffu & uint(((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP));
-  const float heightstep = float(uheightstep) / 65535.0f; // bugfix: heightstep of 0 was flat and causing strange rendering issues, now has a minimum heightstep of VOX_SIZE (fractional)
+#if defined(HEIGHT) // terrain only                                                                             // heightstep column:
+  const float heightstep = float(0xffffu & (((hash & MASK_HEIGHTSTEP) >> SHIFT_HEIGHTSTEP))) / 65535.0f;        // 16bit heightstep (top)
+  const float minheightstep = float(0xffu & (((hash & MASK_MINHEIGHTSTEP) >> SHIFT_MINHEIGHTSTEP))) / 255.0f;   //  8bit minimum heightstep (bottom)
+
   const float real_height = max(1.0f, TERRAIN_MAX_HEIGHT * heightstep) * size;
   Out.up      = vec3(0.0f, real_height, 0.0f); // correction - matches up normals computed and sampled so they are aligned on the height axis.
   Out.right   = vec3(size, 0.0f, 0.0f);
@@ -178,7 +178,7 @@ void main() {
 #endif
 
 #if defined(HEIGHT) // terrain voxels only
-  Out.world_uvw.xyz = vec3(inUV.xy, -heightstep); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
+  Out.world_uvw.xyzw = vec4(inUV.xy, heightstep, -TERRAIN_MAX_HEIGHT * minheightstep * size * 0.5f); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
 #elif defined(BASIC)
   Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
 #endif
@@ -199,11 +199,6 @@ void main() {
 
 #endif // !basic
 
-  vec3 worldPos = inWorldPos.xyz;
-
-  // out position //
-  gl_Position = vec4(worldPos, 1.0f);
-
 #ifndef CLEAR
 #ifdef BASIC
   const float emissive = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
@@ -222,6 +217,13 @@ void main() {
 #endif
 #endif // clear
  
+
+  vec3 worldPos = inWorldPos.xyz;
+
+  // out position //
+  gl_Position = vec4(worldPos * VOX_STEP, 1.0f);  // *bugfix - was only 1.0 for all voxel sizes. Scaling must occur as the last transformation, this solves the problem for of RenderGrid() incrementing by only 1 for each voxel, rather than by VOX_STEP which is based off of the VOX_SIZE. VOX_SIZE is a "radius", so it would take 2.0f * VOX_SIZE to translate between any 2 voxel origins, accounting for the size thwy are. VOX_STEP is only applied here to keep the scale as it was before (1.0) before this point in the entire program. This is visual only.  
+
+
 // applies to ground and regular voxels only
 #ifdef BASIC
 #if !defined(CLEAR) && !defined(TRANS)
@@ -260,10 +262,11 @@ void main() {
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
- 
+  const int minimum_height = max(0, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR)) - 1) >> 1;  // use of > rather than >= below, to always avoid writing to slice 0
+
   ivec3 iminivoxel;
 									                                                                                // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
-  [[dependency_infinite]] for( iminivoxel.y = int(floor(heightstep * TERRAIN_MAX_HEIGHT)) - 1; iminivoxel.y > 0 ; --iminivoxel.y ) { // slice
+  [[dependency_infinite]] for( iminivoxel.y = int(floor(heightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR)) - 1; iminivoxel.y > minimum_height ; --iminivoxel.y ) { // slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 

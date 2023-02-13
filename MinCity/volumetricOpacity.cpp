@@ -12,6 +12,9 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "volumetricOpacity.h"
 #include "MinCity.h"
 #include "cTextureBoy.h"
+#include <Utility/mem.h>
+
+#pragma intrinsic(memset)
 
 namespace Volumetric
 {
@@ -20,7 +23,7 @@ namespace Volumetric
 		void InitializeOpacityMap(uint32_t const world_volume_size, vku::TextureImage2D*& srcGround)
 		{
 			Imaging imgGround = ImagingNew(MODE_L, world_volume_size, world_volume_size); // Single Channel temporary image
-			memset(imgGround->block, 0x7f, imgGround->xsize * imgGround->ysize * imgGround->pixelsize); // set all pixels to the opacity of a non emissive ground voxel.
+			___memset_threaded<16>(imgGround->block, 0x7f, imgGround->xsize * imgGround->ysize * imgGround->pixelsize); // set all pixels to the opacity of a non emissive ground voxel.
 
 			MinCity::TextureBoy->ImagingToTexture_R<false>(imgGround, srcGround, vk::ImageUsageFlagBits::eTransferSrc); // create gpu resource
 

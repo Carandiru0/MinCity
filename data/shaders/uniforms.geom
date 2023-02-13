@@ -14,6 +14,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #include "shareduniform.glsl"
 #include "transform.glsl"
+#include "common.glsl"
 
 // Attention:
 //
@@ -24,13 +25,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // "If Vulkan didn't negate the Y Axis, it would be the perfect 3D api. Whoever decided to do this has very little understanding of math."
 //
 //
-
-
-//#define DEBUG_SHADER
-
-#ifdef DEBUG_SHADER
-#include "common.glsl"
-#endif
 
 layout(points) in;					// maximum 3 faces/quads visible of any cube/voxel
 layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far slower - don't use
@@ -43,7 +37,7 @@ layout(location = 0) in streamIn
 {
 	readonly flat vec3	right, forward, up;
 	readonly flat uint  adjacency;
-	readonly flat vec3	world_uvw;
+	readonly flat vec4	world_uvw;
 #ifndef BASIC
 	readonly flat float   ambient;
 	readonly flat float	  color;
@@ -148,18 +142,8 @@ void PerVoxel()
 #endif  // basic
 }
 
-void PerQuad(in vec3 normal)
+void PerQuad(in const vec3 normal)
 {
-
-#ifndef BASIC // final output must be xzy and transformed to eye/view space for fragment shader
-
-#ifdef DEBUG_SHADER
-	Out._color = packColor(normal * 0.5f + 0.5f); // override color output in debug mode (normal direction)
-#endif
-
-	//normal = transformNormalToViewSpace(mat3(u._view), normal);  // mat3 of view only required to transform a normal / direction vector
-#endif
-	
 	Out.N.xzy = normal; // require world space normal for normal map output. (negating whole normal matches up with computed normal in volumetric shader)
 }
 
@@ -171,8 +155,8 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	PerVoxel();
 	PerQuad(normal);  
 	
-#if defined(HEIGHT) // *remeber negative Y here is Up, positive Y here is Down*
-	worldPos.y = min(worldPos.y, 0.0f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly
+#if defined(HEIGHT) 
+	worldPos.y = min(worldPos.y, In[0].world_uvw.w);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
 #endif
 	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
@@ -301,81 +285,6 @@ void main() {
 
 	// DOT NOT CHANGE ORDER OF QUADS OR VERTICES - ORDER IS IMPORTANT //
 
-	// RIGHT
-	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {
-#define _normal right
-		const vec3 normal = normalize(_normal);
-		
-		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, forward, -up, normal
-#if !defined(BASIC) && defined(HEIGHT)
-			, vec2(0.0f, In[0].world_uvw.z)
-#endif
-			);
-		}
-#undef _normal
-	} 
-	// LEFT
-	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_LEFT) ) {
-#define _normal -right              
-		const vec3 normal = normalize(_normal);
-		
-		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, forward, up, normal
-#if !defined(BASIC) && defined(HEIGHT)
-			, vec2(0.0f, In[0].world_uvw.z)
-#endif
-			);
-		}
-#undef _normal
-	} // else
-	
-	// FRONT
-	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_FRONT) ) {
-#define _normal -forward
-		const vec3 normal = normalize(_normal);
-
-		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, -up, normal
-#if !defined(BASIC) && defined(HEIGHT)
-			, vec2(0.0f, In[0].world_uvw.z)
-#endif
-			);
-		}
-#undef _normal
-	}
-	// BACK
-	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BACK) ) {
-#define _normal forward
-		const vec3 normal = normalize(_normal);
-
-		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, up, normal
-#if !defined(BASIC) && defined(HEIGHT)
-			, vec2(0.0f, In[0].world_uvw.z)
-#endif
-			);
-		}
-#undef _normal
-	} // else
-	
-#ifndef HEIGHT // not terrain - No bottoms on Terrain
-	// DOWN
-	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BELOW) ) {
-#define _normal up
-		const vec3 normal = normalize(_normal);
-
-		[[dont_flatten]] if ( IsVisible(normal) ) {
-			BeginQuad(center + _normal, right, -forward, normal
-#if !defined(BASIC) && defined(HEIGHT)
-			, vec2(0.0f)
-#endif
-			);
-		}
-#undef _normal
-	}
-#endif // #### not terrain
-
 	// UP
 	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_ABOVE) ) {
 #define _normal -up
@@ -384,19 +293,90 @@ void main() {
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, forward, normal
 #if !defined(BASIC) && defined(HEIGHT)
-			, vec2(In[0].world_uvw.z)
+			, vec2(-In[0].world_uvw.z)
 #endif
 			);
 		}
 #undef _normal
 	}
 
+#ifndef HEIGHT // not terrain - No bottoms on Terrain
+	// DOWN
+	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BELOW) ) {
+#define _normal up
+		const vec3 normal = normalize(_normal);
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
+			BeginQuad(center + _normal, right, -forward, normal);
+		}
+#undef _normal
+	}
+#endif // #### not terrain
+
+	// BACK
+	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_BACK) ) {
+#define _normal forward
+		const vec3 normal = normalize(_normal);
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
+			BeginQuad(center + _normal, right, up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, -In[0].world_uvw.z)
+#endif
+			);
+		}
+#undef _normal
+	}
+
+	// FRONT
+	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_FRONT) ) {
+#define _normal -forward
+		const vec3 normal = normalize(_normal);
+
+		[[dont_flatten]] if ( IsVisible(normal) ) {
+			BeginQuad(center + _normal, right, -up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, -In[0].world_uvw.z)
+#endif
+			);
+		}
+#undef _normal
+	}
+
+	// LEFT
+	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_LEFT) ) {
+#define _normal -right              
+		const vec3 normal = normalize(_normal);
+		
+		[[dont_flatten]] if ( IsVisible(normal) ) {
+			BeginQuad(center + _normal, forward, up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, -In[0].world_uvw.z)
+#endif
+			);
+		}
+#undef _normal
+	}
+
+	// RIGHT
+	GEO_FLATTEN if ( IsNotAdjacent(BIT_ADJ_RIGHT) ) {
+#define _normal right
+		const vec3 normal = normalize(_normal);
+		
+		[[dont_flatten]] if ( IsVisible(normal) ) {
+			BeginQuad(center + _normal, forward, -up, normal
+#if !defined(BASIC) && defined(HEIGHT)
+			, vec2(0.0f, -In[0].world_uvw.z)
+#endif
+			);
+		}
+#undef _normal
+	} 
+
+
 // visible faces of a voxel is always 3 at any point of time, so only half the number of vertices in a cube actually need to be emitted from geometry shade, as a single primitive.
 
 // maximum 3 quads generated for any given input point.
 // 4 vertices/quad  - >  12 vertices/voxel
-
-// endprimitive is inherent at end of shader, so it does not need to be explicitly called
-// it is only used when multiple primitives are emitted by a geometry shader
 }
 

@@ -168,10 +168,10 @@ namespace Volumetric
 #endif
 		// Main Methods //
 		void map() const {
-			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.map();
+			const_cast<volumetricOpacity<Size>* const __restrict>(this)->MappedVoxelLights.map();
 		}
 		void commit() const { 
-			const_cast<volumetricOpacity<Size>* __restrict>(this)->MappedVoxelLights.commit();
+			const_cast<volumetricOpacity<Size>* const __restrict>(this)->MappedVoxelLights.commit();
 		}
 
 		void clear(uint32_t const resource_index) {

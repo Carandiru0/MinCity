@@ -22,7 +22,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "shareduniform.glsl"
 #include "light.glsl"
 
-//#define OPTIMIZE_TRILINEAR   not working,... yet
+
 #define GROUP_SIZE_XYZ 8
 
 layout (local_size_x = GROUP_SIZE_XYZ, local_size_y = GROUP_SIZE_XYZ, local_size_z = GROUP_SIZE_XYZ) in;	// z is manually set/tweaked see volumetricOpacity.h 8,8,8=256 tested optimal warp size at height 128 and 256 visible voxels
@@ -41,7 +41,7 @@ layout (binding = 1) uniform sampler3D seedMap;	// lightprobe map
 layout (binding = 2) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
 layout (binding = 3, rgba32f) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
 //////////////////////////////////////////////////////////////////////////////////
-layout (binding = 4, rg16_snorm) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final filtered output + n temporal history volumes -only to be used with imageStore (writeonly) // only signed normalized values
+layout (binding = 4, rg16_snorm) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final output --only to be used with imageStore (writeonly) // only signed normalized values
 layout (binding = 5, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
 
 // "World Visible Volume"
@@ -99,11 +99,7 @@ ivec3 next_neighbour_offset(const in int i) // constant values only (compile tim
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 vec4 sampleInputVolume( in restrict sampler3D map, in const vec3 read_location )
 {
-//#if defined(SEED) || !defined(OPTIMIZE_TRILINEAR)
-    return( texelFetch(map, ivec3(floor(read_location - 0.5f)), 0) );
-//#else
-	//return( textureLod(map, (read_location - 0.5f) * InvVolumeDimensions, 0) );
-//#endif
+	return( texelFetch(map, ivec3(floor(read_location)), 0) );
 }
 #ifdef SEED
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -222,14 +218,9 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(i) * current_step); \
 	
 	// unrolled and compile time constant for offset generated. skip 13, self.
-#if defined(SEED) || !defined(OPTIMIZE_TRILINEAR)
 	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
 	T(9);  T(10); T(11); T(12); T(14); T(15); T(16); T(17); T(18);
 	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 26 texel
-#else
-	//T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)
-	T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
-#endif
 
 	#undef T
 }
@@ -274,12 +265,14 @@ vec3 emitter_to_direction(in const vec3 emitter_location, in const vec3 current_
 }
 vec4 emitter_to_direction_distance(in const vec3 emitter_location, in const vec3 current_location)
 {
-	vec4 current_direction_distance;
-	current_direction_distance.xyz = (emitter_location - current_location);
-	current_direction_distance.w = length(current_direction_distance.xyz);							// optimized normalized direction + distance with one less sqrt
-	current_direction_distance.xyz = current_direction_distance.xyz / current_direction_distance.w; // <---normalized
+	//vec4 current_direction_distance;
+	//current_direction_distance.xyz = (emitter_location - current_location);
+	//current_direction_distance.w = length(current_direction_distance.xyz);							// optimized normalized direction + distance with one less sqrt
+	//current_direction_distance.xyz = current_direction_distance.xyz / current_direction_distance.w; // <---normalized
 
-	return(current_direction_distance);
+	//return(current_direction_distance);
+
+	return(vec4(emitter_location, distance(emitter_location, current_location)));
 }
 
 /* deprecated for non temporal replacement sample_warp()
@@ -367,7 +360,7 @@ vec3 temporalBlendC( in const restrict sampler3D inputTemporalC, in const restri
 				
 // this function removes the edges in the voronoi structure by making neighbours accurate (minimum distance to light/per voxel)
 // it also calculates the lighting color contributed by all neighbours
-void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout vec4 current_direction_distance, inout vec3 current_color, in const vec3 current_location) 
+void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout vec4 current_direction_distance, inout vec3 current_color, in const vec3 current_location) 
 {	
 	warp_local neighbour_warp;
 	vec4 neighbour_direction_distance;
@@ -379,16 +372,25 @@ void sample_warp(in const restrict sampler3D pingpong, in const ivec3 uvw, inout
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	// *bugfix - accumulated half angle vectors results in anti-aliased, continous direction vectors. Far better than selecting a min direction which causes a discontunity between 2 light sources.
 #define T(i) \
-	neighbour_warp = texelFetchOffset(pingpong, uvw, 0, next_neighbour_offset(i)); \
+	neighbour_warp = textureLodOffset(pingpong, (uvw - 0.5f) * InvVolumeDimensions, 0, n * next_neighbour_offset(i)); \
 	neighbour_direction_distance = emitter_to_direction_distance(neighbour_warp.emitter_location, current_location); \
-	current_direction_distance.xyz = normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz); \
-	current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w); \
+	if (neighbour_direction_distance.w < current_direction_distance.w) { \
+		current_direction_distance = neighbour_direction_distance; \
+	} \
 	current_color += unpackColorHDR(neighbour_warp.w) * getAttenuation(neighbour_direction_distance.w); \
 
+	//current_direction_distance.xyz = normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz); 
+	//current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w); 
+
 	// unrolled and compile time constant for offset generated. skip 13, self.
-	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
-	T(9);  T(10); T(11); T(12); T(14); T(15); T(16); T(17); T(18);
-	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 27 - self
+
+	//T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)
+	//T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
+
+#define n 1
+	T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)    // *bugfix - this is balanced so the - 0.5f offset does not create a "border" on one extent of the 3D texture
+	T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
+#undef n
 
 #undef T
 }
@@ -401,7 +403,7 @@ void main()
 			return;
 	}
 
-	const warp_local current_warp = texelFetch(pingpongTexture[pc.index_input], ivec3(gl_GlobalInvocationID.xyz), 0);
+	const warp_local current_warp = textureLod(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, 0);
 	vec3 current_color = unpackColorHDR(current_warp.packed_color);
 
 	// #################################################################################################################
@@ -411,7 +413,7 @@ void main()
 
 		vec4 current_direction_distance = emitter_to_direction_distance(current_warp.emitter_location, current_location);
 		
-		sample_warp(pingpongTexture[pc.index_input], ivec3(gl_GlobalInvocationID.xyz), current_direction_distance, current_color, current_location);
+		sample_warp(pingpongTexture[pc.index_input], gl_GlobalInvocationID.xyz, current_direction_distance, current_color, current_location);
 
 		// view is in xyz form, must swizzle direction to xzy form to be xyz form match the view. On output, swizzled back to xzy form as that is the standard for the volumes best data layout. (x = width, z = depth, y = height/slice)
 		//current_direction_distance.xzy = transformNormalToViewSpace(mat3(u._view), current_direction_distance.xzy);

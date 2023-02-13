@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "Declarations.h"
 #include "sBatched.h"
 #include "cVoxelWorld.h"
 #include "MinCity.h"
@@ -146,9 +147,20 @@ namespace // private to this file (anonymous)
 */
 
 // in: local voxel index only 
-static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) // Adjacency is only used during Rendering to cull hidden faces.
+static auto const __vectorcall groundAdjacency(point2D_t const voxelIndex) // Adjacency is only used during Rendering to cull hidden faces.
 {                                                                              // *bugfix - Dynamically called during run-time -- faster than before where it was pre-computed before & terrain height updates are seamless with adjacency no longer being updated seperately, 
 	                                                                           // it's automatic now. Also no longer have huge memory spike at loadtime when generating ground! Was 21GB!! 
+
+	struct structured_binding {
+		
+		uint16_t const	heightstep;
+		uint8_t const	minimum_heightstep;
+		uint8_t const   adjacency;
+
+		structured_binding(uint16_t const heightstep_, uint8_t const minimum_heightstep_, uint8_t const adjacency_)
+			: heightstep(heightstep_), minimum_heightstep(minimum_heightstep_), adjacency(adjacency_)
+		{}
+	};
 
 	// Therefore the neighbours of a voxel, follow same isometric layout/order //
 	/*
@@ -178,6 +190,8 @@ static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) /
 	// ...as for the combinations of faces to vertices for the sides of the voxel, well it may not be worth it. good for terrain only! and only if this type of edge occlusion is desirable for every terrain voxel.... (local occlusion)
 
 	uint32_t const curVoxelHeightStep(::Iso::getHeightStep(voxelIndex));
+	uint32_t minimum_heightstep(curVoxelHeightStep);
+
 	uint32_t Adjacency(0);
 
 	// Therefore the neighbours of a voxel, follow same isometric layout/order //
@@ -201,6 +215,9 @@ static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) /
 
 			Adjacency |= (1 << ::Volumetric::adjacency::back);
 		}
+		else {
+			minimum_heightstep = neighbourHeightStep;
+		}
 	}
 
 	// Side Left = NBR_L
@@ -213,6 +230,9 @@ static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) /
 		if (neighbourHeightStep >= curVoxelHeightStep) {
 
 			Adjacency |= (1 << ::Volumetric::adjacency::left);
+		}
+		else {
+			minimum_heightstep = neighbourHeightStep;
 		}
 	}
 
@@ -227,6 +247,9 @@ static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) /
 
 			Adjacency |= (1 << ::Volumetric::adjacency::right);
 		}
+		else {
+			minimum_heightstep = neighbourHeightStep;
+		}
 	}
 
 	// Side Front = NBR_B
@@ -240,9 +263,14 @@ static uint32_t const __vectorcall groundAdjacency(point2D_t const voxelIndex) /
 
 			Adjacency |= (1 << ::Volumetric::adjacency::front);
 		}
+		else {
+			minimum_heightstep = neighbourHeightStep;
+		}
 	}
 
-	return(Adjacency);
+
+	// convert to each type, capturing 65536 levels of heightstep, 256 levels of minimum heightstep of neighbours, more than enough adjacency bits
+	return(structured_binding{ (uint16_t)SFM::max(1u, curVoxelHeightStep), (uint8_t)(minimum_heightstep >> 8), (uint8_t)Adjacency }); // *bugfix-adjust heights for rendering requirements
 }
 
 /*
@@ -1759,18 +1787,20 @@ namespace // private to this file (anonymous)
 			{
 				// **** HASH FORMAT 32bits available //
 				uint32_t const color(0x00FFFFFF & Iso::getColor(oVoxel));
-				bool const emissive(Iso::isEmissive(oVoxel) & (bool)color); // if color is true black it's not emissive
+				bool const emissive((Iso::isEmissive(oVoxel) & (bool)color)); // if color is true black it's not emissive
 
 				// Build hash //
 				uint32_t groundHash(0);
-				groundHash |= groundAdjacency(voxelIndex);			//				0011 1111
-				//				RRxx xxxx
-				groundHash |= (emissive << 8);						// 0000 0001	xxxx xxxx
-				groundHash |= (uint32_t(Iso::Voxel::HeightMap(voxelIndex)) << 12);	// 1111 RRRx	xxxx xxxx
+				auto const [heightstep, minheightstep, adjacency] = groundAdjacency(voxelIndex);
 
+				groundHash |= adjacency;			                                //			        	          0011 1111
+				groundHash |= (emissive << 6);                                      //		                          R1xx xxxx
+				groundHash |= (((uint32_t)heightstep) << 8);                        //            1111 1111 1111 1111 xxxx xxxx
+				groundHash |= (((uint32_t)minheightstep) << 24);	                //  1111 1111 xxxx xxxx xxxx xxxx xxxx xxxx
+				
 				XMVECTOR xmUVs(XMVectorMultiply(p2D_to_v2(voxelIndex), XMVectorSet(Iso::INVERSE_WORLD_GRID_FWIDTH, Iso::INVERSE_WORLD_GRID_FHEIGHT, 0.0f, 0.0f)));
 
-				xmUVs = XMVectorSetW(xmUVs, SFM::uintBitsToFloat(color));
+				xmUVs = XMVectorSetW(xmUVs, (float)color);
 
 				localGround.emplace_back(
 					voxelGround,
@@ -1927,8 +1957,10 @@ namespace // private to this file (anonymous)
 
 					point2D_t voxelIndex; // *** range is [0...WORLD_GRID_SIZE] for voxelIndex here *** //
 
+#pragma loop( ivdep )
 					for (voxelIndex.y = y_begin; voxelIndex.y < y_end; ++voxelIndex.y) 
 					{
+#pragma loop( ivdep )
 						for (voxelIndex.x = x_begin; voxelIndex.x < x_end; ++voxelIndex.x)
 						{
 							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
@@ -2989,6 +3021,8 @@ namespace world
 			MappedVoxels_Static,
 			MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque], MappedVoxels_Dynamic[Volumetric::eVoxelType::trans]);
 
+		_OpacityMap.commit(); // (commits the new bounds, unmaps)
+
 		// game related asynchronous methods
 		// physics can be "cleared" as early as here. corresponding wait is in Update() of VoxelWorld.
 		MinCity::Physics->AsyncClear();
@@ -3053,8 +3087,6 @@ namespace world
 				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_TRANS].vertex_start_offset = (uint32_t const)running_offset_size;  // special handling injecting transparents into opaque / main part
 			}
 		}
-		
-		_OpacityMap.commit(); // (commits the new bounds, unmaps)
 
 		///
 		{
@@ -3819,29 +3851,24 @@ namespace world
 
 				{
 					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
 				{
 					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
 				{
 					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
 				{
 					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
-				{
-					// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
-					getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
-				}
-
 			});
 		}
 		else {
@@ -3850,34 +3877,34 @@ namespace world
 
 				{
 					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
 				{
 					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
 				{
 					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
 				{
 					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-					___memset_threaded<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
+					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
 					stagingBuffer.unmap();
 				}
-				{
-					// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
-					getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
-				}
-
 			});
+		}
+
+		{
+			// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
+			getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
 		}
 	}
 		
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE; // should be minivox size (affects light attenuation *only*)
+	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE * 0.1f; // should be minivox size (affects light attenuation *only*)
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -3911,7 +3938,7 @@ namespace world
 
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(4,  (float)Volumetric::voxelOpacity::getSize()));		  // should be world volume size
-		constants.emplace_back(vku::SpecializationConstant(5,  1.0f / (float)Volumetric::voxelOpacity::getSize()));       // should be inverse world volume size
+		constants.emplace_back(vku::SpecializationConstant(5,  1.0f / ((float)Volumetric::voxelOpacity::getSize())));       // should be inverse world volume size
 		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getVolumeLength())); // should be world volume length (1:1 ratio here, do not scale by voxel size)
 
 		// light volume dimensions //																				// xzy
@@ -3993,11 +4020,12 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(10, ((float)_terrainTexture->extent().height)));
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
+	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize, float const voxelStep)
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
+		constants.emplace_back(vku::SpecializationConstant(1, (float)voxelStep)); // VS is dependent on type of voxel for geometry step
 		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 
 		XMFLOAT3A transformBias, transformInv;
 
@@ -4005,45 +4033,46 @@ namespace world
 		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisible);
 
 		// do not swizzle or change order
-		constants.emplace_back(vku::SpecializationConstant(2, (float)transformBias.x));
-		constants.emplace_back(vku::SpecializationConstant(3, (float)transformBias.y));
-		constants.emplace_back(vku::SpecializationConstant(4, (float)transformBias.z));
+		constants.emplace_back(vku::SpecializationConstant(3, (float)transformBias.x));
+		constants.emplace_back(vku::SpecializationConstant(4, (float)transformBias.y));
+		constants.emplace_back(vku::SpecializationConstant(5, (float)transformBias.z));
 
-		constants.emplace_back(vku::SpecializationConstant(5, (float)transformInv.x));
-		constants.emplace_back(vku::SpecializationConstant(6, (float)transformInv.y));
-		constants.emplace_back(vku::SpecializationConstant(7, (float)transformInv.z));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)transformInv.x));
+		constants.emplace_back(vku::SpecializationConstant(7, (float)transformInv.y));
+		constants.emplace_back(vku::SpecializationConstant(8, (float)transformInv.z));
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(8, (int)MINIVOXEL_FACTOR));	
-		constants.emplace_back(vku::SpecializationConstant(9, (float)Iso::TERRAIN_MAX_HEIGHT));
+		constants.emplace_back(vku::SpecializationConstant(9, (int)MINIVOXEL_FACTOR));	
+		constants.emplace_back(vku::SpecializationConstant(10, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
-	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
+	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize, float const voxelStep)
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
+		constants.emplace_back(vku::SpecializationConstant(1, (float)voxelStep)); // VS is dependent on type of voxel for geometry step
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP);
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
-		constants.emplace_back(vku::SpecializationConstant(2, (int)MINIVOXEL_FACTOR));
-		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::TERRAIN_MAX_HEIGHT));
+		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
+		constants.emplace_back(vku::SpecializationConstant(3, (int)MINIVOXEL_FACTOR));
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP);
 	}
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP);
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants)

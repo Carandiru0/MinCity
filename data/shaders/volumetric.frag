@@ -27,14 +27,14 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #include "random.glsl"
 
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
-#define BOUNCE_EPSILON 0.01f
+#define BOUNCE_EPSILON 0.125f
 #define REFLECTION_BOUNCE_DISTANCE_SCALAR 3.33f
 #define MIN_STEP 0.00005f	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
 #define MAX_STEPS VolumeDimensions
 
 float PHASE_FUNCTION() // t = max(0.0f, dot(rd, n))    [0.0f .... 1.0f]
 {
-	return(1.0f / (GOLDEN_RATIO * 4.0f * PI)); // Isotropic
+	return(1.0f / (4.0f * PI)); // Isotropic
 }
 
 #define EPSILON 0.000000001f
@@ -469,7 +469,7 @@ void main() {
 	{
 		// adjust start position by "bluenoise step"	
 		const float bn = fetch_bluenoise(gl_FragCoord.xy);
-		const float jittered_interval = dt * bn * GOLDEN_RATIO_ZERO;
+		const float jittered_interval = dt * bn;
 
 		p += jittered_interval * rd; // + jittered offset
 		interval_remaining -= jittered_interval; // interval remaining must be accurate/exact for best results

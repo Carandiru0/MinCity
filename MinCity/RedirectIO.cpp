@@ -107,7 +107,6 @@ __declspec(noinline) void WaitIOClose()
 					else if (!timed_out) { // quick exit if keyboard hit, sleep only when neccessary
 						Sleep(SLEEPTIME);
 					}
-					_mm_pause();
 				}
 			});
 
@@ -148,7 +147,7 @@ __declspec(noinline) void WaitIOClose()
 			else { // quick exit on time out, sleep only when neccesary
 				Sleep(SLEEPTIME);
 			}
-			_mm_pause();
+
 		} while (!timed_out);
 
 		tG.wait();

@@ -21,6 +21,8 @@
 #include "importproxy.h"
 #include "gui.h"
 
+#pragma intrinsic(memset)
+
 #define NK_IMPLEMENTATION  // the only place this is defined
 #include "nk_include.h"
 #include "nk_style.h"

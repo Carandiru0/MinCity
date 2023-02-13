@@ -35,20 +35,20 @@
 // Therefore the neighbours of a voxel, follow same isometric layout/order //
 	/*
 
-							   [NBR_TR]
+							   NBR_TR
 					[NBR_T]				   [NBR_R]
 		NBR_TL					VOXEL					NBR_BR
-					NBR_L					NBR_B
+					[NBR_L]				   [NBR_B]
 								NBR_BL
 	*/
 
 	// defined in same order as constexpr NBR_TL => NBR_L (Clockwise order)
 namespace world
 {
-	static constexpr uint32_t const ADJACENT_NEIGHBOUR_COUNT = 8;
-	extern const __declspec(selectany) point2D_t const ADJACENT[ADJACENT_NEIGHBOUR_COUNT] = { point2D_t(-1, 1), point2D_t(0,  1), point2D_t(1,  1), point2D_t(1,   0),
-																							  point2D_t(1,   -1), point2D_t(0,   -1), point2D_t(-1,  -1), point2D_t(-1,  0) };
-
+	static constexpr uint32_t const ADJACENT_NEIGHBOUR_COUNT = 8;     // TL                T                TR               R
+	static inline point2D_t const ADJACENT[ADJACENT_NEIGHBOUR_COUNT] = { point2D_t(-1, 1), point2D_t(0, 1), point2D_t(1, 1), point2D_t(1, 0),
+																		 point2D_t(1, -1), point2D_t(0, -1), point2D_t(-1, -1), point2D_t(-1, 0) };
+	                                                                  // BR                B                 BL                 L
 	
 	/*
 

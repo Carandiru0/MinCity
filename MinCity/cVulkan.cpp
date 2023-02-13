@@ -1323,7 +1323,7 @@ void cVulkan::CreateSharedVoxelResources()
 void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 {
 	std::vector< vku::SpecializationConstant > constants_voxel_vs, constants_voxel_fs;
-	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, true);
+	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, Iso::MINI_VOX_SIZE, Iso::MINI_VOX_STEP);
 	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_ClearMask_FS(constants_voxel_fs);
 
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
@@ -2451,7 +2451,6 @@ static NO_INLINE microseconds const frameTiming(tTime const& tNow) // real-time 
 void cVulkan::Render()
 {
 	[[unlikely]] if (!_bRenderingEnabled) {
-		_mm_pause();
 		return;
 	}
 

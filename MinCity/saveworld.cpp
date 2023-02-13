@@ -289,8 +289,9 @@ namespace world
 				// wait until the offscreen capture is copied from gpu
 				std::atomic_flag& OffscreenCapturedFlag(MinCity::Vulkan->getOffscreenCopyStatus());
 				while( OffscreenCapturedFlag.test_and_set() ) {	// OffscreenCapturedFlag is clear upon copy completion
-					_mm_pause();
-				}
+					_mm_pause(); // this is an actual tight loop instance where _mm_pause() can be used. Note it used to be 10 cycles for this instruction on x86-64 processors. recent Intel Skylake processors has increased that to 140 cycles + increased latency.
+				}                // So In general _mm_pause should no longer be used to hint to the processor that it's in a tight loop. https://graphitemaster.github.io/fibers/
+
 				// safe to query the data from offscreen buffer
 				MinCity::Vulkan->queryOffscreenBuffer((uint32_t * const __restrict)offscreen_image->block);
 

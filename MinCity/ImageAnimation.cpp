@@ -200,8 +200,6 @@ void ImageAnimation::loadNextImage(uint32_t desired_width, uint32_t const desire
 				return;
 			}
 			
-			_mm_pause();
-			
 		} while (!bGet && --max_tries);
 	}
 

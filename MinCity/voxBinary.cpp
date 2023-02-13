@@ -28,6 +28,8 @@ The VOX File format is Copyright to their respectful owners.
 
 #include <Utility/stringconv.h>
 
+#pragma intrinsic(memset)
+
 #include <density.h>	// https://github.com/centaurean/density - Density, fastest compression/decompression library out there with simple interface. must reproduce license file. attribution.
 
 // openvdb uses boost, openvdb modified to not use any RTTI

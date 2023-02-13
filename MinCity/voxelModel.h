@@ -16,12 +16,12 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <Math/v2_rotation_t.h>
 #include <Math/quat_t.h>
 #include "IsoVoxel.h"
-#include "Declarations.h"
 #include "voxelScreen.h"
 #include "voxelSequence.h"
 #include "voxLink.h"
 #include "adjacency.h"
 
+#include "Declarations.h"
 #include "sBatched.h"
 #include <Utility/bit_volume.h>
 

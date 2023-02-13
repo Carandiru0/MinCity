@@ -20,14 +20,14 @@ INLINE_MEMFUNC __streaming_store_residual(XMFLOAT4A* const __restrict dest, XMFL
 INLINE_MEMFUNC __streaming_store(XMFLOAT4A* const __restrict dest, XMFLOAT4A const* const __restrict src, uint32_t const (& __restrict index)[8]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
 {
 	XMVECTOR const
-		r0(_mm_load_ps((float const* const __restrict)(src + index[0]))),	// random locations, but should be in recently used L1/L2 cache so fast to access (from the light _cache)
-		r1(_mm_load_ps((float const* const __restrict)(src + index[1]))),
-		r2(_mm_load_ps((float const* const __restrict)(src + index[2]))),
-		r3(_mm_load_ps((float const* const __restrict)(src + index[3]))),
-		r4(_mm_load_ps((float const* const __restrict)(src + index[4]))),
-		r5(_mm_load_ps((float const* const __restrict)(src + index[5]))),
-		r6(_mm_load_ps((float const* const __restrict)(src + index[6]))),
-		r7(_mm_load_ps((float const* const __restrict)(src + index[7])));
+		r0(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[0])))),	// random locations, but should be in recently used L1/L2 cache so fast to access (from the light _cache)
+		r1(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[1])))),
+		r2(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[2])))),
+		r3(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[3])))),
+		r4(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[4])))),
+		r5(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[5])))),
+		r6(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[6])))),
+		r7(_mm_castsi128_ps(_mm_stream_load_si128((__m128i const * const __restrict)(src + index[7]))));
 
 	// streamed directly to memory don't care when it's finished (to write-combined staging buffer memory _staging)
 	_mm_stream_ps((float* const __restrict)(dest + index[0]), r0);
@@ -52,7 +52,7 @@ private:
 		__streaming_store(out_, in_, indices); // must be capable of Size output
 		Count = 0;
 	}
-	
+
 public:
 	__SAFE_BUF __inline void __vectorcall out(T* const __restrict out_, T const* const __restrict in_) // use this at the end of the process - done in commit()
 	{
@@ -60,6 +60,7 @@ public:
 			out_batched(out_, in_); // batched output
 		}
 		else {
+#pragma loop( ivdep )
 			for (uint32_t i = 0; i < Count; ++i) { // in case there are less than Size elements left, output individually.
 				__streaming_store_residual(out_, in_, indices[i]);
 			}
@@ -78,26 +79,8 @@ public:
 	}
 };
 
-template<typename T>
-struct references
-{
-public:
-	tbb::concurrent_vector<T*> const& reference() const { return(_reference); }
-
-	void reference(T*&& reference)
-	{
-		_reference.emplace_back(std::forward<T*&&>(reference));
-		reference->referenced(true);
-	}
-
-	references() = default;
-
-private:
-	tbb::concurrent_vector<T*>	_reference;
-};
-
 template<typename T, uint32_t const Size>
-struct sBatchedReferenced : public sBatchedByIndex<T, Size>
+struct sBatchedByIndexReferenced : public sBatchedByIndex<T, Size>  // referenced thread local structure
 {
 	bool const referenced() const { return(_referenced); }
 	void	   referenced(bool const value) { _referenced = value; }
@@ -106,7 +89,9 @@ private:
 	bool _referenced;
 };
 
-using lightBatch = sBatchedReferenced<XMFLOAT4A, 8>;
+#include "sBatched.h"
+
+using lightBatch = sBatchedByIndexReferenced<XMFLOAT4A, eStreamingBatchSize::LIGHTS>;
 
 namespace local
 {
@@ -143,12 +128,14 @@ public:
 		___memset_threaded<CACHE_LINE_BYTES>(_internal, 0, LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t), _block_size_atomic); // 700KB / thread (12 cores)
 		// clear internal cache
 		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
+		// clear staging buffer (right before usage)
+		if (_staging[resource_index]) {
+			___memset_threaded_stream<32>(_staging[resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
+		}
 	}
 
 	__declspec(safebuffers) void __vectorcall map() {
 		_staging[_active_resource_index] = (XMFLOAT4A* const __restrict)_stagingBuffer[_active_resource_index].map(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
-		// clear staging buffer (right before usage)
-		___memset_threaded<16>(_staging[_active_resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(XMFLOAT4A), _block_size_cache); // 2.7MB / thread (12 cores)
 	}
 
 	__declspec(safebuffers) void __vectorcall commit() {
@@ -282,7 +269,6 @@ private:
 
 				{
 					if (area->load(std::memory_order_relaxed) != size) { // invalid
-						_mm_pause(); // tight loop pause
 						size = area->load(std::memory_order_relaxed); // acquire latest value after pause
 #ifdef DEBUG_PERF_LIGHT_RELOADS
 						++reload_count;
@@ -354,7 +340,9 @@ public:
 		_cache = (XMFLOAT4A * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
 		_block_size_cache = (uint32_t)(size / hardware_concurrency);
 
-		clear(0);
+		_lights.reserve(hardware_concurrency); // one thread local reference / thread
+
+		clear(0); // setup first active resource index only
 	}
 
 	lightBuffer3D(vku::double_buffer<vku::GenericBuffer> const& stagingBuffer_)
@@ -378,22 +366,21 @@ private:
 private:
 	std::atomic_uint32_t* __restrict								_internal;
 	XMFLOAT4A* __restrict											_cache;
+	XMFLOAT4A* __restrict									        _staging[2];
+	vku::double_buffer<vku::GenericBuffer> const& __restrict        _stagingBuffer;
 
 	using lightBatchReferences = references<lightBatch>;
-
 	lightBatchReferences									 _lights{};
-	vku::double_buffer<vku::GenericBuffer> const& __restrict _stagingBuffer;
-	XMFLOAT4A* __restrict									 _staging[2];
+
+	Bounds 								  _maximum,		// ** xzy form for all bounds / extents !!!
+		                                  _minimum;
+
+	uvec4_t								  _max_extents,
+		                                  _min_extents;
 
 	uint32_t							  _active_resource_index;
 	uint32_t				              _block_size_atomic,
 										  _block_size_cache;
-	
-	Bounds 								  _maximum,		// ** xzy form for all bounds / extents !!!
-									      _minimum;
-
-	uvec4_t								  _max_extents,
-										  _min_extents;
 };
 
 

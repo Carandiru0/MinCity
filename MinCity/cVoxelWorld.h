@@ -165,8 +165,8 @@ namespace world
 		void SetSpecializationConstants_PostAA(std::vector<vku::SpecializationConstant>& __restrict constants);
 		void SetSpecializationConstants_PostAA_HDR(std::vector<vku::SpecializationConstant>& __restrict constants);
 		
-		void SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize);
-		void SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize);
+		void SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize, float const voxelStep);
+		void SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize, float const voxelStep);
 		void SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants);
 
 		void SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants);

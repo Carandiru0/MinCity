@@ -6,6 +6,8 @@
 #include <Random/superrandom.hpp>
 #include <Math/superfastmath.h>
 
+#pragma intrinsic(memset)
+
 namespace supernoise
 {
 	cBlueNoise::cBlueNoise()

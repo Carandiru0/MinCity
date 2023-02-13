@@ -684,7 +684,6 @@ NO_INLINE static bool const GradualStartUp(size_t const frameCount, bool const& 
 	}
 
 	if (GradualStartUpOngoing && IsRunning) { // extra protect against using sleep when were not really wanting too
-		_mm_pause();
 		Sleep(uiSleepTime - 1);						// prevent sleep if not running flag is current state
 	}
 
@@ -794,7 +793,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 	// prevents threading errors while doing simultaneous tasks accessing the same data in a write(staging) and read/write(saving & loading) condition
 	// instead the currently used state of resources on the gpu is re-used; does not change
 	[[unlikely]] if (eExclusivity::DEFAULT != m_eExclusivity) {
-		_mm_pause();
 
 		// bring down cpu & power usage when standing by //
 		[[unlikely]] if (eExclusivity::STANDBY == m_eExclusivity) {
@@ -941,7 +939,6 @@ void cMinCity::ClearEvents(bool const bDisableNewEventsAfter)
 		{
 			SAFE_DELETE(new_event.second);
 		}
-		_mm_pause();
 	}
 
 	// only restore events if not disabling
@@ -1338,7 +1335,6 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	// huge memory leak bugfix
 	_.Vulkan.WaitDeviceIdle();
 
-	_mm_pause();
 	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
 	
 	async_long_task::wait_for_all(); // *bugfix for safe cleanup, all background tasks must complete
@@ -1352,7 +1348,6 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 	_.VoxelWorld.CleanUp();
 	_.TextureBoy.CleanUp();
 
-	_mm_pause();
 	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
 	
 	_.Vulkan.WaitDeviceIdle();
@@ -1361,7 +1356,6 @@ __declspec(noinline) void cMinCity::Cleanup(GLFWwindow* const glfwwindow)
 
 __declspec(noinline) void cMinCity::CriticalCleanup()
 {
-	_mm_pause();
 	Sleep(10); // *bugfix - sometimes a huge power spike can happen here while shutting down, resulting in the psu experiencing uneccessary stress. slowing it down with an unnoticable amount of time.
 	
 	SAFE_DELETE(TASK_INIT);

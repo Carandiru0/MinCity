@@ -5,6 +5,9 @@
 #include <Imaging/Imaging/Imaging.h>
 #include "cVulkan.h"
 #include <Utility/mio/mmap.hpp>
+#include <Utility/mem.h>
+
+#pragma intrinsic(memset)
 
 BETTER_ENUM(eTex, uint32_t,
 	KTX_CIRCUIT
@@ -513,8 +516,14 @@ void cTextureBoy::LoadKTXTexture(T*& __restrict texture, KTXFileLayout<version> 
 
 			// lock, clear, convert, copy, unlock, flush the output staging buffer
 			uint8_t* const __restrict ptr(static_cast<uint8_t* const __restrict>(stagingBuffer.map()));
-
-			memset(ptr, 0, (size_t)stagingBuffer.maxsizebytes());
+			size_t const max_size((size_t)stagingBuffer.maxsizebytes());
+			
+			if (max_size > 4096) {
+				___memset_threaded<16>(ptr, 0, max_size);
+			}
+			else {
+				memset(ptr, 0, max_size);
+			}
 
 			uint32_t image_output_offset(0);
 

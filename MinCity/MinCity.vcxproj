@@ -220,7 +220,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw        %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Ob3 /D_WIN32_WINNT=0x0A00 /GA /Gw /favor:INTEL64 /d2vzeroupper %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>
       </DisableSpecificWarnings>
       <CallingConvention>Cdecl</CallingConvention>
@@ -241,7 +241,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib;micro-profiler_$(PlatformName).lib</AdditionalDependencies>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <Profile>false</Profile>
@@ -255,7 +255,8 @@
       </StackCommitSize>
       <MinimumRequiredVersion>10.0</MinimumRequiredVersion>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
-      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <ImageHasSafeExceptionHandlers>
+      </ImageHasSafeExceptionHandlers>
       <SetChecksum>true</SetChecksum>
       <MergeSections>/merge:_RDATA=.rdata</MergeSections>
       <SupportNobindOfDelayLoadedDLL>true</SupportNobindOfDelayLoadedDLL>
