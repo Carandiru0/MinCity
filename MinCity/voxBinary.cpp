@@ -244,7 +244,7 @@ STATIC_INLINE bool const CompareTag( uint32_t const TagSz, uint8_t const * __res
 
 // builds the voxel model, loading from magicavoxel .vox format, returning the model with the voxel traversal
 // supporting 256x256x256 size voxel model.
-static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t const* const& __restrict pSourceVoxBinaryData)
+static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t const* const __restrict& __restrict pSourceVoxBinaryData)
 {
 	uint8_t const* pReadPointer(nullptr);
 
@@ -648,7 +648,7 @@ bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const
 	pDestMem->_numVoxelsTransparent = numVoxelsTransparent;
 
 	// save to file
-	FILE* __restrict stream(nullptr);
+	FILE* stream(nullptr);
 	if ((0 == _wfopen_s(&stream, path.data(), L"wbS")) && stream) {
 
 		{
@@ -1049,7 +1049,7 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 static bool const SaveV1XACachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem)
 {
 	// save to file
-	FILE* __restrict stream(nullptr);
+	FILE* stream(nullptr);
 	if ((0 == _wfopen_s(&stream, path.data(), L"wbS")) && stream) {
 
 		{

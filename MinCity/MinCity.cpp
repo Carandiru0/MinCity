@@ -1238,15 +1238,15 @@ namespace { // anonymous namespace private to this file only
 	// optimized to remove the "hidden" guarded access that would be present if accessed directly
 	// the pointers are all constinit so no guard check is required
 	// the actual instances are now properly assigned to the pointers.
-constinit inline cVulkan* const					cMinCity::Vulkan{ &_.Vulkan };
-constinit inline cTextureBoy* const				cMinCity::TextureBoy{ &_.TextureBoy };
-constinit inline cPostProcess* const			cMinCity::PostProcess{ &_.PostProcess };
-constinit inline cNuklear* const				cMinCity::Nuklear{ &_.Nuklear };
-constinit inline cPhysics* const				cMinCity::Physics{ &_.Physics };
-constinit inline world::cVoxelWorld* const		cMinCity::VoxelWorld{ &_.VoxelWorld };
-constinit inline world::cProcedural* const		cMinCity::Procedural{ &_.Procedural };
-constinit inline cUserInterface* const			cMinCity::UserInterface{ &_.UserInterface };
-constinit inline cAudio* const					cMinCity::Audio{ &_.Audio };
+cVulkan* const					cMinCity::Vulkan{ &_.Vulkan };
+cTextureBoy* const				cMinCity::TextureBoy{ &_.TextureBoy };
+cPostProcess* const			    cMinCity::PostProcess{ &_.PostProcess };
+cNuklear* const				    cMinCity::Nuklear{ &_.Nuklear };
+cPhysics* const				    cMinCity::Physics{ &_.Physics };
+world::cVoxelWorld* const		cMinCity::VoxelWorld{ &_.VoxelWorld };
+world::cProcedural* const		cMinCity::Procedural{ &_.Procedural };
+cUserInterface* const			cMinCity::UserInterface{ &_.UserInterface };
+cAudio* const					cMinCity::Audio{ &_.Audio };
 
 // privledged access only - do not use unless required //
 cVulkan const& cMinCity::Priv_Vulkan() { return(_.Vulkan); }

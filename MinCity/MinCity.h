@@ -131,16 +131,16 @@ private:
 	static void OnSave(bool const bShutdownAfter);
 /* #####################################_S I N G L E T O N S_######################################### */
 public: // constinit requirement
-	constinit static class cVulkan* const				Vulkan;
-	constinit static class cTextureBoy* const			TextureBoy;
-	constinit static class cPostProcess* const			PostProcess;
-	constinit static class cNuklear* const				Nuklear;
-	constinit static class cPhysics* const				Physics;
-	constinit static class world::cVoxelWorld* const	VoxelWorld;
-	constinit static class world::cProcedural* const	Procedural;
-	constinit static class cUserInterface* const		UserInterface;
-	constinit static class cAudio* const				Audio;
-	constinit static class cCity*						City;	// any access of City outside of this class is promised this pointer
+	static class cVulkan* const				    Vulkan;
+	static class cTextureBoy* const			    TextureBoy;
+	static class cPostProcess* const			PostProcess;
+	static class cNuklear* const				Nuklear;
+	static class cPhysics* const				Physics;
+	static class world::cVoxelWorld* const	    VoxelWorld;
+	static class world::cProcedural* const	    Procedural;
+	static class cUserInterface* const	       	UserInterface;
+	static class cAudio* const				    Audio;
+	static class cCity*						    City;	// any access of City outside of this class is promised this pointer
 																// is never null during runtime (after initialization)
 /* ################################################################################################### */
 	// privledged access only - do not use unless required //

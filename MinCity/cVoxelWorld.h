@@ -105,7 +105,7 @@ namespace world
 		void resetCameraAngleZoom(); // gradual over time
 		void resetCamera(); // immediatte
 		void setCameraTurnTable(bool const enable);
-		void __vectorcall updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta); // expects 3D coordinates
+		void __vectorcall updateCameraFollow(FXMVECTOR xmPosition, XMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta); // expects 3D coordinates
 
 		// Main Methods //
 		void LoadTextures(); // 1st
@@ -120,7 +120,7 @@ namespace world
 		bool const renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 		
 		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo);
-		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer* const* const& __restrict vbo);
+		void Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::DynamicVertexBuffer* const __restrict (& __restrict vbo)[eVoxelVertexBuffer::_size_constant]);
 		void AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
 
 		
@@ -189,7 +189,7 @@ namespace world
 #define SAMPLER_SET_LINEAR_POINT vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat
 #define SAMPLER_SET_LINEAR_POINT_ANISO vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder);
+		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerNearestRepeat);
 		//[[deprecated]] void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
 
 		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict fullnormalImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_LINEAR_POINT);

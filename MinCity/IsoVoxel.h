@@ -71,10 +71,10 @@ namespace Iso
 #define MINIVOXEL_FACTORF (Iso::VOXELS_GRID_SLOT_XZ_FP)
 
 	static constexpr uint32_t const
-		SCREEN_VOXELS_XZ = 256,
-		SCREEN_VOXELS_X = SCREEN_VOXELS_XZ,		// must be be even numbers, maximum zoom out affects this value so screen grid is fully captured in its bounds
-		SCREEN_VOXELS_Y = 256,					// this is "up", needs to be measured
-		SCREEN_VOXELS_Z = SCREEN_VOXELS_XZ;		// x and z should be equal and divisible by 8
+		SCREEN_VOXELS = 192,                  // must be divisable by 8, 16 and 64 - *required* to play nice with compute dispatch, bit_volumes & power of 2 square textures.
+		SCREEN_VOXELS_X = SCREEN_VOXELS,	  // must be *uniform* on all dimensions (x,y,z) - non-uniform volume sizes are inherently limited and cannot be used practically. There are so many things that go wrong, raymarch skew, incorrect scaling, voxels are no longer cubes but rather elongated boxes, etc. nightmare!
+		SCREEN_VOXELS_Y = SCREEN_VOXELS,
+		SCREEN_VOXELS_Z = SCREEN_VOXELS;		
 
 	static constexpr float const
 		VOX_SIZE = 0.5f,			// this value and shader value for normal vox size need to always match
@@ -83,8 +83,8 @@ namespace Iso
 		MINI_VOX_SIZE = VOX_SIZE / MINIVOXEL_FACTORF,	// this value and shader value for mini-vox size need to always match
 		MINI_VOX_STEP = MINI_VOX_SIZE * 2.0f,
 
-		WORLD_MAX_HEIGHT = (float)(SCREEN_VOXELS_Y >> 1), // unit: voxels  ** not minivoxels - must always be half the volume height to limit the camera showing void area.
-		TERRAIN_MAX_HEIGHT = WORLD_MAX_HEIGHT / MINIVOXEL_FACTORF,
+		WORLD_MAX_HEIGHT = (float)(SCREEN_VOXELS_Y), // unit: voxels  ** not minivoxels - must always be half the volume height to limit the camera showing void area.
+		TERRAIN_MAX_HEIGHT = WORLD_MAX_HEIGHT * 0.5f,
 		WORLD_GRID_FWIDTH = (float)WORLD_GRID_WIDTH,
 		WORLD_GRID_FHEIGHT = (float)WORLD_GRID_HEIGHT,
 		WORLD_GRID_FHALF_WIDTH = (float)WORLD_GRID_HALF_WIDTH,
@@ -100,7 +100,7 @@ namespace Iso
 	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD_U, WORLD_MAX_HEIGHT, MAX_VOXEL_FCOORD_V }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
 	static constexpr int32_t const
-		GRID_VOXELS_START_XZ_OFFSET = SCREEN_VOXELS_XZ >> 1;		// matches the origin of world and volumetric unit cube
+		GRID_VOXELS_START_XZ_OFFSET = SCREEN_VOXELS >> 1;		// matches the origin of world and volumetric unit cube
 
 	// perfect alignment with 3d texture and volume rendering, finally
 	read_only_no_constexpr inline point2D_t const GRID_OFFSET{ -GRID_VOXELS_START_XZ_OFFSET, -GRID_VOXELS_START_XZ_OFFSET };

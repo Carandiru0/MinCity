@@ -521,6 +521,9 @@ namespace voxB
 					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, SFM::__fms(YDimension, -0.5f, XMVectorGetY(xmMiniVox))), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin, precise height offset for center of model
 
 					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+					
+					uint32_t color(SFM::max(1u, voxel.getColor()) & 0x00FFFFFFu); // ensure not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+					bool seed_a_light(false);
 
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
@@ -530,87 +533,80 @@ namespace voxB
 						if (voxel.Hidden)
 							continue;
 
-						uint32_t const color(SFM::max(1u, voxel.getColor()) & 0x00FFFFFFu); // ensure not equal to zero so packed sign is valid & remove alpha
-						bool const Emissive((voxel.Emissive & !Faded) & (bool)color); // if color is true black it's not emissive
-						
-						if constexpr (!EmissionOnly)
-						{	// xyz = visible relative UV,  w = detailed occlusion 
-							// UV coordinates are not swizzled at this point, however by the fragment shader they are xzy
-							// UV coordinate describe the "visible grid" relative position bound to 0...VOXEL_MINIGRID_VISIBLE_XYZ
-							// these are not world coordinates! good for sampling view locked/aligned volumes such as the lightmap
+						color = SFM::max(1u, voxel.getColor()) & 0x00FFFFFFu; // ensure not equal to zero so packed sign is valid & remove alpha - possibly updated in OnVoxel()
+						seed_a_light = (voxel.Emissive & !Faded); // only on successful bounds check can an actual light be added safetly
 
-							bool const Transparent(Faded | voxel.Transparent);
-							
+						if constexpr (!EmissionOnly) // only matters.....
+						{	
 							// update xmStreamOut if xmIndex is modified in instance.OnVoxel
 							xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
-
-							// Build hash //
-							uint32_t hash(0);
-							// ** see uniforms.vert for definition of constants used here **
-
-							hash |= voxel.getAdjacency();						//           0000 0000 0011 1111
-							hash |= (Emissive << 6);							//           0000 0000 01xx xxxx
-							hash |= (voxel.Metallic << 7);						// 0000 0000 0000 xxxx 1xxx xxxx
-							hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 xxxx xxxx
-
-							// Make All voxels relative to voxel root origin // inversion neccessary //
-							// srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
-
-							if (!Transparent) {
-
-								if constexpr (Dynamic) {
-
-									local::voxels_dynamic.emplace_back(
-										voxels_dynamic,
-										xmStreamOut,
-										XMVectorSetW(xmVoxelOrient, Sign * (float)color),
-										hash
-									);
-								}
-								else {
-									local::voxels_static.emplace_back(
-										voxels_static,
-										xmStreamOut,
-										XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
-										hash
-									);
-								}
-
-							}
-							else { // transparency enabled
-
-								hash |= ((Transparency >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
-
-								if constexpr (Dynamic) {
-
-									local::voxels_trans.emplace_back(
-										voxels_trans,
-										xmStreamOut,
-										XMVectorSetW(xmVoxelOrient, Sign * (float)color),
-										hash
-									);
-								}
-								else { // sneaky override for *static* transparent voxels
-
-									local::voxels_trans.emplace_back(
-										voxels_trans,
-										xmStreamOut,
-										XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
-										hash
-									);
-								}
-
-							}
 						}
+					}
 
-						if (Emissive) {										  // crash prevented at beginning of function
+					// Build hash //
 
-							// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
-							// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
-							// and is in the fragment shaderrecieved swizzled in xzy form
-							VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, color);						
-							
+					// ** see uniforms.vert for definition of constants used here **
+					uint32_t hash(voxel.getAdjacency());                //           0000 0000 0011 1111
+					hash |= ((voxel.Emissive & !Faded) << 6);			//           0000 0000 01xx xxxx
+					hash |= (voxel.Metallic << 7);						// 0000 0000 0000 xxxx 1xxx xxxx
+					hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 xxxx xxxx
+
+					// finally submit voxel //
+					if constexpr (!EmissionOnly) {
+						if (!(Faded | voxel.Transparent)) {
+
+							if constexpr (Dynamic) {
+
+								local::voxels_dynamic.emplace_back(
+									voxels_dynamic,
+									xmStreamOut,
+									XMVectorSetW(xmVoxelOrient, Sign * (float)color),
+									hash
+								);
+							}
+							else {
+								local::voxels_static.emplace_back(
+									voxels_static,
+									xmStreamOut,
+									XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
+									hash
+								);
+							}
+
 						}
+						else { // transparency enabled
+
+							hash |= ((Transparency >> 6) << 13);				// 0000 0000 011U xxxx xxxx xxxx
+
+							if constexpr (Dynamic) {
+
+								local::voxels_trans.emplace_back(
+									voxels_trans,
+									xmStreamOut,
+									XMVectorSetW(xmVoxelOrient, Sign * (float)color),
+									hash
+								);
+							}
+							else { // sneaky override for *static* transparent voxels
+
+								local::voxels_trans.emplace_back(
+									voxels_trans,
+									xmStreamOut,
+									XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
+									hash
+								);
+							}
+
+						}
+					}
+
+					if (seed_a_light) {										  // crash prevented at beginning of function
+
+						// the *World position* of the light is stored, so it should be used with a corresponding *world* point in calculations
+						// te lightmap volume however is sampled with the uv relative coordinates of a range between 0...VOXEL_MINIGRID_VISIBLE_X
+						// and is in the fragment shaderrecieved swizzled in xzy form
+						VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, color);
+
 					}
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 					local_perf.iteration_duration = std::max(local_perf.iteration_duration, high_resolution_clock::now() - tStartIter);

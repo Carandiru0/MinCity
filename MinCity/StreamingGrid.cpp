@@ -64,7 +64,7 @@ namespace // private to this file (anonymous)
 	} Chunk; // 128 bytes
 	static_assert(sizeof(Chunk) <= 128); // Ensure Chunk is correct size @ compile time
 
-	static inline thread_local struct no_vtable alignas(64) {
+	static inline thread_local struct no_vtable alignas(64) decompressed {
 
 		static constexpr uint32_t const
 			DECOMPRESS_SAFE_BUFFER_SIZE = 2304;  // 2304 is a safe decompression size for density for 2048 bytes below in chunk
@@ -75,7 +75,7 @@ namespace // private to this file (anonymous)
 
 	} thread_local_decompress_chunks;
 	
-	static inline thread_local struct no_vtable alignas(64) {
+	static inline thread_local struct no_vtable alignas(64) compressed {
 
 		static constexpr uint32_t const
 			COMPRESS_SAFE_BUFFER_SIZE = 2784;    // 2784 ""    ""  compression    ""         ""        ""    ""    ""      ""
@@ -121,7 +121,7 @@ namespace // private to this file (anonymous)
 	{
 		static constexpr size_t const ALIGNMENT = alignof(Iso::Voxel);
 
-		if (!_state.test_and_set()) { // CLOSED = false/clear
+		if (!_state.test_and_set(std::memory_order_relaxed)) { // CLOSED = false/clear
 
 			/**/ // OPEN = set // /**/
 			// write access
@@ -157,7 +157,7 @@ namespace // private to this file (anonymous)
 		// fast-path
 		open(); // open chunk
 
-		_last_access = critical_now(); // atomic  [after read access]
+		_last_access.store(critical_now(), std::memory_order_relaxed); // atomic  [after read access]
 
 		Iso::Voxel const* const decompressed(reinterpret_cast<Iso::Voxel const* const>(_data));
 		return(decompressed[index]);
@@ -168,7 +168,7 @@ namespace // private to this file (anonymous)
 		// fast-path
 		open(); // open chunk
 
-		_last_access = critical_now(); // atomic  [before write access]
+		_last_access.store(critical_now(), std::memory_order_relaxed); // atomic  [before write access]
 
 		Iso::Voxel* const decompressed(reinterpret_cast<Iso::Voxel* const>(_data));
 		decompressed[index] = std::move(oVoxel);
@@ -177,10 +177,10 @@ namespace // private to this file (anonymous)
 	// mutex always enabled
 	__declspec(safebuffers) void Chunk::close() // used by GarbageCollection() of StreamingGrid
 	{
-		if (_state.test()) { // OPEN = true/set
+		if (_state.test(std::memory_order_relaxed)) { // OPEN = true/set
 
 			/**/ // CLOSED = clear // /**/
-			_state.clear(); /**/
+			_state.clear(std::memory_order_relaxed); /**/
 
 			// read-only access //
 
@@ -344,7 +344,7 @@ __declspec(safebuffers) void StreamingGrid::GarbageCollect(tTime const tNow, nan
 
 				Chunk& chunk(world_grid._chunks[i]);
 
-				tTime const last_access(chunk._last_access);
+				tTime const last_access(chunk._last_access.load(std::memory_order_relaxed));
 
 				if ((tNow - last_access) >= CHUNK_TTL || bForce) {
 

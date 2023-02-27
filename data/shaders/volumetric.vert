@@ -27,10 +27,10 @@ void main() {
 	precise vec3 volume_translation = 0.5f - (WorldDimensions.xxx * 0.5f);
 	volume_translation.y += WorldDimensions * -0.5f;
 
-	precise vec3 position = 0.5f * fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
+	precise vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
 	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewproj * vec4(position, 1.0f);
+	gl_Position = u._viewproj * vec4(0.5f * position, 1.0f);
 
 	// Compute eye position and ray directions in the unit cube space
 	precise vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*

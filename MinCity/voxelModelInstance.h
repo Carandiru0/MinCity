@@ -190,7 +190,7 @@ namespace Volumetric
 		void __vectorcall setTransform(FXMVECTOR const xmLoc, v2_rotation_t const& xPitch, v2_rotation_t const& yYaw, v2_rotation_t const& zRoll);
 
 	public:
-		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		__inline bool const XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
@@ -214,7 +214,7 @@ namespace Volumetric
 	class alignas(16) voxelModelInstance_Static : public voxelModelInstance<voxB::STATIC>
 	{
 	public:
-		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+		__inline bool const XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
@@ -233,16 +233,23 @@ namespace Volumetric
 	};
 
 
-	__inline void XM_CALLCONV voxelModelInstance_Dynamic::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+	__inline bool const XM_CALLCONV voxelModelInstance_Dynamic::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
 	{
+		if (!bVisible) {
+			// completely outside of visible grid?			   
+			if (0 == world::testVoxelsAt(r2D_add(getModel()._LocalArea, getVoxelIndex()), getYaw()))
+				return(false);
+		}
+
 		quat_t const orientation(getPitch(), getYaw(), getRoll()); // only applies to dynamic model instances, otherwise this is ignored
 
 		//* bugfix - hoisted out of parallel loop, don't change.
-		if (isEmissionOnly()) {
+		if (!bVisible || isEmissionOnly()) {
 			model.Render<true, false>(xmVoxelOrigin, orientation.v4(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			return(false); // model not actually visible, only lights are seeded
 		}
 		else if (isFaded()) {
 			model.Render<false, true>(xmVoxelOrigin, orientation.v4(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
@@ -250,16 +257,25 @@ namespace Volumetric
 		else {
 			model.Render<false, false>(xmVoxelOrigin, orientation.v4(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
 		}
+
+		return(true);
 	}
 
-	__inline void XM_CALLCONV voxelModelInstance_Static::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex,
+	__inline bool const XM_CALLCONV voxelModelInstance_Static::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
 	{
+		if (!bVisible) {
+			// completely outside of visible grid?				   
+			if (0 == world::testVoxelsAt(r2D_add(getModel()._LocalArea, getVoxelIndex())))
+				return(false);
+		}
+
 		//* bugfix - hoisted out of parallel loop, don't change.
-		if (isEmissionOnly()) {
+		if (!bVisible || isEmissionOnly()) {
 			model.Render<true, false>(xmVoxelOrigin, XMVectorZero(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			return(false); // model not actually visible, only lights are seeded
 		}
 		else if (isFaded()) {
 			model.Render<false, true>(xmVoxelOrigin, XMVectorZero(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
@@ -267,6 +283,8 @@ namespace Volumetric
 		else {
 			model.Render<false, false>(xmVoxelOrigin, XMVectorZero(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
 		}
+
+		return(true);
 	}
 } // end ns
 

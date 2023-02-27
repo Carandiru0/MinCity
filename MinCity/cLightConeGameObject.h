@@ -23,9 +23,9 @@ namespace world
 		cLightConeGameObject& operator=(cLightConeGameObject&& src) noexcept;
 
 	private:
-		struct {
-			static constexpr fp_seconds const interval = duration_cast<fp_seconds>(milliseconds(3618>>1));
-			fp_seconds						  accumulator;
+		struct activity_lights {
+			static constexpr fp_seconds const        interval = duration_cast<fp_seconds>(milliseconds(3618 >> 1));
+			fp_seconds						         accumulator;
 
 		} _activity_lights;
 	public:

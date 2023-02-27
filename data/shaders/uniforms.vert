@@ -178,7 +178,7 @@ void main() {
 #endif
 
 #if defined(HEIGHT) // terrain voxels only
-  Out.world_uvw.xyzw = vec4(inUV.xy, heightstep, -TERRAIN_MAX_HEIGHT * minheightstep * size * 0.5f); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
+  Out.world_uvw.xyzw = vec4(inUV.xy, heightstep, -TERRAIN_MAX_HEIGHT * minheightstep * size * 0.75f); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
 #elif defined(BASIC)
   Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
 #endif
@@ -222,16 +222,16 @@ void main() {
 
   // out position //
   gl_Position = vec4(worldPos * VOX_STEP, 1.0f);  // *bugfix - was only 1.0 for all voxel sizes. Scaling must occur as the last transformation, this solves the problem for of RenderGrid() incrementing by only 1 for each voxel, rather than by VOX_STEP which is based off of the VOX_SIZE. VOX_SIZE is a "radius", so it would take 2.0f * VOX_SIZE to translate between any 2 voxel origins, accounting for the size thwy are. VOX_STEP is only applied here to keep the scale as it was before (1.0) before this point in the entire program. This is visual only.  
+#ifndef BASIC
+    Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
+#endif
 
-
-// applies to ground and regular voxels only
+// applies to ground and regular voxels
 #ifdef BASIC
 #if !defined(CLEAR) && !defined(TRANS)
 	// Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
 	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
 #endif
-#else
-	Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
 #endif
 
 #if defined(BASIC) && !defined(TRANS) // only basic past this point
@@ -242,31 +242,33 @@ void main() {
   // *** never write to slice 0 (slice 0 contains the always on and filled world ground plane) ***
 
 #if !defined(HEIGHT)
+
   const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions));
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
+  // **clamp required** for black occulder voxels ! provides occlusion in raymarched volumetrics, so the volumetrics don't overlay the black occulder voxels and make it look like you can still see voxel model interiors!
 #if defined(CLEAR) // erase
-  imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, vec4(0));
+  imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), vec4(0));
 #else
-  imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, opacity.rrrr);
+  imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), opacity.rrrr);
 #endif
 
 #ifdef DYNAMIC // dynamic voxels only
   // hole filling for rotated (xz) voxels (simplified and revised portion of novel oriented rect algorithm)
 #if defined(CLEAR) // erase
-   imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, vec4(0));			// this is suprisingly coherent 
+   imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), vec4(0));			// this is suprisingly coherent 
 #else																					            // and works by layer, resulting in bugfix for hole filling.
-   imageStore(opacityMap, ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, opacity.rrrr);		// reflections on rotated models are no longer distorted.
+   imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), opacity.rrrr);		// reflections on rotated models are no longer distorted.
 #endif
 #endif // dynamic 
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
-  const int minimum_height = max(0, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR)) - 1) >> 1;  // use of > rather than >= below, to always avoid writing to slice 0
+  const int minimum_height = max(0, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size * 0.75f)) - 1);  // use of > rather than >= below, to always avoid writing to slice 0
 
   ivec3 iminivoxel;
 									                                                                                // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
-  [[dependency_infinite]] for( iminivoxel.y = int(floor(heightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR)) - 1; iminivoxel.y > minimum_height ; --iminivoxel.y ) { // slice
+  [[dependency_infinite]] for( iminivoxel.y = int(floor(heightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size)) - 1; iminivoxel.y > minimum_height ; --iminivoxel.y ) { // slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 

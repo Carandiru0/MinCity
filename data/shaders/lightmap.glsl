@@ -30,7 +30,6 @@ void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 l
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
 
 	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
-	light_direction_distance.a = light_direction_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
 }
@@ -39,7 +38,6 @@ void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_colo
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
 	
 	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
-	light_distance = light_distance * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
 }
@@ -74,7 +72,6 @@ void lightmap_internal_fetch_nn( inout vec4 light_direction_distance, inout vec3
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions; // *bugfix 0.5 is not added here, see other related bugfix
 
 	vec4 light_direction_pre_distance = textureLod(volumeMap[DD], voxel_coord, 0);
-	light_direction_pre_distance.a = light_direction_pre_distance.a * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
 	light_direction_distance = light_direction_pre_distance * area + light_direction_distance;
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb * area + light_color;
@@ -84,7 +81,6 @@ void lightmap_internal_fetch_nn( inout float light_distance, inout vec3 light_co
 	const vec3 voxel_coord = voxel * InvLightVolumeDimensions; // *bugfix 0.5 is not added here, see other related bugfix
 
 	float light_pre_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
-	light_pre_distance = light_pre_distance * 0.5f + 0.5f;  // compress distance to [0.0f...1.0f] range (16bit signed texture)
 
 	light_distance = light_pre_distance * area + light_distance;
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb * area + light_color;
@@ -173,18 +169,15 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 
 #define att a
 #define dist a
-#define dir xyz
+#define pos xyz
 void getLight(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
 	getLightMap(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	
-	light_direction_distance.xyz = normalize(light_direction_distance.xyz); // light direction is stored in view space natively in xzy form
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw) 
 {
 	getLightMap(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	
 	// light_direction_distance.a = normalized [0...1] distance
 }
 // getAttenuation(normalized_distance, volume_length); to get attenuation from normalized distance returned from getLight
@@ -193,14 +186,11 @@ void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw)
 void getLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
 	getLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	
-	light_direction_distance.xyz = normalize(light_direction_distance.xyz); // light direction is stored in view space natively in xzy form
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLightFast(out vec3 light_color, out float light_distance, in const vec3 uvw) 
 {
 	getLightMapFast(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
-	
 	// light_direction_distance.a = normalized [0...1] distance
 }
 

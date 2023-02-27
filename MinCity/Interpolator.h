@@ -18,10 +18,10 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include <Math/superfastmath.h>
 #include <vector>
 
-#define COMPONENT_X 0
-#define COMPONENT_Y 1
-#define COMPONENT_Z 2
-#define COMPONENT_W 3
+#define COMPONENT_X 0u
+#define COMPONENT_Y 1u
+#define COMPONENT_Z 2u
+#define COMPONENT_W 3u
 
 template<typename T>   // replace your stored data structure with this
 struct interpolated
@@ -46,10 +46,10 @@ public: // only constant access
 class alignas(CACHE_LINE_BYTES) interpolator
 {
 	static constexpr uint32_t const
-		INTERP_COMPONENT_X = 1 << 0,
-		INTERP_COMPONENT_Y = 1 << 1,
-		INTERP_COMPONENT_Z = 1 << 2,
-		INTERP_COMPONENT_W = 1 << 3;
+		INTERP_COMPONENT_X = 1 << COMPONENT_X,
+		INTERP_COMPONENT_Y = 1 << COMPONENT_Y,
+		INTERP_COMPONENT_Z = 1 << COMPONENT_Z,
+		INTERP_COMPONENT_W = 1 << COMPONENT_W;
 
 private:
 	template<typename T> // type must be compatible with SFM::lerp, float or XMFLOAT4A, 3A, etc
@@ -226,13 +226,13 @@ public:
 	void set_component(interpolated<T> const& source, float const target_)
 	{
 		if constexpr (std::is_same<T, XMFLOAT4A>::value) {
-			_v4interpolators[source.index].set_component<component>(target_);
+			_v4interpolators[source.index].template set_component<component>(target_);
 		}
 		else if constexpr (std::is_same<T, XMFLOAT3A>::value) {
-			_v3interpolators[source.index].set_component<component>(target_);
+			_v3interpolators[source.index].template set_component<component>(target_);
 		}
 		else if constexpr (std::is_same<T, XMFLOAT2A>::value) {
-			_v2interpolators[source.index].set_component<component>(target_);
+			_v2interpolators[source.index].template set_component<component>(target_);
 		}
 	}
 
@@ -257,13 +257,13 @@ public:
 	void reset_component(interpolated<T> const& source, float const all_)
 	{
 		if constexpr (std::is_same<T, XMFLOAT4A>::value) {
-			_v4interpolators[source.index].reset_component<component>(all_);
+			_v4interpolators[source.index].template reset_component<component>(all_);
 		}
 		else if constexpr (std::is_same<T, XMFLOAT3A>::value) {
-			_v3interpolators[source.index].reset_component<component>(all_);
+			_v3interpolators[source.index].template reset_component<component>(all_);
 		}
 		else if constexpr (std::is_same<T, XMFLOAT2A>::value) {
-			_v2interpolators[source.index].reset_component<component>(all_);
+			_v2interpolators[source.index].template reset_component<component>(all_);
 		}
 	}
 
@@ -297,7 +297,7 @@ public:
 	}
 
 	template <typename T, typename U = T>
-	U const get(interpolated<T> const& source) { 
+	U const __vectorcall get(interpolated<T> const& source) {
 		return(_finterpolators[source.index].target); 
 	} // index must always be within bounds of vector
 

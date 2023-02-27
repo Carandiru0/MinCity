@@ -43,7 +43,7 @@ namespace world
 			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
-		std::swap<local_volume*>(_bits, src._bits);
+		_bits = std::move(src._bits);
 	}
 	cLevelSetGameObject& cLevelSetGameObject::operator=(cLevelSetGameObject&& src) noexcept
 	{
@@ -61,7 +61,7 @@ namespace world
 			src.Instance->setVoxelEventFunction(nullptr);
 		}
 
-		std::swap<local_volume*>(_bits, src._bits);
+		_bits = std::move(src._bits);
 		
 		return(*this);
 	}

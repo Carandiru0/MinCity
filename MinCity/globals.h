@@ -189,7 +189,7 @@ namespace Globals
 								 ZOOM_SPEED = 0.44f; // see Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER for edge scrolling speed
 	
 							// Parallel Projections have a magnitude greater range in precision. Orthographic projection has nearly infinite accuracy compared to perspective projection. *Do not optimize these values further* The high depth buffer precision is supported, when coupled with a 32bit depth buffer.
-	static constexpr double const MINZ_DEPTH = (0.0001111 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
+	static constexpr double const MINZ_DEPTH = (0.0000111 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
 	static constexpr double const MAXZ_DEPTH = 4.0 * (411.111111 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 

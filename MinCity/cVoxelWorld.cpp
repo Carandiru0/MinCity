@@ -42,8 +42,6 @@
 
 using namespace world;
 
-inline interpolator Interpolator; // global singleton instance
-
 // From default point of view (isometric):
 /*
 										      x
@@ -529,7 +527,8 @@ void cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& _
 	// range is (-144,-144) TopLeft, to (144,144) BottomRight
 	//
 	// Clamp Camera Origin and update //
-	XMVECTOR const xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin));  // only care about xz components, make it a 2D vector
+	XMVECTOR const xmOrigin3D(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin));
+	XMVECTOR const xmOrigin = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmOrigin3D);  // only care about xz components, make it a 2D vector
 	
 	point2D_t voxelIndex(v2_to_p2D(xmOrigin));
 	// wrap bounds //
@@ -553,9 +552,10 @@ void cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& _
 	oCamera.voxelIndex_Center = p2D_wrap_pow2(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	// Convert Fractional component from GridSpace
-	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin)));  // FOR TRUE SMOOTH SCROLLING //
+	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin3D)));  // FOR TRUE SMOOTH SCROLLING //
 	/* important output */
-	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, XMVectorSetY(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmFract), 0.0f)); // store fractional offset always negated and swizzled to x,z components
+	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, xmFract); // store fractional offset always negated in natural xyz form, keeping fractional y component for future usage.
+	oCamera.voxelFractionalGridOffset.y = 0.0f;
 	/* important output */                                                                                                                                    // *bugfix - important to zero the y component, otherwise the "staircase effect" in motion for elevation occurs.
 	                                                                                                                                                          // otherwise the component gets added incorrectly *twice* for the *actual* camera origin.
 #ifndef NDEBUG
@@ -580,7 +580,7 @@ void cVoxelWorld::setCameraTurnTable(bool const enable)
 }
 
 // Camera follow always keeps user ship in view, never offscreen even if ship changes elevation! Follows elevation too.
-void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, FXMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta) // expects 3D coordinates
+void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, XMVECTOR xmVelocity, Volumetric::voxelModelInstance_Dynamic const* const instance, fp_seconds const& __restrict tDelta) // expects 3D coordinates
 {	
 	rect2D_t const vLocalArea(instance->getModel()._LocalArea);			   // convert to voxel index
 	int32_t volume_visible = world::testVoxelsAt(r2D_add(vLocalArea, v2_to_p2D(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition))), instance->getYaw()); // *major* prevents ship passing outside the "visible volume", which at high heights can be very near to the center of the screen. Glitches, missing rasterization vs raymarch is now gone for camera followed ship!
@@ -595,7 +595,9 @@ void __vectorcall cVoxelWorld::updateCameraFollow(FXMVECTOR xmPosition, FXMVECTO
 	float const t = SFM::__exp(-10.0f * (current_speed / max_speed + (float)(volume_visible <= 0)));
 
 	//Interpolator very smooth :)
-	Interpolator.set(oCamera.Origin, SFM::lerp(xmPosition, xmFutureFocusPosition, t));
+	XMVECTOR xmNewPosition(SFM::lerp(xmPosition, xmFutureFocusPosition, t));
+	xmNewPosition = XMVectorSetY(xmNewPosition, -XMVectorGetY(xmNewPosition));
+	Interpolator.set(oCamera.Origin, xmNewPosition);
 }
 
 void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
@@ -931,10 +933,6 @@ namespace world
 	{
 		return(XMLoadFloat3A(&(XMFLOAT3A const&)oCamera.Origin));
 	}																										
-	XMVECTOR const __vectorcall getFractionalOffset()
-	{	// voxelFractionalGridOffset is always stored negated, so just add it!
-		return(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
-	}
 	v2_rotation_t const& getYaw()
 	{
 		return(oCamera.Yaw);
@@ -1364,6 +1362,44 @@ namespace world
 		
 	}
 
+	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea)
+	{
+		rect2D_t const visible_area(MinCity::VoxelWorld->getVisibleGridBounds());
+
+		point2D_t voxelIterate(voxelArea.left_top());
+		point2D_t const voxelEnd(voxelArea.right_bottom());
+
+		uint32_t visible_count(0);
+		uint32_t voxel_count(0);
+
+		// oriented rect filling algorithm, see processing sketch "rotation" for reference (using revised version)
+		while (voxelIterate.y <= voxelEnd.y) {
+
+			voxelIterate.x = voxelArea.left;
+			while (voxelIterate.x <= voxelEnd.x) {
+
+				// center 
+				visible_count += r2D_contains(visible_area, voxelIterate);
+				++voxel_count;
+
+				++voxelIterate.x;
+			}
+
+			++voxelIterate.y;
+		}
+
+		if (0 == visible_count) { // completely outside
+			return(0);
+		}
+		else if (visible_count != voxel_count) { // intersecting, some outside some inside
+			return(-1);
+		}
+
+		// else, completely inside
+		return(1);
+
+	}
+
 	static void __vectorcall clearVoxelsAt(rect2D_t voxelArea) // resets to "ground only"
 	{
 		// clamp to world/minmax coords
@@ -1773,12 +1809,12 @@ namespace // private to this file (anonymous)
 		static inline VoxelThreadBatch batchedGround;
 
 
-		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, // voxelIndex is already transformed local
+		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, // voxelIndex is already transformed local
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
+			//xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
 
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 			
@@ -1825,17 +1861,17 @@ namespace // private to this file (anonymous)
 
 		template<bool const Dynamic>
 		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint32_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
-			Iso::Voxel const& __restrict oVoxel, bool bVisible,
+			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
 			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
 		{
+			bool bVisible(false);
+
 			auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
-			auto const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
+			auto const * const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
 
 			if (FoundModelInstance) {
-
-				bool const emission_only(FoundModelInstance->isEmissionOnly()); // save to restore value after temp change
 
 				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
 				XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
@@ -1843,17 +1879,13 @@ namespace // private to this file (anonymous)
 				xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
 				xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -FoundModelInstance->getElevation()); // *bugfix - yaxis (elevation) is now correctly included with fractional component
 
-				xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
+				//xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
 
-				// skip visibility check if already known that voxel (ground) is visible, or a previous call to RenderModel determined it was visible.
-				if (!bVisible && !(bVisible |= Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP)))) {
-					FoundModelInstance->setEmissionOnly(true); // lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
-					// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
-				}
+				bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP));
+				// lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
+				// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 
-				FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, voxels_static, voxels_dynamic, voxels_trans);
-
-				FoundModelInstance->setEmissionOnly(emission_only); // restore temporary state change
+				bVisible = FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, bVisible, voxels_static, voxels_dynamic, voxels_trans);
 
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -1878,6 +1910,28 @@ namespace // private to this file (anonymous)
 			return(bVisible);
 		}
 
+		STATIC_INLINE void __vectorcall RenderMaxVisibleVolumeLight(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex)  // this is for optimizing compute light dispatch, by exeecuting only below the maximum *visible* volume height
+		{                                                                                                                 // by placing a "dummy" light that registers the maximum bound of the heoght of the light volume that is visible on-screen
+			float const voxel_radius(Volumetric::volumetricVisibility::getVoxelRadius());                                 // because nothing above this height requires lighting, so it's not computed!
+			float current_height(Iso::getRealHeight(voxelIndex));
+
+			while (isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -current_height), voxel_radius)) {
+				current_height += voxel_radius * 2.0f;
+			}
+
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(XMVectorSetY(xmVoxelOrigin, -current_height), Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+
+			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
+				           && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
+			{
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 1u); // a light at the point where it's *just* not visible and has (almost) no color....
+			}
+			else {
+				// just add to the very top of the volume if errornous on bounds check
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, (float)(Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y - 1)), 1u);
+			}
+		}
+
 		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic,
@@ -1893,8 +1947,6 @@ namespace // private to this file (anonymous)
 			render_state.numLightVoxelsRendered = 0;
 #endif
 #endif
-			point2D_t const voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
-			point2D_t const voxelEnd(p2D_add(voxelReset, point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z)));
 
 #ifdef DEBUG_TEST_FRONT_TO_BACK
 			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
@@ -1920,9 +1972,11 @@ namespace // private to this file (anonymous)
 			typedef struct no_vtable sRenderFuncBlockChunk {
 
 			private:
-				point2D_t const 								voxelStart;
 				StreamingGrid const* const __restrict		    streamingGrid;
 
+				point2D_t const 								voxelStart;
+				rect2D_t const                                  visibleArea;
+				
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
 				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
 				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
@@ -1935,13 +1989,14 @@ namespace // private to this file (anonymous)
 
 			public:
 				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
-					point2D_t const voxelStart_,
 					StreamingGrid const* const __restrict streamingGrid_,
+					point2D_t const voxelStart_,
+					rect2D_t const visibleArea_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
 					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
-					: voxelStart(voxelStart_), streamingGrid(streamingGrid_),
+					: streamingGrid(streamingGrid_), voxelStart(voxelStart_), visibleArea(visibleArea_),
 					voxelGround(voxelGround_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
 				{}
 
@@ -1994,7 +2049,7 @@ namespace // private to this file (anonymous)
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, bRenderVisible, voxelStatic, voxelDynamic, voxelTrans);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -2002,12 +2057,12 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, bRenderVisible, voxelStatic, voxelDynamic, voxelTrans);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
 									}
 								}
 							}
 
-							if (bRenderVisible) {
+							if (bRenderVisible && r2D_contains(visibleArea, voxelIndexWrapped)) {
 								RenderGround(xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelGround, localGround);
 							}
 						} // for
@@ -2024,10 +2079,20 @@ namespace // private to this file (anonymous)
 			tTime const tGridStart(high_resolution_clock::now());																
 #endif																														
 			{
+				point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
+				point2D_t voxelEnd(p2D_add(voxelReset, point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z)));
+
+				rect2D_t const visibleArea(voxelReset, voxelEnd); // store original visible area before extension rect2D_t const visible_area(MinCity::VoxelWorld->getVisibleGridBounds());
+
+				// account for maximum model dimensions / 2 (extending in or out of the screen visible area, prevents "popping" visibility of voxel models //
+				uint32_t const half_maximum_extent((Volumetric::MODEL_MAX_DIMENSION_XYZ >> 1u) / MINIVOXEL_FACTOR);
+				voxelReset = p2D_subs(voxelReset, half_maximum_extent);
+				voxelEnd = p2D_adds(voxelEnd, half_maximum_extent);
+
 				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
-					RenderFuncBlockChunk(voxelStart, ((StreamingGrid const* const __restrict)::grid), voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
+					RenderFuncBlockChunk(((StreamingGrid const* const __restrict)::grid), voxelStart, visibleArea, voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
 				);
 			}
 			// ####################################################################################################################
@@ -2037,6 +2102,16 @@ namespace // private to this file (anonymous)
 			}
 			batchedGround.clear();
 			// ####################################################################################################################
+
+			{ // optimization for compute:
+
+				point2D_t voxelReset(p2D_add(voxelStart, Iso::GRID_OFFSET));
+				point2D_t voxelCenter(p2D_add(voxelReset, p2D_half(point2D_t(Iso::SCREEN_VOXELS_X, Iso::SCREEN_VOXELS_Z))));
+
+				XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelCenter, voxelStart)))); // make relative to render start position
+
+				RenderMaxVisibleVolumeLight(xmVoxelOrigin, p2D_wrap_pow2(voxelCenter, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT)));
+			}
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 			PerformanceResult& result(getDebugVariableReference(PerformanceResult, DebugLabel::PERFORMANCE_VOXEL_SUBMISSION));
@@ -3289,7 +3364,7 @@ namespace world
 	}
 
 	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
-		vku::DynamicVertexBuffer* const* const& __restrict vbo)
+		                       vku::DynamicVertexBuffer* const __restrict (&__restrict vbo)[eVoxelVertexBuffer::_size_constant])
 	{		
 		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
 		cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::DYNAMIC);
@@ -3638,7 +3713,7 @@ namespace world
 
 				if (voxelIndex != _occlusion.occlusionVoxelIndex) {
 
-					uvec4_v const cmpMax(Iso::SCREEN_VOXELS_XZ);
+					uvec4_v const cmpMax(Iso::SCREEN_VOXELS);
 					point2D_t absDiff(p2D_abs(p2D_sub(_occlusion.occlusionVoxelIndex, voxelIndex)));
 					uvec4_v cmpDiff(absDiff.v);
 
@@ -3702,8 +3777,8 @@ namespace world
 		// clamp at the 2x step size, don't care or want spurious spikes of time
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
-		//pack into vector for uniform buffer layout				                                                              											   
-		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.y, (time_delta + time_delta_last) * 0.5f, _currentState.time);
+		//pack into vector for uniform buffer layout			
+		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.z, (time_delta + time_delta_last) * 0.5f, _currentState.time);
 		                                                                
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -3711,15 +3786,18 @@ namespace world
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
 		// view matrix derived from eyePos
-		XMVECTOR const xmEyePos(XMVectorSubtract(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder), getFractionalOffset()));
+		XMVECTOR xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
 
 		// In the ening these must be w/o fractional offset - no jitter on lighting and everything else that uses these uniform variables (normal usage via uniform buffer in shader)
+		XMVECTOR const xmFract(XMVectorNegate(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)));
+		xmEyePos = XMVectorAdd(xmEyePos, xmFract);
+
 		_currentState.Uniform.eyePos = xmEyePos;
-		_currentState.Uniform.eyeDir = XMVector3Normalize(xmEyePos); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, xmFract)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 		
 		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
 		
-		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, XMVectorZero(), Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
+		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, xmFract, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
 		// *bugfix - ***do not change***
 		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
@@ -3904,7 +3982,7 @@ namespace world
 		}
 	}
 		
-	static constexpr float const VOXEL_WORLD_SCALAR = Iso::MINI_VOX_SIZE * 0.1f; // should be minivox size (affects light attenuation *only*)
+	static constexpr float const VOXEL_WORLD_SCALAR = 1.0f; // scale lighting attenuation here
 
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
@@ -4010,7 +4088,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * VOXEL_WORLD_SCALAR * 0.25f)));  // should be world volume length * voxel size
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
@@ -4118,7 +4196,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * VOXEL_WORLD_SCALAR)));  // should be world volume length * voxel size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * VOXEL_WORLD_SCALAR * 0.25f)));  // should be world volume length * voxel size
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
@@ -4147,9 +4225,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)(input_extents.depth - 1)));// // number of frames - 1 (has to be from input texture extents
 	}
 	*/
-	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder)
+	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerNearestRepeat)
 	{
-		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearBorder);
+		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerNearestRepeat);
 	}
 	/*
 	[[deprecated]] void cVoxelWorld::UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT)

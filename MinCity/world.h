@@ -40,7 +40,6 @@ namespace world
 	
 	// World Space (-x,-z) to (X, Z) Coordinates Only - (Camera Origin) - *swizzled*
 	XMVECTOR const __vectorcall getOrigin();
-	XMVECTOR const __vectorcall getFractionalOffset(); // beware double adding the fractional offset to a transformation
 
 	v2_rotation_t const& getYaw();
 
@@ -76,6 +75,7 @@ namespace world
 	void __vectorcall resetVoxelsHashAt(rect2D_t const voxelArea, uint32_t const hash, v2_rotation_t const& __restrict vR); // for dynamic only
 
 	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR); // ""  dynamic ""
+	int32_t const __vectorcall testVoxelsAt(rect2D_t const voxelArea); // ""  static ""
 
 	uint32_t const getVoxelsAt_AverageHeight(rect2D_t voxelArea);
 	uint32_t const __vectorcall getVoxelsAt_MaximumHeight(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR); // ""  dynamic ""

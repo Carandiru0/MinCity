@@ -26,6 +26,17 @@ struct model_root_index {
 	uint32_t	   hash;
 	point2D_t	   voxelIndex;
 
+	model_root_index()
+		: hash(0)
+	{}
+	model_root_index(uint32_t const hash_, point2D_t const voxelIndex_)
+		: hash(hash_), voxelIndex(voxelIndex_)
+	{}
+
+	model_root_index(model_root_index&& rhs) {
+		hash = std::move(rhs.hash);
+		voxelIndex = std::move(voxelIndex);
+	}
 };
 template<bool const Dynamic>	// do not use directly, use derived classes model_state_instance_static & model_state_instance_dynamic instead.
 struct model_state_instance {

@@ -159,7 +159,7 @@ typedef struct key_event
 	int32_t action;
 } key_event;
 
-static inline struct // double clicking is purposely not supported for ease of use (touch tablet or touch screen)
+static inline struct input // double clicking is purposely not supported for ease of use (touch tablet or touch screen)
 {
 	static constexpr uint32_t const MAX_TYPED = 8; // n multiple key actions / frame
 
@@ -406,10 +406,10 @@ static void SetUniformBuffer(vk::CommandBuffer& __restrict cb, vku::UniformBuffe
 		XMStoreFloat2A(&vFramebufferSize, xmFramebufferSize);
 	}
 	XMMATRIX const xmProjection(
-		{ 2.0f / vFramebufferSize.x, 0.0f, 0.0f, 0.0f },
-		{ 0.0f, 2.0f / vFramebufferSize.y, 0.0f, 0.0f },
-		{  0.0f,  0.0f, -1.0f, 0.0f },
-		{ -1.0f, -1.0f,  0.0f, 1.0f }
+		 2.0f / vFramebufferSize.x, 0.0f, 0.0f, 0.0f,
+		 0.0f, 2.0f / vFramebufferSize.y, 0.0f, 0.0f,
+		 0.0f,  0.0f, -1.0f, 0.0f,
+		 -1.0f, -1.0f,  0.0f, 1.0f
 	); // this is adjusted for inverting y axis coordinates
 
 	UniformDecl::nk_uniform const u{ xmProjection };;
@@ -1086,7 +1086,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			scrolling = false; // reset (after this final iteration takes effect)
 
 		}
-		struct nk_vec2 scaled_scroll(0.0f, scroll);
+		struct nk_vec2 scaled_scroll{ 0.0f, scroll };
 		scaled_scroll.y *= tAccumulate.count() * inv_interval; // normalized to scale in the range [0.0f .... 1.0f] for n seconds.
 
 		if (!scrolling) {

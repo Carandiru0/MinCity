@@ -283,12 +283,12 @@ void cVulkan::CreateComputeResources()
 			vku::DescriptorSetLayoutMaker	dslm;
 
 			auto const samplers{ getSamplerArray
-				<eSamplerAddressing::BORDER>(
-					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
+				<eSamplerAddressing::REPEAT>(
+					eSamplerSampling::NEAREST, eSamplerSampling::NEAREST
 				)
 			};
 			dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eCompute, 1);
-			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, samplers); // 3d volume seed (lightprobes)
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, samplers); // 3d volume seed (lightprobes) &getNearestSampler<eSamplerAddressing::REPEAT>()
 			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
 			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1616,7 +1616,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			// Set initial uniform buffer value
 			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
-			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::BORDER>());
+			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getNearestSampler<eSamplerAddressing::REPEAT>());
 		}
 		// [[deprecated]] ###### Texture Shaders (Compute)
 		/*for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)

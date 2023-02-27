@@ -74,7 +74,7 @@ vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv,
 
 	return(color);
 }
-/* reconstruct is sharper
+// reconstruct is sharper
 // full optimal gaussian offsets & kernel for denoise
 const vec2 offset[25] = vec2[25](
 	vec2(-1,-1),
@@ -183,7 +183,7 @@ vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_cu
 	const float p = exp(-d); 
 
 	return mix(sf0/wf, sf1/wf, p);
-}*/
+}
 
 void main() {
 	
@@ -193,7 +193,7 @@ void main() {
 	// resolve 3 = unset start
 	const float scaled_bluenoise = fetch_bluenoise_scaled(In.uv, In.slice);
 	
-	// final verdict - denoise sample results in blobbyness, reconstruct has more detail (better)
+	// final verdict - denoise_sample results in blobbyness and temporally lagged reflections, reconstruct has more detail and no temporal problems (better)
 	outVolumetric = reconstruct(checkeredMap[VOLUME], In.uv, scaled_bluenoise);   //denoise_sample(fullMap[VOLUME], checkeredMap[VOLUME], In.uv, scaled_bluenoise);
 	outReflection = reconstruct(checkeredMap[REFLECT], In.uv, scaled_bluenoise);  //denoise_sample(fullMap[REFLECT], checkeredMap[REFLECT], In.uv, scaled_bluenoise);
 }
@@ -316,8 +316,8 @@ void main() {
 		bounce_color = supersample(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
-		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
-		expandAA(reflectionMap, bounce_color, In.uv);
+		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb * alphaSumR_Fade, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
+		//expandAA(reflectionMap, bounce_color, In.uv);
 
 		bounce_color *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha -- value is half-as-bright vs original (darker-reflection) 
 		outReflection = vec4(bounce_color, alphaSumR_Fade);

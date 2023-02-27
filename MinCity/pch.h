@@ -60,7 +60,7 @@
 #include "types.h"
 
 // (2)
-#include "Globals.h"
+#include "globals.h"
 
 // (3)
 

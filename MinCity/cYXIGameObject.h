@@ -113,7 +113,7 @@ namespace world
 
 		} _body;
 
-		struct {
+		struct activity_lights {
 			static constexpr fp_seconds const interval = duration_cast<fp_seconds>(milliseconds(2 * 1618));
 			fp_seconds						  accumulator;
 

@@ -181,8 +181,8 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 #endif
 		)
 { 
-	const float NdotL = max(0.0f, dot(N, L));
-	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
+	const float NdotL = 1.0f;//max(0.0f, dot(N, L));
+	const float NdotH = 0.1f;//max(0.0f, dot(N, normalize(L + V)));
 	
 #ifdef OUT_FRESNEL
 	fresnelTerm = fresnel(N, V);
@@ -196,7 +196,7 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 
 	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
-	
+
 #ifndef OUT_REFLECTION
 	vec3 ambient_reflection = vec3(0);
 #endif

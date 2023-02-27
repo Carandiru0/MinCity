@@ -42,7 +42,7 @@ struct sBatched
 	{
 		uint32_t const count(Count);
 
-		T* __restrict outStream = atomic_mem_ptr.fetch_and_add<tbb::release>(count);
+		T* __restrict outStream = atomic_mem_ptr.template fetch_and_add<tbb::release>(count);
 #pragma loop( ivdep )
 		for (uint32_t i = 0; i < count; ++i) {
 			__streaming_store(outStream, data_set[i]);

@@ -75,11 +75,12 @@ namespace Volumetric
 	}
 
 	template< uint32_t const Size > // "uniform world volume size"
-	class alignas(16) volumetricOpacity
+	class alignas(64) volumetricOpacity
 	{
 	public:
 		static constexpr uint32_t const // "uniform light volume size"
-			LightSize = ComputeLightConstants::LIGHT_RESOLUTION;
+			LightSize = ComputeLightConstants::LIGHT_RESOLUTION,
+			DispatchHeights = LightSize >> 3u; // dispatch granularity of 8 voxels, this is the count or number of unique dispatch height maximums
 
 	private:
 		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightSize, LightSize, LightSize, Size>;
@@ -139,7 +140,7 @@ namespace Volumetric
 
 		// light volume metrics
 		static inline constexpr uint32_t const		getLightSize() { return(LightSize); }
-		static inline constexpr size_t const		getLightProbeMapSizeInBytes() { return(LightSize * LightSize * LightSize * ComputeLightConstants::NUM_BYTES_PER_VOXEL_LIGHT); }
+		static inline constexpr size_t const		getLightProbeMapSizeInBytes() { return((LightSize) * (LightSize) * (LightSize) * ComputeLightConstants::NUM_BYTES_PER_VOXEL_LIGHT); }
 
 	public:
 		// Accessor ///
@@ -185,7 +186,9 @@ namespace Volumetric
 			}
 			SAFE_RELEASE_DELETE(LightProbeMap.imageGPUIn);
 
-			SAFE_RELEASE_DELETE(ComputeLightDispatchBuffer);
+			for (uint32_t i = 0; i < DispatchHeights; ++i) {
+				SAFE_RELEASE_DELETE(ComputeLightDispatchBuffer[i]);
+			}
 
 			for (uint32_t i = 0; i < 2; ++i) {
 				SAFE_RELEASE_DELETE(PingPongMap[i]);
@@ -215,17 +218,27 @@ namespace Volumetric
 	private:
 		void createIndirectDispatch(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue)
 		{
+			uint32_t dispatch_height(LightSize);
+
+			for ( uint32_t i = 0 ; i < DispatchHeights ; ++i )
 			{ // light compute dispatch
 				uint32_t const local_size((LightSize >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS) + (0U == (LightSize % ComputeLightConstants::SHADER_LOCAL_SIZE) ? 0U : 1U));
-				
+				uint32_t const local_size_z((dispatch_height >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS) + (0U == (dispatch_height % ComputeLightConstants::SHADER_LOCAL_SIZE) ? 0U : 1U));
+
+				if (0 == local_size_z) {
+					return; // don't create the last DispatchHeight if its dispatch size is zero.
+				}
+
 				vk::DispatchIndirectCommand const dispatchCommand{
 
-					local_size, local_size, local_size
+					local_size, local_size, local_size_z
 				};
 
-				ComputeLightDispatchBuffer = new vku::IndirectBuffer(sizeof(dispatchCommand), true);
+				ComputeLightDispatchBuffer[i] = new vku::IndirectBuffer(sizeof(dispatchCommand), true);
 
-				ComputeLightDispatchBuffer->upload(device, commandPool, queue, dispatchCommand);
+				ComputeLightDispatchBuffer[i]->upload(device, commandPool, queue, dispatchCommand);
+
+				dispatch_height -= 8; // next dispatch height
 			}
 		}
 
@@ -239,11 +252,11 @@ namespace Volumetric
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 
-				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Sequential, true, true);
+				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Sequential, false, true);
 			}
 			
 			LightProbeMap.imageGPUIn = new vku::TextureImage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,
-				LightSize, LightSize, LightSize, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);
+				LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Unorm, false, true);
 
 			VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)LightProbeMap.imageGPUIn->image(), vkNames::Image::LightProbeMap);
 			
@@ -251,13 +264,13 @@ namespace Volumetric
 
 			for (uint32_t i = 0; i < 2; ++i) {
 				PingPongMap[i] = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-					LightSize, LightSize, LightSize, 1U, vk::Format::eR32G32B32A32Sfloat, false, true);
+					LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Unorm, false, true);
 
 				VKU_SET_OBJECT_NAME(vk::ObjectType::eImage, (VkImage)PingPongMap[i]->image(), vkNames::Image::PingPongMap);
 			}
 
 			LightMap.DistanceDirection = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
-				LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Snorm, false, true); // only signed normalized values
+				LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Unorm, false, true); 
 			LightMap.Color = new vku::TextureImageStorage3D(vk::ImageUsageFlagBits::eSampled, device,
 				LightSize, LightSize, LightSize, 1U, vk::Format::eR16G16B16A16Sfloat, false, true);
 			VolumeSet.LightMap = &LightMap;
@@ -331,15 +344,15 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)LightSize)); // should be inverse light volume size
 		}
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearBorder) const
+		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerNearestRepeat) const
 		{
 			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			dsu.image(samplerNearestRepeat, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerNearestRepeat, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerLinearBorder, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerNearestRepeat, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
@@ -358,7 +371,7 @@ namespace Volumetric
 		__inline bool const renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 
 	private:
-		__inline bool const upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex);
+		__inline bool const upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex, uint32_t& __restrict dispatch_volume_height);
 
 		__inline void renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input);
 
@@ -378,7 +391,9 @@ namespace Volumetric
 		voxelTexture3D										LightProbeMap;
 		lightVolume											MappedVoxelLights;
 		
-		vku::IndirectBuffer* __restrict						ComputeLightDispatchBuffer;
+		vku::IndirectBuffer* __restrict						ComputeLightDispatchBuffer[DispatchHeights];  // High (index 0) to Low (index n)
+		uint32_t                                            SelectedDispatchHeightIndex;
+
 		vku::TextureImageStorage3D*							PingPongMap[2];
 		voxelLightmapSet									LightMap; // final output
 		vku::TextureImageStorage3D*							OpacityMap;
@@ -389,6 +404,7 @@ namespace Volumetric
 															InvVolumeLength = (1.0f / VolumeLength);
 
 		UniformDecl::ComputeLightPushConstants				PushConstants;
+
 #ifdef DEBUG_LIGHT_PROPAGATION
 		vk::Device const* DebugDevice;
 		vku::HostStorageBuffer* DebugMinMaxBuffer;
@@ -400,7 +416,7 @@ namespace Volumetric
 		volumetricOpacity()
 			:
 			MappedVoxelLights(LightProbeMap.stagingBuffer),
-			ComputeLightDispatchBuffer{ nullptr }, LightMap{ nullptr }, OpacityMap{ nullptr },
+			ComputeLightDispatchBuffer{}, SelectedDispatchHeightIndex(0), LightMap{ nullptr }, OpacityMap{ nullptr },
 			VolumeSet{}
 
 #ifdef DEBUG_LIGHT_PROPAGATION
@@ -491,7 +507,7 @@ namespace Volumetric
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstants), reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[0]->buffer(), 0); // always use the highest dispatch height for seed *only*, required for clean clear volume at start of every frame
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -506,7 +522,7 @@ namespace Volumetric
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstants), reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[SelectedDispatchHeightIndex]->buffer(), 0);
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -530,7 +546,7 @@ namespace Volumetric
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstants), reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[SelectedDispatchHeightIndex]->buffer(), 0);
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -557,20 +573,25 @@ namespace Volumetric
 	template< uint32_t Size >
 	__inline bool const volumetricOpacity<Size>::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
+		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
+		constinit static uint32_t dispatch_volume_height{ LightSize };
+
+		uint32_t const resource_index(c.resource_index);
+
 		if (c.cb_transfer_light)
 		{
 			if (c.async_compute_enabled) {
-				return(upload_light(c.resource_index, c.cb_transfer_light, c.transferQueueFamilyIndex, c.computeQueueFamilyIndex));
+				bRecorded[resource_index] = upload_light(resource_index, c.cb_transfer_light, c.transferQueueFamilyIndex, c.computeQueueFamilyIndex, dispatch_volume_height); // compute may need to re-record command buffer
+				return(true); // compute needs to run
 			}
 		}
 		else if (c.cb_render_light) { 
 
-			constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
-
-			uint32_t const resource_index(c.resource_index);
-
 			// Record Compute Command buffer if not flagged as already recorded. 
 			if (!bRecorded[resource_index]) {
+
+				// Select the closest dispatch height
+				SelectedDispatchHeightIndex = SFM::max(0, ((int32_t)(DispatchHeights - (dispatch_volume_height >> 3u))) - 1);  // need *index* ie.) 128 >> 3 = 16, 120 >> 3 = 15, 112 >> 3 = 14 ... etc *note: order needs to be reversed - index 0 equals highest dispatch height, index n equals lowest dispatch height ... *note: also needs to select the closest maximum dispatch height
 
 				vk::CommandBufferBeginInfo bi{};
 
@@ -719,9 +740,9 @@ namespace Volumetric
 		return(false);
 	}
 
-	// returns true when "dirty" status should be set, so that compute shader knows it needs to run
+	// returns true when "dirty" status should be set, so that compute shader knows it needs to re-record command buffers to adjust dispatch buffer selection change which adapts to the volume height (work reduction).
 	template< uint32_t Size >
-	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex) {
+	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex, uint32_t& __restrict dispatch_volume_height) {
 
 		// optimizations removed due to unsynchronized behaviour of needing 2 frames to process the clear, then an upload of the volumetric area currently occupied by lights.
 		// this de-synchronizes the light positions by lagging behind. then the lights do not occur at the position they should be at for this frame messing with the fractional offset differences between the world and the light.
@@ -782,6 +803,9 @@ namespace Volumetric
 			extents_max.y = SFM::roundToMultipleOf<true>(extents_max.y, 8);
 			extents_max.z = SFM::roundToMultipleOf<true>(extents_max.z, 8);
 
+			// only change the dispatch height when recording new upload light command buffer, otherwise it remains unchanged
+			dispatch_volume_height = extents_max.y;
+
 			vk::CommandBufferBeginInfo bi{}; // recorded once only
 			cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER_LIGHT);
 
@@ -793,7 +817,7 @@ namespace Volumetric
 
 			// slices ordered by Y: <---- USING Y
 			// (y * xMax * zMax) + (z * xMax) + x;
-			region.bufferOffset = ((extents_min.y * LightSize * LightSize) + (extents_min.z * LightSize) + extents_min.x) * MappedVoxelLights.element_size();
+			region.bufferOffset = ((extents_min.y * (LightSize) * (LightSize)) + (extents_min.z * (LightSize)) + extents_min.x) * MappedVoxelLights.element_size();
 			region.bufferOffset = SFM::roundToMultipleOf<false>((int32_t)region.bufferOffset, 8); // rounding down (effectively min)
 			region.bufferRowLength = LightSize;
 			region.bufferImageHeight = LightSize;
@@ -840,9 +864,11 @@ namespace Volumetric
 			}
 			cb.end();
 			bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
+
+			return(false); // indicate compute needs to run and re-record command buffer
 		}
 		
-		return(true); // always succeed whether command buffer is recorded or re-used - indicating to the next stage (compute) to commence once transfer here has completed.
+		return(true); // indicate compute needs to run, but does not need to re-record
 	}
 
 

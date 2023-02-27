@@ -158,7 +158,7 @@ namespace world
 		savePath += szCityName;
 		savePath += CITY_EXT;
 
-		FILE* __restrict stream(nullptr);
+		FILE* stream(nullptr);
 		if ((0 == _wfopen_s(&stream, savePath.c_str(), L"wbS")) && stream) {
 
 			MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(10));

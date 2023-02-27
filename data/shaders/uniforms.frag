@@ -529,7 +529,7 @@ void main() {
 	const float star_color = texture(reflectionCubeMap, star_direction).r;
 
 	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo_rough_ao.xxx, make_material(star_color.x, 0.0f, albedo_rough_ao.y), star_color.xxx * 10.0f,				 
+	color.rgb += lit( albedo_rough_ao.xxx, make_material(0.0f, 0.0f, albedo_rough_ao.y), star_color.xxx * 2.0f,				 
 				      albedo_rough_ao.z, getAttenuation(InvVolumeDimensions * (1.0f - (height_detail * InvVolumeDimensions + height * InvVolumeDimensions)), VolumeDimensions), // on a single voxel
 				      normalize(star_direction + -N), N, V, false); // don't want to double-add reflections
 
@@ -537,13 +537,13 @@ void main() {
 	vec3 light_color;
 	vec4 Ld;
 
-	getLight(light_color, Ld, In.uv.xyz);
+	getLight(light_color, Ld, In.uv.xyz + N * InvLightVolumeDimensions);
 	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 						// only emissive can have color
 	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
 					  albedo_rough_ao.z, Ld.att,
-					  -normalize(Ld.dir - In.world_uvw.xyz), N, V, true);
+					  normalize(In.world_uvw.xyz - Ld.pos), N, V, true);
 
 	outColor.rgb = color;
 }
@@ -557,17 +557,18 @@ void main() {
     
 	vec3 light_color;    
 	vec4 Ld;
-
-	getLight(light_color, Ld, In.uv.xyz);
-
+	 
 	const vec3 N = normalize(In.N.xyz);
+
+	getLight(light_color, Ld, In.uv.xyz + N * InvLightVolumeDimensions);
+
 	const vec3 V = normalize(In.V.xyz);                            
 	
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,
 						1.0f, getAttenuation(Ld.dist, VolumeLength),
-						-normalize(Ld.dir - In.uv.xyz), N, V, true);
+						normalize((In.uv.xyz * LightVolumeDimensions)/VolumeDimensions - Ld.pos), N, V, true);
 
 	//outColor.rgb = vec3(attenuation);
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
@@ -578,10 +579,10 @@ void main() {
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
 
-	float fresnelTerm;  // feedback from lit      
+	float fresnelTerm;  // feedback from lit       
 	const vec3 lit_color = lit( unpackColorHDR(In._color), In.material, light_color,
 						    1.0f, getAttenuation(Ld.dist, VolumeLength),
-						    -normalize(Ld.dir - In.uv.xyz), N, V, true, fresnelTerm );
+						    normalize((In.uv.xyz * LightVolumeDimensions)/VolumeDimensions - Ld.pos), N, V, true, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //
 
