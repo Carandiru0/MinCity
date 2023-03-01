@@ -3982,8 +3982,6 @@ namespace world
 		}
 	}
 		
-	static constexpr float const VOXEL_WORLD_SCALAR = 1.0f; // scale lighting attenuation here
-
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
 		_OpacityMap.SetSpecializationConstants_ComputeLight(constants);
@@ -4017,7 +4015,7 @@ namespace world
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(4,  (float)Volumetric::voxelOpacity::getSize()));		  // should be world volume size
 		constants.emplace_back(vku::SpecializationConstant(5,  1.0f / ((float)Volumetric::voxelOpacity::getSize())));       // should be inverse world volume size
-		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getVolumeLength())); // should be world volume length (1:1 ratio here, do not scale by voxel size)
+		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should be world volume length scaled by minivoxelsize
 
 		// light volume dimensions //																				// xzy
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size
@@ -4088,7 +4086,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * VOXEL_WORLD_SCALAR * 0.25f)));  // should be world volume length * voxel size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)));  // should be world volume length * mini voxel size
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 
@@ -4196,7 +4194,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 		constants.emplace_back(vku::SpecializationConstant(5, 1.0f / (float)Volumetric::voxelOpacity::getSize())); // should be inverse world visible volume size
 
-		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE * VOXEL_WORLD_SCALAR * 0.25f)));  // should be world volume length * voxel size
+		constants.emplace_back(vku::SpecializationConstant(6, (float)(Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)));  // should be world volume length * mini voxel size
 
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize())); // should be light volume size
 

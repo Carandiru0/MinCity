@@ -342,6 +342,8 @@ namespace Volumetric
 			// light volume dimensions //
 			constants.emplace_back(vku::SpecializationConstant(2, (float)LightSize)); // should be light volume uniform size
 			constants.emplace_back(vku::SpecializationConstant(3, 1.0f / (float)LightSize)); // should be inverse light volume size
+
+			constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::MINI_VOX_SIZE)); // should be mini vox size
 		}
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerNearestRepeat) const

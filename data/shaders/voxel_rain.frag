@@ -74,7 +74,7 @@ void main() {
 	float fresnelTerm;
 
 	const vec3 lit_color = lit( normalize(unpackColor(In._ambient)), make_material(In._emission, 0.0f, ROUGHNESS), light_color,
-						 1.0f, getAttenuation(Ld.dist, VolumeLength), 
+						 1.0f, getAttenuation(Ld.dist * VolumeLength), 
 						 -Ld.dir, N, V, reflect_color, fresnelTerm );
     
 	const float density = (1.0f - In._passthru);

@@ -52,6 +52,8 @@ layout (constant_id = 1) const float InvWorldLength = 0.0f;
 layout (constant_id = 2) const float VolumeDimensions = 0.0f;
 layout (constant_id = 3) const float InvVolumeDimensions = 0.0f;
 
+layout (constant_id = 4) const float VOX_SIZE = 0.0f;
+
 #define warp_local vec4
 
 // 26 neighbours + self at i==13 (*compiletime* offset)
@@ -420,7 +422,7 @@ void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout 
 	float neighbour_distance;
 
 	// 1 center
-	current_color = current_color * getAttenuation(current_direction_distance.w);
+	current_color = current_color * getAttenuation(current_direction_distance.w * VOX_SIZE);
 	
 	// 26 neighbours
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
@@ -431,7 +433,7 @@ void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout 
 	if (neighbour_distance < current_direction_distance.w) { \
 		current_direction_distance = vec4(neighbour_warp.emitter_location, neighbour_distance); \
 	} \
-	current_color += unpackColorHDR(neighbour_warp.packed_color) * getAttenuation(neighbour_distance); \
+	current_color += unpackColorHDR(neighbour_warp.packed_color) * getAttenuation(neighbour_distance * VOX_SIZE); \
 
 	//current_direction_distance.xyz = normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz); 
 	//current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w); 

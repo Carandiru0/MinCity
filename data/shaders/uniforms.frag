@@ -53,7 +53,7 @@ void main() {
 //layout (constant_id = 3) const float SCREEN_RES_RESERVED see  "screendimensions.glsl"
 layout (constant_id = 4) const float VolumeDimensions = 0.0f;	// world volume //
 layout (constant_id = 5) const float InvVolumeDimensions = 0.0f;
-layout (constant_id = 6) const float VolumeLength = 0.0f; // <---- only for this constant ** length is scaled by voxel_size
+layout (constant_id = 6) const float VolumeLength = 0.0f; // <-- scaled by minivoxel size
 
 layout (constant_id = 7) const float LightVolumeDimensions = 0.0f; // light volume //
 layout (constant_id = 8) const float InvLightVolumeDimensions = 0.0f;
@@ -530,7 +530,7 @@ void main() {
 
 	// twilight/starlight terrain lighting
 	color.rgb += lit( albedo_rough_ao.xxx, make_material(0.0f, 0.0f, albedo_rough_ao.y), star_color.xxx * 2.0f,				 
-				      albedo_rough_ao.z, getAttenuation(InvVolumeDimensions * (1.0f - (height_detail * InvVolumeDimensions + height * InvVolumeDimensions)), VolumeDimensions), // on a single voxel
+				      albedo_rough_ao.z, getAttenuation(InvVolumeDimensions * (1.0f - (height_detail * InvVolumeDimensions + height * InvVolumeDimensions)) * VolumeDimensions), // on a single voxel
 				      normalize(star_direction + -N), N, V, false); // don't want to double-add reflections
 
 	// regular terrain lighting
@@ -538,11 +538,10 @@ void main() {
 	vec4 Ld;
 
 	getLight(light_color, Ld, In.uv.xyz + N * InvLightVolumeDimensions);
-	Ld.att = getAttenuation(Ld.dist, VolumeLength);
 
 						// only emissive can have color
 	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
-					  albedo_rough_ao.z, Ld.att,
+					  albedo_rough_ao.z, getAttenuation(Ld.dist * VolumeLength),
 					  normalize(In.world_uvw.xyz - Ld.pos), N, V, true);
 
 	outColor.rgb = color;
@@ -567,7 +566,7 @@ void main() {
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,
-						1.0f, getAttenuation(Ld.dist, VolumeLength),
+						1.0f, getAttenuation(Ld.dist * VolumeLength),
 						normalize((In.uv.xyz * LightVolumeDimensions)/VolumeDimensions - Ld.pos), N, V, true);
 
 	//outColor.rgb = vec3(attenuation);
@@ -581,7 +580,7 @@ void main() {
 
 	float fresnelTerm;  // feedback from lit       
 	const vec3 lit_color = lit( unpackColorHDR(In._color), In.material, light_color,
-						    1.0f, getAttenuation(Ld.dist, VolumeLength),
+						    1.0f, getAttenuation(Ld.dist * VolumeLength),
 						    normalize((In.uv.xyz * LightVolumeDimensions)/VolumeDimensions - Ld.pos), N, V, true, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //

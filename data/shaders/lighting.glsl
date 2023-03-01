@@ -192,10 +192,10 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 	const float fresnelTerm = fresnel(N, V);
 #endif
 
-	const float luminance = min(1.0f, dot(attenuation * light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
+	const float luminance = min(1.0f, dot(light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 
-	const float specular_reflection_term = attenuation * GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
-	const float diffuse_reflection_term = attenuation * NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
+	const float specular_reflection_term = GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
+	const float diffuse_reflection_term = NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 
 #ifndef OUT_REFLECTION
 	vec3 ambient_reflection = vec3(0);
