@@ -71,7 +71,7 @@ namespace Iso
 #define MINIVOXEL_FACTORF (Iso::VOXELS_GRID_SLOT_XZ_FP)
 
 	static constexpr uint32_t const
-		SCREEN_VOXELS = 192,                  // must be divisable by 8, 16 and 64 - *required* to play nice with compute dispatch, bit_volumes & power of 2 square textures.
+		SCREEN_VOXELS = 256,                  // must be divisable by 8, 16 and 64 - *required* to play nice with compute dispatch, bit_volumes & power of 2 square textures.
 		SCREEN_VOXELS_X = SCREEN_VOXELS,	  // must be *uniform* on all dimensions (x,y,z) - non-uniform volume sizes are inherently limited and cannot be used practically. There are so many things that go wrong, raymarch skew, incorrect scaling, voxels are no longer cubes but rather elongated boxes, etc. nightmare!
 		SCREEN_VOXELS_Y = SCREEN_VOXELS,
 		SCREEN_VOXELS_Z = SCREEN_VOXELS;		

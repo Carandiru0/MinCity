@@ -112,14 +112,6 @@ vec3 reflection()
 {
 	return(subpassLoad(ambientLightMap).rgb);
 }
-vec3 reflection(inout float emission) 
-{
-	const vec3 ambient_reflection = reflection();
-
-	emission = clamp(emission + dot(ambient_reflection, LUMA), 0.0f, 1.0f);
-
-	return(ambient_reflection);
-}
 
 // NOTE: GGX lobe for specular lighting, took straight from here: http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
 #define POSITIVE_EPSILON 0.000000001f
@@ -137,7 +129,7 @@ float GGX_Distribution(in const float NdotH, in const float alpha)
 }
 
 #if defined(FRESNEL_ETA_N1) && defined(FRESNEL_ETA_N2)
-float fresnel(in const vec3 N, in const vec3 V)
+float fresnel(in const vec3 N, in const vec3 V, in const float power) // fresnel typical power is 5.0
 {
 	// 1st quadtrant
 	//V = V * 0.5f + 0.5f;
@@ -145,11 +137,10 @@ float fresnel(in const vec3 N, in const vec3 V)
 
     const float r = sq((FRESNEL_ETA_N1 - FRESNEL_ETA_N2) / (FRESNEL_ETA_N1 + FRESNEL_ETA_N2));
 
-	// required pow() for refraction indices are defined
-    return r + (1.0f - r) * pow(1.0f - max(0.0f, dot(N * 0.5f + 0.5f, V * 0.5f + 0.5f)), 5.0f);
+    return r + (1.0f - r) * pow(1.0f - abs(dot(N, V)), power);
 }
 #else
-float fresnel(in const vec3 N, in const vec3 V)
+float fresnel(in const vec3 N, in const vec3 V, in const float power)  // fresnel typical power is 5.0
 {
 	// Fresnel requires:
 	// view space transformed vectors
@@ -161,8 +152,7 @@ float fresnel(in const vec3 N, in const vec3 V)
 	//V = V * 0.5f + 0.5f;
 	//N = N * 0.5f + 0.5f;
 
-	// leaving the flexibility of appling pow() to the implementation
-	return 1.0f - max(0.0f, dot(N * 0.5f + 0.5f, V * 0.5f + 0.5f));
+	return pow(1.0f - abs(dot(N, V)), power);
 }
 #endif
 
@@ -181,15 +171,17 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 #endif
 		)
 { 
-	const float NdotL = 1.0f;//max(0.0f, dot(N, L));
-	const float NdotH = 0.1f;//max(0.0f, dot(N, normalize(L + V)));
+	const float NdotL = max(0.0f, dot(N, L));
+	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
 	
+	const float fresnelPower = 5.0f;
+
 #ifdef OUT_FRESNEL
-	fresnelTerm = fresnel(N, V);
+	fresnelTerm = fresnel(N, V, fresnelPower);
 #elif defined(INOUT_FRESNEL)
-	fresnelTerm = fresnel(N, V) * fresnelTerm;
+	fresnelTerm = fresnel(N, V, fresnelPower) * fresnelTerm;
 #else
-	const float fresnelTerm = fresnel(N, V);
+	const float fresnelTerm = fresnel(N, V, fresnelPower);
 #endif
 
 	const float luminance = min(1.0f, dot(light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
@@ -200,13 +192,13 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 #ifndef OUT_REFLECTION
 	vec3 ambient_reflection = vec3(0);
 #endif
-    movc(reflection_on, ambient_reflection, reflection(material.emission));
+    movc(reflection_on, ambient_reflection, reflection());
 
 	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
-	const vec3 ambient_reflection_term = (unpackColor(material.ambient) + ambient_reflection) * occlusion; // chooses diffuse reflection when not metallic, and specular reflection when metallic
-	
+	const vec3 ambient_reflection_term = mix(unpackColorHDR(material.ambient) * ambient_reflection, ambient_reflection, fresnelTerm);
+
 			// ambient
-	return ( ambient_reflection_term +
+	return ( albedo * ambient_reflection_term +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					
 		     fma( albedo * occlusion, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
 			       // emission		// ^^^^^^ this splits the distribution of light to the albedo color and the actual light color 50/50, it is biased toward to the albedo color in the event the albedo color component is greater than 0.5f. Making bright objects appear brighter. (all modulated by the current occlusion). This makes occulusion emphasized, which looks nice as the effect of ambient occlusion is always very visible. *do not change*

@@ -208,10 +208,10 @@ void main() {
   Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
-  Out.material.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count << 2u));
+  Out.material.ambient = packColorHDR(normalize(b.average_reflection_color.rgb / float(b.average_reflection_count)));
 #else // terrain 
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-  Out.ambient = packColor(b.average_reflection_color.rgb / float(b.average_reflection_count << 2u));
+  Out.ambient = packColorHDR(normalize(b.average_reflection_color.rgb / float(b.average_reflection_count)));
 #endif
 
 #endif
@@ -224,7 +224,7 @@ void main() {
   gl_Position = vec4(worldPos * VOX_STEP, 1.0f);  // *bugfix - was only 1.0 for all voxel sizes. Scaling must occur as the last transformation, this solves the problem for of RenderGrid() incrementing by only 1 for each voxel, rather than by VOX_STEP which is based off of the VOX_SIZE. VOX_SIZE is a "radius", so it would take 2.0f * VOX_SIZE to translate between any 2 voxel origins, accounting for the size thwy are. VOX_STEP is only applied here to keep the scale as it was before (1.0) before this point in the entire program. This is visual only.  
 #ifndef BASIC
     Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
-#endif
+#endif                                                            // 
 
 // applies to ground and regular voxels
 #ifdef BASIC
@@ -237,33 +237,39 @@ void main() {
 #if defined(BASIC) && !defined(TRANS) // only basic past this point
 
 	// derive the normalized index
-	worldPos = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
+	// clamping provides opaque borders for voxel models that intersect the bounds of the visible volume. Makes it so they are not see-thru to the insides of the voxel model.
+	worldPos = clamp(fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex, 0.0f, 1.0f);
 
   // *** never write to slice 0 (slice 0 contains the always on and filled world ground plane) ***
 
 #if !defined(HEIGHT)
-
-  const ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions));
+                             
+  ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
+  ivoxel.y = max(1, ivoxel.y); // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
   // **clamp required** for black occulder voxels ! provides occlusion in raymarched volumetrics, so the volumetrics don't overlay the black occulder voxels and make it look like you can still see voxel model interiors!
 #if defined(CLEAR) // erase
-  imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), vec4(0));
+  imageStore(opacityMap, ivoxel.xzy, vec4(0));
 #else
-  imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), opacity.rrrr);
+  imageStore(opacityMap, ivoxel.xzy, opacity.rrrr);
 #endif
 
 #ifdef DYNAMIC // dynamic voxels only
-  // hole filling for rotated (xz) voxels (simplified and revised portion of novel oriented rect algorithm)
-#if defined(CLEAR) // erase
-   imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), vec4(0));			// this is suprisingly coherent 
+  // hole filling for rotated voxels on each axis(xy, xz, zy) (simplified and revised portion of novel oriented rect algorithm)
+#if defined(CLEAR) // erase - if the gpu has an out of bounds store that is +-1 in the xy direction past the beginning or end, it will discard the store silently. Discarding is required for this algorithm to work properly (hole filling)
+   imageStore(opacityMap, ivec3(ivoxel.x - 1, ivoxel.y,             ivoxel.z).xzy,     vec4(0));			// this is suprisingly coherent 	
+   imageStore(opacityMap, ivec3(ivoxel.x,     max(1, ivoxel.y - 1), ivoxel.z).xzy,     vec4(0));			 
+   imageStore(opacityMap, ivec3(ivoxel.x,     ivoxel.y,             ivoxel.z - 1).xzy, vec4(0));			
 #else																					            // and works by layer, resulting in bugfix for hole filling.
-   imageStore(opacityMap, clamp(ivec3(ivoxel.x, max(1, ivoxel.y - 1), ivoxel.z).xzy, ivec3(0), ivec3(VolumeDimensions - 1.0f)), opacity.rrrr);		// reflections on rotated models are no longer distorted.
+   imageStore(opacityMap, ivec3(ivoxel.x - 1, ivoxel.y,             ivoxel.z).xzy,     opacity.rrrr);
+   imageStore(opacityMap, ivec3(ivoxel.x,     max(1, ivoxel.y - 1), ivoxel.z).xzy,     opacity.rrrr);		// reflections on rotated models are no longer distorted.
+   imageStore(opacityMap, ivec3(ivoxel.x,     ivoxel.y,             ivoxel.z - 1).xzy, opacity.rrrr);
 #endif
 #endif // dynamic 
 
 #else // terrain only
-  const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions));
+  const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
   const int minimum_height = max(0, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size * 0.75f)) - 1);  // use of > rather than >= below, to always avoid writing to slice 0
 
   ivec3 iminivoxel;

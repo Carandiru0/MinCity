@@ -79,7 +79,7 @@ namespace world
 
 		_body.mass = voxels_to_kg((float)getModelInstance()->getVoxelCount());
 
-		float const fElevation(Iso::TERRAIN_MAX_HEIGHT * Iso::VOX_STEP * 0.5f);
+		float const fElevation(Iso::TERRAIN_MAX_HEIGHT * Iso::VOX_STEP * 0.25f);
 		
 		instance_->resetElevation(fElevation);
 	}
@@ -434,7 +434,7 @@ namespace world
 
 			XMVECTOR const xmInitialVelocity(XMLoadFloat3A(&_body.velocity));
 
-			XMVECTOR const xmVelocity = SFM::__fma(XMVectorDivide(xmForce, XMVectorReplicate(_body.mass)), XMVectorReplicate(tD), xmInitialVelocity);
+			XMVECTOR xmVelocity = SFM::__fma(XMVectorDivide(xmForce, XMVectorReplicate(_body.mass)), XMVectorReplicate(tD), xmInitialVelocity);
 
 			// finding the force              v - vi
 			//                     f   = m * --------		(herbie optimized)

@@ -55,7 +55,7 @@ layout (binding = 3) uniform sampler2D fullMap[2]; // full resolution checkered 
 
 float fetch_bluenoise_scaled(in const vec2 uv, in const float slice)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling *bugfix - really needs tooo be scaled * 0.5f + 0.5f, otherwise checkerboard reconstruction partially fails *do not change*
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling *bugfix - really needs tooo be scaled * 0.5f + 0.5f, otherwise checkerboard reconstruction partially fails *do not change*
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv, in const float scaled_bluenoise )
@@ -216,11 +216,11 @@ layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumet
 layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
 
-const float POISSON_RADIUS = 9.0f;
+const float POISSON_RADIUS = 15.0f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
 
 const int TAPS = 12;
-const float INV_FTAPS = 1.0f / float(TAPS + 1); // + 1 because input is also in average
+const float INV_FTAPS = 1.0f / float(TAPS * 4 + 1); // * 4 local samples, + 1 because input is also in average
 const vec2 kTaps[TAPS] = {	vec2(-0.326212,-0.40581),vec2(-0.840144,-0.07358),
 							vec2(-0.695914,0.457137),vec2(-0.203345,0.620716),
 							vec2(0.96234,-0.194983),vec2(0.473434,-0.480026),
@@ -233,7 +233,11 @@ vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2
 {
 	for ( int tap = 0 ; tap < TAPS ; ++tap ) 
 	{
-		color += textureLod(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0).rgb;
+	    // take additional samples, local, so should be in cache (fast)
+		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2(-1, 0)).rgb;
+		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2( 1, 0)).rgb;
+		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2( 0,-1)).rgb;
+		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2( 0, 1)).rgb;
 	}
 
 	color *= INV_FTAPS; 
@@ -262,7 +266,7 @@ vec4 poissonBlur( in const restrict sampler2D samp, in vec4 color, in const vec2
 // duplicated because of different noiseMap binding index between reconstruction and resolve shaders, simpler
 float fetch_bluenoise_scaled(in const vec2 uv)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
 {
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 
@@ -304,9 +308,10 @@ void main() {
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
 		volume_color = supersample(volumetricMap, In.uv, vdFd);
 
-		expandAA(volumetricMap, volume_color, In.uv);
+		//expandAA(volumetricMap, volume_color, In.uv);
 
-		volume_color *= alphaSumV; // pre-multiply w/ bilateral alpha
+		// pre-multiply w/ bilateral alpha
+		volume_color.rgb *= alphaSumV;
 		outVolumetric = vec4(volume_color, alphaSumV); // output is pre-multiplied, doing it here rather than the "blend stage" hides a lot of noise! *do not change*
 	}
 	
@@ -317,9 +322,10 @@ void main() {
 
 		// greater distance between source of reflection & reflected surface = greater blur
 		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb * alphaSumR_Fade, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
-		//expandAA(reflectionMap, bounce_color, In.uv);
+		expandAA(reflectionMap, bounce_color, In.uv);
 
-		bounce_color *= alphaSumR_Fade; // pre-multiply w/ bilateral alpha -- value is half-as-bright vs original (darker-reflection) 
+		// pre-multiply w/ bilateral alpha 
+		bounce_color.rgb *= alphaSumR_Fade;
 		outReflection = vec4(bounce_color, alphaSumR_Fade);
 	}
 
@@ -328,8 +334,9 @@ void main() {
 		vec3 ambient_color = volume_color + bounce_color;
 		ambient_color = ambient_color + subgroupQuadSwapHorizontal(ambient_color);
 		ambient_color = ambient_color + subgroupQuadSwapVertical(ambient_color);
+		ambient_color *= 0.25f; // accounts for 2 colors
 
-		atomicAdd(b.average_reflection_count, 2U); // bounce color + volume color (the average calc is in the voxel vertex shader, and yes it accounts for the quad 
+		atomicAdd(b.average_reflection_count, 1U); // bounce color + volume color (the average calc is in the voxel vertex shader
 		b.average_reflection_color.rgb += ambient_color; // ok to add out of order, vertex shader uniforms.vert is after which uses the count and the total sum.
 	}
 

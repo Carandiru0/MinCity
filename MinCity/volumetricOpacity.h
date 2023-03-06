@@ -346,15 +346,15 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::MINI_VOX_SIZE)); // should be mini vox size
 		}
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerNearestRepeat) const
+		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const
 		{
 			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerNearestRepeat, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerNearestRepeat, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearClamp, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
 			dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
-			dsu.image(samplerNearestRepeat, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
+			dsu.image(samplerLinearClamp, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
 			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
@@ -509,7 +509,7 @@ namespace Volumetric
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstants), reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[0]->buffer(), 0); // always use the highest dispatch height for seed *only*, required for clean clear volume at start of every frame
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[0]->buffer(), 0); // always use the highest dispatch height for seed & filter *only*, required for clean clear volume at start of every frame
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}
@@ -548,7 +548,7 @@ namespace Volumetric
 		c.cb_render_light.pushConstants(*render_data.light.pipelineLayout, vk::ShaderStageFlagBits::eCompute,
 			(uint32_t)0U, (uint32_t)sizeof(UniformDecl::ComputeLightPushConstants), reinterpret_cast<void const* const>(&PushConstants));
 
-		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[SelectedDispatchHeightIndex]->buffer(), 0);
+		c.cb_render_light.dispatchIndirect(ComputeLightDispatchBuffer[0]->buffer(), 0); // always use the highest dispatch height for seed & filter *only*, required for clean clear volume at start of every frame
 		// dispatchIndirect() is faster than dispatch(), if you can meet the requirements of being constant and pre-loaded dispatch local size information
 		// otherwise each dispatch() must upload to GPU that information
 	}

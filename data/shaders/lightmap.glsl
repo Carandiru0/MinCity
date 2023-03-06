@@ -152,17 +152,11 @@ void getLightMapFast( out float light_distance, out vec3 light_color, in const v
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	// linear sampling
-	//lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions);
-
 	// nn sampling
 	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 void getLightMap( out float light_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	// linear sampling
-	//lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions);
-
 	// nn sampling
 	lightmap_internal_sampleNaturalNeighbour(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }

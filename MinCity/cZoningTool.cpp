@@ -307,7 +307,7 @@ void __vectorcall cZoningTool::ClickAction(FXMVECTOR const xmMousePos)
 	world::cBuildingGameObject* pGameObject(nullptr);
 
 	using flags = Volumetric::eVoxelModelInstanceFlags;
-	constexpr uint32_t const common_flags(flags::DESTROY_EXISTING_DYNAMIC | flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING | flags::INSTANT_CREATION);
+	constexpr uint32_t const common_flags(/*flags::DESTROY_EXISTING_DYNAMIC |*/ flags::DESTROY_EXISTING_STATIC | flags::GROUND_CONDITIONING | flags::INSTANT_CREATION);
 
 	if (lastTool != _ActivatedSubTool) {
 		lastCount = 0; // reset 

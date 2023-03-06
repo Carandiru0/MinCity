@@ -4223,9 +4223,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)(input_extents.depth - 1)));// // number of frames - 1 (has to be from input texture extents
 	}
 	*/
-	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerNearestRepeat)
+	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp)
 	{
-		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerNearestRepeat);
+		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearClamp);
 	}
 	/*
 	[[deprecated]] void cVoxelWorld::UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT)

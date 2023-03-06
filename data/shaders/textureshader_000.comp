@@ -44,7 +44,7 @@ vec4 random4(in const vec2 uv) {
 
 	// blue noise providing good results for 2D random numbers, must be in point sampling mode!
     // this returns 4 random values at once using textureGather
-    return( textureGather(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALER).wzxy ); // swizzled to get correct order (this acquires 4 samples at 4 different location from only the 1st channel .r
+    return( textureGather(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALAR).wzxy ); // swizzled to get correct order (this acquires 4 samples at 4 different location from only the 1st channel .r
 }
 // Based on Morgan McGuire @morgan3d
 // https://www.shadertoy.com/view/4dS3Wd
@@ -115,7 +115,7 @@ void main()
 
     shade = shade * (f*f*f+.6*f*f+.5*f); // quintic smoothing
 
-    const float bn = textureLod(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALER, 0.0f).r * 2.0f - 1.0f;
+    const float bn = textureLod(inputMap, uv * OutputDimensions * BLUE_NOISE_UV_SCALAR, 0.0f).r * 2.0f - 1.0f;
 	shade = shade + bn * BLUE_NOISE_DITHER_SCALAR * 0.5f;
 
     imageStore(outputMap, ivec2(gl_GlobalInvocationID.xy), shade.rrrr); // output dithered shade to next textureShader pass.

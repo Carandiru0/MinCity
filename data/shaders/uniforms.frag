@@ -539,10 +539,13 @@ void main() {
 
 	getLight(light_color, Ld, In.uv.xyz + N * InvLightVolumeDimensions);
 
+	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
+	Ld.z = -Ld.z; // vulkan
+
 						// only emissive can have color
 	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
 					  albedo_rough_ao.z, getAttenuation(Ld.dist * VolumeLength),
-					  normalize(In.world_uvw.xyz - Ld.pos), N, V, true);
+					  Ld.xyz, N, V, true);
 
 	outColor.rgb = color;
 }
@@ -563,25 +566,24 @@ void main() {
 
 	const vec3 V = normalize(In.V.xyz);                            
 	
+	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
+	Ld.z = -Ld.z; // vulkan
+
 #ifndef TRANS              
     
 	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,
 						1.0f, getAttenuation(Ld.dist * VolumeLength),
-						normalize((In.uv.xyz * LightVolumeDimensions)/VolumeDimensions - Ld.pos), N, V, true);
+						Ld.xyz, N, V, true);
 
 	//outColor.rgb = vec3(attenuation);
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
 #else     
 #define SCROLL_SPEED GOLDEN_RATIO
 
-	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
-	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
-	// ##### FINAL HOLOGRAPHIC TRANSPARENCY MIX - DO *NOT* MODIFY UNDER ANY CIRCUMSTANCE - HARD TO FIND, LOTS OF ITERATIONS  #########################################	
-
 	float fresnelTerm;  // feedback from lit       
 	const vec3 lit_color = lit( unpackColorHDR(In._color), In.material, light_color,
 						    1.0f, getAttenuation(Ld.dist * VolumeLength),
-						    normalize((In.uv.xyz * LightVolumeDimensions)/VolumeDimensions - Ld.pos), N, V, true, fresnelTerm );
+						    Ld.xyz, N, V, true, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //
 

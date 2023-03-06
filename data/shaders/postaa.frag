@@ -341,7 +341,7 @@ void main() {
 
 	const float luma = dot(color, LUMA); // b4 non-linear transform
 	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
-	const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALER, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
+	const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
 	{ // ANAMORPHIC FLAREc
 	
 		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]

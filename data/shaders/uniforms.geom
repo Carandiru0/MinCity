@@ -170,7 +170,7 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
 	// so no need for eyePos
 														  // *bugfix - V  is the "incident" vector, pointing towards this vertex from the camera eye point, it is not the same as the vector eyeDir, which is from eye to look at point (the origin 0,0,0)
-	Out.V.xzy = /*transformNormalToViewSpace(mat3(u._view),*/ normalize(worldPos - u._eyePos.xyz);//);	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
+	Out.V.xzy = /*transformNormalToViewSpace(mat3(u._view),*/ normalize(u._eyePos.xyz - worldPos);//);	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
 																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
 #endif
 

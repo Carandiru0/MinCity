@@ -522,9 +522,9 @@ namespace voxB
 
 					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 					
-					uint32_t color(SFM::max(1u, voxel.getColor()) & 0x00FFFFFFu); // ensure not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+					uint32_t color(1u); // ensure not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 					bool seed_a_light(false);
-
+					
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 					{			
@@ -543,17 +543,22 @@ namespace voxB
 						}
 					}
 
-					// Build hash //
-
-					// ** see uniforms.vert for definition of constants used here **
-					uint32_t hash(voxel.getAdjacency());                //           0000 0000 0011 1111
-					hash |= ((voxel.Emissive & !Faded) << 6);			//           0000 0000 01xx xxxx
-					hash |= (voxel.Metallic << 7);						// 0000 0000 0000 xxxx 1xxx xxxx
-					hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 xxxx xxxx
-
 					// finally submit voxel //
 					if constexpr (!EmissionOnly) {
-						if (!(Faded | voxel.Transparent)) {
+
+						voxel.Emissive = seed_a_light; // no light, no emission
+
+						// Build hash //
+
+						// ** see uniforms.vert for definition of constants used here **
+						uint32_t hash(voxel.getAdjacency());                //           0000 0000 0011 1111
+						hash |= ((voxel.Emissive & !Faded) << 6);			//           0000 0000 01xx xxxx
+						hash |= (voxel.Metallic << 7);						// 0000 0000 0000 xxxx 1xxx xxxx
+						hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 xxxx xxxx
+
+						bool const Transparent(Faded | voxel.Transparent); // [must be const] transparency cannot be dynamically set, as the number of transparent voxels for the entire voxel model must be known and its already registered.
+
+						if (!Transparent) {
 
 							if constexpr (Dynamic) {
 
