@@ -12,10 +12,18 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
-// for shared uniform access, use geometry shader instead
+#ifdef ZONLY  // BASIC = on if ZONLY = on 
+#ifndef BASIC
+#define BASIC
+#endif
+#endif // ZONLY
+
 #if defined(DYNAMIC) || !defined(CLEAR)
 #include "common.glsl"
 #endif
+
+// for shared uniform access, use geometry shader instead
+#if !defined(ZONLY)
 
 #if !defined(BASIC) && !defined(CLEAR)
 #include "sharedbuffer.glsl"
@@ -26,11 +34,18 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #define roughness z
 #define ambient w
 
+#endif // ZONLY
+
 layout(location = 0) in vec4 inWorldPos;
 layout(location = 1) in vec4 inUV;
 
 layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 layout (constant_id = 1) const float VOX_STEP = 0.0f;
+
+#ifdef ZONLY
+// Depth Only //
+
+#else // !ZONLY
 
 #if defined(BASIC)
 
@@ -49,40 +64,42 @@ layout (constant_id = 7) const float InvToIndex_Y = 0.0f;
 layout (constant_id = 8) const float InvToIndex_Z = 0.0f;
 #define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
-#elif defined(HEIGHT) // NOT BASIC:
-
-layout (constant_id = 2) const float VolumeDimensions = 0.0f;
-
 #endif // BASIC
+#endif // ZONLY
 
 #if defined(HEIGHT) // terrain
 writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat uint   adjacency;
+#ifdef ZONLY
+    flat float  terrain_min;
+#else // !ZONLY
 	flat vec4	world_uvw;
 #ifndef BASIC
-	flat float   ambient;
-	flat float   color;
-	flat float   emission;
+	flat float  ambient;
+	flat float	color;
+	flat float  emission;
 #endif
+#endif // ZONLY
 } Out;
 #else  // voxels only
 writeonly layout(location = 0) out streamOut
 {
 	flat vec3	right, forward, up;
 	flat uint	adjacency;
+#ifndef ZONLY
 #ifdef BASIC
-	flat vec2	world_uv;
+	flat vec2   world_uv;
 #endif
 #ifndef BASIC
-	flat float	 color;
-	flat vec4    material;
-	flat vec4    extra;
+	flat float	color;
+	flat vec4   material;
+	flat vec4   extra;
 #endif
+#endif // ZONLY
 } Out;
 #endif
-
 
 #if defined(HEIGHT)
 
@@ -90,8 +107,8 @@ writeonly layout(location = 0) out streamOut
 layout (constant_id = 9) const int MINIVOXEL_FACTOR = 0;
 layout (constant_id = 10) const float TERRAIN_MAX_HEIGHT = 0;
 #else
-layout (constant_id = 3) const int MINIVOXEL_FACTOR = 0;
-layout (constant_id = 4) const float TERRAIN_MAX_HEIGHT = 0;
+layout (constant_id = 2) const int MINIVOXEL_FACTOR = 0;
+layout (constant_id = 3) const float TERRAIN_MAX_HEIGHT = 0;
 #endif
 
 #define SHIFT_EMISSION 6U
@@ -177,8 +194,16 @@ void main() {
   Out.forward = vec3(0.0f, 0.0f, size);
 #endif
 
+#ifndef ZONLY
+
 #if defined(HEIGHT) // terrain voxels only
-  Out.world_uvw.xyzw = vec4(inUV.xy, heightstep, -TERRAIN_MAX_HEIGHT * minheightstep * size * 0.75f); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
+  const float terrain_min = -TERRAIN_MAX_HEIGHT * minheightstep * size * 0.75f;  // @TODO, should be able to calculate this deterministically, 0.75 * is approximate
+#ifdef ZONLY
+  Out.terrain_min = terrain_min;
+#else
+  Out.world_uvw.xyzw = vec4(inUV.xy, heightstep, terrain_min); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
+#endif
+
 #elif defined(BASIC)
   Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
 #endif
@@ -208,20 +233,24 @@ void main() {
   Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
   Out.material.metallic = float((hash & MASK_METALLIC) >> SHIFT_METALLIC);
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
-  Out.material.ambient = packColorHDR(normalize(b.average_reflection_color.rgb / float(b.average_reflection_count)));
+  Out.material.ambient = packColorHDR(b.average_reflection_color.rgb / float(b.average_reflection_count));
 #else // terrain 
   Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-  Out.ambient = packColorHDR(normalize(b.average_reflection_color.rgb / float(b.average_reflection_count)));
+  Out.ambient = packColorHDR(b.average_reflection_color.rgb / float(b.average_reflection_count));
 #endif
 
 #endif
 #endif // clear
  
+#endif // ZONLY
 
   vec3 worldPos = inWorldPos.xyz;
 
   // out position //
   gl_Position = vec4(worldPos * VOX_STEP, 1.0f);  // *bugfix - was only 1.0 for all voxel sizes. Scaling must occur as the last transformation, this solves the problem for of RenderGrid() incrementing by only 1 for each voxel, rather than by VOX_STEP which is based off of the VOX_SIZE. VOX_SIZE is a "radius", so it would take 2.0f * VOX_SIZE to translate between any 2 voxel origins, accounting for the size thwy are. VOX_STEP is only applied here to keep the scale as it was before (1.0) before this point in the entire program. This is visual only.  
+
+#ifndef ZONLY
+
 #ifndef BASIC
     Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
 #endif                                                            // 
@@ -291,4 +320,6 @@ void main() {
 #endif // HEIGHT
 
 #endif // is BASIC
+
+#endif // ZONLY
 }

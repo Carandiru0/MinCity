@@ -96,21 +96,21 @@ namespace local
 typedef tbb::enumerable_thread_specific< XMFLOAT3A, tbb::cache_aligned_allocator<XMFLOAT3A>, tbb::ets_key_per_instance > Bounds; // per thread instance
 
 // 3D Version ################################################################################################ //
-template< typename PackedLight, uint32_t const LightWidth, uint32_t const LightHeight, uint32_t const LightDepth,  // non-uniform size ok for light volume
-							    uint32_t const Size>				 // uniform size ok for world visible volume
-struct lightBuffer3D : public writeonlyBuffer3D<PackedLight, LightWidth, LightHeight, LightDepth> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
+template< typename PackedLight, uint32_t const LightSize,                                        // uniform size for light volume
+							    uint32_t const Size, uint32_t const HeightDivider = 0>			 // uniform size for world visible volume, volume height divider is modifies the maximum usable volume height = Size >> HeightDivider
+struct lightBuffer3D : public writeonlyBuffer3D<PackedLight, LightSize, LightSize, LightSize> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
 	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x3FF, 0x3FF, 0x3FF, 0 };
 
 	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Size),  1.0f / float(Size),  1.0f / float(Size), 0.0f }; // needs to be xyz
-	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightWidth),  float(LightHeight),  float(LightDepth), 0.0f }; // needs to be xyz
+	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightSize),  float(LightSize),  float(LightSize), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmWorldLimitMax{ float(Size),  float(Size),  float(Size), 0.0f }; // needs to be xzy
 
 public:
 	// access - readonly
 	uvec4_v const __vectorcall		getCurrentVolumeExtentsMin() const { return(uvec4_v(_min_extents)); } // returns the extent minimum, (xyz, light space)
 	uvec4_v const __vectorcall		getCurrentVolumeExtentsMax() const { return(uvec4_v(_max_extents)); } // returns the extent maximum, (xyz, light space)
-	uvec4_v const __vectorcall		getVolumeExtentsLimit() const { return(uvec4_v(LightWidth, LightHeight, LightDepth)); }
+	uvec4_v const __vectorcall		getVolumeExtentsLimit() const { return(uvec4_v(LightSize, LightSize, LightSize)); }
 
 	// methods //
 	__declspec(safebuffers) void __vectorcall clear(uint32_t const resource_index) {
@@ -121,10 +121,10 @@ public:
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
 
 		// clear internal cache
-		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightWidth * LightHeight * LightDepth * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
+		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightSize * LightSize * (LightSize >> HeightDivider) * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		// clear staging buffer (right before usage)
 		if (_staging[resource_index]) {
-			___memset_threaded_stream<32>(_staging[resource_index], 0, LightWidth * LightHeight * LightDepth * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
+			___memset_threaded_stream<32>(_staging[resource_index], 0, LightSize * LightSize * (LightSize >> HeightDivider) * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		}
 	}
 
@@ -300,100 +300,22 @@ private:
 		// pack position + color
 		uint64_t const seed(pack_seed(xyz, uvec4_v(xmColor)));
 
-		//*(_cache + index) = seed;
+		// concurrency safe version of: *(_cache + index) = seed;
         _InterlockedOr64((__int64 volatile* const)(_cache + index), (__int64 const)seed);
 		local::lights.emplace_back((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache, index);
-
-		/*
-		std::atomic_uint32_t* const __restrict area(_internal + index);
-
-		uint32_t size(area->fetch_add(1, std::memory_order_relaxed));
-		if (0 == size) {	// first instance
-
-			// write-only position and packed color to gpu staging buffer
-			// stores are used instead of streaming, could potentially bbe a new load very soon
-			XMVECTOR const xmLight(XMVectorSetW(in, SFM::uintBitsToFloat(in_packed_color)));
-			XMStoreFloat4A(_cache + index, xmLight);
-			local::lights.emplace_back(_staging[_active_resource_index], _cache, index);
-		}
-		else { // existing
-
-#ifdef DEBUG_PERF_LIGHT_RELOADS
-			uint32_t reload_count = 0;
-#endif
-			for (;;) // lockless loop
-			{
-				XMVECTOR const xmSize(_mm_cvtepi32_ps(_mm_set1_epi32(size)));
-				XMVECTOR const xmInvSizePlusOne(SFM::rcp(_mm_cvtepi32_ps(_mm_set1_epi32(size + 1))));
-
-				XMVECTOR xmColor = _mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (in_packed_color >> 20), (in_packed_color >> 10), in_packed_color), _xmMaskBits));
-
-				XMVECTOR xmPosition;
-				{
-					XMVECTOR const xmCombined = XMLoadFloat4A(_cache + index); // ok if staging cpu buffer ONLY
-
-					{
-						uint32_t const exist_color(SFM::floatBitsToUint(XMVectorGetW(xmCombined)));
-
-						//  (size * average + value) / (size + 1);
-						xmColor = XMVectorMultiply(SFM::__fma(_mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (exist_color >> 20), (exist_color >> 10), exist_color), _xmMaskBits)),
-							xmSize, xmColor), xmInvSizePlusOne);
-					}
-
-					//  (size * average + value) / (size + 1);
-					xmPosition = XMVectorMultiply(SFM::__fma(xmCombined, xmSize, in), xmInvSizePlusOne);
-				}
-
-				// pack color
-				uvec4_t color;
-				SFM::saturate_to_u16(xmColor, color);
-				// A //         // B //            // G //        // R //
-				uint32_t const new_packed_color(SFM::pack_rgb_hdr(color));
-
-				{
-					if (area->load(std::memory_order_relaxed) != size) { // invalid
-						size = area->load(std::memory_order_relaxed); // acquire latest value after pause
-#ifdef DEBUG_PERF_LIGHT_RELOADS
-						++reload_count;
-#endif				
-					}
-					else { // done
-						// write-only position and packed color to gpu staging buffer
-						XMVECTOR const xmLight(XMVectorSetW(xmPosition, SFM::uintBitsToFloat(new_packed_color)));
-						XMStoreFloat4A(_cache + index, xmLight);
-						local::lights.emplace_back(_staging[_active_resource_index], _cache, index);
-						break;
-					}
-				}
-
-			}
-
-#ifdef DEBUG_PERF_LIGHT_RELOADS
-			iteration_reload_max.store<tbb::relaxed>(std::max(reload_count, iteration_reload_max.load<tbb::relaxed>()));
-			reloads_counting.fetch_and_add<tbb::release>(reload_count);
-			reloads.fetch_and_add<tbb::release>(reload_count);
-#endif
-		}
-#ifdef DEBUG_PERF_LIGHT_RELOADS
-		num_lights.fetch_and_add<tbb::release>(1);
-#endif
-*/
 	}
 
 	// there is no bounds checking, values are expected to be within bounds esxcept handling of -1 +1 for seededing X & Z Axis for seeding puposes.
 public:
 	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
-		const_cast<lightBuffer3D<PackedLight, LightWidth, LightHeight, LightDepth, Size>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
-
-		// thread_local init (only happens once/thread)
-		[[unlikely]] if (!local::lights.referenced()) {
-			const_cast<lightBuffer3D<PackedLight, LightWidth, LightHeight, LightDepth, Size>* const __restrict>(this)->_lights.reference(&local::lights);
-		}
-		
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		uvec4_t uiIndex;
-		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);   
+		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
+
+		// check height is ok 
+		[[unlikely]] if (uiIndex.y >= (LightSize >> HeightDivider))
+			return;
 
 		// slices ordered by Z 
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -401,7 +323,19 @@ public:
 		// slices ordered by Y: <---- USING Y
 		// (y * xMax * zMax) + (z * xMax) + x;
 
-		uint32_t const index((uiIndex.y * LightWidth * LightDepth) + (uiIndex.z * LightWidth) + uiIndex.x);
+		uint32_t const index((uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x);
+
+		// allow bounds to be updated
+		const_cast<lightBuffer3D<PackedLight, LightSize, Size, HeightDivider>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
+
+		// dummy light ?
+		[[unlikely]] if (0 == srgbColor)
+			return; // the volume bounds are still updated
+
+		// thread_local init (only happens once/thread)
+		[[unlikely]] if (!local::lights.referenced()) {
+			const_cast<lightBuffer3D<PackedLight, LightSize, Size, HeightDivider>* const __restrict>(this)->_lights.reference(&local::lights);
+		}
 
 		// *must convert from srgb to linear
 
@@ -411,31 +345,22 @@ public:
 
 	void create(size_t const hardware_concurrency)
 	{
-		writeonlyBuffer3D<PackedLight, LightWidth, LightHeight, LightDepth>::clear_tracking();
-
 		size_t size(0);
 
-		size = LightWidth * LightHeight * LightDepth * sizeof(std::atomic_uint32_t);
-		_internal = (std::atomic_uint32_t * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance and to prevent false sharing
-		_block_size_atomic = (uint32_t)(size / hardware_concurrency);
-
-		size = LightWidth * LightHeight * LightDepth * sizeof(PackedLight);
+		size = LightSize * LightSize * (LightSize >> HeightDivider) * sizeof(PackedLight);
 		_cache = (PackedLight * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
 		_block_size_cache = (uint32_t)(size / hardware_concurrency);
 
 		_lights.reserve(hardware_concurrency); // one thread local reference / thread
 
-		clear(1); clear(0); // setup first active resource index only
+		clear(1); clear(0); // *bugfix - setup first active resource index to be ready
 	}
 
 	lightBuffer3D(vku::double_buffer<vku::GenericBuffer> const& stagingBuffer_)
-		: _stagingBuffer(stagingBuffer_), _internal(nullptr), _cache(nullptr), _active_resource_index(0), _maximum{}, _minimum(_xmWorldLimitMax), _block_size_atomic(0), _block_size_cache(0)
+		: _stagingBuffer(stagingBuffer_), _cache(nullptr), _active_resource_index(0), _maximum{}, _minimum(_xmWorldLimitMax), _block_size_cache(0)
 	{}
 	~lightBuffer3D()
 	{
-		if (_internal) {
-			scalable_aligned_free(_internal); _internal = nullptr;
-		}
 		if (_cache) {
 			scalable_aligned_free(_cache); _cache = nullptr;
 		}
@@ -447,7 +372,6 @@ private:
 	void operator=(lightBuffer3D const&) = delete;
 	void operator=(lightBuffer3D&&) = delete;
 private:
-	std::atomic_uint32_t* __restrict								_internal;
 	PackedLight* __restrict											_cache;
 	PackedLight* __restrict									        _staging[2];
 	vku::double_buffer<vku::GenericBuffer> const& __restrict        _stagingBuffer;
@@ -462,8 +386,7 @@ private:
 		                                  _min_extents;
 
 	uint32_t							  _active_resource_index;
-	uint32_t				              _block_size_atomic,
-										  _block_size_cache;
+	uint32_t				              _block_size_cache;
 };
 
 

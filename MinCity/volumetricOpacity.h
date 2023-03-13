@@ -80,10 +80,11 @@ namespace Volumetric
 	public:
 		static constexpr uint32_t const // "uniform light volume size"
 			LightSize = ComputeLightConstants::LIGHT_RESOLUTION,
-			DispatchHeights = LightSize >> 3u; // dispatch granularity of 8 voxels, this is the count or number of unique dispatch height maximums
+			DispatchHeights = LightSize >> 3u, // dispatch granularity of 8 voxels, this is the count or number of unique dispatch height maximums
+			DataHeightDivider = 1;
 
 	private:
-		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightSize, LightSize, LightSize, Size>;
+		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightSize, Size, DataHeightDivider>;
 
 		static constexpr uint32_t const PING = ePingPongMap::PING, PONG = ePingPongMap::PONG;
 		static constexpr uint32_t const getStepMax() {
@@ -140,7 +141,7 @@ namespace Volumetric
 
 		// light volume metrics
 		static inline constexpr uint32_t const		getLightSize() { return(LightSize); }
-		static inline constexpr size_t const		getLightProbeMapSizeInBytes() { return((LightSize) * (LightSize) * (LightSize) * ComputeLightConstants::NUM_BYTES_PER_VOXEL_LIGHT); }
+		static inline constexpr size_t const		getLightProbeMapSizeInBytes() { return((LightSize) * (LightSize) * (LightSize >> DataHeightDivider) * ComputeLightConstants::NUM_BYTES_PER_VOXEL_LIGHT); }
 
 	public:
 		// Accessor ///

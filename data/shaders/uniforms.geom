@@ -13,8 +13,19 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
 #include "shareduniform.glsl"
+
+#ifndef ZONLY
+
 #include "transform.glsl"
 #include "common.glsl"
+
+#endif // ZONLY
+
+#ifdef ZONLY  // BASIC = on if ZONLY = on 
+#ifndef BASIC
+#define BASIC
+#endif
+#endif // ZONLY
 
 // Attention:
 //
@@ -29,36 +40,48 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 layout(points) in;					// maximum 3 faces/quads visible of any cube/voxel
 layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far slower - don't use
 
+#ifndef ZONLY
+
 #define FRAGMENT_OUT
 #include "voxel_fragment.glsl"
+
+#endif // ZONLY
 
 #if defined(HEIGHT) // terrain
 layout(location = 0) in streamIn
 {
 	readonly flat vec3	right, forward, up;
 	readonly flat uint  adjacency;
+#ifdef ZONLY
+    readonly flat float terrain_min;
+#else // !ZONLY
 	readonly flat vec4	world_uvw;
 #ifndef BASIC
-	readonly flat float   ambient;
-	readonly flat float	  color;
-	readonly flat float   emission;
+	readonly flat float ambient;
+	readonly flat float	color;
+	readonly flat float emission;
 #endif
+#endif // ZONLY
 } In[];
 #else  // voxels only
 layout(location = 0) in streamIn
 {
 	readonly flat vec3	right, forward, up;
 	readonly flat uint	adjacency;
+#ifndef ZONLY
 #ifdef BASIC
 	readonly flat vec2	world_uv;
 #endif
 #ifndef BASIC
-	readonly flat float	  color;
-	readonly flat vec4    material;
-	readonly flat vec4    extra;
+	readonly flat float	color;
+	readonly flat vec4  material;
+	readonly flat vec4  extra;
 #endif
+#endif // ZONLY
 } In[];
 #endif
+
+#ifndef ZONLY
 
 #if !defined(BASIC)
 // corresponding to volume dimensions
@@ -83,6 +106,7 @@ layout (constant_id = 7) const float HALF_TEXEL_OFFSET_V = 0.0f;
 #endif
 
 #endif
+#endif // ZONLY
 
 const uint BIT_ADJ_BELOW = (1<<0),
 		   BIT_ADJ_ABOVE = (1<<1),
@@ -104,6 +128,8 @@ const uint BIT_ADJ_BELOW = (1<<0),
 
 void PerVoxel()
 {
+#ifndef ZONLY
+
 #ifndef BASIC
 	
 #ifdef _color
@@ -140,11 +166,17 @@ void PerVoxel()
 	Out.voxelIndex = In[0].world_uv.xy; // normalized world grid uv coords
 #endif
 #endif  // basic
+
+#endif // ZONLY
 }
 
 void PerQuad(in const vec3 normal)
 {
+#ifndef ZONLY
+
 	Out.N.xzy = normal; // require world space normal for normal map output. (negating whole normal matches up with computed normal in volumetric shader)
+
+#endif // ZONLY
 }
 
 void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
@@ -156,10 +188,16 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	PerQuad(normal);  
 	
 #if defined(HEIGHT) 
+#ifdef ZONLY
+    worldPos.y = min(worldPos.y, In[0].terrain_min);
+#else // !ZONLY
 	worldPos.y = min(worldPos.y, In[0].world_uvw.w);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
+#endif
 #endif
 	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
+#ifndef ZONLY
+
 #if !defined(BASIC)
 	
 	// main uvw coord for light, common to terrain, normal voxels
@@ -174,16 +212,22 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
 #endif
 
+#endif // ZONLY
+
 	EmitVertex();
 }
 
+// if not BASIC then ZONLY = off
+// if ZONLY then BASIC = on
+// but if BASIC then ZONLY may be on of off
+
 void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal
-#if !defined(BASIC) && defined(HEIGHT)
+#if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 	, in const vec2 min_max_height
 #endif
 )
 {	
-#if !defined(BASIC)
+#if !defined(BASIC) // !ZONLY if !BASIC
 
 #if defined(HEIGHT) 
 	const vec2 texel_texture = HALF_TEXEL_OFFSET_TEXTURE; // careful....
@@ -202,7 +246,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 { // right - up vertex
 	vec3 tangent = right - up;
 
-#if !defined(BASIC)
+#if !defined(BASIC) // !ZONLY if !BASIC
 
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
@@ -218,7 +262,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 { // -right - up vertex
 	vec3 tangent = -right - up;
 
-#if !defined(BASIC)
+#if !defined(BASIC) // !ZONLY if !BASIC
 	 
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
@@ -234,7 +278,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 { // right + up vertex
 	vec3 tangent = right + up;
 
-#if !defined(BASIC)
+#if !defined(BASIC) // !ZONLY if !BASIC
 	
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture); 
@@ -250,7 +294,7 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 { // -right + up vertex
 	vec3 tangent = -right + up;
 
-#if !defined(BASIC)
+#if !defined(BASIC) // !ZONLY if !BASIC
 	
 #if defined(HEIGHT)
 	Out.world_uvw.xy = fma( normalize(tangent.xz), texel_texture, uv_center_texture);
@@ -292,7 +336,7 @@ void main() {
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, forward, normal
-#if !defined(BASIC) && defined(HEIGHT)
+#if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 			, vec2(-In[0].world_uvw.z)
 #endif
 			);
@@ -320,7 +364,7 @@ void main() {
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, up, normal
-#if !defined(BASIC) && defined(HEIGHT)
+#if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 			, vec2(0.0f, -In[0].world_uvw.z)
 #endif
 			);
@@ -335,7 +379,7 @@ void main() {
 
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, -up, normal
-#if !defined(BASIC) && defined(HEIGHT)
+#if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 			, vec2(0.0f, -In[0].world_uvw.z)
 #endif
 			);
@@ -350,7 +394,7 @@ void main() {
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, forward, up, normal
-#if !defined(BASIC) && defined(HEIGHT)
+#if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 			, vec2(0.0f, -In[0].world_uvw.z)
 #endif
 			);
@@ -365,7 +409,7 @@ void main() {
 		
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, forward, -up, normal
-#if !defined(BASIC) && defined(HEIGHT)
+#if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 			, vec2(0.0f, -In[0].world_uvw.z)
 #endif
 			);
@@ -374,7 +418,7 @@ void main() {
 	} 
 
 
-// visible faces of a voxel is always 3 at any point of time, so only half the number of vertices in a cube actually need to be emitted from geometry shade, as a single primitive.
+// visible faces of a voxel is always 3 at any point of time, so only half the number of vertices in a cube actually need to be emitted from geometry shader, as multiple (3 faces) primitives (of 4 vertices each).
 
 // maximum 3 quads generated for any given input point.
 // 4 vertices/quad  - >  12 vertices/voxel

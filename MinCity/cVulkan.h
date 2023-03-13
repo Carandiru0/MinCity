@@ -20,6 +20,9 @@
 #include "betterenums.h"
 #include <optional>
 
+#define BACK_TO_FRONT 0  // Set to 1 for "special mouse behind models" feature at the cost of large amounts of overdraw. Only affects the first z-only//mouse renderpass.
+                         // 0 (default) - all rendering in the renderpass is drawn (roughly) front to back, which has the benefit of using the z-buffer as geometry is rendered. Only affects the first z-only/mouse renderpass.
+
 namespace eSamplerSampling {
 	enum : uint32_t const {
 		NEAREST = 0,
@@ -49,12 +52,14 @@ namespace eSamplerAddressing {
 BETTER_ENUM(eVoxelDescSharedLayout, uint32_t const,
 
 	VOXEL_COMMON = 0,
-	VOXEL_CLEAR
+	VOXEL_CLEAR,
+	VOXEL_ZONLY
 );
 BETTER_ENUM(eVoxelDescSharedLayoutSet, uint32_t const,
 
 	VOXEL_COMMON = 0,
-	VOXEL_CLEAR
+	VOXEL_CLEAR,
+	VOXEL_ZONLY
 );
 BETTER_ENUM(eVoxelSharedPipeline, uint32_t const,
 
@@ -636,9 +641,6 @@ private:
 	template<int32_t const voxel_pipeline_index, uint32_t const numChildMasks = 0>
 	STATIC_INLINE uint32_t const renderAllVoxels(vku::static_renderpass const& s, sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks = nullptr);
 
-	template<uint32_t const numChildMasks = 0>
-	STATIC_INLINE uint32_t const renderAllVoxels_ZPass(vku::static_renderpass const& s, sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks = nullptr);
-
 	STATIC_INLINE void renderTransparentVoxels(vku::static_renderpass const& s);
 	
 	static void renderOffscreenVoxels(vku::static_renderpass const& s);
@@ -674,10 +676,10 @@ void cVulkan::CreateVoxelResource(
 		typedef vk::ColorComponentFlagBits ccbf;
 		pm.blendColorWriteMask(ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA); // ***** note does not preserve clear mask! intended to be used in overlay pass
 	}
-	else {
-		if constexpr (!isClear) {
-			pm.shader(vk::ShaderStageFlagBits::eGeometry, geom);
-		}
+	else if constexpr (!isClear) {
+
+		pm.shader(vk::ShaderStageFlagBits::eGeometry, geom);
+
 		if constexpr (!isBasic) {
 			pm.shader(vk::ShaderStageFlagBits::eFragment, frag);
 			typedef vk::ColorComponentFlagBits ccbf;
@@ -689,22 +691,20 @@ void cVulkan::CreateVoxelResource(
 			
 			if (!frag.ok()) { // ie frag == null, fragment shader not used
 				// just Z no fragment shader required if basic
-				pm.blendBegin(VK_FALSE);
-				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (first color attachment)
-				pm.blendBegin(VK_FALSE);
-				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (second color attachment)
-				pm.blendBegin(VK_FALSE);
-				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (third color attachment)
+				// no color attachments
 			}
 			else {
-				// outputs Z and a color to a second color attachment and a color to a third color attachment
-				pm.shader(vk::ShaderStageFlagBits::eFragment, frag);
-				pm.blendBegin(VK_FALSE);
-				pm.blendColorWriteMask((vk::ColorComponentFlagBits)0); // no color writes for "basic" (first color attachment)
 				typedef vk::ColorComponentFlagBits ccbf;
+
+				// outputs a color to a second color attachment and a color to a third color attachment
+				pm.shader(vk::ShaderStageFlagBits::eFragment, frag);
+
+				pm.blendBegin(VK_FALSE);
+				pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eA); // alpha writes only for clearmask "basic" (first color attachment)
+				
 				pm.blendBegin(VK_FALSE);
 				pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA); // full writes to second color attachment
-				typedef vk::ColorComponentFlagBits ccbf;
+
 				pm.blendBegin(VK_FALSE);
 				pm.blendColorWriteMask((vk::ColorComponentFlagBits)ccbf::eR | ccbf::eG | ccbf::eB | ccbf::eA); // full writes to third color attachment
 			}
@@ -712,7 +712,7 @@ void cVulkan::CreateVoxelResource(
 		}
 	}
 
-	static_assert(sizeof(VertexDecl::VoxelDynamic) == sizeof(VertexDecl::VoxelNormal));
+	static_assert(sizeof(VertexDecl::VoxelDynamic) == sizeof(VertexDecl::VoxelNormal)); // hint
 	if constexpr (isDynamic) {
 		pm.vertexBinding(0, (uint32_t)sizeof(VertexDecl::VoxelDynamic));
 	}
@@ -734,7 +734,15 @@ void cVulkan::CreateVoxelResource(
 	}
 	else if constexpr (isBasic) {
 		pm.depthTestEnable(VK_TRUE);
-		pm.depthWriteEnable(VK_TRUE);
+
+		if (!frag.ok()) { // ie frag == null, fragment shader not used
+			// just Z no fragment shader required if basic
+			// no color attachments
+			pm.depthWriteEnable(VK_TRUE); // Z Writes only enabled in Z-Only RenderPass
+		}
+		else {
+			pm.depthWriteEnable(VK_FALSE);
+		}
 	}
 	else {
 		pm.depthTestEnable(VK_TRUE);
@@ -753,9 +761,18 @@ void cVulkan::CreateVoxelResource(
 	// Create a pipeline using a renderPass built for our window.
 	auto& cache = _fw.pipelineCache();
 	if constexpr (isClear | isBasic) {
+
+		if constexpr (isBasic && !isClear) {
+
+			if (!frag.ok()) { // ie frag == null, fragment shader not used
+				rtData.pipeline = pm.create(_device, cache, *cVulkan::_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_ZONLY].pipelineLayout, renderPass);
+				return; // all other permutations create the pipeline using VOXEL_CLEAR
+			}
+		}
 		rtData.pipeline = pm.create(_device, cache, *cVulkan::_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, renderPass);
 	}
 	else {
+		// regular rendering shading pipeline
 		rtData.pipeline = pm.create(_device, cache, *cVulkan::_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_COMMON].pipelineLayout, renderPass);
 	}
 }
@@ -948,9 +965,19 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels(vku::static_renderpass con
 
 	// always front to back (optimal order for z culling) //
 	
-	// dynamic voxels //
-	uint32_t const ActiveMaskCount = renderDynamicVoxels<voxel_pipeline_index, numChildMasks>(s, deferredChildMasks);
+	[[maybe_unused]]
+	uint32_t ActiveMaskCount(0);
+	if constexpr (0U != numChildMasks) {
 
+		// dynamic voxels //
+		ActiveMaskCount = renderDynamicVoxels<voxel_pipeline_index, numChildMasks>(s, deferredChildMasks);
+	}
+	else {
+
+		// dynamic voxels //
+		renderDynamicVoxels<voxel_pipeline_index, numChildMasks>(s);
+	}
+	
 	// static voxels //
 	renderStaticVoxels<voxel_pipeline_index>(s);
 
@@ -960,13 +987,15 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels(vku::static_renderpass con
 	return(ActiveMaskCount);
 }
 
-// specialization for zpass renderpass. Handles mousebuffer target enabling for each voxel type (ground, dynamic, static)
-template<uint32_t const numChildMasks>
+// old but left as reference for the "mouse behind building models feature", major overdraw though.
+/*template<uint32_t const numChildMasks>
 STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpass const& s, [[maybe_unused]] sRTDATA_CHILD const* __restrict* const __restrict& __restrict deferredChildMasks)
 {
-	constexpr int32_t const ZONLY(-1),
-							MOUSE(0);
+	// ***** common shared descriptor set must be set outside of this function ***** //
 
+	uint32_t ActiveMaskCount(0);
+
+#if BACK_TO_FRONT // *note there is a major bug where the normals are not output on ZONLY, causing no models to be rendered (only terrain) to the mouse color attachment. It also causes no models to be rendered on the normals color attachment, This does affect front to back rendering, as it always uses the MOUSE pipeline and does not alternate between MOUSE and ZONLY.
 	// [back_to_front] is needed for the mouse color atttachment to be rendered in correct order (only on initial z pass)
 	// for seamless selection / dragging of background roads (behind buildings etc)
 	// for transparent voxel draw order clears aswell
@@ -974,11 +1003,7 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 	// terrain voxels //
 	renderTerrainVoxels<MOUSE>(s);	// always output to mouse buffer
 
-	// ***** descriptor set must be set outside of this function ***** //
-
-	uint32_t ActiveMaskCount(0);
-
-	if (0 != s.resource_index) //// alternate from ZONLY to MOUSE frame by frame Is required for mouse input!
+	if (0 != s.resource_index) //// alternate from ZONLY to MOUSE frame by frame Is required for mouse input! (part of trick that enables mousing behind buildings / models)
 	{
 		// static voxels //
 		renderStaticVoxels<ZONLY>(s);
@@ -994,9 +1019,21 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 		// dynamic voxels //
 		ActiveMaskCount = renderDynamicVoxels<MOUSE, numChildMasks>(s, deferredChildMasks);
 	}
+#else // (default) FRONT TO BACK
+
+	// dynamic voxels //
+	ActiveMaskCount = renderDynamicVoxels<MOUSE, numChildMasks>(s, deferredChildMasks);
+
+	// static voxels //
+	renderStaticVoxels<MOUSE>(s);
+
+	// terrain voxels //
+	renderTerrainVoxels<MOUSE>(s);
+#endif
 
 	return(ActiveMaskCount);
 }
+*/
 
 __inline void cVulkan::renderTransparentVoxels(vku::static_renderpass const& s)
 {

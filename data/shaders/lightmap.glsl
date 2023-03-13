@@ -41,6 +41,18 @@ void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_colo
 
 	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
 }
+void lightmap_internal_fetch_fast( out vec4 light_direction_distance, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
+	
+	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
+
+	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
+}
+void lightmap_internal_fetch_fast( out float light_distance, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
+	
+	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
+	
+	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
+}
 
 // natural neighbour sampling of light volume
 
@@ -149,6 +161,16 @@ void getLightMapFast( out float light_distance, out vec3 light_color, in const v
 	// linear sampling
 	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
+void getLightMapFast( out vec4 light_direction_distance, in const vec3 uvw ) 
+{
+	// linear sampling
+	lightmap_internal_fetch_fast(light_direction_distance, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+}
+void getLightMapFast( out float light_distance, in const vec3 uvw ) 
+{
+	// linear sampling
+	lightmap_internal_fetch_fast(light_distance, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+}
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
@@ -185,6 +207,16 @@ void getLightFast(out vec3 light_color, out vec4 light_direction_distance, in co
 void getLightFast(out vec3 light_color, out float light_distance, in const vec3 uvw) 
 {
 	getLightMapFast(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	// light_direction_distance.a = normalized [0...1] distance
+}
+void getLightFast(out vec4 light_direction_distance, in const vec3 uvw) 
+{
+	getLightMapFast(light_direction_distance, uvw); // .zw = xz normalized visible uv coords
+	// light_direction_distance.a = normalized [0...1] distance
+}
+void getLightFast(out float light_distance, in const vec3 uvw) 
+{
+	getLightMapFast(light_distance, uvw); // .zw = xz normalized visible uv coords
 	// light_direction_distance.a = normalized [0...1] distance
 }
 

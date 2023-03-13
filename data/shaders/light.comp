@@ -170,22 +170,33 @@ vec4 encode_warp( in const vec3 location, in const vec3 color ) // [public] retu
 #undef packed_position
 #undef packed_color
 
+bool isEmitter(in const vec4 warp)
+{
+	return(any(notEqual(vec2(0), warp.zw))); // check for non-zero color in the last 2 components which are dedicated to 10bpc color
+}
+
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 #ifdef SEED
 vec4 seedVolume( in vec3 read_location )
 {
+	const ivec3 iread_location = ivec3(floor(read_location + 0.5f));
+
+	const warp_local new = texelFetch(seedMap, iread_location, 0);
+	const warp_local last = texelFetch(pingpongTexture[pc.index_input], iread_location, 0);
+
+	[[branch]] if (!isEmitter(last)) {
+		return(new);
+	}
+
 	vec3 last_location, new_location,
 	     last_color, new_color;
 
-	const ivec3 iread_location = ivec3(floor(read_location + 0.5f));
-	decode_warp(last_location, last_color, texelFetch(pingpongTexture[pc.index_input], iread_location, 0));
-		
-	decode_warp(new_location, new_color, texelFetch(seedMap, iread_location, 0));
+	decode_warp(new_location, new_color, new);
+	decode_warp(last_location, last_color, last);
 
-	float l = distance(last_location, new_location);
-	l = 1.0f/(1.0f + l*l);
+	const float d = distance(last_location, new_location);
 
-    new_color = mix(last_color, new_color, l);  // when the distance between the last location and new location is large, blend in the new color slowly. when the distance between the last location and the new location is small, blend in the new color quickly.
+    new_color = mix(last_color, new_color, getAttenuation(d));  // when the distance between the last location and new location is large, blend in the new color slowly. when the distance between the last location and the new location is small, blend in the new color quickly.
 											    // is the most stable, no glitch light or jerky light movements. It does slow down the light, but for good reason to interpolate over time. No lag, trails or ghosting visible.
 	return( encode_warp(new_location, new_color) );
 }
@@ -199,15 +210,33 @@ vec4 sampleInputVolume( in const vec3 read_location )
 // ###################################################################################################################################
 #define localToGlobal(local) fma(gl_WorkGroupID.xyz, vec3(GROUP_SIZE_XYZ), local)
 
-#if !defined(MIP) && !defined(SEED)
-shared vec4 warp_lds[GROUP_SIZE_XYZ][GROUP_SIZE_XYZ][GROUP_SIZE_XYZ];
+#if !defined(MIP) && !defined(SEED) // *bugfix adds + 1 to the number of elements in X. This changes the memory access pattern so that the offset is +1, diagonalizing the accesses into a unique bank for each memory access. avoids all bank conflicts, with each memory access they can now execute concurrently. **do not change** lookup solving LDS bank conflicts (shared memory)
+
+//  2D Example
+//  Each # (access)
+//  is unique in the column that it is in,
+//  as each row is sequentially accessed:
+//              
+//  |-----    BANKS    ----| +1 extra element per row
+//  |                      |
+//  |0  1  2  3  4  5  6  7|  8
+//  |1  2  3  4  5  6  7  8|  9
+//  |2  3  4  5  6  7  8  9| 10
+//  |3  4  5  6  7  8  9 10| 11
+//  |4  5  6  7  8  9 10 11| 12
+//  |5  6  7  8  9 10 11 12| 13
+//  |6  7  8  9 10 11 12 13| 14
+//  |7  8  9 10 11 12 13 14| 15
+//
+//
+shared vec4 warp_lds[GROUP_SIZE_XYZ + 1][GROUP_SIZE_XYZ][GROUP_SIZE_XYZ + 1]; // *do not remove +1 padding on X or Z*
 
 vec4 populateLDS(in const ivec3 local_location) {
 
 	const warp_local warp = sampleInputVolume(localToGlobal(local_location));
 	warp_lds[local_location.x][local_location.y][local_location.z] = warp;
 
-	// barrier moved to propogateBlocks
+	// barrier moved to main()
 	return( warp );
 }
 //vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
@@ -237,7 +266,7 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	if ( any(notEqual(vec2(0), read_warp.zw)) ) {	// new
+	if ( isEmitter(read_warp) ) {	// new
 			
 		const float read_distance = distance(decode_warp_location(read_warp), current_location);
 
@@ -294,7 +323,7 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 {
 	const int current_step = pc.current_step;
 
-	float current_distance = (any(notEqual(vec2(0), warp.zw)) ? distance(decode_warp_location(warp), current_location) : 99999999999.9f);
+	float current_distance = mix(9999999.9999999f, distance(decode_warp_location(warp), current_location), isEmitter(warp));
 	
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	#define T(i) \

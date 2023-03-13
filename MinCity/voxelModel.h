@@ -522,7 +522,7 @@ namespace voxB
 
 					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 					
-					uint32_t color(1u); // ensure not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+					uint32_t color(0);
 					bool seed_a_light(false);
 					
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
@@ -533,7 +533,7 @@ namespace voxB
 						if (voxel.Hidden)
 							continue;
 
-						color = SFM::max(1u, voxel.getColor()) & 0x00FFFFFFu; // ensure not equal to zero so packed sign is valid & remove alpha - possibly updated in OnVoxel()
+						color = voxel.getColor();
 						seed_a_light = (voxel.Emissive & !Faded); // only on successful bounds check can an actual light be added safetly
 
 						if constexpr (!EmissionOnly) // only matters.....
@@ -542,6 +542,8 @@ namespace voxB
 							xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
 						}
 					}
+					else
+						continue;
 
 					// finally submit voxel //
 					if constexpr (!EmissionOnly) {
@@ -565,7 +567,7 @@ namespace voxB
 								local::voxels_dynamic.emplace_back(
 									voxels_dynamic,
 									xmStreamOut,
-									XMVectorSetW(xmVoxelOrient, Sign * (float)color),
+									XMVectorSetW(xmVoxelOrient, Sign * (float)(SFM::max(1u, color) & 0x00FFFFFFu)),  // ensure color not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 									hash
 								);
 							}
@@ -588,7 +590,7 @@ namespace voxB
 								local::voxels_trans.emplace_back(
 									voxels_trans,
 									xmStreamOut,
-									XMVectorSetW(xmVoxelOrient, Sign * (float)color),
+									XMVectorSetW(xmVoxelOrient, Sign * (float)(SFM::max(1u, color) & 0x00FFFFFFu)),  // ensure color not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 									hash
 								);
 							}

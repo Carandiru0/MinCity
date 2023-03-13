@@ -216,7 +216,7 @@ layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumet
 layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
 
-const float POISSON_RADIUS = 15.0f;
+const float POISSON_RADIUS = 9.0f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
 
 const int TAPS = 12;
@@ -229,18 +229,22 @@ const vec2 kTaps[TAPS] = {	vec2(-0.326212,-0.40581),vec2(-0.840144,-0.07358),
 							vec2(-0.32194,-0.932615),vec2(-0.791559,-0.59771) 
 					     };
 
-vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2 center_uv, in const float radius ) // pass in center sample 
+vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2 center_uv, in float radius ) // pass in center sample 
 {
-	for ( int tap = 0 ; tap < TAPS ; ++tap ) 
+    for ( ; radius > 0.0f ; radius -= 2.0f)
 	{
-	    // take additional samples, local, so should be in cache (fast)
-		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2(-1, 0)).rgb;
-		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2( 1, 0)).rgb;
-		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2( 0,-1)).rgb;
-		color += textureLodOffset(samp, center_uv + InvScreenResDimensions * kTaps[tap] * radius, 0, ivec2( 0, 1)).rgb;
-	}
+		for ( int tap = 0 ; tap < TAPS ; ++tap ) 
+		{
+			// take additional samples, local, so should be in cache (fast)
+			const vec2 uv = center_uv + InvScreenResDimensions * kTaps[tap] * radius;
+			color += textureLodOffset(samp, uv, 0, ivec2(-1, 0)).rgb;
+			color += textureLodOffset(samp, uv, 0, ivec2( 1, 0)).rgb;
+			color += textureLodOffset(samp, uv, 0, ivec2( 0,-1)).rgb;
+			color += textureLodOffset(samp, uv, 0, ivec2( 0, 1)).rgb;
+		}
 
-	color *= INV_FTAPS; 
+		color *= INV_FTAPS; 
+	}
 
 	return color;
 }
@@ -308,7 +312,7 @@ void main() {
 		// ANTI-ALIASING - based on difference in temporal depth, and spatial difference in opacity
 		volume_color = supersample(volumetricMap, In.uv, vdFd);
 
-		//expandAA(volumetricMap, volume_color, In.uv);
+		// lowers resolution - expandAA(volumetricMap, volume_color, In.uv);
 
 		// pre-multiply w/ bilateral alpha
 		volume_color.rgb *= alphaSumV;
@@ -322,7 +326,7 @@ void main() {
 
 		// greater distance between source of reflection & reflected surface = greater blur
 		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb * alphaSumR_Fade, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
-		expandAA(reflectionMap, bounce_color, In.uv);
+		// lowers resolution - expandAA(reflectionMap, bounce_color, In.uv);
 
 		// pre-multiply w/ bilateral alpha 
 		bounce_color.rgb *= alphaSumR_Fade;

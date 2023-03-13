@@ -33,7 +33,8 @@ inline tbb::concurrent_vector< vku::DynamicVertexBuffer* > cVulkan::_vbos;
 
 inline cVulkan::sRTSHARED_DESCSET cVulkan::_rtSharedDescSet[eVoxelDescSharedLayoutSet::_size()]{
 	cVulkan::sRTSHARED_DESCSET(eVoxelDescSharedLayout::VOXEL_COMMON),
-	cVulkan::sRTSHARED_DESCSET(eVoxelDescSharedLayout::VOXEL_CLEAR)
+	cVulkan::sRTSHARED_DESCSET(eVoxelDescSharedLayout::VOXEL_CLEAR),
+	cVulkan::sRTSHARED_DESCSET(eVoxelDescSharedLayout::VOXEL_ZONLY)
 };
 inline vk::Pipeline cVulkan::_rtSharedPipeline[eVoxelSharedPipeline::_size()];
 inline cVulkan::sRTDATA cVulkan::_rtData[eVoxelPipeline::_size()]{};
@@ -1077,17 +1078,22 @@ void cVulkan::CreateVoxelResources()
 			vert_, geom_, frag_, 0U);
 
 		{
-			vku::ShaderModule const vert_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.vert.bin", constants_terrain_basic_vs };
-			vku::ShaderModule const geom_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.geom.bin" };
+			{
+				vku::ShaderModule const vert_basic_zonly_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_zonly_height.vert.bin", constants_terrain_basic_vs };
+				vku::ShaderModule const geom_basic_zonly_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_zonly_height.geom.bin" };
 
-			CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_ZONLY],
-				_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_basic_terrain_, geom_basic_terrain_, frag_null_, 0U);
+				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_ZONLY],
+					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_basic_zonly_terrain_, geom_basic_zonly_terrain_, frag_null_, 0U);
+			}
+			{
+				vku::ShaderModule const vert_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.vert.bin", constants_terrain_basic_vs };
+				vku::ShaderModule const geom_basic_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_height.geom.bin" };
 
-			CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC],
-				_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-				vert_basic_terrain_, geom_basic_terrain_, frag_basic_, 0U);
-
+				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC],
+					_window->gPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+					vert_basic_terrain_, geom_basic_terrain_, frag_basic_, 0U);
+			}
 			vku::ShaderModule const vert_basic_clear_terrain_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_height.vert.bin", constants_terrain_basic_vs }; // clear from opacity map
 
 			CreateVoxelResource<false, true, true>(_rtData[eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR],
@@ -1104,6 +1110,7 @@ void cVulkan::CreateVoxelResources()
 		MinCity::VoxelWorld->SetSpecializationConstants_Voxel_GS(constants_voxel_gs);
 		MinCity::VoxelWorld->SetSpecializationConstants_Voxel_FS(constants_voxel_fs);
 
+		vku::ShaderModule const geom_basic_zonly{ _device, SHADER_BINARY_DIR "uniforms_basic_zonly.geom.bin" };
 		vku::ShaderModule const geom_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.geom.bin" };
 		vku::ShaderModule const geom_{ _device, SHADER_BINARY_DIR "uniforms.geom.bin", constants_voxel_gs };
 		vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "uniforms.frag.bin", constants_voxel_fs };
@@ -1134,15 +1141,20 @@ void cVulkan::CreateVoxelResources()
 				_window->offscreenPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
 				vert_, geom_, frag_, 0U);
 			{
-				vku::ShaderModule const vert_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.vert.bin", constants_voxel_basic_vs };
+				{
+					vku::ShaderModule const vert_basic_zonly{ _device, SHADER_BINARY_DIR "uniforms_basic_zonly.vert.bin", constants_voxel_basic_vs };
 
-				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_ZONLY],
-					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_, geom_basic_, frag_null_, 0U);
+					CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC_ZONLY],
+						_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+						vert_basic_zonly, geom_basic_zonly, frag_null_, 0U);
+				}
+				{
+					vku::ShaderModule const vert_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic.vert.bin", constants_voxel_basic_vs };
 
-				CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC],
-					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_basic_, geom_basic_, frag_basic_, 0U);
+					CreateVoxelResource<false, true>(_rtData[eVoxelPipeline::VOXEL_STATIC_BASIC],
+						_window->gPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+						vert_basic_, geom_basic_, frag_basic_, 0U);
+				}
 
 				vku::ShaderModule const vert_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear.vert.bin", constants_voxel_basic_vs }; // clear from opacity map
 
@@ -1181,15 +1193,20 @@ void cVulkan::CreateVoxelResources()
 				vert_dynamic_, geom_, frag_, 0U);
 
 			{
-				vku::ShaderModule const vert_dynamic_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic_dynamic.vert.bin", constants_voxel_basic_vs };
-				
-				CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_ZONLY],
-					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_dynamic_basic_, geom_basic_, frag_null_, 0U);
+				{
+					vku::ShaderModule const vert_dynamic_basic_zonly{ _device, SHADER_BINARY_DIR "uniforms_basic_zonly_dynamic.vert.bin", constants_voxel_basic_vs };
 
-				CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC],
-					_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
-					vert_dynamic_basic_, geom_basic_, frag_basic_, 0U);
+					CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC_ZONLY],
+						_window->zPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+						vert_dynamic_basic_zonly, geom_basic_zonly, frag_null_, 0U);
+				}
+				{
+					vku::ShaderModule const vert_dynamic_basic_{ _device, SHADER_BINARY_DIR "uniforms_basic_dynamic.vert.bin", constants_voxel_basic_vs };
+
+					CreateVoxelResource<true, true>(_rtData[eVoxelPipeline::VOXEL_DYNAMIC_BASIC],
+						_window->gPass(), MinCity::getFramebufferSize().x, MinCity::getFramebufferSize().y,
+						vert_dynamic_basic_, geom_basic_, frag_basic_, 0U);
+				}
 
 				vku::ShaderModule const vert_dynamic_basic_clear_{ _device, SHADER_BINARY_DIR "uniforms_basic_clear_dynamic.vert.bin", constants_voxel_basic_vs }; // clear from opacity map
 
@@ -1291,10 +1308,16 @@ void cVulkan::CreateSharedVoxelResources()
 	{ // voxels clear and clear mask
 		vku::DescriptorSetLayoutMaker	dslm;
 		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eGeometry, 1);
-		dslm.image(1U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eVertex, 1, nullptr);									// 3d image (opacity) required for transparents
+		dslm.image(1U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eVertex, 1, nullptr);									// 3d image (opacity) required for basic non zonly shader pipelines.
 		dslm.buffer(2U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 		dslm.buffer(3U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eFragment, 1);
 		_rtSharedData.descLayout[eVoxelDescSharedLayout::VOXEL_CLEAR] = dslm.createUnique(_device);
+	}
+
+	{ // voxels zonly
+		vku::DescriptorSetLayoutMaker	dslm;
+		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eGeometry, 1);
+		_rtSharedData.descLayout[eVoxelDescSharedLayout::VOXEL_ZONLY] = dslm.createUnique(_device);
 	}
 
 	// Shared Sets //
@@ -1323,7 +1346,7 @@ void cVulkan::CreateSharedVoxelResources()
 void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 {
 	std::vector< vku::SpecializationConstant > constants_voxel_vs, constants_voxel_fs;
-	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, Iso::MINI_VOX_SIZE, Iso::MINI_VOX_STEP);
+	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, Iso::MINI_VOX_SIZE, Iso::VOX_STEP); // should be minivoxsize & voxstep
 	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_ClearMask_FS(constants_voxel_fs);
 
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
@@ -1384,7 +1407,7 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 
 		auto& cache = _fw.pipelineCache();
 		_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR] = pm.create(_device, cache,
-			*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->zPass());
+			*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->gPass());
 	}
 
 	{ // VOXEL_CLEAR_MOUSE
@@ -1446,7 +1469,7 @@ void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 
 		auto& cache = _fw.pipelineCache();
 		_rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE] = pm.create(_device, cache,
-			*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->zPass());
+			*_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->gPass());
 	}
 }
 
@@ -1507,7 +1530,7 @@ void cVulkan::CreatePipeline_VoxelClear_Static( // clearmask (for roads as they 
 	pm.rasterizationSamples(vku::DefaultSampleCount);
 
 	auto& cache = _fw.pipelineCache();
-	rtData.pipeline = pm.create(_device, cache, *_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->zPass());
+	rtData.pipeline = pm.create(_device, cache, *_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_CLEAR].pipelineLayout, _window->gPass());
 }
 
 void cVulkan::CreateResources()
@@ -1665,6 +1688,16 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 
 		}
 	}
+	{ // Shared Voxel Z-Only
+		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
+			_dsu.beginDescriptorSet(_rtSharedDescSet[eVoxelDescSharedLayoutSet::VOXEL_ZONLY].sets[resource_index]);
+
+			// Set initial uniform buffer value
+			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
+			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
+		}
+	}
+
 
 	{ // ###### Volumetric Light
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
@@ -2107,16 +2140,16 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	);
 	MinCity::VoxelWorld->AcquireTransferQueueOwnership(resource_index, s.cb);
 
-	// #### Z RENDER PASS BEGIN #### //
-	s.cb.beginRenderPass(s.rpbiZ, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
-	// all voxels share the same descriptor set
-	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(resource_index, s.cb);
+	constexpr int32_t const ZONLY(-1),
+		                    BASIC(0);
 
-	{
-		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];			  
-		uint32_t const ActiveMaskCount = renderAllVoxels_ZPass<NUM_CHILD_MASKS>(s, deferredChildMasks);
-		renderClearMasks(std::forward<vku::static_renderpass&&>(s), deferredChildMasks, ActiveMaskCount);
-	}
+	// #### Z RENDER PASS BEGIN #### //
+	s.cb.beginRenderPass(s.rpbiZ, vk::SubpassContents::eInline);	// SUBPASS - zonly rendering //
+	// all voxels share the same descriptor set
+	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_ZONLY>(resource_index, s.cb);	
+
+	(void)renderAllVoxels<ZONLY, 0>(s);
+
 	s.cb.nextSubpass(vk::SubpassContents::eInline);
 
 	// SUBPASS - depth resolve //
@@ -2128,11 +2161,24 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	s.cb.endRenderPass();
 	
+	// #### G RENDER PASS BEGIN #### //
+	s.cb.beginRenderPass(s.rpbiG, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
+	// all voxels share the same descriptor set
+	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(resource_index, s.cb);
+
+	{
+		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];
+		uint32_t const ActiveMaskCount = renderAllVoxels<BASIC, NUM_CHILD_MASKS>(s, deferredChildMasks);
+		renderClearMasks(std::forward<vku::static_renderpass&&>(s), deferredChildMasks, ActiveMaskCount);
+	}
+
+	s.cb.endRenderPass();
+
 	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
 	auto& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
 	
 	volume_set.OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
-		vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
+		                                   vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
 	if (s.async_compute_enabled) { // required at this point, light:
 

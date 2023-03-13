@@ -1924,11 +1924,11 @@ namespace // private to this file (anonymous)
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 				           && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 			{
-				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 1u); // a light at the point where it's *just* not visible and has (almost) no color....
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(xmIndex, 0u); // no color, "dummy" light that is ignored in effect, however the bounds of the light volume still adjust.
 			}
 			else {
 				// just add to the very top of the volume if errornous on bounds check
-				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, (float)(Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y - 1)), 1u);
+				Volumetric::VolumetricLink->Opacity.getMappedVoxelLights().seed(XMVectorSetY(xmIndex, (float)(Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Y - 1)), 0u); // no color, "dummy" light that is ignored in effect, however the bounds of the light volume still adjust.
 			}
 		}
 
@@ -4120,7 +4120,7 @@ namespace world
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP); // should be voxsize & voxstep
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(9, (int)MINIVOXEL_FACTOR));	
@@ -4134,21 +4134,19 @@ namespace world
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP); // should be voxsize & voxstep
 
-		// used for uv -> voxel in vertex shader image store operation for opacity map
-		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world volume size
-		constants.emplace_back(vku::SpecializationConstant(3, (int)MINIVOXEL_FACTOR));
-		constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::TERRAIN_MAX_HEIGHT));
+		constants.emplace_back(vku::SpecializationConstant(2, (int)MINIVOXEL_FACTOR));
+		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP);
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP); // should be minivoxsize & voxstep
 	}
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP);
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP); // should be minivoxsize & voxstep
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4170,7 +4168,7 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(5, (float)transformInv.z));
 	}
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS(std::vector<vku::SpecializationConstant>& __restrict constants)
-	{
+	{             
 		SetSpecializationConstants_Voxel_GS_Common(constants);
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_GS(std::vector<vku::SpecializationConstant>& __restrict constants)

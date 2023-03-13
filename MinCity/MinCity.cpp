@@ -1380,7 +1380,7 @@ int __stdcall _tWinMain(_In_ HINSTANCE hInstance,
 	cmdline::arguments(__wargv, __argc);
 #endif
 		
-	cMinCity::Initialize(g_glfwwindow);  // no need to check the state here, unless handling errors
+	cMinCity::Initialize(g_glfwwindow);  // no need to check the state here, unles.s handling errors
 										// Running status is updated in this function if succesful
 
 	// Loop waiting for the window to close, exit of program, etc
