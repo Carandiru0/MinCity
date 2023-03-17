@@ -80,8 +80,8 @@ namespace Volumetric
 	public:
 		static constexpr uint32_t const // "uniform light volume size"
 			LightSize = ComputeLightConstants::LIGHT_RESOLUTION,
-			DispatchHeights = LightSize >> 3u, // dispatch granularity of 8 voxels, this is the count or number of unique dispatch height maximums
-			DataHeightDivider = 1;
+			DataHeightDivider = 1,
+			DispatchHeights = (LightSize >> DataHeightDivider) >> 3u; // dispatch granularity of 8 voxels, this is the count or number of unique dispatch height maximums
 
 	private:
 		using lightVolume = lightBuffer3D<ComputeLightConstants::memLayoutV, LightSize, Size, DataHeightDivider>;
@@ -219,7 +219,7 @@ namespace Volumetric
 	private:
 		void createIndirectDispatch(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue)
 		{
-			uint32_t dispatch_height(LightSize);
+			uint32_t dispatch_height(LightSize >> DataHeightDivider);
 
 			for ( uint32_t i = 0 ; i < DispatchHeights ; ++i )
 			{ // light compute dispatch
@@ -816,7 +816,7 @@ namespace Volumetric
 
 			// 
 			// slices ordered by Z 
-			// (z * xMax * yMax) + (y * xMax) + x;
+			// (z * xMax * yMax) + (y * xMax) + x;3
 
 			// slices ordered by Y: <---- USING Y
 			// (y * xMax * zMax) + (z * xMax) + x;

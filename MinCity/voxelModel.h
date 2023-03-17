@@ -543,7 +543,7 @@ namespace voxB
 						}
 					}
 					else
-						continue;
+						continue;  
 
 					// finally submit voxel //
 					if constexpr (!EmissionOnly) {

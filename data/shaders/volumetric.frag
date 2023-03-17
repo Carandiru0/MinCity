@@ -28,7 +28,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #include "random.glsl"
 
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
-#define BOUNCE_EPSILON (0.25f)
+#define BOUNCE_EPSILON (0.5f)
 #define REFLECTION_BOUNCE_DISTANCE_SCALAR (1.33f)
 #define BACK_FORWARD_SCATTER_SCALAR (0.35f) // <-- adjust scattering scale & direction, backward (-1.0f) to forward (1.0f)
 #define REFLECTION_STRENGTH (1.0f) // <--- adjust reflection brightness / intensity *tweakable*
@@ -201,7 +201,7 @@ float fetch_light_nn( out vec3 light_color, out vec3 light_position, in const ve
 
 float fetch_bluenoise(in const vec2 pixel, in const float slice)
 {																
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALAR, slice), 0).g * 0.5f + 0.5f); // *bluenoise GREEN channel used* //  must scale and bias to prevent really small dt stepsizes. this is strickly for modify the step size so that the samples are jittered, using the green channel is safe and does not mix with the red channel before or after the raymarch as it's isolated due to the accumulation of multiple samples in the volumetric or reflection raymarches. (blurs the bluenoise)
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALAR, slice), 0).g ); // *bluenoise GREEN channel used* 
 }
 precise float fetch_depth()
 {
@@ -244,7 +244,7 @@ vec3 reconstruct_normal_fine(in const vec3 rd)
 // integration:        previous, result                     new               step                        
 void integrate(inout float previous_out, in const float current, in const float dt)
 {                                                                    // change in opacity per step interval
-	previous_out = mix(previous_out, current, linearstep(0.0f, 1.0f, abs(current - previous_out) / dt) * 0.5f + 0.5f );  
+	previous_out = mix(previous_out, current, clamp(abs(current - previous_out) / dt, 0.0f, 1.0f) * 0.5f + 0.5f );  
 }
 
 // volumetric light
@@ -274,8 +274,8 @@ float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emis
 	
 	vol_lit(light_color, light_direction, attenuation, opacity, emission, p, dt);  // shadow march tried, kills framerate 
 
-	const float bn = fetch_bluenoise(p.xy, p.z * BLUE_NOISE_SLICE_SCALAR); // best for random vector here, no visible noise after accumulation of the ray march light color for this pixel. slice cannot be dynamicly changed every frame, light intensity visibly pulses.
-	float scatter = abs(dot(normalize(vec3(bn)), light_direction)); // random direction in the sphere and the cosine (angle) between light direction (accumulated over raymarch)
+	const float bn = fetch_bluenoise(p.xy, p.z * BLUE_NOISE_SLICE_SCALAR) * 2.0f - 1.0f; // best for random vector here, no visible noise after accumulation of the ray march light color for this pixel. slice cannot be dynamicly changed every frame, light intensity visibly pulses.
+	float scatter = abs(dot(normalize(light_direction + bn), light_direction)); // random direction in the sphere and the cosine (angle) between light direction (accumulated over raymarch)
 	scatter = pow(scatter, 5.0f);
 
 	attenuation *= PHASE_FUNCTION(In.eyeDir.xyz, light_direction, scatter * BACK_FORWARD_SCATTER_SCALAR);
@@ -298,7 +298,7 @@ float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emis
 	voxel.tran = voxel.tran * sigma_dt;
 	// bugfix - adding emission*sigma_dt directly to transmission results in "transparent" sections around emissive light sources. The checkerboard pattern is exposed, and some times the ground is showing thru opaque voxels - no good
 
-	return(bn * (voxel.tran * 0.5f + 0.5f));  // blue noise is scaled to be minimum 25 % to 100% in intensity by transmission. As transmission decreases, the "jitter" also decreases to provide more "centered/accurate" sampling as the ray march distance into the scene increases 
+	return(((bn * 0.5f + 0.5f) * 0.5f + 0.5f) * (voxel.tran * 0.5f + 0.5f));  // blue noise is scaled to be minimum 25 % to 100% in intensity by transmission. As transmission decreases, the "jitter" also decreases to provide more "centered/accurate" sampling as the ray march distance into the scene increases 
 }
 
 
@@ -310,7 +310,7 @@ void reflect_lit(out vec3 light_color, out vec3 light_direction, out float atten
 	light_direction = normalize(light_direction - p); // convert to direction
 }
 
-vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec3 n, in const float emission)
+vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec3 n, in const float emission, in const float dt)
 {
  	// opacity at this point may be equal to zero
 	// which means a "surface" was not hit after the initial bounce
@@ -324,14 +324,16 @@ vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec
 	vec3 light_color, light_direction;
 	float attenuation;
 
-	reflect_lit(light_color, light_direction, attenuation, p);
+	reflect_lit(light_color, light_direction, attenuation, p + n * dt);
 	
+	// account for light direction *important* - removes reflections that should not be present
 	light_color *= max(0.0f, dot(n, light_direction));
 
 	// add ambient light that is reflected	
 	vec4 voxel;
 	voxel.light = clamp(light_color, vec3(0), vec3(1)) * (REFLECTION_STRENGTH + attenuation*emission);  // *do not change*
-	voxel.a = getAttenuation(distance_to_bounce * REFLECTION_FADE); // *do not change*
+	voxel.a = getAttenuation(distance_to_bounce * REFLECTION_FADE);   // upsampling uses directly as "fading", inversely as "blur"  // *do not change*
+
 	// upscaling shader uses these output values uniquely.
 	return voxel;
 }
@@ -384,7 +386,6 @@ vec4 traceReflection(in float transmission, in vec3 rd, in vec3 p, in const vec3
 			const float precision_dt = max(MIN_STEP, (1.0f - opacity) * dt); 
 
 			// hit opaque voxel ?
-			// extreme loss of detail in reflections if extract_opacity() is used here! which is ok - the opacity here is isolated
 			const float opacity_emission = fetch_opacity_emission(p);
 			integrate(opacity, extract_opacity(opacity_emission), precision_dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 			
@@ -393,7 +394,7 @@ vec4 traceReflection(in float transmission, in vec3 rd, in vec3 p, in const vec3
 				
 				if (early_hits < 0) {
 					// * reflection bounced * //
-					vec4 r = reflection(distance(p, bounce), p, n, extract_emission(opacity_emission));
+					vec4 r = reflection(distance(p, bounce), p, n, extract_emission(opacity_emission), precision_dt);
 					r.rgb *= transmission;
 					return(r);
 				}
@@ -484,8 +485,8 @@ void main() {
 
 	{
 		// adjust start position by "bluenoise step"	
-		const float bn = fetch_bluenoise(gl_FragCoord.xy, In.slice); // very first jitter step is changed every frame, so that the start position for every pixel varies over time.
-		const float jittered_interval = dt * bn;
+		const float bn = fetch_bluenoise(gl_FragCoord.xy, In.slice) * 0.5f + 0.5f; // very first jitter step is changed every frame, so that the start position for every pixel varies over time.
+		const float jittered_interval = dt * bn; // //  must scale and bias to prevent really small dt stepsizes. this is strickly for modify the step size so that the samples are jittered, using the green channel is safe and does not mix with the red channel before or after the raymarch as it's isolated due to the accumulation of multiple samples in the volumetric or reflection raymarches. (blurs the bluenoise)
 
 		p += jittered_interval * rd; // + jittered offset
 		interval_remaining -= jittered_interval; // interval remaining must be accurate/exact for best results

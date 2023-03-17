@@ -322,7 +322,7 @@ public:
 
 		// slices ordered by Y: <---- USING Y
 		// (y * xMax * zMax) + (z * xMax) + x;
-
+		
 		uint32_t const index((uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x);
 
 		// allow bounds to be updated
