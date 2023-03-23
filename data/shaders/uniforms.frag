@@ -1,4 +1,4 @@
-#version 460
+#version 450
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_quad: enable
 #define subgroup_quad_enabled
@@ -537,7 +537,7 @@ void main() {
 	vec3 light_color;
 	vec4 Ld;
 
-	getLight(light_color, Ld, In.uv.xyz + N * InvLightVolumeDimensions);
+	getLight(light_color, Ld, In.uv.xyz);
 
 	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 	Ld.z = -Ld.z; // vulkan
@@ -562,7 +562,7 @@ void main() {
 	 
 	const vec3 N = normalize(In.N.xyz);
 
-	getLight(light_color, Ld, In.uv.xyz + N * InvLightVolumeDimensions);
+	getLight(light_color, Ld, In.uv.xyz);
 
 	const vec3 V = normalize(In.V.xyz);                            
 	

@@ -91,3 +91,4 @@ StructLayoutSettings.json
 *.old2
 *.old
 *.ktx
+imgui.ini

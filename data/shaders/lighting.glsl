@@ -157,7 +157,7 @@ float fresnel(in const vec3 N, in const vec3 V, in const float power)  // fresne
 #endif
 
 // Albedo = straight color no shading or artificial lighting (voxel color in)
-vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in const float occlusion, in const float attenuation,
+vec3 lit( in const vec3 albedo, in const vec4 material, in vec3 light_color, in const float occlusion, in const float attenuation,
           in const vec3 L, in const vec3 N, in const vec3 V, // L = light direction, N = normal, V = eye direction   all expected to be normalized
 		  in const bool reflection_on
 #ifdef OUT_REFLECTION
@@ -183,6 +183,7 @@ vec3 lit( in const vec3 albedo, in vec4 material, in const vec3 light_color, in 
 #else
 	const float fresnelTerm = fresnel(N, V, fresnelPower);
 #endif
+	//light_color = light_color * 100.0f;//attenuation;
 
 	const float luminance = min(1.0f, dot(light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)

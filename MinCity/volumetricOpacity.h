@@ -349,25 +349,25 @@ namespace Volumetric
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const
 		{
-			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-			dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(3U, 1, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(2U, 1, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
 		}
 

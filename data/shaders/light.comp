@@ -1,9 +1,9 @@
-#version 460
+#version 450
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_vote : enable
-//#extension GL_KHR_shader_subgroup_ballot: enable
-//#extension GL_KHR_shader_subgroup_arithmetic : enable
-//#extension GL_KHR_shader_subgroup_shuffle: enable
+#extension GL_KHR_shader_subgroup_ballot: enable
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_shuffle: enable
 //#extension GL_KHR_shader_subgroup_quad : enable
 #extension GL_EXT_control_flow_attributes : enable
 
@@ -18,8 +18,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
 #include "common.glsl"
-#include "transform.glsl"
-#include "shareduniform.glsl"
 #include "light.glsl"
 
 
@@ -37,12 +35,12 @@ layout (push_constant) restrict readonly uniform PushConstant {
 #define LIGHT 0
 #define OPACITY 1
 
-layout (binding = 1) uniform sampler3D seedMap;	// lightprobe map
-layout (binding = 2) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
-layout (binding = 3, rgba16) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
+layout (binding = 0) uniform sampler3D seedMap;	// lightprobe map
+layout (binding = 1) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
+layout (binding = 2, rgba16) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
 //////////////////////////////////////////////////////////////////////////////////
-layout (binding = 4, rgba16) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final output --only to be used with imageStore (writeonly) // only signed normalized values
-layout (binding = 5, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
+layout (binding = 3, rgba16) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final output --only to be used with imageStore (writeonly) // only signed normalized values
+layout (binding = 4, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
 
 // "World Visible Volume"
 layout (constant_id = 0) const float WorldDimensions = 0.0f;
@@ -177,28 +175,9 @@ bool isEmitter(in const vec4 warp)
 
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
 #ifdef SEED
-vec4 seedVolume( in vec3 read_location )
+vec4 sampleInputVolume( in const vec3 read_location )
 {
-	const ivec3 iread_location = ivec3(floor(read_location + 0.5f));
-
-	const warp_local new = texelFetch(seedMap, iread_location, 0);
-	const warp_local last = texelFetch(pingpongTexture[pc.index_input], iread_location, 0);
-
-	[[branch]] if (!isEmitter(last)) {
-		return(new);
-	}
-
-	vec3 last_location, new_location,
-	     last_color, new_color;
-
-	decode_warp(new_location, new_color, new);
-	decode_warp(last_location, last_color, last);
-
-	const float d = distance(last_location, new_location);
-
-    new_color = mix(last_color, new_color, getAttenuation(d));  // when the distance between the last location and new location is large, blend in the new color slowly. when the distance between the last location and the new location is small, blend in the new color quickly.
-											    // is the most stable, no glitch light or jerky light movements. It does slow down the light, but for good reason to interpolate over time. No lag, trails or ghosting visible.
-	return( encode_warp(new_location, new_color) );
+	return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
 }
 #else
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -229,15 +208,12 @@ vec4 sampleInputVolume( in const vec3 read_location )
 //  |7  8  9 10 11 12 13 14| 15
 //
 //
-shared vec4 warp_lds[GROUP_SIZE_XYZ + 1][GROUP_SIZE_XYZ][GROUP_SIZE_XYZ + 1]; // *do not remove +1 padding on X or Z*
+shared vec4 warp_lds[GROUP_SIZE_XYZ + 1][GROUP_SIZE_XYZ][GROUP_SIZE_XYZ]; // *do not remove +1 padding on X*
 
-vec4 populateLDS(in const ivec3 local_location) {
+void populateLDS(in const vec4 warp, in const ivec3 local_location) {
 
-	const warp_local warp = sampleInputVolume(localToGlobal(local_location));
 	warp_lds[local_location.x][local_location.y][local_location.z] = warp;
-
-	// barrier moved to main()
-	return( warp );
+	barrier(); // required so that lds is coherent between the last write and now reads (memorybarriershared is included in barrier too)
 }
 //vec3(VolumeDimensions_Width, VolumeDimensions_Depth, VolumeDimensions_Height)
 vec4 group_load( in const ivec3 local_location ) {
@@ -262,11 +238,12 @@ vec4 group_load( in const ivec3 local_location ) {
 	*/
 }
 
+
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
 
 	const warp_local read_warp = group_load(read_location);
 
-	if ( isEmitter(read_warp) ) {	// new
+	if ( subgroupAny(isEmitter(read_warp)) ) {	// new ? scalarized. 
 			
 		const float read_distance = distance(decode_warp_location(read_warp), current_location);
 
@@ -282,11 +259,11 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	[[branch]] if ( 0.0f != read_warp.packed_color ) {	// new
+	[[branch]] if ( isEmitter(read_warp) ) {	// new
 			
-		const float read_distance = distance(read_warp.emitter_location, current_location);
+		const float read_distance = distance(decode_warp_location(read_warp), current_location);
 
-		current_distance = subgroupMin(read_distance);
+		current_distance = subgroupMin(min(current_distance, read_distance));
 		
 		// acquire id of the active invocation that contains the least distance
 		const uint active_invocation_id = subgroupBallotFindMSB(subgroupBallot(read_distance == current_distance));
@@ -295,7 +272,7 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 		warp = subgroupShuffle(read_warp, active_invocation_id);
 	}
 }
-
+*/
 
 /*
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
@@ -319,11 +296,11 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 	}
 }*/
 
-void propogateBlocks(inout warp_local warp, in const vec3 current_location)
+void propogateBlocks(inout warp_local warp, in const vec3 current_location, in const bool emitter)
 {
 	const int current_step = pc.current_step;
 
-	float current_distance = mix(9999999.9999999f, distance(decode_warp_location(warp), current_location), isEmitter(warp));
+	float current_distance = mix(9999999.9999999f, distance(decode_warp_location(warp), current_location), emitter);
 	
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	#define T(i) \
@@ -350,19 +327,25 @@ void main()
 			return;
 	}
 
-	warp_local warp;
+	warp_local warp = sampleInputVolume(global_invocation_id);   /// if SEED is defined this is a simple texelFetch & imageStore (copy)
 
 #ifndef SEED
-	warp = populateLDS(ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
+	const bool emitter = any(notEqual(vec2(0), warp.zw));
 
-    // SEED doesn't 1+JFA anymore, unless proven it is not messing with the fractional offset.
-	
-	barrier(); // required so that lds is coherent between the last writes and now reads (memorybarriershared is included in barrier too)
+	if (subgroupAny(emitter)) { // hints to compiler that emitter variable is scalar, so less vector registers are used
 
-	propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions));
+		populateLDS(warp, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 
-#else
-	warp = seedVolume(global_invocation_id);
+		// SEED doesn't 1+JFA anymore, unless proven it is not messing with the fractional offset.
+		propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), emitter);
+	}
+	else { // still have to satisy currently empty with potential lit neighbour, here it is not scalar and vector registers are used.
+
+		populateLDS(warp, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
+
+		// SEED doesn't 1+JFA anymore, unless proven it is not messing with the fractional offset.
+		propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), emitter); 
+	}
 #endif
 
 	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);

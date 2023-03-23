@@ -1,4 +1,4 @@
-#version 460
+#version 450
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_control_flow_attributes :enable
 #extension GL_KHR_shader_subgroup_quad : enable
@@ -189,16 +189,6 @@ float fetch_light( out vec3 light_color, out vec3 light_position, in const vec3 
 	return(Ld.dist);  
 }
 
-// returns normalized light distance, light position and light color - uses natural neighbour sampling on both color and position + distance, intended for *reflections only*
-float fetch_light_nn( out vec3 light_color, out vec3 light_position, in const vec3 uvw) {
-										 
-	vec4 Ld;
-	getLight(light_color, Ld, uvw);
-
-	light_position = Ld.pos;
-	return(Ld.dist);  
-}
-
 float fetch_bluenoise(in const vec2 pixel, in const float slice)
 {																
 	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALAR, slice), 0).g ); // *bluenoise GREEN channel used* 
@@ -306,7 +296,7 @@ float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emis
 void reflect_lit(out vec3 light_color, out vec3 light_direction, out float attenuation,
 				 in const vec3 p)
 {
-	attenuation = getAttenuation(fetch_light_nn(light_color, light_direction, p)); // actually position
+	attenuation = getAttenuation(fetch_light(light_color, light_direction, p)); // actually position
 	light_direction = normalize(light_direction - p); // convert to direction
 }
 

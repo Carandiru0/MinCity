@@ -285,22 +285,21 @@ void cVulkan::CreateComputeResources()
 
 			auto const samplers{ getSamplerArray
 				<eSamplerAddressing::REPEAT>(
-					eSamplerSampling::NEAREST, eSamplerSampling::NEAREST
+					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
 				)
 			};
-			dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eCompute, 1);
-			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, samplers); // 3d volume seed (lightprobes) &getNearestSampler<eSamplerAddressing::REPEAT>()
-			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
-			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
+			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, samplers); // 3d volume seed (lightprobes) &getNearestSampler<eSamplerAddressing::REPEAT>()
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
+			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
-			dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
+			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
+			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
 			
 			_comData.light.descLayout = dslm.createUnique(_device);
 		}
 
 		// We need to create a descriptor set to tell the shader where
-			// our buffers are.
+		// our buffers are.
 		vku::DescriptorSetMaker			dsm;
 		dsm.layout(*_comData.light.descLayout);
 
@@ -313,7 +312,6 @@ void cVulkan::CreateComputeResources()
 		MinCity::VoxelWorld->SetSpecializationConstants_ComputeLight(constants);
 
 		// SEED & JFA  //
-
 		vku::PipelineLayoutMaker		plm;
 		plm.descriptorSetLayout(*_comData.light.descLayout);
 		// pipeline layout is the same/shared across all stages
@@ -1636,9 +1634,6 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	{ // ###### Compute
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 			_dsu.beginDescriptorSet(_comData.light.sets[resource_index]);
-			// Set initial uniform buffer value
-			_dsu.beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer);
-			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::CLAMP>());
 		}
 		// [[deprecated]] ###### Texture Shaders (Compute)

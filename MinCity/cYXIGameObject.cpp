@@ -97,8 +97,9 @@ namespace world
 		switch (voxel.Color) {
 			case COLOR_ACTIVITY_LIGHTS:
 			{
-				float const t = 1.0f - SFM::saturate(time_to_float(_activity_lights.accumulator / _activity_lights.interval));
-				uint32_t const luma = SFM::saturate_to_u8(t * 255.0f);
+				//float const t = 1.0f - SFM::saturate(time_to_float(_activity_lights.accumulator / _activity_lights.interval));
+				//uint32_t const luma = SFM::saturate_to_u8(t * 255.0f);
+				uint32_t const luma = SFM::saturate_to_u8(255.0f);
 				voxel.Color = SFM::pack_rgba(luma);
 				voxel.Emissive = (0 != voxel.Color);
 			}

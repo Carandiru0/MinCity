@@ -1,4 +1,4 @@
-#version 460
+#version 450
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_KHR_shader_subgroup_quad: enable
 #extension GL_KHR_shader_subgroup_arithmetic: enable

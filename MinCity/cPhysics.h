@@ -5,6 +5,7 @@
 
 class no_vtable cPhysics : no_copy
 {
+	static constexpr float const GRAVITY_NONE = 0.0f;
 	static constexpr float const GRAVITY_EARTH = -9.80665f;	// https://physics.nist.gov/cuu/Constants/index.html (exact value) m/s*s [acceleration]
 	static constexpr float const GRAVITY_MOON = -1.625f;	// (exact value) m/s*s [acceleration]
 public:
