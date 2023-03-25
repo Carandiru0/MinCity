@@ -120,6 +120,8 @@ ivec3 next_neighbour_offset(const in int i) // constant values only (compile tim
 #define packed_position xy
 #define packed_color zw
 
+#define FDATA_MAX 1023.0f
+
 vec3 _decode_warp_vector( in const uvec2 encoded )  // [private] do not call directly (internal)
 {
 	uvec3 decoded;
@@ -142,27 +144,30 @@ vec3 decode_warp_location( in const warp_local warp ) // [public] when only loca
 {
 	const uvec4 encoded = uvec4(warp * 65535.0f).wzyx;
 
-	return(_decode_warp_vector(encoded.packed_position));
+	// scaling position data back to world limits from data levels
+	return(_decode_warp_vector(encoded.packed_position) / FDATA_MAX * WorldDimensions);
 }
 
 vec4 decode_warp( in const warp_local warp ) // [public] location & packed hdr color returned
 {
 	const uvec4 encoded = uvec4(warp * 65535.0f).wzyx;
 
-	return(vec4(_decode_warp_vector(encoded.packed_position), packColorHDR(_decode_warp_vector(encoded.packed_color) / 1023.0f)));
+	            // scaling position data back to world limits from data levels               // 10bpc rgb hdr color
+	return(vec4(_decode_warp_vector(encoded.packed_position) / FDATA_MAX * WorldDimensions, packColorHDR(_decode_warp_vector(encoded.packed_color) / FDATA_MAX)));
 }
 
 void decode_warp( out vec3 location, out vec3 color, in const warp_local warp ) // [public] location & unpacked color out parameters
 {
 	const uvec4 encoded = uvec4(warp * 65535.0f).wzyx;
 
-	location = _decode_warp_vector(encoded.packed_position);
-	color = _decode_warp_vector(encoded.packed_color) / 1023.0f;
+	location = _decode_warp_vector(encoded.packed_position) / FDATA_MAX * WorldDimensions; // scaling position data back to world limits from data levels
+	color = _decode_warp_vector(encoded.packed_color) / FDATA_MAX; // 10bpc rgb hdr color
 }
 
-vec4 encode_warp( in const vec3 location, in const vec3 color ) // [public] returns a normalized, unorm ready, 16bpc ready packed position & hdr color - ready for store
-{
-	return(vec4(_encode_warp_vector(uvec3(location)), _encode_warp_vector(uvec3(color * 1023.0f))).wzyx / 65535.0f);
+// *do not remove*
+vec4 encode_warp( in const vec3 location, in const vec3 color ) // [public] returns a normalized, unorm ready, 10bpc ready packed position & 10bpc hdr color - ready for store
+{                                               // normalize and then scale to data level maximum for increased (double) precision
+	return(vec4(_encode_warp_vector(uvec3(floor(location / WorldDimensions * FDATA_MAX))), _encode_warp_vector(uvec3(color * FDATA_MAX))).wzyx / 65535.0f);
 }
 
 #undef packed_position
@@ -335,7 +340,7 @@ void main()
 	if (subgroupAny(emitter)) { // hints to compiler that emitter variable is scalar, so less vector registers are used
 
 		populateLDS(warp, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
-
+		 
 		// SEED doesn't 1+JFA anymore, unless proven it is not messing with the fractional offset.
 		propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), emitter);
 	}

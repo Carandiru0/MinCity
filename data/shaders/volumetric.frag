@@ -34,7 +34,7 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define REFLECTION_STRENGTH (1.0f) // <--- adjust reflection brightness / intensity *tweakable*
 #define REFLECTION_FADE (20.0f) // <-- adjust reflections fading away at distance more with larger values. *tweakable*
 #define MIN_STEP (0.00005f)	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
-#define MAX_STEPS (VolumeDimensions * 0.5f)
+#define MAX_STEPS (VolumeDimensions)
 
 // HenyeyGreenstein Phase Function - Light Scattering
 // https://pbr-book.org/3ed-2018/Volume_Scattering/Phase_Functions
@@ -288,7 +288,7 @@ float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emis
 	voxel.tran = voxel.tran * sigma_dt;
 	// bugfix - adding emission*sigma_dt directly to transmission results in "transparent" sections around emissive light sources. The checkerboard pattern is exposed, and some times the ground is showing thru opaque voxels - no good
 
-	return(((bn * 0.5f + 0.5f) * 0.5f + 0.5f) * (voxel.tran * 0.5f + 0.5f));  // blue noise is scaled to be minimum 25 % to 100% in intensity by transmission. As transmission decreases, the "jitter" also decreases to provide more "centered/accurate" sampling as the ray march distance into the scene increases 
+	return(voxel.tran * 0.5f + 0.5f);  // *only* modifies precision_dt on return to a minimum of 50% of its value or greater depending on the current integrated transmission. blue noise tried here, however the accumulation results in noticable white noise / light distortion so its removed.
 }
 
 
@@ -317,7 +317,7 @@ vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec
 	reflect_lit(light_color, light_direction, attenuation, p + n * dt);
 	
 	// account for light direction *important* - removes reflections that should not be present
-	light_color *= max(0.0f, dot(n, light_direction));
+	light_color *= 0.5f * max(0.0f, dot(n, light_direction)); // *bugfix - should be half of the light color here, as below it could again double depending on current emission*attenuation (see below). This also darkens reflections more when emission is not present giving a more realistic, not overbrite reflection.
 
 	// add ambient light that is reflected	
 	vec4 voxel;

@@ -36,10 +36,10 @@ namespace Volumetric
 		                              // PCI Express 3.0 x16 total bandwidth: 16GB/s
 		                              // 60 frames/s * 3.6GB = 217,684,377,600 bytes/s - (217 GB/s) ouch.
 		                              // So what is the maximum buffer size and corresponding number of voxels that can actually squeeze into the 16 GB/s bandwidth available if that gpu buffer was fully used?    - 266 MB theoretical maximum/frame
-		                              // ****** 256 MB maximum/frame --> ~591,000 voxels/frame, so around *****[600k]***** voxels total be used. ******
+		                              // ****** 256 MB maximum/frame --> ~591,000 voxels/frame, so around *****[600k]***** voxels total be used. ****** WRONG
 		                              // --------------------------------------------------------------------------------------------------------------
-
-		VOXEL_MINIGRID_VISIBLE_TOTAL = 600000,	// static voxels
+		                              // WELL *2000k* (2,000,000) is working just fine can probably go higher if required. < 1.5ms jump in frametime with stress test multiple explosion sequences...
+		VOXEL_MINIGRID_VISIBLE_TOTAL = 2000000,	// static voxels
 		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_TOTAL	// dynamic voxels 
 	);
 

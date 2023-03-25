@@ -54,7 +54,7 @@ void lightmap_internal_fetch_fast( out float light_distance, in const vec3 voxel
 	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
 }
 
-/*
+
 // natural neighbour sampling of light volume
 
 // Natural Neighbour Interpolation for regular grid
@@ -149,7 +149,7 @@ void lightmap_internal_sampleNaturalNeighbour(out float light_distance, inout ve
 	light_distance = light_distance * w;
 	light_color = light_color * w;		
 }
-*/
+
 // ********************************************* public usage : //
 
 void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
@@ -175,13 +175,13 @@ void getLightMapFast( out float light_distance, in const vec3 uvw )
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	// linear sampling
-	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	// nn sampling
+	lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 void getLightMap( out float light_distance, out vec3 light_color, in const vec3 uvw ) 
 {
-	// linear sampling
-	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	// nn sampling
+	lightmap_internal_sampleNaturalNeighbour(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
 }
 
 #define att a
@@ -189,12 +189,12 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 #define pos xyz
 void getLight(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
-	getLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	getLightMap(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw) 
 {
-	getLightMapFast(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	getLightMap(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
 	// light_direction_distance.a = normalized [0...1] distance
 }
 // getAttenuation(normalized_distance * volume_length); to get attenuation from normalized distance returned from getLight

@@ -11,6 +11,8 @@
 #include <Utility/mem.h>
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
+#pragma intrinsic(_InterlockedExchange64)
+#pragma intrinsic(_InterlockedXor64)
 #pragma intrinsic(_InterlockedOr64)
 
 INLINE_MEMFUNC __streaming_store_residual(uint64_t* const __restrict dest, uint64_t const* const __restrict src, uint32_t const index) // single usage (residual/remainder)
@@ -100,7 +102,9 @@ template< typename PackedLight, uint32_t const LightSize,                       
 							    uint32_t const Size, uint32_t const HeightDivider = 0>			 // uniform size for world visible volume, volume height divider is modifies the maximum usable volume height = Size >> HeightDivider
 struct lightBuffer3D : public writeonlyBuffer3D<PackedLight, LightSize, LightSize, LightSize> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
-	constinit static inline XMVECTORU32 const _xmMaskBits{ 0x3FF, 0x3FF, 0x3FF, 0 };
+	constexpr static uint32_t const DATA_MAX = 1023; // 10 bit per component 0x3FF = 1023
+	constexpr static float const FDATA_MAX = (float)DATA_MAX;
+	constinit static inline XMVECTORU32 const _xmMaskBits{ DATA_MAX, DATA_MAX, DATA_MAX, 0 };
 
 	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Size),  1.0f / float(Size),  1.0f / float(Size), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightSize),  float(LightSize),  float(LightSize), 0.0f }; // needs to be xyz
@@ -208,54 +212,57 @@ private:
 		XMStoreFloat3A(&localMin, XMVectorMin(position, XMLoadFloat3A(&localMin)));
 	}
 
-	STATIC_INLINE_PURE uint64_t const __vectorcall pack_seed(uvec4_v const xyz, uvec4_v const rgb) // relative position & hdr 10bpc rgb color
+
+	// -----------------------------------------------------------------
+	// [light emitter 10bpc relative position]  +  [hdr 10bpc rgb color] 
+	// -----------------------------------------------------------------
+	//
+	// 16bpc
+	//             warp.x             warp.y             warp.z             warp.w
+	// 0x1111111111111111 0x1111111111111111 0x1111111111111111 0x1111111111111111
+	//   0xxxxxxxxxxyyyyy   0yyyyyzzzzzzzzzz   0rrrrrrrrrrggggg   0gggggbbbbbbbbbb
+	//
+	// (highest bit always unused for each component)
+	//
+	// packed component:      bit count:      packed component mask to value:
+	// x : 10 bits, 0 - 1023       10,                  x : (0x7fe0 & warp.x) >> 5
+	// y : "  ""   "   ""          20,                  y : ((0x1f & warp.x) << 5) | ((0x7c00 & warp.y) >> 10)
+	// z : "  ""   "   ""          30,                  z : (0x3ff & warp.y)
+	// r : 10 bits, 0 - 1023       40,                  r : (0x7fe0 & warp.z) >> 5
+	// g : "  ""   "   ""          50,                  g : ((0x1f & warp.z) << 5) | ((0x7c00 & warp.w) >> 10)
+	// b : "  ""   "   ""          60,                  b : (0x3ff & warp.w)
+	// 0 : 4 bits, unused          64 bits total        0 : each high bit in each component is unused and set to 0
+	//
+	// --------------------------------------------------------------------
+	using seed_data = union {
+
+		struct {
+			// bit order is low to high 
+			uint16_t
+				b : 10,
+				g_low : 5,
+				unused_warp_w : 1,
+
+				g_high : 5,
+				r : 10,
+				unused_warp_z : 1,
+
+				z : 10,
+				y_low : 5,
+				unused_warp_y : 1,
+
+				y_high : 5,
+				x : 10,
+				unused_warp_x : 1;
+		};
+
+		uint64_t seed;
+
+	};
+
+	STATIC_INLINE_PURE uint64_t const __vectorcall pack_seed(uvec4_v const xyz, uvec4_v const rgb) // relative position & hdr 10bpc rgb color in
 	{
-		// -----------------------------------------------------------------
-		// [light emitter 10bpc relative position]  +  [hdr 10bpc rgb color] 
-		// -----------------------------------------------------------------
-		//
-		// 16bpc
-		//             warp.x             warp.y             warp.z             warp.w
-		// 0x1111111111111111 0x1111111111111111 0x1111111111111111 0x1111111111111111
-		//   0xxxxxxxxxxyyyyy   0yyyyyzzzzzzzzzz   0rrrrrrrrrrggggg   0gggggbbbbbbbbbb
-		//
-		// (highest bit always unused for each component)
-		//
-		// packed component:      bit count:      packed component mask to value:
-		// x : 10 bits, 0 - 1023       10,                  x : (0x7fe0 & warp.x) >> 5
-		// y : "  ""   "   ""          20,                  y : ((0x1f & warp.x) << 5) | ((0x7c00 & warp.y) >> 10)
-		// z : "  ""   "   ""          30,                  z : (0x3ff & warp.y)
-		// r : 10 bits, 0 - 1023       40,                  r : (0x7fe0 & warp.z) >> 5
-		// g : "  ""   "   ""          50,                  g : ((0x1f & warp.z) << 5) | ((0x7c00 & warp.w) >> 10)
-		// b : "  ""   "   ""          60,                  b : (0x3ff & warp.w)
-		// 0 : 4 bits, unused          64 bits total        0 : each high bit in each component is unused and set to 0
-		//
-		// --------------------------------------------------------------------
-		union {
-
-			struct {
-				             // bit order is low to high 
-				uint16_t
-					b : 10,
-					g_low : 5,
-					unused_warp_w : 1,
-
-					g_high : 5,
-					r : 10,
-					unused_warp_z : 1,
-
-					z : 10,
-					y_low : 5,
-					unused_warp_y : 1,
-
-					y_high : 5,
-					x : 10,
-					unused_warp_x : 1;
-			};
-			
-			uint64_t const seed;
-
-		} repacked{};
+		seed_data repacked{};
 
 		{ // 10bpc relative position
 			uvec4_t position;
@@ -280,6 +287,20 @@ private:
 		return(repacked.seed);
 	}
 
+	STATIC_INLINE_PURE void __vectorcall unpack_seed(uvec4_v& __restrict xyz, uvec4_v& __restrict rgb, uint64_t const seed) // relative position & hdr 10bpc rgb color out
+	{
+		seed_data repacked{};
+		repacked.seed = seed;
+
+		{ // 10bpc relative position
+			xyz = uvec4_v(repacked.x, (repacked.y_high << 5u) | repacked.y_low, repacked.z);
+		}
+
+		{ // 10bpc hdr color
+			rgb = uvec4_v(repacked.r, (repacked.g_high << 5u) | repacked.g_low, repacked.b);
+		}
+	}
+
 	__declspec(safebuffers) void __vectorcall seed_single(FXMVECTOR in, uint32_t const index, uint32_t const in_packed_color) const	// 3D emplace
 	{
 		// slices ordered by Z
@@ -288,20 +309,45 @@ private:
 		// slices ordered by Y: <---- USING Y
 		// (y * xMax * zMax) + (z * xMax) + x;
 
-		uvec4_v const xyz(SFM::floor_to_u32(in));
-
 		// attenuate emitter linear hdr color by fractional distance to this seeds grid origin
-		XMVECTOR const xmNorm(SFM::fract(in));
-		XMVECTOR const xmDSquared(XMVectorAdd(XMVector3Dot(xmNorm,xmNorm), XMVectorReplicate(1.0f)));
+		//XMVECTOR const xmNorm(SFM::fract(in));
+		//XMVECTOR const xmDSquared(XMVectorAdd(XMVector3Dot(xmNorm,xmNorm), XMVectorReplicate(1.0f)));
 
-		XMVECTOR const xmColor = XMVectorDivide(_mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (in_packed_color >> 20), (in_packed_color >> 10), in_packed_color), _xmMaskBits)),
-			                                    xmDSquared);
+		//XMVECTOR const xmColor = XMVectorDivide(_mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (in_packed_color >> 20), (in_packed_color >> 10), in_packed_color), _xmMaskBits)),
+		//	                                    xmDSquared);
         
 		// pack position + color
-		uint64_t const seed(pack_seed(xyz, uvec4_v(xmColor)));
+		uvec4_t unpacked_rgb;
+		SFM::unpack_rgb_hdr(in_packed_color, unpacked_rgb);
+		uvec4_v const rgb(unpacked_rgb);
+
+		// pre-transform / scale "in" (location) to increase precision - must rescale final decoded / unpacked value back to WorldLimits in shader
+		XMVECTOR const xyz(XMVectorScale(XMVectorMultiply(in, _xmInvWorldLimitMax), FDATA_MAX));
+
+		uint64_t original_seed = pack_seed(SFM::floor_to_u32(xyz), rgb);
 
 		// concurrency safe version of: *(_cache + index) = seed;
-        _InterlockedOr64((__int64 volatile* const)(_cache + index), (__int64 const)seed);
+		
+		__int64 prev_seed = _InterlockedExchange64((__int64 volatile* const)(_cache + index), (__int64 const)original_seed); // new light ?
+		while (0 != prev_seed) { // existing light
+			uvec4_v position, color;
+			unpack_seed(position, color, (uint64_t)prev_seed);
+
+			// blend
+			position = uvec4_v(SFM::lerp(position.v4f(), xyz, 0.5f));
+			color = uvec4_v(SFM::lerp(color.v4f(), rgb.v4f(), 0.5f));
+
+			// update
+			uint64_t const new_seed = pack_seed(position, color);
+			prev_seed = _InterlockedExchange64((__int64 volatile* const)(_cache + index), (__int64 const)new_seed);
+			if (prev_seed == original_seed)
+				break; // done, 2 atomic operations are paired properly as one atomic operation
+
+			// prev seed has been updated, redo from latest atomic value
+			original_seed = new_seed;
+		}
+
+		//_InterlockedXor64((__int64 volatile* const)(_cache + index), (__int64 const)original_seed);
 		local::lights.emplace_back((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache, index);
 	}
 
@@ -309,6 +355,17 @@ private:
 public:
 	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
+		[[likely]] if (0 != srgbColor) { // !dummy light
+
+			static constexpr uint32_t const light_level_minimum(32 + 32 + 32); // minimums per component summed
+
+			uvec4_t bright;
+			SFM::unpack_rgba(srgbColor, bright);
+
+			if ((bright.r + bright.g + bright.b) < light_level_minimum) // reject low-light level lights with a summed component level that is too dark to be emissive and is essentially black 
+				return; // reject
+		}
+
 		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
 		uvec4_t uiIndex;
 		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);

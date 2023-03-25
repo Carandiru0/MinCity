@@ -28,14 +28,14 @@ void main() {
 	//depth += subgroupQuadSwapVertical(depth);
 	//depth *= 0.25f;
 
-	//if (gl_SubgroupInvocationID == subgroupQuadBroadcast(gl_SubgroupInvocationID, 0)) { // downscale is always 50%, doing this is ok
-    //  imageStore(outHalfDepth, ivec2(gl_FragCoord.xy) >> 1, depth.xxxx);
-    //}
+	if (gl_SubgroupInvocationID == subgroupQuadBroadcast(gl_SubgroupInvocationID, 0)) { // downscale is always 50%, doing this is ok
+      imageStore(outHalfDepth, ivec2(gl_FragCoord.xy) >> 1, depth.xxxx);
+    }
 	
-	ivec2 pixel = (ivec2(gl_FragCoord.xy) >> 2) * 3; // start - must match getDownResolution() in vku_addon.hpp   *set for 75% downscale, 3 out of 4 pixels*
-	pixel += ivec2(ceil(fract(gl_FragCoord.xy / 4.0f) * 4.0f));   // +0, +1, +2, +3 offset from start
+	//ivec2 pixel = (ivec2(gl_FragCoord.xy) >> 2) * 3; // start - must match getDownResolution() in vku_addon.hpp   *set for 75% downscale, 3 out of 4 pixels*
+	//pixel += ivec2(ceil(fract(gl_FragCoord.xy / 4.0f) * 4.0f));   // +0, +1, +2, +3 offset from start
 
-	imageStore(outHalfDepth, pixel, depth.xxxx);
+	//imageStore(outHalfDepth, pixel, depth.xxxx);
 }
 
 
