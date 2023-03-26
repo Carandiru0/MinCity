@@ -253,7 +253,7 @@ namespace Volumetric
 
 			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 
-				LightProbeMap.stagingBuffer[resource_index].createAsCPUToGPUBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Sequential, false, true);
+				LightProbeMap.stagingBuffer[resource_index].createAsStagingBuffer(getLightProbeMapSizeInBytes(), vku::eMappedAccess::Sequential, false, true); // *bugfix - this needs to be staging buffer type (excessive extra pcie bandwidth with the wrong type before)
 			}
 			
 			LightProbeMap.imageGPUIn = new vku::TextureImage3D(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, device,

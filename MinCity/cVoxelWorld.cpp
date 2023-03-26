@@ -1129,7 +1129,7 @@ namespace world
 
 		return(SFM::round_to_u32((float)uiSumHeight / (float)uiNumSamples));
 	}
-
+	
 	uint32_t const __vectorcall getVoxelsAt_MaximumHeight(rect2D_t const voxelArea, v2_rotation_t const& __restrict vR)
 	{
 		point2D_t voxelIterate(voxelArea.left_top());
@@ -1947,28 +1947,6 @@ namespace // private to this file (anonymous)
 			render_state.numLightVoxelsRendered = 0;
 #endif
 #endif
-
-#ifdef DEBUG_TEST_FRONT_TO_BACK
-			static uint32_t lines_missing = MAX_VISIBLE_Y - 1;
-			{
-				static tTime tLast;
-
-				if (0 != lines_missing) {
-					tTime tNow = high_resolution_clock::now();
-					if (tNow - tLast > milliseconds(50)) {
-						--lines_missing;
-						tLast = tNow;
-					}
-				}
-				else {
-					lines_missing = MAX_VISIBLE_Y - 1;
-				}
-			}
-#endif		
-
-#ifdef DEBUG_TEST_FRONT_TO_BACK
-			voxelEnd.y -= lines_missing;
-#endif
 			typedef struct no_vtable sRenderFuncBlockChunk {
 
 			private:
@@ -2091,7 +2069,7 @@ namespace // private to this file (anonymous)
 
 				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
-					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** // debug will slow down to 100ms+ / frame if not parallel //
+					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** 
 					RenderFuncBlockChunk(((StreamingGrid const* const __restrict)::grid), voxelStart, visibleArea, voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
 				);
 			}

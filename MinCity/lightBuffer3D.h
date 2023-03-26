@@ -347,7 +347,6 @@ private:
 			original_seed = new_seed;
 		}
 
-		//_InterlockedXor64((__int64 volatile* const)(_cache + index), (__int64 const)original_seed);
 		local::lights.emplace_back((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache, index);
 	}
 

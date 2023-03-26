@@ -55,7 +55,7 @@ layout (constant_id = 4) const float VOX_SIZE = 0.0f;
 #define warp_local vec4
 
 // 26 neighbours + self at i==13 (*compiletime* offset)
-#define next_neighbour_offset(i) (ivec3((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1))
+#define next_neighbour_offset(i) ivec3((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)
 /*
 ivec3 next_neighbour_offset(const in int i) // constant values only (compile time only)   [generated local compile time constant vector values for an offset to a neighbour]
 {										    //                                             -operation is evaluated during compile, no integer divides or modulus actually take place at run time.
@@ -248,7 +248,7 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	if ( subgroupAny(isEmitter(read_warp)) ) {	// new ? scalarized. 
+	if ( isEmitter(read_warp) ) {	// new ? 
 			
 		const float read_distance = distance(decode_warp_location(read_warp), current_location);
 
@@ -303,13 +303,11 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 void propogateBlocks(inout warp_local warp, in const vec3 current_location, in const bool emitter)
 {
-	const int current_step = pc.current_step;
-
 	float current_distance = mix(9999999.9999999f, distance(decode_warp_location(warp), current_location), emitter);
 	
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	#define T(i) \
-		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(i) * current_step); \
+		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(i) * pc.current_step); \
 	
 	// unrolled and compile time constant for offset generated. skip 13, self.
 	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
@@ -505,6 +503,9 @@ void main()
 
 	const warp_local current_warp = decode_warp(textureLod(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, 0));
 	vec3 current_color = unpackColorHDR(current_warp.packed_color);
+	const vec3 original_color = current_color;
+
+	float d = 0.0f;
 
 	// #################################################################################################################
 	{	// distance & direction ###
@@ -516,7 +517,7 @@ void main()
 		sample_warp(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, current_direction_distance, current_color, current_location);
 
 		current_direction_distance.xyz = current_direction_distance.xyz / WorldDimensions; // normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
-		current_direction_distance.w = normalize_distance(current_direction_distance.w); // normalize distance to range [0,1] for 16bpc unorm texture precision usage
+		current_direction_distance.w = d = normalize_distance(current_direction_distance.w); // normalize distance to range [0,1] for 16bpc unorm texture precision usage
 
 		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), current_direction_distance);
 	}
@@ -527,16 +528,7 @@ void main()
 			// Input sample of blended area, see : 
 			// https://www.shadertoy.com/view/fdjXDD
 
-			// d0 is currently normalized to range [0.0f ... 1.0f]
-			//vec3 current_light_color = sampleC(pingpongTexture[pc.index_input], current_color, current_location, d0);
-			//const float att = getAttenuation(d0);
-			//current_light_color = current_color * att + current_light_color * att; // light color target is 16bpc float so the intensity increases for light nicely based off distance
-			
-			//current_color = current_color + subgroupQuadSwapHorizontal(current_color);
-			//current_color = current_color + subgroupQuadSwapVertical(current_color);
-			//current_color *= 0.25f;
-
-			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color.rgb, 1.0f));
+			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(mix(original_color, current_color, getAttenuation(d * VOX_SIZE)), 1.0f)); // *do not change* increases accuracy as lights get closer to the current location by an order of magnitude!
 		}
 	}
 

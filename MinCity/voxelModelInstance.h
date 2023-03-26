@@ -232,7 +232,7 @@ namespace Volumetric
 
 	};
 
-
+	// DYNAMIC INSTANCE RENDER
 	__inline bool const XM_CALLCONV voxelModelInstance_Dynamic::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
@@ -261,6 +261,7 @@ namespace Volumetric
 		return(true);
 	}
 
+	// STATIC INSTANCE RENDER
 	__inline bool const XM_CALLCONV voxelModelInstance_Static::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
 		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
 		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,

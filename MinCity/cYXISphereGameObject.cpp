@@ -332,7 +332,7 @@ namespace world
 		XMVECTOR xmPosition(Instance->getLocation());
 		{ // parent translation (which includes all forces that are applied to parent) (rotation is not inherited - these are "gyro" sphere engines)
 			
-			quat_t const qOrient(parentInstance->getPitch().angle(), parentInstance->getYaw().angle(), parentInstance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
+			quat_t const qOrient(parentInstance->getPitch(), parentInstance->getYaw(), parentInstance->getRoll()); // *bugfix - using quaternion on world transform (no gimbal lock)
 
 			XMVECTOR const xmParentLocation(parentInstance->getLocation());
 			XMVECTOR const xmSphere(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));

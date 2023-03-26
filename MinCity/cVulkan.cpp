@@ -63,7 +63,7 @@ inline cVulkan::sVOLUMETRICLIGHTDATA cVulkan::_volData( _rtSharedData._ubo );
 inline cVulkan::sUPSAMPLEDATA cVulkan::_upData[eUpsamplePipeline::_size()];
 
 cVulkan::cVulkan()
-	: _fw{}, _window{ nullptr }, _device{}, _frameTimingAverage{}, _OffscreenCopied{}, _indirectActiveCount{ nullptr, nullptr }
+	: _fw{}, _window{ nullptr }, _device{}, _frameTimingAverage{}, _OffscreenCopied{}
 {
 
 }
@@ -1561,19 +1561,6 @@ void cVulkan::CreateResources()
 	CreatePostAAResources();
 }
 
-constexpr uint32_t const cVulkan::getIndirectActiveCountOffset(uint32_t const vertexBuffer /*eVoxelVertexBuffer*/) const  // Use this in the command buffer draw routines to resolve correct indirect buffer offset, leading to the active count for the corresponding voxel vertex buffer
-{
-	// vertexBuffer is eVoxelVertexBuffer type
-	// which has the correct index for the offset this function returns
-	/*
-		vertexCount
-		instanceCount
-		firstVertex
-		firstInstance
-	*/
-	return(vertexBuffer * 4u * sizeof(uint32_t));
-}
-
 void cVulkan::CreateIndirectActiveCountBuffer() // required critical buffer needed before static command buffer generation.
 {
 	using buf = vk::BufferUsageFlagBits;
@@ -2039,7 +2026,7 @@ NO_INLINE void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out)
 	}
 }
 
-void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s)
+void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s) // does not use the indirect active count buffer for dynamic, static & terrain on purpose - customize offscreen voxel rendering enablement.
 {
 	uint32_t const resource_index(s.resource_index);
 
@@ -2108,6 +2095,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	vk::CommandBufferBeginInfo bi{}; // static cb may persist across multiple frames if no changes in vbo active sizes
 	s.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(s.cb, vkNames::CommandBuffer::STATIC);
 	
+	UpdateIndirectActiveCountBuffer(s.cb, resource_index); // indirect draw active counts are transferred here, they are then used for voxel rendering terrain, static, dynamic where possible and by the clear opacity map operation in the final pass / present.
+
 	// setup opacity map, internal image layout state only needs update here as it's image layout is carried forward from the last present.
 	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eGeneral);
 
@@ -2134,6 +2123,12 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 		vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 	);
 	MinCity::VoxelWorld->AcquireTransferQueueOwnership(resource_index, s.cb);
+
+	_indirectActiveCount[resource_index]->barrier( // required b4 usage //
+		s.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
+		vk::DependencyFlagBits::eByRegion,
+		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eIndirectCommandRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
+	);
 
 	constexpr int32_t const ZONLY(-1),
 		                    BASIC(0);
@@ -2208,8 +2203,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // *bugfix for tricky validation error
 		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
-
-	UpdateIndirectActiveCountBuffer(s.cb, resource_index); // indirect draw active counts are transferred here, they are then only used by the clear opacity map operation in the final pass / present.
 
 	// #### HALF RESOLUTION RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiHalf, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
@@ -2384,13 +2377,6 @@ inline void cVulkan::_renderClearCommandBuffer(vku::clear_renderpass&& __restric
 	// Clear pass
 	vk::CommandBufferBeginInfo bi{}; // static present cb only set once at init start-up
 	c.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb, vkNames::CommandBuffer::CLEAR);
-
-	_indirectActiveCount[c.resource_index]->barrier( // required b4 usage //
-		c.cb, vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eDrawIndirect,
-		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eIndirectCommandRead, MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
-	);
-
 	
 	// begin "actual render pass"
 	c.cb.beginRenderPass(c.rpbi, vk::SubpassContents::eInline);	// SUBPASS - present post aa rendering //

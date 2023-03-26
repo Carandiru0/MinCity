@@ -48,15 +48,14 @@ namespace world
 		// inherit  
 		{ // parent translation & rotation
 			
-			quat_t const qOrient(parentInstance->getPitch().angle(), parentInstance->getYaw().angle(), parentInstance->getRoll().angle()); // *bugfix - using quaternion on world transform (no gimbal lock)
+			quat_t const qOrient(parentInstance->getPitch(), parentInstance->getYaw(), parentInstance->getRoll()); // *bugfix - using quaternion on world transform (no gimbal lock)
 
 			XMVECTOR const xmParentLocation(parentInstance->getLocation());
 			XMVECTOR xmLocation(XMVectorAdd(xmParentLocation, XMVectorScale(XMLoadFloat3A(&_offset), Iso::MINI_VOX_STEP)));
 
 			xmLocation = v3_rotate(xmLocation, xmParentLocation, qOrient);
 
-			Instance->setLocation(xmLocation);
-			Instance->setPitchYawRoll(parentInstance->getPitch() + _vPitch, parentInstance->getYaw() + _vYaw, parentInstance->getRoll() + _vRoll);
+			Instance->setTransform(xmLocation, parentInstance->getPitch() + _vPitch, parentInstance->getYaw() + _vYaw, parentInstance->getRoll() + _vRoll);
 		}
 	}
 

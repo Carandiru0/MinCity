@@ -269,7 +269,19 @@ public:
 	}
 
 private:
-	constexpr uint32_t const getIndirectActiveCountOffset(uint32_t const vertexBuffer /*eVoxelVertexBuffer*/) const;
+	static constexpr uint32_t const getIndirectActiveCountOffset(uint32_t const vertexBuffer /*eVoxelVertexBuffer*/)
+	{
+		// vertexBuffer is eVoxelVertexBuffer type
+		// which has the correct index for the offset this function returns
+		/*
+			vertexCount
+			instanceCount
+			firstVertex
+			firstInstance
+		*/
+		return(vertexBuffer * 4u * sizeof(uint32_t));
+	}
+
 	void CreateIndirectActiveCountBuffer();
 	void UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t const resource_index);
 
@@ -339,8 +351,8 @@ private:
 	vku::Framework					_fw;
 	vku::Window* 					_window;
 
-	vku::double_buffer<vku::IndirectBuffer* __restrict> _indirectActiveCount;
-	vku::double_buffer<vku::GenericBuffer>				_activeCountBuffer;
+	constinit static inline vku::double_buffer<vku::IndirectBuffer* __restrict>   _indirectActiveCount{};
+	constinit static inline vku::double_buffer<vku::GenericBuffer>				  _activeCountBuffer{};
 
 	vku::GenericBuffer				_mouseBuffer[2];
 
@@ -937,7 +949,7 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.draw(ActiveVertexCount, 1, 0, 0);
+		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_STATIC), 1, 0);
 	}
 }
 
@@ -954,7 +966,7 @@ STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.draw(ActiveVertexCount, 1, 0, 0);
+		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_TERRAIN), 1, 0);
 	}
 }
 
