@@ -29,6 +29,7 @@
 #include "eDirection.h"
 
 #include "cExplosionGameObject.h"
+#include "cCharacterGameObject.h"
 
 #include <queue>
 #include <tracy.h>
@@ -59,7 +60,7 @@ namespace // private to this file (anonymous)
 		static constexpr fp_seconds const TRANSITION_TIME = fp_seconds(milliseconds(32));
 
 		interpolated<XMFLOAT3A> Origin;  // always stored swizzled to x,z coordinates
-		XMFLOAT3A voxelFractionalGridOffset; // always stored negated and swizzled to x,z coordinates
+		XMFLOAT3A voxelFractionalGridOffset; // always stored swizzled to x,z coordinates
 
 		point2D_t
 			voxelIndex_TopLeft,
@@ -552,9 +553,9 @@ void cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& _
 	oCamera.voxelIndex_Center = p2D_wrap_pow2(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	// Convert Fractional component from GridSpace
-	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin3D)));  // FOR TRUE SMOOTH SCROLLING //
+	XMVECTOR const xmFract(SFM::sfract(xmOrigin3D));  // FOR TRUE SMOOTH SCROLLING //
 	/* important output */
-	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, xmFract); // store fractional offset always negated in natural xyz form, keeping fractional y component for future usage.
+	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, xmFract); // store fractional offset in natural xyz form, keeping fractional y component for future usage.
 	oCamera.voxelFractionalGridOffset.y = 0.0f;
 	/* important output */                                                                                                                                    // *bugfix - important to zero the y component, otherwise the "staircase effect" in motion for elevation occurs.
 	                                                                                                                                                          // otherwise the component gets added incorrectly *twice* for the *actual* camera origin.
@@ -1809,13 +1810,11 @@ namespace // private to this file (anonymous)
 		static inline VoxelThreadBatch batchedGround;
 
 
-		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, // voxelIndex is already transformed local
+		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, // voxelIndex is already transformed local
 			Iso::Voxel const& __restrict oVoxel,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
 			VoxelLocalBatch& __restrict localGround)
 		{
-			//xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
-
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 			
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
@@ -1874,12 +1873,10 @@ namespace // private to this file (anonymous)
 			if (FoundModelInstance) {
 
 				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
-				XMVECTOR const xmOffset(XMVectorSubtract(xmPreciseOrigin, xmVoxelOrigin));
-
+				XMVECTOR const xmOffset(XMVectorSubtract(XMVectorSetY(xmPreciseOrigin, 0.0f), xmVoxelOrigin));
+				// this all allows fractional movement for models (smooth) *do not change*
 				xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
-				xmPreciseOrigin = XMVectorSetY(xmPreciseOrigin, -FoundModelInstance->getElevation()); // *bugfix - yaxis (elevation) is now correctly included with fractional component
-
-				//xmPreciseOrigin = XMVectorAdd(xmPreciseOrigin, XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)); /* required here * don't fuck with the fractional offset */
+				xmPreciseOrigin = XMVectorSelect(xmPreciseOrigin, XMVectorNegate(xmPreciseOrigin), XMVectorSelectControl(0, 1, 0, 0)); // negate y-axis starts here
 
 				bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP));
 				// lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
@@ -2003,7 +2000,7 @@ namespace // private to this file (anonymous)
 							// calculate origin from relative row,col
 							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. don't fuck with the fractional offset, it's not required here
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)))); // make relative to render start position
-
+							
 							// test ground voxel visiible at ground height
 							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped)), ground_voxel_radius));
 
@@ -2330,7 +2327,7 @@ namespace world
 		// [[deprecated]] texture shaders:
 		//createTextureShader(eTextureShader::WIND_FBM, supernoise::blue.getTexture2D(), true, point2D_t(256, 256), vk::Format::eR16Unorm); // texture shader uses single channel, single slice of bluenoise.
 		//createTextureShader(eTextureShader::WIND_DIRECTION, _textureShader[eTextureShader::WIND_FBM].output, true, point2D_t(256, 256), vk::Format::eR16G16B16A16Unorm); // will use same dimensions as input, which is the output defined previously.
-		
+
 #ifndef NDEBUG
 #ifdef DEBUG_EXPORT_BLACKBODY_KTX
 		ImagingSaveToKTX(blackbodyImage, DEBUG_DIR "blackbody_test.ktx");
@@ -2649,6 +2646,10 @@ namespace world
 	{
 		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
+
+		placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+
 
 #ifdef GIF_MODE
 
@@ -3766,9 +3767,11 @@ namespace world
 		// view matrix derived from eyePos
 		XMVECTOR xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
 
-		// In the ening these must be w/o fractional offset - no jitter on lighting and everything else that uses these uniform variables (normal usage via uniform buffer in shader)
-		XMVECTOR const xmFract(XMVectorNegate(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)));
-		xmEyePos = XMVectorAdd(xmEyePos, xmFract);
+		////////////////////////////////////////////////////////////////////////////////////////////////////////// Fractional Offset (ONLY Location)
+		XMVECTOR xmFract(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
+		xmFract = XMVectorSubtract(xmFract, XMVectorSet(0.0f, Iso::WORLD_MAX_HEIGHT * Iso::VOX_SIZE * 0.5f, 0.0f, 0.0f));
+		xmEyePos = XMVectorAdd(xmEyePos, xmFract);  // this all allows fractional movement of the camera *do not change*
+		//////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 		_currentState.Uniform.eyePos = xmEyePos;
 		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, xmFract)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
@@ -3800,8 +3803,7 @@ namespace world
 		// "XMMatrixInverse" found to be imprecise for acquiring vector components (forward, direction)
 		// using original values instead (-----precise))
 		_targetState.Uniform.eyePos = v3_rotate_yaw(Iso::xmEyePt_Iso, oCamera.Yaw);
-			                                       // *bugfix - this is the fractional_offset add location, it is also rotated by the current orientation of the eye direction (Yaw) - don't fuck with the fractional offset, it *is* required here.
-												   // this does trickle into the view matrix as it's eyePosition, solving the offset problem everywhere. Furthermore there is subsampling on the uniform eyePosition value
+
 		_targetState.zoom = oCamera.ZoomFactor;
 		
 		// move state to last target
@@ -4078,7 +4080,6 @@ namespace world
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
 		constants.emplace_back(vku::SpecializationConstant(1, (float)voxelStep)); // VS is dependent on type of voxel for geometry step
-		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 
 		XMFLOAT3A transformBias, transformInv;
@@ -4109,13 +4110,14 @@ namespace world
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
 		constants.emplace_back(vku::SpecializationConstant(1, (float)voxelStep)); // VS is dependent on type of voxel for geometry step
+		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
 		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP); // should be voxsize & voxstep
 
-		constants.emplace_back(vku::SpecializationConstant(2, (int)MINIVOXEL_FACTOR));
-		constants.emplace_back(vku::SpecializationConstant(3, (float)Iso::TERRAIN_MAX_HEIGHT));
+		constants.emplace_back(vku::SpecializationConstant(3, (int)MINIVOXEL_FACTOR));
+		constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)

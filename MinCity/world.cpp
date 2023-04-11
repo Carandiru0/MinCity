@@ -13,6 +13,8 @@
 #include "cExplosionGameObject.h"
 #include "cHeliumGasGameObject.h"
 
+#include "cCharacterGameObject.h"
+
 #include "cImportGameObject.h"
 //#include "cRemoteUpdateGameObject.h"
 #include "cBuildingGameObject.h"
@@ -57,6 +59,14 @@ namespace world
 
 		void update_game_objects(tTime const& __restrict tNow, fp_seconds const& __restrict tDelta)
 		{
+			{
+				auto it = cCharacterGameObject::begin();
+				while (cCharacterGameObject::end() != it) {
+
+					it->OnUpdate(tNow, tDelta);
+					++it;
+				}
+			}
 			{
 				auto it = cYXIGameObject::begin();
 				while (cYXIGameObject::end() != it) {

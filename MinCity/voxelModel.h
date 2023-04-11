@@ -195,6 +195,13 @@ namespace voxB
 		inline float const				  getRoughness() const { return(float(Roughness) / 15.0f); }  // roughness returned in the range [0.0f ... 1.0f] **effectively only 4 values are ever returned or used
 		inline void						  setRoughness(float const roughness) { Roughness = SFM::floor_to_u32(SFM::saturate(roughness) * 15.0f + 0.5f); } // accepts value in the [0.0f ... 1.0f]
 		
+		inline bool const				  isEmissive() const { return(Emissive); }
+		inline void					      setEmissive(bool const emissive) { Emissive = emissive; }
+
+		inline bool const				  isTransparent() const { return(Transparent); }
+		inline void					      setTransparent(bool const transparent) { Transparent = transparent; }
+
+
 		inline voxelNormal const		  getNormal() const { return(voxelNormal(getAdjacency())); }
 
 		__inline __declspec(noalias) bool const operator<(voxelDescPacked const& rhs) const
@@ -279,9 +286,9 @@ namespace voxB
 	typedef struct voxelModelFeatures
 	{
 		static constexpr uint8_t const
-			RESERVED_0 = (1 << 0),
-			RESERVED_1 = (1 << 1),
-			SEQUENCE = (1 << 2),
+			RESERVED_0  = (1 << 0),
+			RESERVED_1  = (1 << 1),
+			SEQUENCE    = (1 << 2),
 			VIDEOSCREEN = (1 << 3);
 
 		voxelScreen const*		videoscreen = nullptr;
@@ -397,7 +404,7 @@ namespace voxB
 		
 	read_only inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 0.5f, 0.5f, 0.5f };
 	STATIC_INLINE_PURE XMVECTOR XM_CALLCONV getMiniVoxelGridIndex(FXMVECTOR maxDimensions, FXMVECTOR maxDimensionsInv,
-		FXMVECTOR xmVoxelRelativeModelPosition)
+		                                                          FXMVECTOR xmVoxelRelativeModelPosition)
 	{
 		// Use relative coordinates in signed fashion so origin is forced to middle of model
 
@@ -646,8 +653,8 @@ namespace voxB
 		[[maybe_unused]] tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutDynamic;
 		tbb::atomic<VertexDecl::VoxelDynamic*> pVoxelsOutTrans;
 
-		uint32_t const vxl_count(instance.getVoxelCount());
-		uint32_t const vxl_transparent_count(instance.getVoxelTransparentCount());
+		uint32_t const vxl_count(instance.getCount());
+		uint32_t const vxl_transparent_count(instance.getTransparentCount());
 
 		if constexpr (!Faded) {
 			if constexpr (Dynamic) {
@@ -674,7 +681,7 @@ namespace voxB
 		)(tbb::blocked_range<uint32_t>(0, numTraverse));
 		*/
 
-		uint32_t const vxl_offset(instance.getVoxelOffset());
+		uint32_t const vxl_offset(instance.getOffset());
 		
 		tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 		tbb::parallel_for(tbb::blocked_range<uint32_t>(vxl_offset, vxl_offset + vxl_count, eThreadBatchGrainSize::MODEL),

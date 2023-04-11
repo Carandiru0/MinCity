@@ -178,7 +178,7 @@ namespace world
 			_animation.setRepeatFrameIndex(20);
 		}
 
-		Instance->setVoxelTransparentCount(Instance->getVoxelCount()); // all transparent
+		Instance->setTransparentCount(Instance->getCount()); // all transparent
 
 		//setYaw(getYaw() + time_to_float(tDelta) * 10.0f);
 	}

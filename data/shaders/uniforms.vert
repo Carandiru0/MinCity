@@ -41,6 +41,7 @@ layout(location = 1) in vec4 inUV;
 
 layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 layout (constant_id = 1) const float VOX_STEP = 0.0f;
+layout (constant_id = 2) const float VolumeDimensions = 0.0f;
 
 #ifdef ZONLY
 // Depth Only //
@@ -50,8 +51,6 @@ layout (constant_id = 1) const float VOX_STEP = 0.0f;
 #if defined(BASIC)
 
 layout (binding = 1, r8) writeonly restrict uniform image3D opacityMap;
-
-layout (constant_id = 2) const float VolumeDimensions = 0.0f;
 
 // corresponding to volume dimensions
 const vec3 TransformToIndexScale = vec3(2.0f, -2.0f, 2.0f);
@@ -70,7 +69,7 @@ layout (constant_id = 8) const float InvToIndex_Z = 0.0f;
 #if defined(HEIGHT) // terrain
 writeonly layout(location = 0) out streamOut
 {
-	flat vec3	right, forward, up;
+	flat vec3	right, up, forward;
 	flat uint   adjacency;
 #ifdef ZONLY
     flat float  terrain_min;
@@ -86,7 +85,7 @@ writeonly layout(location = 0) out streamOut
 #else  // voxels only
 writeonly layout(location = 0) out streamOut
 {
-	flat vec3	right, forward, up;
+	flat vec3	right, up, forward;
 	flat uint	adjacency;
 #ifndef ZONLY
 #ifdef BASIC
@@ -107,8 +106,8 @@ writeonly layout(location = 0) out streamOut
 layout (constant_id = 9) const int MINIVOXEL_FACTOR = 0;
 layout (constant_id = 10) const float TERRAIN_MAX_HEIGHT = 0;
 #else
-layout (constant_id = 2) const int MINIVOXEL_FACTOR = 0;
-layout (constant_id = 3) const float TERRAIN_MAX_HEIGHT = 0;
+layout (constant_id = 3) const int MINIVOXEL_FACTOR = 0;
+layout (constant_id = 4) const float TERRAIN_MAX_HEIGHT = 0;
 #endif
 
 #define SHIFT_EMISSION 6U
@@ -174,8 +173,8 @@ void main() {
 	Out.up = cross(forward, right) * size;
 	
 #elif !defined(HEIGHT) // STATIC
+    Out.right   = vec3(size, 0.0f, 0.0f);
 	Out.up      = vec3(0.0f, size, 0.0f);
-	Out.right   = vec3(size, 0.0f, 0.0f);
 	Out.forward	= vec3(0.0f, 0.0f, size);
 
 #endif

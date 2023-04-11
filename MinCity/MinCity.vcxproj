@@ -82,7 +82,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
+    <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Common-Libraries\gltf\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
     <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;C:\tracy-master\public;$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
@@ -94,7 +94,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <IncludePath>X:\tbb\include;X:\mimalloc\include;X:\boost_1_81_0;C:\tracy-master\public;$(TBBIncludeDir);$(IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
+    <LibraryPath>X:\tbb\build\vs2019\x64\Release-MT;X:\Vulkan\glfw\lib;X:\fmt\x64\Release;X:\FMOD\api\core\lib\x64;C:\Documents\Visual Studio 2017\Projects\Imaging\x64\Release;C:\Common-Libraries\gltf\x64\Release;C:\Documents\Visual Studio 2017\Projects;X:\density-master\msvc\bin\Release;X:\openvdb\build\openvdb\openvdb\Release;$(LibraryPath)</LibraryPath>
     <ExcludePath>$(VC_IncludePath);$(VC_ExecutablePath_x64);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(FxCopDir);$(MSBuild_ExecutablePath);$(VC_LibraryPath_x64);$(SystemRoot)</ExcludePath>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\..\..\</OutDir>
     <CustomBuildAfterTargets>Build</CustomBuildAfterTargets>
@@ -149,7 +149,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib</AdditionalDependencies>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;gltf.lib;openvdb.lib</AdditionalDependencies>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
       <OptimizeReferences>false</OptimizeReferences>
       <IgnoreSpecificDefaultLibraries>
@@ -241,7 +241,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;openvdb.lib</AdditionalDependencies>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;msvcrt.lib;msvcprt.lib;onecore.lib;loosefpmath.obj;noarg.obj;nothrownew.obj;threadlocale.obj;Kernel32.lib;tbb.lib;tbbmalloc.lib;glfw3.lib;Imaging.lib;fmod_vc.lib;density.lib;fmt.lib;gltf.lib;openvdb.lib</AdditionalDependencies>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
       <Profile>false</Profile>
@@ -289,6 +289,7 @@
     <ClInclude Include="cBeaconGameObject.h" />
     <ClInclude Include="cBlueNoise.h" />
     <ClInclude Include="cBuildingGameObject.h" />
+    <ClInclude Include="cCharacterGameObject.h" />
     <ClInclude Include="cCity.h" />
     <ClInclude Include="cExplosionGameObject.h" />
     <ClInclude Include="cHeliumGasGameObject.h" />
@@ -386,6 +387,7 @@
     <ClCompile Include="cBeaconGameObject.cpp" />
     <ClCompile Include="cBlueNoise.cpp" />
     <ClCompile Include="cBuildingGameObject.cpp" />
+    <ClCompile Include="cCharacterGameObject.cpp" />
     <ClCompile Include="cCity.cpp" />
     <ClCompile Include="cExplosionGameObject.cpp" />
     <ClCompile Include="cHeliumGasGameObject.cpp" />

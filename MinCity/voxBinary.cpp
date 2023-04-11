@@ -7,10 +7,10 @@ This work is licensed under the Creative Commons Attribution-NonCommercial-Share
 To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
-The VOX File format is Copyright to their respectful owners.
+The VOX, VDB, GLTF File format is Copyright to their respectful owners.
 
  */
-
+ 
 #include "pch.h"
 #include "globals.h"
 #include "MinCity.h"
@@ -22,11 +22,10 @@ The VOX File format is Copyright to their respectful owners.
 #include "voxelAlloc.h"
 #include "eVoxelModels.h"
 #include <Utility/mio/mmap.hpp>
-
 #include <filesystem>
 #include <stdio.h> // C File I/O is 10x faster than C++ file stream I/O
-
 #include <Utility/stringconv.h>
+#include <gltf/gltf.h>
 
 #pragma intrinsic(memset)
 
@@ -172,75 +171,7 @@ STATIC_INLINE bool const CompareTag( uint32_t const TagSz, uint8_t const * __res
 	return(true);
 }
 
-// [deprecated] simple (slow) linear search
-// ** replaced w/ fast parallel adjacency search, old code left as reference below
-//static bool const BuildAdjacency( uint32_t numVoxels, VoxelData const& __restrict source, VoxelData const* __restrict pVoxels, 
-//								  uint8_t& __restrict Adjacency)
-//{
-//	static constexpr uint32_t const uiMaxOcclusion( 9 + 8 ); // 9 above, 8 sides
-//	
-//	uint8_t pendingAdjacency(0);
-//	Adjacency = 0;
-//	
-//	uint32_t uiOcclusion(uiMaxOcclusion - 1);
-//
-//	// only remove voxels that are completely surrounded above and too the sides (don't care about below)
-//	do
-//	{
-//		VoxelData const Compare( *pVoxels++ );
-//		
-//		int32_t const HeightDelta = ((int32_t)Compare.z - (int32_t)source.z);
-//		
-//		if ( (0 == HeightDelta) | (1 == HeightDelta) ) { // same height or 1 unit above only
-//			
-//			int32_t const SXDelta = (int32_t)Compare.x - (int32_t)source.x,
-//						  SYDelta = (int32_t)Compare.y - (int32_t)source.y;
-//			int32_t const XDelta = SFM::abs(SXDelta),
-//						  YDelta = SFM::abs(SYDelta);
-//			
-//			if ( (XDelta | YDelta) <= 1 ) // within 1 unit or same on x,y axis'	
-//			{
-//				if ( 0 == (HeightDelta | XDelta | YDelta) ) // same voxel ?
-//					continue;
-//				
-//					if ( 0 != HeightDelta ) { // 1 unit above...
-//						
-//						if ( 0 == (XDelta | YDelta) ) { // same x,y
-//							pendingAdjacency |= BIT_ADJ_ABOVE;
-//						}
-//					}
-//					
-//					if ( 0 != YDelta ) {
-//						if ( 0 == (HeightDelta | XDelta) ) { // same slice and x axis
-//							if ( SYDelta < 0 ) { // 1 unit infront...
-//								pendingAdjacency |= BIT_ADJ_FRONT; 
-//							}
-//							else /*if ( 1 == SYDelta )*/ { // 1 unit behind...
-//								pendingAdjacency |= BIT_ADJ_BACK; 
-//							}
-//						}
-//					}
-//					
-//					if ( 0 != XDelta ) {
-//						if ( 0 == (HeightDelta | YDelta) ) { // same slice and y axis
-//							if ( SXDelta < 0 ) { // 1 unit left...
-//								pendingAdjacency |= BIT_ADJ_LEFT; 
-//							}
-//							else /*if ( 1 == SXDelta )*/ { // 1 unit right...
-//								pendingAdjacency |= BIT_ADJ_RIGHT; 
-//							}
-//						}
-//					}
-//					--uiOcclusion; // Fully remove
-//			}
-//		}
-//			
-//	} while ( 0 != --numVoxels && 0 != uiOcclusion);
-//	
-//	Adjacency = pendingAdjacency;	// face culling used for voxels that are not removed
-//
-//	return(0 != uiOcclusion);
-//}
+////// VOX /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // builds the voxel model, loading from magicavoxel .vox format, returning the model with the voxel traversal
 // supporting 256x256x256 size voxel model.
@@ -431,29 +362,13 @@ static bool const LoadVOX(voxelModelBase* const __restrict pDestMem, uint8_t con
 	}
 			
 	// Actual dimensiuons of model saved, bugfix for "empty space around true model extents"
-	uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(maxi.v, mini.v)));  // bugfix: minimum 1 voxel dimension size on any axis
+	uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(_mm_sub_epi32(maxi.v, mini.v), _mm_set1_epi32(1))));  // here the dimensions size is made index based rather than count based then: bugfix: minimum 1 voxel dimension size on any axis
 
 	// reset for dimensions from model (stacked) .vox file size chunk
-	maxi = uvec4_v(0);
-	maxi.v = SFM::max(maxi.v, uvec4_v(sizeChunk.Width, sizeChunk.Height, sizeChunk.Depth).v);
+	maxi.v = uvec4_v(sizeChunk.Width, sizeChunk.Height, sizeChunk.Depth).v;
 	
 	uvec4_v const xmVOXDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(maxi.v, _mm_set1_epi32(1))));  // here the file dimensions size is made index based rather than count based then: 
-																											// bugfix: minimum 1 voxel dimension size on any axis
-#ifdef VOX_DEBUG_ENABLED
-	uvec4_t dimensions, vox_dimensions;
-	xmDimensions.xyzw(dimensions);
-	xmVOXDimensions.xyzw(vox_dimensions);
-		
-	if (dimensions.x != vox_dimensions.x ||
-		dimensions.y != vox_dimensions.y ||
-		dimensions.z != vox_dimensions.z) {
-
-		FMT_LOG_WARN(VOX_LOG, "dimension mismatch calculated({:d}, {:d}, {:d}) != file({:d}, {:d}, {:d})",
-			dimensions.x, dimensions.y, dimensions.z,
-			vox_dimensions.x, vox_dimensions.y, vox_dimensions.z);
-
-	}
-#endif
+																										// bugfix: minimum 1 voxel dimension size on any axis
 	// take maximum of calculated and file dimensions
 	xmDimensions.v = SFM::max(xmDimensions.v, xmVOXDimensions.v);
 
@@ -489,7 +404,7 @@ typedef struct voxelModelDescHeader
 	uint32_t numVoxelsEmissive, 
 		     numVoxelsTransparent;
 
-	uint8_t	features;
+	uint8_t	 features;
 
 	// last
 	uint32_t reserved = 0;
@@ -502,7 +417,8 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 {
 	// accurate counts - now only the culled set of voxels.
 	struct voxelCount {
-		uint32_t const numVoxels,
+		uint32_t const 
+			numVoxels,
 			numVoxelsEmissive,
 			numVoxelsTransparent;
 
@@ -632,7 +548,8 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 			++numVoxels; // will have the culled count afterwards
 		}
 
-		tbb::parallel_sort(pVoxels, pVoxel);
+		// Sort the voxels by y "slices", then z "rows", then x "columns"
+		tbb::parallel_sort(pVoxels, pVoxel); 
 
 		return( voxelCount{ numVoxels, numVoxelsEmissive, numVoxelsTransparent } ); // returns structured binding
 	}
@@ -776,15 +693,11 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 {
 	std::error_code error{};
 
-	// original .vox model required regardless of whether the cached version exists. (supports modifications)
+	// original .vox model not required if the cached version exists. (supports modifications)
 	
 	std::wstring szOrigPathFilename(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1)); // isolate path to just the folder
 	szOrigPathFilename += path.stem();
 	szOrigPathFilename += VOX_FILE_EXT;
-
-	if (!fs::exists(szOrigPathFilename)) {
-		return(0);
-	}
 
 	// determine if cached version exists
 	std::wstring szCachedPathFilename(VOX_CACHE_DIR);
@@ -794,7 +707,7 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 	if (fs::exists(szCachedPathFilename)) {
 		// if .VOX file is not newer than cached .v1x file 
 		auto const cachedmodifytime = fs::last_write_time(szCachedPathFilename);
-		auto const voxmodifytime = fs::last_write_time(szOrigPathFilename);
+		auto const voxmodifytime = fs::exists(szOrigPathFilename) ? fs::last_write_time(szOrigPathFilename) : fs::file_time_type{};
 
 		if (cachedmodifytime > voxmodifytime) {
 			if (LoadV1XCachedFile(szCachedPathFilename, pDestMem)) {
@@ -809,6 +722,10 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 			FMT_LOG(VOX_LOG, " newer .VOX found, reverting to reload .VOX ....", stringconv::ws2s(szCachedPathFilename));
 
 		// otherwise fallthrough and reload vox file
+	}
+
+	if (!fs::exists(szOrigPathFilename)) {
+		return(0);
 	}
 
 	mio::mmap_source mmap(mio::make_mmap_source(szOrigPathFilename, FILE_FLAG_SEQUENTIAL_SCAN | FILE_ATTRIBUTE_NORMAL, error));
@@ -841,18 +758,35 @@ int const LoadVOX(std::filesystem::path const path, voxelModelBase* const __rest
 	return(0); // fail
 }
 
+////////// VDB ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 typedef struct vdbFrameData
 {
 	static constexpr uint32_t const MAX_CHANNELS = 3;
-	
+
+	using GridType = openvdb::FloatGrid;
+	using TreeType = typename GridType::TreeType;
+
+	struct _vdb {
+		std::ifstream					file;
+		openvdb::io::Stream	const		stream;
+		openvdb::GridPtrVecPtr const	grids;
+
+		_vdb(std::string_view const path) 
+			: file(std::string(path), std::ios_base::in | std::ios_base::binary),
+			  stream(file, false), // *bugfix - parameter false, disables "delayed" loading of voxel data. If delayed-loading is on, the performance tanks! speedup++
+			  grids(stream.getGrids())
+		{
+			file.close(); // at this point the file stream is released
+		}
+	} const * vdb;
+
 	uint32_t				order;
-	std::string				path;
-	
 	uint32_t				max_voxel_count[MAX_CHANNELS];
 	
 	vdbFrameData(std::string_view const path_, uint32_t const index_)
-		: order(index_), path(path_), max_voxel_count{}
-	{}
+		: order(index_), vdb(new _vdb(path_)), max_voxel_count{}
+	{
+	}
 	
 	vdbFrameData(vdbFrameData&&) = default;
 	vdbFrameData& operator=(vdbFrameData&&) = default;
@@ -860,6 +794,14 @@ typedef struct vdbFrameData
 	bool const operator<(vdbFrameData const& rhs) const
 	{
 		return(order < rhs.order);
+	}
+
+	~vdbFrameData()
+	{
+		if (vdb) {
+			delete vdb;
+			vdb = nullptr;
+		}
 	}
 private:
 	vdbFrameData(vdbFrameData const&) = delete;
@@ -873,11 +815,8 @@ static void PrepareVDBFrame(vdbFrameData& __restrict frame_data, float(&__restri
 	using GridType = openvdb::FloatGrid;
 	using TreeType = typename GridType::TreeType;
 	
-	std::ifstream					file(frame_data.path, std::ios_base::in | std::ios_base::binary);
-	openvdb::io::Stream	const		stream(file, false); // *bugfix - parameter false, disables "delayed" loading of voxel data. If delayed-loading is on, the performance tanks! speedup++
-	openvdb::GridPtrVecPtr const	grids(stream.getGrids());
-	
-	file.close();
+	openvdb::io::Stream	const&		stream(frame_data.vdb->stream);
+	openvdb::GridPtrVecPtr const&	grids(frame_data.vdb->grids);
 	
 	uint32_t max_count[vdbFrameData::MAX_CHANNELS]{};
 	
@@ -901,6 +840,7 @@ static void PrepareVDBFrame(vdbFrameData& __restrict frame_data, float(&__restri
 		}
 	}
 	
+	// up to MAX_CHANNELS
 	memcpy(frame_data.max_voxel_count, max_count, sizeof(max_count));
 }
 
@@ -931,11 +871,9 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 			// speedup ++ reserve maximum count of voxels possible
 			allVoxels.reserve(frame_data.max_voxel_count[0] + frame_data.max_voxel_count[1] + frame_data.max_voxel_count[2]);
 
-			std::ifstream					file(frame_data.path, std::ios_base::in | std::ios_base::binary);
-			openvdb::io::Stream	const		stream(file, false); // *bugfix - parameter false, disables "delayed" loading of voxel data. If delayed-loading is on, the performance tanks! speedup++
-			openvdb::GridPtrVecPtr const	grids(stream.getGrids());
-			
-			file.close();
+			// reference the already loaded vdb stream & grid
+			openvdb::io::Stream	const&     stream(frame_data.vdb->stream);
+			openvdb::GridPtrVecPtr const&  grids(frame_data.vdb->grids);
 			
 			uint32_t active_channel_offset(0);
 			
@@ -1000,6 +938,9 @@ static void LoadVDBFrame(vdbFrameData const& __restrict frame_data, voxelModelBa
 				model_volume::destroy(bits);
 				bits = nullptr;
 			}
+
+			// cleanup, vdb (file, stream & grid) can now be released 
+			delete frame_data.vdb; const_cast<vdbFrameData&>(frame_data).vdb = nullptr; // safe but neccessary const_cast to null the pointer!
 		}
 
 		if (numVoxels) { // check
@@ -1080,7 +1021,7 @@ static bool const SaveV1XACachedFile(std::wstring_view const path, voxelModelBas
 				}
 				
 				// write channel names
-				uint32_t numChannels(sequence->numChannels());
+				uint32_t const numChannels(sequence->numChannels());
 				_fwrite_nolock(&numChannels, sizeof(numChannels), 1, stream);
 				
 				for (uint32_t channel = 0; channel < numChannels; ++channel) {
@@ -1201,7 +1142,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 							}
 
 							// read channel names
-							static constexpr uint32_t const MAX_BUFFER_SZ = 64;
+							static constexpr uint32_t const MAX_BUFFER_SZ = 256;
 							char szBuffer[MAX_BUFFER_SZ]{};
 							uint32_t numChannels(0);
 
@@ -1209,7 +1150,7 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 							pReadPointer += sizeof(numChannels);
 
 							// validate 
-							if (numChannels <= voxelSequence::MAX_CHANNELS) {
+							if (numChannels <= 256) { // sanity check, there should be far less typically
 								
 								for (uint32_t channel = 0; channel < numChannels; ++channel) {
 
@@ -1220,6 +1161,8 @@ bool const LoadV1XACachedFile(std::wstring_view const path, voxelModelBase* cons
 									if (channel_name_length < MAX_BUFFER_SZ) { // validate
 										ReadData((void* const __restrict) & szBuffer, pReadPointer, sizeof(char) * channel_name_length);
 										pReadPointer += sizeof(char) * channel_name_length;
+										// ensure null terminated
+										szBuffer[channel_name_length] = 0;
 									}
 									else {
 										FMT_LOG_FAIL(VOX_LOG, "not a valid vox sequence cache file: {:s}", stringconv::ws2s(path));
@@ -1316,7 +1259,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	if (fs::exists(szCachedPathFilename)) {
 		// if .VDB file is not newer than cached .v1xa file 
 		auto const cachedmodifytime = fs::last_write_time(szCachedPathFilename);
-		auto const vdbmodifytime = fs::last_write_time(path.wstring());
+		auto const vdbmodifytime = fs::exists(path) ? fs::last_write_time(path) : fs::file_time_type{};
 
 		if (cachedmodifytime > vdbmodifytime) {
 			if (LoadV1XACachedFile(szCachedPathFilename, pDestMem)) {
@@ -1390,7 +1333,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 		  option::ForegroundColor{Color::yellow},
 		  option::ShowElapsedTime{true},
 		  option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
-		  option::MaxProgress{sequence_filenames.size()}
+		  option::MaxProgress{sequence_filenames.size() + 1}
 		};
 #endif
 
@@ -1404,7 +1347,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 				  max_value[vdbFrameData::MAX_CHANNELS];
 
 			minmax_value()
-				: min_value{ 9999999.9f,  9999999.9f,  9999999.9f }, max_value{ -9999999.9f, -9999999.9f, -9999999.9f }
+				: min_value{ 9999999.999999f,  9999999.999999f,  9999999.999999f }, max_value{ -9999999.999999f, -9999999.999999f, -9999999.999999f }
 			{}
 		} minmax_value;
 
@@ -1473,7 +1416,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	  option::ForegroundColor{Color::yellow},
 	  option::ShowElapsedTime{true},
 	  option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
-	  option::MaxProgress{ordered_frame_data.size()}
+	  option::MaxProgress{ordered_frame_data.size() + 1}
 	};
 #endif
 
@@ -1509,12 +1452,7 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	// final maximum dimensions calculation - always equals the maximum extents of the frame with the largest extents.
 	
 	// Actual dimensiuons of model saved, bugfix for "empty space around true model extents"
-	uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(maxi.v, mini.v)));  // bugfix: minimum 1 voxel dimension size on any axis
-
-	uvec4_v const xmVOXDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(maxi.v, _mm_set1_epi32(1))));  // here the file dimensions size is made index based rather than count based then: 
-																											// bugfix: minimum 1 voxel dimension size on any axis
-	// take maximum of calculated and file dimensions
-	xmDimensions.v = SFM::max(xmDimensions.v, xmVOXDimensions.v);
+	uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(_mm_sub_epi32(maxi.v, mini.v), _mm_set1_epi32(1))));  // here the dimensions size is made index based rather than count based then: bugfix: minimum 1 voxel dimension size on any axis
 
 	// store final dimensions
 	XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(xmDimensions.v4f()));
@@ -1531,6 +1469,621 @@ int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __rest
 	
 	return(-1); // indicating new sequence loaded
 }
+
+/////////// GLTF ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static void reset_animation(gltf& __restrict model)
+{
+	model.mAnimInfo.mAnimatedPose = model.mSkeleton.GetRestPose();
+	model.mAnimInfo.mPosePalette.resize(model.mSkeleton.GetRestPose().Size());
+}
+static void set_animation(gltf& __restrict model, uint32_t const clip_index)
+{
+	model.mAnimInfo.mClip = clip_index;
+	model.mAnimInfo.mPlayback = model.mClips[model.mAnimInfo.mClip].GetStartTime();
+	reset_animation(model);
+}
+static float const update_animation(gltf& __restrict model, float const fTDelta)
+{
+	model.mAnimInfo.mPlayback = model.mClips[model.mAnimInfo.mClip].Sample(model.mAnimInfo.mAnimatedPose, model.mAnimInfo.mPlayback + fTDelta);
+
+	uint32_t const mesh_count((uint32_t)model.mMeshes.size());
+	for (uint32_t i = 0; i < mesh_count; ++i) {
+
+		// perform skinning 
+		model.mMeshes[i].CPUSkin(model.mSkeleton, model.mAnimInfo.mAnimatedPose);
+
+	}
+
+	return(model.mAnimInfo.mPlayback); // return current playback position (range: 0.0f....1.0f)
+}
+
+static void __vectorcall apply_material(Volumetric::voxB::voxelDescPacked& __restrict voxel, XMVECTOR xmUV, Material const& __restrict material, Image const& __restrict image)
+{
+	voxel.setMetallic( voxel.isMetallic() | bool(material.metallic) );
+	voxel.setRoughness( SFM::lerp(voxel.getRoughness(), material.roughness, 0.5f) );
+	voxel.setEmissive( voxel.isEmissive() | material.emission);
+	voxel.setTransparent( voxel.isTransparent() | material.transparent);
+
+	ImagingMemoryInstance const* const mat_texture(image.Get());
+	
+	if (mat_texture) {
+
+		uint32_t const width(mat_texture->xsize), height(mat_texture->ysize);
+
+		xmUV = XMVectorMultiply(xmUV, uvec4_v(width, height, 0, 0).v4f());
+		
+		uvec4_t pixel;
+		SFM::floor_to_u32( XMVectorAdd(xmUV, XMVectorSet(0.5f, 0.5f, 0.0f, 0.0f)) ).xyzw(pixel);
+
+		uint32_t const index(pixel.y * width + pixel.x);
+
+		uvec4_t rgba0, rgba1;
+		SFM::unpack_rgba(voxel.Color, rgba0);
+		SFM::unpack_rgba(((uint32_t const* const)(mat_texture->block))[index], rgba1);
+		if (0 == voxel.Color) {
+			rgba0 = rgba1;
+		}
+
+		SFM::lerp(uvec4_v(rgba0), uvec4_v(rgba1), 0.5f).rgba(rgba1);
+
+		voxel.Color = SFM::pack_rgba(rgba1);
+	}
+}            
+
+template<typename T>
+struct vertex {
+
+	T                          v;
+	[[maybe_unused]] XMVECTOR  uv;
+};
+template<typename T>
+struct triangle { /// triangle
+
+	union {
+
+		struct {
+			vertex<T> v0, v1, v2;
+		};
+		struct {
+			vertex<T> v[3];
+		};
+	};
+
+	triangle()
+		: v0{}, v1{}, v2{}
+	{}
+};
+using tri_v = triangle<XMVECTOR>;		
+using utri_v = triangle<uvec4_v>;
+
+namespace { // anonymous - local to this file only
+
+	typedef struct { // recursion supporting structure, to reduce stack usage as it likes to blow up. indirect access.
+
+		Volumetric::voxB::model_volume* const __restrict bits;
+		vector<Volumetric::voxB::voxelDescPacked>& __restrict allVoxels;
+		vector<uint32_t>& __restrict allIndices;
+		Material const& __restrict material;
+		Image const& __restrict image;
+		__m128i& __restrict mini;
+		__m128i& __restrict maxi;
+
+	} vxl_support;
+
+	constinit static inline vxl_support* _support{ nullptr }; // global local to this file only
+} // end ns
+
+
+static void __vectorcall ToVoxel(uvec4_v const ivPosition, FXMVECTOR const xmUV)
+{
+	uvec4_t curVoxel;
+	SFM::saturate_to_u8(ivPosition, curVoxel); // makes sure that all coordinates are clamped to [0, 255], within the limits for model dimensions.
+	ivPosition.xyzw(curVoxel);
+
+	// only add the voxel if it hasn't already been added
+	size_t const index(model_volume::get_index(curVoxel.x, curVoxel.y, curVoxel.z));
+
+	if (_support->bits->read_bit(index)) {  // existing
+
+		// slices ordered by Y: <---- USING Y
+		// (y * xMax * zMax) + (z * xMax) + x;
+
+		// blend with existing
+		voxB::voxelDescPacked& __restrict voxel(_support->allVoxels[_support->allIndices[index]]);
+
+		apply_material(voxel, xmUV, _support->material, _support->image);
+
+	}
+	else { // new ?
+		_support->bits->set_bit(index);
+
+		// each color channel contains a value from [0, 255] representing a volume temperature, density, etc. voxel color is instead packed data.
+		_support->allIndices[index] = (uint32_t)_support->allVoxels.size(); // potential lookup
+		_support->allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.y, curVoxel.z), 0, 0);
+
+		apply_material(_support->allVoxels.back(), xmUV, _support->material, _support->image);
+
+		// bounding box calculation //
+		__m128i const xmPosition(_support->allVoxels.back().getPosition());
+		_support->mini = SFM::min(_support->mini, xmPosition);
+		_support->maxi = SFM::max(_support->maxi, xmPosition);
+	}
+}
+
+// ported from pascal:
+// https://github.com/jval1972/Voxelizer/
+NO_INLINE static void __vectorcall Voxelize(tri_v const& __restrict tri) // !!!!  *recursive*  !!!!
+{
+	{
+		utri_v itri;
+
+		// convert to integer
+		for (uint32_t i = 0; i < 3; ++i) {
+			itri.v[i].v = uvec4_v(SFM::round(tri.v[i].v));
+		}
+
+		if (uvec4_v::all<3>(itri.v0.v == itri.v1.v) &&
+			uvec4_v::all<3>(itri.v0.v == itri.v2.v)) {
+			// triangle occupies exactly 1 voxel
+			ToVoxel(itri.v0.v, tri.v0.uv);
+			return;
+		}
+
+		if (uvec4_v::all<3>(uvec4_v(SFM::abs(_mm_sub_epi32(itri.v0.v, itri.v1.v))) < uvec4_v(2)) &&  // signed comparison is actually performed (safetly), then abs before returning to unsigned.
+			uvec4_v::all<3>(uvec4_v(SFM::abs(_mm_sub_epi32(itri.v0.v, itri.v2.v))) < uvec4_v(2))) {
+			// triangle occupies neighbour voxel(s)
+			ToVoxel(itri.v0.v, tri.v0.uv);
+			ToVoxel(itri.v1.v, tri.v1.uv);
+			ToVoxel(itri.v2.v, tri.v2.uv);
+			return;
+		}
+	}
+
+	// squared distances
+	float const dist01(XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(tri.v0.v, tri.v1.v))));
+	float const dist12(XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(tri.v1.v, tri.v2.v))));
+	float const dist20(XMVectorGetX(XMVector3LengthSq(XMVectorSubtract(tri.v2.v, tri.v0.v))));
+
+	// find the buggest triangle line and split it
+	uint32_t maxdist_index(0);
+	{
+		float maxdist(dist01);
+
+		if (dist12 > maxdist) {
+
+			maxdist = dist12;
+			maxdist_index = 1;
+		}
+		if (dist20 > maxdist) {
+
+			maxdist = dist20;
+			maxdist_index = 2;
+		}
+	}
+
+	tri_v tri_split;
+	XMVECTOR v;
+	switch (maxdist_index)
+	{
+	case 0: // split line 0...1
+		v = SFM::lerp(tri.v0.v, tri.v1.v, 0.5f); // *
+		tri_split.v0 = tri.v0;
+		tri_split.v1.v = v;
+		tri_split.v2 = tri.v2;
+		v = SFM::lerp(tri.v0.uv, tri.v1.uv, 0.5f);
+		tri_split.v1.uv = v;
+		Voxelize(tri_split); // recursion
+
+		v = SFM::lerp(tri.v0.v, tri.v1.v, 0.5f); // *
+		tri_split.v0 = tri.v2;
+		tri_split.v1.v = v;
+		tri_split.v2 = tri.v1;
+		v = SFM::lerp(tri.v0.uv, tri.v1.uv, 0.5f); 
+		tri_split.v1.uv = v;
+		Voxelize(tri_split); //  ""     ""
+		return;
+	case 1: // split line 1...2
+		v = SFM::lerp(tri.v1.v, tri.v2.v, 0.5f); // *
+		tri_split.v0 = tri.v0;
+		tri_split.v1 = tri.v1;
+		tri_split.v2.v = v;
+		v = SFM::lerp(tri.v1.uv, tri.v2.uv, 0.5f);
+		tri_split.v2.uv = v;
+		Voxelize(tri_split); // recursion
+
+		v = SFM::lerp(tri.v1.v, tri.v2.v, 0.5f); // *
+		tri_split.v0 = tri.v0;
+		tri_split.v1.v = v;
+		tri_split.v2 = tri.v2;
+		v = SFM::lerp(tri.v1.uv, tri.v2.uv, 0.5f);
+		tri_split.v1.uv = v;
+		Voxelize(tri_split); //  ""     ""
+		return;
+	case 2: // split line 2...0
+		v = SFM::lerp(tri.v2.v, tri.v0.v, 0.5f); // *
+		tri_split.v0 = tri.v0;
+		tri_split.v1 = tri.v1;
+		tri_split.v2.v = v;
+		v = SFM::lerp(tri.v2.uv, tri.v0.uv, 0.5f);
+		tri_split.v2.uv = v;
+		Voxelize(tri_split); // recursion
+
+		v = SFM::lerp(tri.v2.v, tri.v0.v, 0.5f); // *
+		tri_split.v0 = tri.v1;
+		tri_split.v1.v = v;
+		tri_split.v2 = tri.v2;
+		v = SFM::lerp(tri.v2.uv, tri.v0.uv, 0.5f);
+		tri_split.v1.uv = v;
+		Voxelize(tri_split); //  ""     ""
+		return;
+	}
+
+}
+
+static void LoadGLTFFrame(gltf& __restrict model,
+	                      voxelModelBase* const __restrict pDestMem, 
+	                      voxelSequence& __restrict sequence, 
+	                      FXMVECTOR xmMin, FXMVECTOR xmMax,
+	                      __m128i& __restrict mini, __m128i& __restrict maxi)
+{
+	static constexpr float const MAX_DIMENSIONS = (float)Volumetric::MODEL_MAX_DIMENSION_XYZ * 0.5f;
+
+	uint32_t frameOffset(0),
+		     numVoxels(0);
+
+	{ // convert gltf model frame to linear array of voxels
+		using model_volume = Volumetric::voxB::model_volume;
+
+		model_volume* __restrict bits(nullptr);
+		bits = model_volume::create();
+
+		vector<Volumetric::voxB::voxelDescPacked> allVoxels;
+		vector<uint32_t> allIndices; // 3d lookup volume (temporary)vector<uint32_t> allIndices; // 3d lookup volume (temporary)
+		{
+			allIndices.reserve(model_volume::width() * model_volume::height() * model_volume::depth());
+			allIndices.resize(model_volume::width() * model_volume::height() * model_volume::depth());
+			memset(&allIndices[0], 0, sizeof(uint32_t) * model_volume::width() * model_volume::height() * model_volume::depth()); // ensure memory is zeroed
+
+			// speedup ++ reserve maximum count of voxels possible
+			size_t frame_vertex_count(0);
+			uint32_t const mesh_count((uint32_t)model.mMeshes.size());
+			for (uint32_t mesh = 0; mesh < mesh_count; ++mesh) {
+
+				auto const& vertices = model.mMeshes[mesh].GetSkinnedPosition();
+
+				frame_vertex_count += vertices.size();
+			}
+			allVoxels.reserve(frame_vertex_count);
+		}
+
+		uint32_t const mesh_count((uint32_t)model.mMeshes.size());
+		for (uint32_t mesh = 0; mesh < mesh_count; ++mesh) {
+			Mesh const& current_mesh(model.mMeshes[mesh]);
+
+			auto const& vertices(current_mesh.GetSkinnedPosition());
+			auto const& indices(current_mesh.GetIndices());
+			auto const& uvs(current_mesh.GetTexCoord());
+			auto const& material_indices(current_mesh.GetMaterialIndices());
+
+			Material const& material(model.mMaterials[material_indices[mesh]]);
+			Image const& image(model.mImages[material.image_index]);
+
+			// indirect support initialization
+			SAFE_DELETE(_support);
+			_support = new vxl_support{ bits, allVoxels, allIndices, material, image, mini, maxi }; // to many parameters for recursion to work properly. this provides indirect access during recursion.
+
+			uint32_t const index_count((uint32_t)indices.size());
+			for (uint32_t current_index = 0; current_index < index_count - 3; current_index += 3) {
+
+				tri_v tri;
+
+				for (uint32_t i = 0; i < 3; ++i) {
+
+					uint32_t const vertex_index(indices[current_index + i]);
+
+					// normalize vertex position to the bounds found
+					XMVECTOR xmPosition(XMLoadFloat3((XMFLOAT3 const* const)&vertices[vertex_index]));
+
+					xmPosition = SFM::linearstep(xmMin, xmMax, xmPosition);          // data value is *now* normalized to [0, 1]
+					
+					// scale to maximum volume bounds
+					xmPosition = XMVectorScale(xmPosition, MAX_DIMENSIONS - 1.0f); // re-scale value to [0, 255]
+
+					tri.v[i].v = xmPosition;
+					tri.v[i].uv = XMLoadFloat2((XMFLOAT2 const* const)&uvs[vertex_index]);
+				}
+				
+				Voxelize(tri);
+			}
+		}
+		SAFE_DELETE(_support); // no longer required
+
+		numVoxels = (uint32_t)allVoxels.size(); // actual voxel count
+
+		// cleanup, volume no longer required
+		if (bits) {
+			model_volume::destroy(bits);
+			bits = nullptr;
+		}
+
+		if (numVoxels) { // check
+			// now have count of all active voxels for this frame
+			frameOffset = pDestMem->_numVoxels; // existing count
+
+			uint32_t const new_count(pDestMem->_numVoxels + numVoxels); // always growing so reallocation doesn't bother existing data //
+
+			// new allocation of target size
+			voxelDescPacked* pVoxels = (voxelDescPacked* const __restrict)scalable_aligned_malloc(sizeof(voxelDescPacked) * new_count, CACHE_LINE_BYTES); // destination memory is aligned to 16 bytes to enhance performance on having voxels aligned to cache line boundaries.
+
+			// copy over existing data
+			memcpy(pVoxels, pDestMem->_Voxels, sizeof(voxelDescPacked) * frameOffset); // frameOffset contains the total size b4 this vdb frame.
+
+			// copy over new data
+			memcpy(pVoxels + frameOffset, allVoxels.data(), sizeof(voxelDescPacked) * numVoxels);
+
+			// swap pointers
+			voxelDescPacked* pDelVoxels(const_cast<voxelDescPacked*>(pDestMem->_Voxels)); // to be released
+			pDestMem->_Voxels = pVoxels;
+
+			// release the old allocation
+			if (pDelVoxels) {
+				scalable_aligned_free(pDelVoxels);
+				pDelVoxels = nullptr;
+			}
+		}
+	} // release of temporary memory happens at this end of scope.
+
+	if (numVoxels) { // check
+		auto const [numVoxelsFrame, numVoxelsEmissiveFrame, numVoxelsTransparentFrame] = OptimizeVoxels(const_cast<Volumetric::voxB::voxelDescPacked* const>(pDestMem->_Voxels + frameOffset), numVoxels); // optimizing *only* voxels for this frame
+
+		if (numVoxelsFrame) { // check
+
+			// update model voxel counts after optimization - counts returned are isolated to include this frame only, must append to total voxel count for all frames //
+			pDestMem->_numVoxels += numVoxelsFrame;
+			pDestMem->_numVoxelsEmissive += numVoxelsEmissiveFrame;
+			pDestMem->_numVoxelsTransparent += numVoxelsTransparentFrame;
+
+			// finally add frame metadatas
+			sequence.addFrame(frameOffset, numVoxelsFrame);
+		}
+	}
+}
+
+// builds the voxel model, loading from academysoftwarefoundation .vdb format, returning the model with the voxels loaded for a sequence folder.
+int const LoadGLTF(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem)
+{
+	static constexpr float const UPDATE_RATE = (float)((2.0 * fp_seconds(critical_delta()).count()));
+
+	// original .gltf model not required if the cached version exists. (supports modifications)
+
+	std::wstring szOrigPathFilename(path.wstring().substr(0, path.wstring().find_last_of(L'/') + 1)); // isolate path to just the folder
+	szOrigPathFilename += path.stem();
+	szOrigPathFilename += GLTF_FILE_EXT;
+
+	// determine if cached version exists
+	std::wstring szCachedPathFilename(VOX_CACHE_DIR);
+	szCachedPathFilename += path.stem();
+	szCachedPathFilename += V1XA_FILE_EXT;
+
+	if (fs::exists(szCachedPathFilename)) {
+		// if .VDB file is not newer than cached .v1xa file 
+		auto const cachedmodifytime = fs::last_write_time(szCachedPathFilename);
+		auto const gltfmodifytime = fs::exists(szOrigPathFilename) ? fs::last_write_time(szOrigPathFilename) : fs::file_time_type{};
+
+		if (cachedmodifytime > gltfmodifytime) {
+			if (LoadV1XACachedFile(szCachedPathFilename, pDestMem)) {
+
+#ifdef VOX_DEBUG_ENABLED
+				FMT_LOG(VOX_LOG, " < {:s} > [sequences] {:d} channels " " [{:s}]", stringconv::ws2s(szCachedPathFilename), pDestMem->_Features.sequence->numChannels(), pDestMem->_Features.sequence->getChannelName(0));
+#endif
+
+				FMT_LOG_OK(VOX_LOG, " < {:s} > [sequences] (cache) loaded ({:d}, {:d}, {:d})", stringconv::ws2s(szCachedPathFilename), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
+
+				return(1); // indicating existing (cached) sequence loaded
+			}
+			else {
+				FMT_LOG_FAIL(VOX_LOG, "unable to load cached .V1XA file: {:s}, reverting to reload .GLTF ....", stringconv::ws2s(szCachedPathFilename));
+			}
+		}
+		else {
+			FMT_LOG(VOX_LOG, " newer .GLTF found, reverting to reload .GLTF ....", stringconv::ws2s(szCachedPathFilename));
+		}
+		// otherwise fallthrough and reload vdb file
+	}
+
+	// stop going any further if gltf folder does not exist, thus never loading/initializing the openvdb library in normal application usage. openvdb .vdb files are only required once (importing). after conversion to .v1xa, the .v1xa file is the only one required.
+	if (!fs::exists(szOrigPathFilename)) {
+		FMT_LOG_FAIL(VOX_LOG, "unable to open gltf file: {:s} does not exist", stringconv::ws2s(szOrigPathFilename));
+		return(0);
+	}
+
+#ifdef VOX_DEBUG_ENABLED
+	FMT_LOG(VOX_LOG, "{:s} [sequences] importing...", stringconv::ws2s(szOrigPathFilename));
+#endif
+
+	gltf model;
+	if (!LoadGLTF(szOrigPathFilename, std::forward<gltf&&>(model))) {
+		FMT_LOG_FAIL(VOX_LOG, "unable to open gltf file: {:s} corrupted", stringconv::ws2s(szOrigPathFilename));
+		return(0);
+	}
+
+	reset_animation(model); // initialize rest pose
+
+	XMVECTOR xmMinPosition( XMVectorSet( 999999.999999f,  999999.999999f,  999999.999999f, 0.0f) ),    // for all frames the min/max value
+		     xmMaxPosition( XMVectorSet(-999999.999999f, -999999.999999f, -999999.999999f, 0.0f) );	// normalization of values considers all frames and skinned meshes
+
+	uint32_t const sequence_count((uint32_t)model.mClips.size());
+	uint32_t total_frame_count(0);
+
+	{ // scope memory control
+
+#ifdef VOX_DEBUG_ENABLED		
+		using namespace indicators;
+
+		// Hide cursor
+		show_console_cursor(false);
+
+		indicators::ProgressBar bar{
+		  option::BarWidth{50},
+		  option::Start{" |"},
+		  option::Fill{"-"},
+		  option::Lead{"-"},
+		  option::Remainder{"_"},
+		  option::End{"|"},
+		  option::PrefixText{"Preparing"},
+		  option::ForegroundColor{Color::yellow},
+		  option::ShowElapsedTime{true},
+		  option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+		  option::MaxProgress{sequence_count + 1}
+		};
+#endif
+		// FIRST LOOP ///////////////////////////////////////////////////////////////////////////////////
+		// //////////////////////////////////////////////////////////////////////////////////////////////
+		
+		// prepare for conversion, need position min/max for normalization
+		for (uint32_t clip = 0; clip < sequence_count; ++clip) {
+
+			// transform vertices to pose for this sequence
+			set_animation(model, clip);
+			
+			float tPlaybackLast(0.0f);
+			bool bFinished(false);
+			do // animate sequence at ~30fps
+			{
+				float const tPlayback(update_animation(model, UPDATE_RATE));
+				
+				if (tPlayback < tPlaybackLast) { // rolled over (looped)
+					bFinished = true;
+					break; // invalid frame, exit
+				}
+				// find min/max for all vertices transformed by cpu skinning for this sequence
+				uint32_t const mesh_count((uint32_t)model.mMeshes.size());
+				for (uint32_t mesh = 0; mesh < mesh_count; ++mesh) {
+
+					auto const& vertices = model.mMeshes[mesh].GetSkinnedPosition();
+
+					uint32_t const vertex_count((uint32_t)vertices.size());
+					for (uint32_t vertex = 0; vertex < vertex_count; ++vertex) {
+
+						XMVECTOR const xmPosition(XMLoadFloat3((XMFLOAT3 const* const)&vertices[vertex]));
+
+						xmMinPosition = SFM::min(xmMinPosition, xmPosition);
+						xmMaxPosition = SFM::max(xmMaxPosition, xmPosition);
+					}
+				}
+
+				if (tPlayback >= 1.0f) { // the end frame has been included
+					bFinished = true;
+				}
+
+				tPlaybackLast = tPlayback;
+				++total_frame_count;
+
+			} while(!bFinished);
+
+#ifdef VOX_DEBUG_ENABLED
+			bar.tick();
+#endif
+		}
+#ifdef VOX_DEBUG_ENABLED
+		bar.mark_as_completed();
+#endif
+	} // scope memory control
+
+#ifdef VOX_DEBUG_ENABLED
+	using namespace indicators;
+
+	indicators::ProgressBar bar2{
+	  option::BarWidth{50},
+	  option::Start{" |"},
+	  option::Fill{"-"},
+	  option::Lead{"-"},
+	  option::Remainder{"_"},
+	  option::End{"|"},
+	  option::PrefixText{"Loading"},
+	  option::ForegroundColor{Color::yellow},
+	  option::ShowElapsedTime{true},
+	  option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+	  option::MaxProgress{total_frame_count + 1}
+	};
+#endif
+
+	// can now voxelize each frame, positions can be normalized and then rescaled to fit the volume size.
+
+	// SECOND LOOP ///////////////////////////////////////////////////////////////////////////////////
+	// //////////////////////////////////////////////////////////////////////////////////////////////
+	voxelSequence sequence;
+
+	// min/max bounds for every voxel in all frames and all grids. the absolute limits for the entire sequence.
+	uvec4_v mini(Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ, Volumetric::MODEL_MAX_DIMENSION_XYZ),
+		    maxi(0, 0, 0);
+
+	for (uint32_t clip = 0; clip < sequence_count; ++clip) {
+
+		// transform vertices to pose for this sequence
+		set_animation(model, clip);
+
+		sequence.addChannel(clip, model.mClips[clip].GetName());    // each unique sequence is a "channel"
+
+		float tPlaybackLast(0.0f);
+		bool bFinished(false);
+		do // animate sequence at ~30fps
+		{
+			float const tPlayback(update_animation(model, UPDATE_RATE));
+
+			if (tPlayback < tPlaybackLast) { // rolled over (looped)
+				bFinished = true;
+				break; // invalid frame, exit
+			}
+			
+			LoadGLTFFrame(model, pDestMem, sequence, xmMinPosition, xmMaxPosition, mini.v, maxi.v);
+
+#ifdef VOX_DEBUG_ENABLED
+			bar2.tick();
+#endif
+
+			if (1.0f == tPlayback) { // the end frame has been included
+				bFinished = true;
+			}
+
+			tPlaybackLast = tPlayback;
+
+		} while (!bFinished);
+	}
+
+#ifdef VOX_DEBUG_ENABLED
+	bar2.mark_as_completed();
+	// restore/show cursor
+	show_console_cursor(true);
+#endif
+
+	// finalize and store sequence metadata
+	pDestMem->_Features.sequence = new voxelSequence(sequence);
+
+#ifdef VOX_DEBUG_ENABLED
+	FMT_LOG(VOX_LOG, "{:d} channels " " [{:s}]", pDestMem->_Features.sequence->numChannels(), pDestMem->_Features.sequence->getChannelName(0));
+#endif
+	// final maximum dimensions calculation - always equals the maximum extents of the frame with the largest extents.
+
+	// Actual dimensiuons of model saved, bugfix for "empty space around true model extents"
+	uvec4_v xmDimensions(SFM::max(_mm_set1_epi32(1), _mm_sub_epi32(_mm_sub_epi32(maxi.v, mini.v), _mm_set1_epi32(1))));  // here the dimensions size is made index based rather than count based then: bugfix: minimum 1 voxel dimension size on any axis
+
+	// store final dimensions
+	XMStoreFloat3A(&pDestMem->_maxDimensionsInv, XMVectorReciprocal(xmDimensions.v4f()));
+	xmDimensions.xyzw(pDestMem->_maxDimensions);
+
+	pDestMem->ComputeLocalAreaAndExtents();
+
+#ifdef VOX_DEBUG_ENABLED
+	FMT_LOG_OK(VOX_LOG, "{:s} [sequence] imported ({:d}, {:d}, {:d})", stringconv::ws2s(szOrigPathFilename), pDestMem->_maxDimensions.x, pDestMem->_maxDimensions.y, pDestMem->_maxDimensions.z);
+#endif
+
+	// cache sequence to .v1xa file always
+	SaveV1XACachedFile(szCachedPathFilename, pDestMem);
+
+	return(-1); // indicating new sequence loaded
+}
+
 
 void voxelModelBase::ComputeLocalAreaAndExtents()
 {

@@ -21,13 +21,10 @@ void main() {
  			
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 
-	//precise vec3 volume_translation = vec3(WorldDimensions * 0.5f, WorldDimensions, WorldDimensions * 0.5f);
-	//volume_translation = (-0.5f - (volume_translation - inPos.xyz)) + vec3(-0.25f,-0.25f,0.25f); // this perfectly aligns the center of the volume *do not change* *verified*
-
 	precise vec3 volume_translation = 0.5f - (WorldDimensions.xxx * 0.5f);
-	volume_translation.y += WorldDimensions * -0.5f;
+	volume_translation.y -= (WorldDimensions + 12.5f) * 0.5f;
 
-	precise vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
+	precise const vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
 	// inverted y translation, also put at groundlevel
 	gl_Position = u._viewproj * vec4(0.5f * position, 1.0f);

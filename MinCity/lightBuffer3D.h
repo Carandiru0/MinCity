@@ -413,7 +413,8 @@ public:
 	}
 
 	lightBuffer3D(vku::double_buffer<vku::GenericBuffer> const& stagingBuffer_)
-		: _stagingBuffer(stagingBuffer_), _cache(nullptr), _active_resource_index(0), _maximum{}, _minimum(_xmWorldLimitMax), _block_size_cache(0)
+		: _stagingBuffer(stagingBuffer_), _cache(nullptr), _active_resource_index(0), _maximum{}, _minimum(_xmWorldLimitMax), _block_size_cache(0), 
+		_max_extents{ 1, 1, 1, 0 }, _min_extents{} // *bugfix - initialize initial extents to min volume (prevents an intermittent copy attempt of zero volume on startup)
 	{}
 	~lightBuffer3D()
 	{

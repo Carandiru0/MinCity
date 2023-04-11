@@ -182,7 +182,27 @@ bool isEmitter(in const vec4 warp)
 #ifdef SEED
 vec4 sampleInputVolume( in const vec3 read_location )
 {
-	return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
+    const ivec3 iread_location = ivec3(floor(read_location + 0.5f));
+
+	vec4 last = texelFetch(pingpongTexture[pc.index_input], iread_location, 0);
+	vec4 now  = texelFetch(seedMap, iread_location, 0);
+	const bvec2 emitter = bvec2(isEmitter(last), isEmitter(now));
+
+	float dd = 1.0f;
+
+	if (emitter.x) {
+		last = decode_warp(last);
+		dd = 0.5f;
+	}
+
+	if (emitter.y) {
+		now = decode_warp(now);
+		dd = mix(dd, getAttenuation(distance(last.xyz, now.xyz) * VOX_SIZE), emitter.x);
+	}
+
+	const vec3 color = mix(unpackColorHDR(last.a), unpackColorHDR(now.a), dd);   // last.a and/or now.a resolve to zero if already zero so safe to interpolate color if partial emitter
+	                                                                             // if either is not zero, they will blend based on inverse square law between both emitters if they both exist, or will contribute half of it's value otherwise. in cases where last does not exist, and now does, it simply resolves straight to now.
+	return( encode_warp(now.xyz, color) ); // will still resolve to zero in now is already zero at this point here (not an emitter), otherwise the resolved value from previous operations is encoded correctly.
 }
 #else
 vec4 sampleInputVolume( in const vec3 read_location )

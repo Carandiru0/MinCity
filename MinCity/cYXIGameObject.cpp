@@ -77,7 +77,7 @@ namespace world
 		instance_->setOwnerGameObject<cYXIGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cYXIGameObject::OnVoxel);
 
-		_body.mass = voxels_to_kg((float)getModelInstance()->getVoxelCount());
+		_body.mass = voxels_to_kg((float)getModelInstance()->getCount());
 
 		float const fElevation(Iso::TERRAIN_MAX_HEIGHT * Iso::VOX_STEP * 0.25f);
 		

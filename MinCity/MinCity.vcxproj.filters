@@ -61,6 +61,12 @@
     <Filter Include="Source Files\MemoryCore">
       <UniqueIdentifier>{dcb8f395-36f8-486b-bb67-98a87d4f2ff4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Gameplay\Characters">
+      <UniqueIdentifier>{b65b9756-b5fe-4934-90b0-b73f44f3a7e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Gameplay\Characters">
+      <UniqueIdentifier>{40ffe56d-acbb-442d-962c-11831b590a70}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -345,6 +351,9 @@
     <ClInclude Include="StreamingGrid.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="cCharacterGameObject.h">
+      <Filter>Header Files\Gameplay\Characters</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -520,6 +529,9 @@
     </ClCompile>
     <ClCompile Include="..\..\tracy-master\public\TracyClient.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cCharacterGameObject.cpp">
+      <Filter>Source Files\Gameplay\Characters</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -143,12 +143,12 @@ namespace world
 
 		if (_animation.update(*Instance, tDelta)) {
 
-			Instance->setVoxelTransparentCount(Instance->getVoxelCount()); // all transparent
+			Instance->setTransparentCount(Instance->getCount()); // all transparent
 			Instance->destroy(milliseconds(0));
 			return;
 		}
 		else {
-			Instance->setVoxelTransparentCount(Instance->getVoxelCount()); // all transparent
+			Instance->setTransparentCount(Instance->getCount()); // all transparent
 		}
 	}
 

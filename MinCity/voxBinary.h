@@ -24,12 +24,16 @@ The VOX File format is Copyright to their respectful owners.
 #define V1X_FILE_EXT L".v1x"
 #define VDB_FILE_EXT L".vdb"
 #define V1XA_FILE_EXT L".v1xa"
+#define GLTF_FILE_EXT L".gltf"
 
 namespace Volumetric
 {
 namespace voxB
 {
 	// see voxelModel.h
+	
+// builds the voxel model, loading from khronos .glb format, returning the model with the voxels loaded for a voxelized gltf with multiple sequences.
+int const LoadGLTF(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem);
 
 // builds the voxel model, loading from academysoftwarefoundation .vdb format, returning the model with the voxels loaded for a sequence folder.
 int const LoadVDB(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem);

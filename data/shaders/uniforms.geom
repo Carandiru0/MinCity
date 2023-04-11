@@ -50,7 +50,7 @@ layout(triangle_strip, max_vertices = 12) out;			// using gs instancing is far s
 #if defined(HEIGHT) // terrain
 layout(location = 0) in streamIn
 {
-	readonly flat vec3	right, forward, up;
+	readonly flat vec3	right, up, forward;
 	readonly flat uint  adjacency;
 #ifdef ZONLY
     readonly flat float terrain_min;
@@ -66,7 +66,7 @@ layout(location = 0) in streamIn
 #else  // voxels only
 layout(location = 0) in streamIn
 {
-	readonly flat vec3	right, forward, up;
+	readonly flat vec3	right, up, forward;
 	readonly flat uint	adjacency;
 #ifndef ZONLY
 #ifdef BASIC
@@ -189,11 +189,12 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	
 #if defined(HEIGHT) 
 #ifdef ZONLY
-    worldPos.y = min(worldPos.y, In[0].terrain_min);
+   // worldPos.y = min(worldPos.y, In[0].terrain_min);
 #else // !ZONLY
-	worldPos.y = min(worldPos.y, In[0].world_uvw.w);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
+   // worldPos.y = min(worldPos.y, In[0].world_uvw.w);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
 #endif
 #endif
+
 	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
 #ifndef ZONLY

@@ -288,7 +288,7 @@ namespace world
 			voxels_destroyed += *i;
 		}
 
-		if (voxels_destroyed > (Instance->getVoxelCount() >> 1)) { // 50% destroyed, destroy building.
+		if (voxels_destroyed > (Instance->getCount() >> 1)) { // 50% destroyed, destroy building.
 			Instance->destroy();
 		}
 		

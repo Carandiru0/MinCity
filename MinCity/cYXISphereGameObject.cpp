@@ -75,7 +75,7 @@ namespace world
 		instance_->setOwnerGameObject<cYXISphereGameObject>(this, &OnRelease);
 		instance_->setVoxelEventFunction(&cYXISphereGameObject::OnVoxel);
 
-		_body.mass = voxels_to_kg((float)getModelInstance()->getVoxelCount());
+		_body.mass = voxels_to_kg((float)getModelInstance()->getCount());
 	}
 
 	void cYXISphereGameObject::enableThrusterFire(float const power)

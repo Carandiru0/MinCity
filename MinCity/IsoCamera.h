@@ -23,9 +23,14 @@ namespace Iso
 	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC_ANGLES	= { 0.58177641733144319231f, XM_PIDIV4, 0.0f };  // in radians   x,y,z ( 33.333 degrees, 45 degrees, 0 degrees )
 	static constexpr XMFLOAT3A   const BALANCED_ISOMETRIC			= { EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.54950897807080603526, EYE_DISTANCE * -0.7071067811865475244 };  // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
 
+	// Custom		  
+	static constexpr XMFLOAT3A   const CUSTOM_ISOMETRIC_ANGLES      = { 0.0, XM_PIDIV4, 0.0f };  // in radians  x,y,z 
+	static constexpr XMFLOAT3A   const CUSTOM_ISOMETRIC             = { EYE_DISTANCE * -0.7071067811865475244, EYE_DISTANCE * -0.0, EYE_DISTANCE * -0.7071067811865475244 }; // x,y,z ( d * cos(angle.y), d * sin(angle.x), d * sin(angle.y) )
+
+
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	static constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= BALANCED_ISOMETRIC_ANGLES;
-	static constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= BALANCED_ISOMETRIC;
+	static constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= CUSTOM_ISOMETRIC_ANGLES;
+	static constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= CUSTOM_ISOMETRIC;
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	read_only inline XMVECTORF32 const

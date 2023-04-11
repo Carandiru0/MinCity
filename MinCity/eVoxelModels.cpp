@@ -33,8 +33,8 @@ namespace Volumetric
 	{
 		GROUP_VOX = 0,
 		SINGLE_VOX = 1,
-		SEQUENCE_VOX = 2,
-		SEQUENCE_VDB = 3
+		SEQUENCE_VDB = 2,
+		SEQUENCE_GLTF = 3
 	};
 	
 	// this function is re-entrant for a group, appending correctly if called in such a way (eg. named files)
@@ -43,7 +43,15 @@ namespace Volumetric
 	{
 		std::wstring folder_path(VOX_DIR);
 
-		if constexpr (SEQUENCE_VOX == FILE_TYPE || SEQUENCE_VDB == FILE_TYPE) // sequence operation
+		if constexpr (SEQUENCE_GLTF == FILE_TYPE) // sequence operation
+		{
+			folder_path += stringconv::s2ws(FOLDER_NAMED); // named files must be in the named vox dir. all sequences are named.
+			folder_path += L'/';
+			folder_path += stringconv::s2ws(folder_group);	// folder_group contains folder name and the 
+			folder_path += L'/';
+			folder_path += stringconv::s2ws(folder_group);	// folder_group contains file name, no extension.
+		}
+		else if constexpr (SEQUENCE_VDB == FILE_TYPE) // sequence operation
 		{
 			folder_path += stringconv::s2ws(FOLDER_NAMED); // named files must be in the named vox dir. all sequences are named.
 			folder_path += L'/';
@@ -76,7 +84,7 @@ namespace Volumetric
 		using voxModel = Volumetric::voxB::voxelModel<DYNAMIC>;
 		using voxIdent = Volumetric::voxB::voxelModelIdent<DYNAMIC>;
 
-		/*if constexpr (SEQUENCE_VOX == FILE_TYPE)
+		if constexpr (SEQUENCE_GLTF == FILE_TYPE)
 		{
 			voxModel* __restrict pVox;
 
@@ -87,14 +95,14 @@ namespace Volumetric
 				pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
 			}
 
-			int const exists = voxB::LoadVOXSequence(folder_path, pVox);
+			int const exists = voxB::LoadGLTF(folder_path, pVox);
 			if (exists) {
 
 				// full sequence loaded into one model
 				++modelCount;
 			}
 		}
-		else*/ if constexpr (SEQUENCE_VDB == FILE_TYPE)
+		else if constexpr (SEQUENCE_VDB == FILE_TYPE)
 		{
 			voxModel* __restrict pVox;
 
@@ -183,17 +191,17 @@ namespace Volumetric
 		}
 	}
 
-	template<bool const DYNAMIC>
+	template<bool const DYNAMIC, uint32_t const SEQUENCE_TYPE>
 	static void LoadModelSequenceNamed(std::string_view const file_name_no_extension) {
 
 		if constexpr (DYNAMIC) {
 
-			LoadModelGroup<DYNAMIC, SEQUENCE_VDB>(file_name_no_extension, isolated_group::DynamicNamed);
+			LoadModelGroup<DYNAMIC, SEQUENCE_TYPE>(file_name_no_extension, isolated_group::DynamicNamed);
 
 		}
 		else { // STATIC
 
-			LoadModelGroup<DYNAMIC, SEQUENCE_VDB>(file_name_no_extension, isolated_group::StaticNamed);
+			LoadModelGroup<DYNAMIC, SEQUENCE_TYPE>(file_name_no_extension, isolated_group::StaticNamed);
 		}
 	}
 	
@@ -241,11 +249,13 @@ namespace Volumetric
 		LoadModelNamed<DYNAMIC>("light_cone");
 		LoadModelNamed<DYNAMIC>("beacon");
 
-		LoadModelSequenceNamed<DYNAMIC>("main_thrust");
-		LoadModelSequenceNamed<DYNAMIC>("up_thrust");
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("main_thrust");
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("up_thrust");
 		//LoadModelSequenceNamed<DYNAMIC>("helium_gas");      // vdb and v1xa backed up, all 10.2GB+, removed from build as backups are taking up to much space. *remeber* to use lower resolution and less frames to optimize vdb size. once vdb is converted to v1xa, the size is much much smaller. So the vdb is not required in release version @TODO
-		LoadModelSequenceNamed<DYNAMIC>("ground_explosion");
-		LoadModelSequenceNamed<DYNAMIC>("tiny_explosion");
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("ground_explosion");
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("tiny_explosion");
+
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray");
 
 		// last!
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last
@@ -281,7 +291,7 @@ namespace Volumetric
 
 	bool const isNewModelQueueEmpty() { return(_new_models.empty()); }
 
-	tbb::concurrent_queue< Volumetric::newVoxelModel >& getNewModelQueue() { return(_new_models); }
+	tbb::concurrent_queue<Volumetric::newVoxelModel>& getNewModelQueue() { return(_new_models); }
 
 	void CleanUpAllVoxelModels()
 	{

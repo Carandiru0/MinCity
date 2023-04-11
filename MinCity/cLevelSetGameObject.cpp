@@ -233,7 +233,7 @@ namespace world
 			RenderFuncBlockChunk(_bits, numVoxels, const_cast<Volumetric::voxB::voxelDescPacked* const>(getModel()->_Voxels), duration_cast<fp_seconds>(now() - start()).count()), part
 		);
 	
-		getModelInstance()->setVoxelOffsetCount(0, numVoxels);
+		getModelInstance()->setOffsetCount(0, numVoxels);
 		
 		getModelInstance()->setYaw(getModelInstance()->getYaw() + 0.1f * tDelta.count());
 	}

@@ -128,9 +128,11 @@ namespace Volumetric
 
 				MAIN_THRUST,
 				UP_THRUST,
-				HELIUM_GAS,
+				//HELIUM_GAS,
 				GROUND_EXPLOSION,
-				TINY_EXPLOSION
+				TINY_EXPLOSION,
+
+				ALIEN_GRAY
 			};
 		};
 	};

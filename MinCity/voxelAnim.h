@@ -8,11 +8,11 @@ namespace Volumetric
 	struct voxelAnim
 	{
 	private:
-		static constexpr uint32_t const DEFAULT_FRAMERATE = 60;
+		static constexpr uint32_t const DEFAULT_FRAMERATE = 30;
 
 		float			 accumulator;
 
-		float			 frame_interval;
+		float    		 frame_interval;
 		uint32_t		 frame, repeat, frame_count;
 		bool             reverse;
 
@@ -91,7 +91,7 @@ namespace Volumetric
 						}
 
 						frame = frame_next;
-						instance->setVoxelOffsetCount(model._Features.sequence->getOffset(frame), model._Features.sequence->numVoxels(frame)); // update the instance voxel offset and voxel count, which defines the frame used for rendering of this instance.
+						instance->setOffsetCount(model._Features.sequence->getOffset(frame), model._Features.sequence->numVoxels(frame)); // update the instance voxel offset and voxel count, which defines the frame used for rendering of this instance.
 
 						accumulator -= frame_interval;
 					}
@@ -111,7 +111,7 @@ namespace Volumetric
 				voxB::voxelModel<Dynamic> const& __restrict model(instance->getModel());
 
 				if (nullptr != model._Features.sequence) {
-					instance->setVoxelOffsetCount(model._Features.sequence->getOffset(0), model._Features.sequence->numVoxels(0)); // update the instance voxel offset and voxel count, which defines the frame used for rendering of this instance.
+					instance->setOffsetCount(model._Features.sequence->getOffset(0), model._Features.sequence->numVoxels(0)); // update the instance voxel offset and voxel count, which defines the frame used for rendering of this instance.
 					frame_count = model._Features.sequence->numFrames();
 				}
 			}
