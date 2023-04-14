@@ -284,6 +284,7 @@ void main() {
 #endif
 
 #ifdef DYNAMIC // dynamic voxels only
+/*
   // hole filling for rotated voxels on each axis(xy, xz, zy) (simplified and revised portion of novel oriented rect algorithm)
 #if defined(CLEAR) // erase - if the gpu has an out of bounds store that is +-1 in the xy direction past the beginning or end, it will discard the store silently. Discarding is required for this algorithm to work properly (hole filling)
    imageStore(opacityMap, ivec3(ivoxel.x - 1, ivoxel.y,             ivoxel.z).xzy,     vec4(0));			// this is suprisingly coherent 	
@@ -294,6 +295,7 @@ void main() {
    imageStore(opacityMap, ivec3(ivoxel.x,     max(1, ivoxel.y - 1), ivoxel.z).xzy,     opacity.rrrr);		// reflections on rotated models are no longer distorted.
    imageStore(opacityMap, ivec3(ivoxel.x,     ivoxel.y,             ivoxel.z - 1).xzy, opacity.rrrr);
 #endif
+*/
 #endif // dynamic 
 
 #else // terrain only

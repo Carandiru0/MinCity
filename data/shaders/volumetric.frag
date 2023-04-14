@@ -118,7 +118,7 @@ precise vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
 
 float fetch_opacity_emission( in const vec3 uvw) { // interpolates opacity & emission
 	
-	return( textureLod(volumeMap[OPACITY], (uvw * VolumeDimensions + vec3(1.5f, 0.5f, 0.0f)) * InvVolumeDimensions, 0).r );  // @todo - offset determined, but why??
+	return( textureLod(volumeMap[OPACITY], (uvw * VolumeDimensions) * InvVolumeDimensions, 0).r );  // @todo - offset determined, but why??
 }
 float extract_opacity( in const float sampling ) // this includes transparent voxels, however result is negative if transparent
 {

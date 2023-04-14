@@ -123,7 +123,7 @@ const uint BIT_ADJ_BELOW = (1<<0),
 
 
 #if !defined(IsVisible)
-#define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) >= 0.0f )
+#define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) > 0.0f ) // *bugfix - should be greater than not greater than equal, solves the visible shift when rotating camera around voxel *important do not change*
 #endif
 
 void PerVoxel()

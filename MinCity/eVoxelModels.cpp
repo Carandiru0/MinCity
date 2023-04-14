@@ -39,7 +39,7 @@ namespace Volumetric
 	
 	// this function is re-entrant for a group, appending correctly if called in such a way (eg. named files)
 	template<bool const DYNAMIC, uint32_t const FILE_TYPE = GROUP_VOX>
-	static void LoadModelGroup(std::string_view const folder_group, ModelGroup& __restrict groupInfo)
+	static void LoadModelGroup(std::string_view const folder_group, ModelGroup& __restrict groupInfo, uint32_t const args = 0)
 	{
 		std::wstring folder_path(VOX_DIR);
 
@@ -95,7 +95,7 @@ namespace Volumetric
 				pVox = &(*_staticModels.emplace_back(voxModel(voxIdent{ groupInfo.modelID, modelCount })));
 			}
 
-			int const exists = voxB::LoadGLTF(folder_path, pVox);
+			int const exists = voxB::LoadGLTF(folder_path, pVox, ((0 != args) ? args : Volumetric::MODEL_MAX_DIMENSION_XYZ));  // args maps to voxel resolution for GLTF, validation check on default value selects the maximum model dimensions for any type of voxel model (.vox (voxels) .vdb (voxels) .gltf (mesh->voxelized->voxels))
 			if (exists) {
 
 				// full sequence loaded into one model
@@ -192,16 +192,16 @@ namespace Volumetric
 	}
 
 	template<bool const DYNAMIC, uint32_t const SEQUENCE_TYPE>
-	static void LoadModelSequenceNamed(std::string_view const file_name_no_extension) {
+	static void LoadModelSequenceNamed(std::string_view const file_name_no_extension, uint32_t const args = 0) {  // can be either VDB or GLTF, args maps to voxel resolution for GLTF
 
 		if constexpr (DYNAMIC) {
 
-			LoadModelGroup<DYNAMIC, SEQUENCE_TYPE>(file_name_no_extension, isolated_group::DynamicNamed);
+			LoadModelGroup<DYNAMIC, SEQUENCE_TYPE>(file_name_no_extension, isolated_group::DynamicNamed, args);
 
 		}
 		else { // STATIC
 
-			LoadModelGroup<DYNAMIC, SEQUENCE_TYPE>(file_name_no_extension, isolated_group::StaticNamed);
+			LoadModelGroup<DYNAMIC, SEQUENCE_TYPE>(file_name_no_extension, isolated_group::StaticNamed, args);
 		}
 	}
 	
@@ -255,7 +255,7 @@ namespace Volumetric
 		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("tiny_explosion");
 
-		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray");
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray", 128);
 
 		// last!
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last

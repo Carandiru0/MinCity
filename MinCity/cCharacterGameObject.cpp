@@ -66,7 +66,7 @@ namespace world
 		instance_->setVoxelEventFunction(&cCharacterGameObject::OnVoxel);
 
 		// random start angle
-		instance_->setYaw(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
+		//instance_->setYaw(v2_rotation_t(PsuedoRandomFloat() * XM_2PI));
 
 		_animation.setRepeatFrameIndex(0);
 	}

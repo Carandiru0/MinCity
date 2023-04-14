@@ -22,7 +22,7 @@ void main() {
 	// volume needs to begin at ground level - this is properly aligned with depth do not change
 
 	precise vec3 volume_translation = 0.5f - (WorldDimensions.xxx * 0.5f);
-	volume_translation.y -= (WorldDimensions + 12.5f) * 0.5f;
+	volume_translation.y -= (WorldDimensions + 20.0f) * 0.5f;
 
 	precise const vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 

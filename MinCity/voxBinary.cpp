@@ -412,7 +412,38 @@ typedef struct voxelModelDescHeader
 } voxelModelDescHeader;
 
 namespace fs = std::filesystem;
+using model_volume = Volumetric::voxB::model_volume;
+// A VecVoxels has a separate std::vector<T> per thread
+typedef tbb::enumerable_thread_specific< vector<voxelDescPacked>, tbb::cache_aligned_allocator<vector<voxelDescPacked>>, tbb::ets_key_per_instance > VecVoxels;
 
+static void ComputeAdjacency(model_volume* const __restrict bits, Volumetric::voxB::voxelDescPacked* const __restrict pVoxels, uint32_t const numVoxels)
+{
+	// compute adjacency, also taking transparency into account
+
+	// Here: accurate counts, cull voxels & encode adjacency w/ consideration of transparency, optimize model.
+	{ // adjacency
+
+		tbb::parallel_for(uint32_t(0), numVoxels, [pVoxels, bits](uint32_t const i) {
+
+			pVoxels[i].Hidden = false; // always false here on save, ensure hidden is not set on any voxel b4 saving file
+
+			// add to temp volume *only if not transparent - this excludes transparent voxels so that when adjacency is considered for neighbours of any voxel, it now leaves the transparent ones out of the adjacency calculation.
+			if (!pVoxels[i].Transparent) {
+				bits->set_bit(pVoxels[i].x, pVoxels[i].y, pVoxels[i].z);
+			}
+		});
+
+		// encode adjacency
+		tbb::parallel_for(uint32_t(0), numVoxels, [pVoxels, bits](uint32_t const i) {
+
+			uvec4_v const localIndex(pVoxels[i].x, pVoxels[i].y, pVoxels[i].z);
+
+			if (!pVoxels[i].Transparent) { // want to keep existing adjacency for transparent voxels, as they are not considered for adjacency re-calculation.
+				pVoxels[i].setAdjacency(encode_adjacency(localIndex, bits)); // apply adjacency
+			}
+		});
+	}
+}
 static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxels, uint32_t numVoxels)
 {
 	// accurate counts - now only the culled set of voxels.
@@ -432,53 +463,19 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 		return(voxelCount{ numVoxels, pVoxels->Emissive, pVoxels->Transparent });
 	}
 
-	{ // redo adjacency, to take transparency into account
+	// culling requires current adjacency first
+	model_volume* __restrict bits(nullptr);
+	bits = model_volume::create();
 
-		using model_volume = Volumetric::voxB::model_volume;
+	ComputeAdjacency(bits, pVoxels, numVoxels);
 
-		// Here: accurate counts, cull voxels & encode adjacency w/ consideration of transparency, optimize model.
-		model_volume* __restrict bits(nullptr);
-		bits = model_volume::create();
+	// for final count of voxels (culled set)
+	uint32_t numVoxelsEmissive(0),
+		     numVoxelsTransparent(0);
 
-		{ // adjacency
-
-			struct { // avoid lambda heap
-
-				Volumetric::voxB::voxelDescPacked* const __restrict pVoxels;
-
-			} p = { pVoxels };
-
-			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
-
-				p.pVoxels[i].Hidden = false; // always false here on save, ensure hidden is not set on any voxel b4 saving file
-
-				// add to temp volume *only if not transparent - this excludes transparent voxels so that when adjacency is considered for neighbours of any voxel, it now leaves the transparent ones out of the adjacency calculation.
-				if (!p.pVoxels[i].Transparent) {
-					bits->set_bit(p.pVoxels[i].x, p.pVoxels[i].y, p.pVoxels[i].z);
-				}
-				});
-
-			// encode adjacency
-			tbb::parallel_for(uint32_t(0), numVoxels, [&p, &bits](uint32_t const i) {
-				uvec4_v const localIndex(p.pVoxels[i].x, p.pVoxels[i].y, p.pVoxels[i].z);
-
-				if (!p.pVoxels[i].Transparent) { // want to keep existing adjacency for transparent voxels, as they are not considered for adjacency re-calculation.
-					p.pVoxels[i].setAdjacency(encode_adjacency(localIndex, bits)); // apply adjacency
-				}
-				});
-		}
-
-		// cleanup, volume no longer required - adjacency is encoded
-		if (bits) {
-			model_volume::destroy(bits);
-			bits = nullptr;
-		}
-	}
+	Volumetric::voxB::voxelDescPacked* pVoxelLast(pVoxels);
 
 	{ // culling
-
-		// A VecVoxels has a separate std::vector<T> per thread
-		typedef tbb::enumerable_thread_specific< vector<voxelDescPacked>, tbb::cache_aligned_allocator<vector<voxelDescPacked>>, tbb::ets_key_per_instance > VecVoxels;
 
 		// output linear access array
 		VecVoxels tmpVectors;
@@ -495,46 +492,15 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 
 			static constexpr uint32_t const all(BIT_ADJ_LEFT | BIT_ADJ_RIGHT | BIT_ADJ_FRONT | BIT_ADJ_BACK | BIT_ADJ_ABOVE | BIT_ADJ_BELOW);
 
-			uint32_t const adjacency(p.pVoxels[i].getAdjacency());
+		    uint32_t const adjacency(p.pVoxels[i].getAdjacency());
 			if (0 != adjacency && all != adjacency) {	// 0 - cull all voxels that are "alone" with nothing adjacent.
-														// all - cull all voxels that have been completely surrounded by other voxels, which implies this voxel is hidden regardless of transparency or other things.
-
-				// finally "interior faces" removal
-				voxelDescPacked voxel(p.pVoxels[i]);
-				XMVECTOR const xmVoxel(uvec4_v(voxel.getPosition()).v4f());
-				XMVECTOR const xmOrigin(XMVectorZero()); // origin placed at bottom of model
-				
-				XMVECTOR const xmDir(XMVector3Normalize(XMVectorSubtract(xmOrigin, xmVoxel)));
-				
-				if (!(BIT_ADJ_BACK & adjacency)) {
-
-					voxel.Back = XMVectorGetX(XMVector3Dot(XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f), -xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
-				}
-				if (!(BIT_ADJ_FRONT & adjacency)) {
-
-					voxel.Front = XMVectorGetX(XMVector3Dot(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
-				}
-				
-				if (!(BIT_ADJ_RIGHT & adjacency)) {
-
-					voxel.Right = XMVectorGetX(XMVector3Dot(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f), xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
-				}
-				if (!(BIT_ADJ_LEFT & adjacency)) {
-
-					voxel.Left = XMVectorGetX(XMVector3Dot(XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f), -xmDir)) > 0.0f; // if facing the origin, hide face by setting it "adjacent"
-				}
-				
-				p.tmpVectors.local().emplace_back(voxel);
+													    // all - cull all voxels that have been completely surrounded by other voxels, which implies this voxel is hidden regardless of transparency or other things.
+			    // more robust
+				p.tmpVectors.local().emplace_back(p.pVoxels[i]);
 			}
-			});
+		});
 
-		// reset count and tally number of voxels
-		uint32_t numVoxelsEmissive(0),
-				 numVoxelsTransparent(0);
-
-		numVoxels = 0;
-		
-		Volumetric::voxB::voxelDescPacked* pVoxel(pVoxels);
+		numVoxels = 0; // reset!
 		
 		tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
 		for (tbb::flattened2d<VecVoxels>::const_iterator
@@ -543,16 +509,28 @@ static auto const OptimizeVoxels(Volumetric::voxB::voxelDescPacked* const pVoxel
 			numVoxelsEmissive += i->Emissive;			// will have the culled counts afterwards
 			numVoxelsTransparent += i->Transparent;
 
-			*pVoxel = *i;
-			++pVoxel;
+			*pVoxelLast = *i; // fill in linear array
+			++pVoxelLast;     // sequentially
+
 			++numVoxels; // will have the culled count afterwards
 		}
-
-		// Sort the voxels by y "slices", then z "rows", then x "columns"
-		tbb::parallel_sort(pVoxels, pVoxel); 
-
-		return( voxelCount{ numVoxels, numVoxelsEmissive, numVoxelsTransparent } ); // returns structured binding
 	}
+
+	bits->clear(); // reset volume
+
+	// *bugfix - must update adjacency to culled set of voxels once again to be correct. (accounts for voxels removed after adjacency was encoded in a neighbouring voxel)
+	ComputeAdjacency(bits, pVoxels, numVoxels);
+
+	// cleanup, volume no longer required - adjacency is encoded
+	if (bits) {
+		model_volume::destroy(bits);
+		bits = nullptr;
+	}
+
+	// Sort the voxels by y "slices", then z "rows", then x "columns"
+	tbb::parallel_sort(pVoxels, pVoxelLast);
+
+	return(voxelCount{ numVoxels, numVoxelsEmissive, numVoxelsTransparent }); // returns structured binding
 }
 
 bool const SaveV1XCachedFile(std::wstring_view const path, voxelModelBase* const __restrict pDestMem)
@@ -1497,7 +1475,7 @@ static float const update_animation(gltf& __restrict model, float const fTDelta)
 	return(model.mAnimInfo.mPlayback); // return current playback position (range: 0.0f....1.0f)
 }
 
-static void __vectorcall apply_material(Volumetric::voxB::voxelDescPacked& __restrict voxel, XMVECTOR xmUV, Material const& __restrict material, Image const& __restrict image)
+static void __vectorcall apply_material(Volumetric::voxB::voxelDescPacked& __restrict voxel, XMVECTOR xmUV, Material const& __restrict material, Image const& __restrict image, float const weight = 1.0f)
 {
 	voxel.setMetallic( voxel.isMetallic() | bool(material.metallic) );
 	voxel.setRoughness( SFM::lerp(voxel.getRoughness(), material.roughness, 0.5f) );
@@ -1524,7 +1502,7 @@ static void __vectorcall apply_material(Volumetric::voxB::voxelDescPacked& __res
 			rgba0 = rgba1;
 		}
 
-		SFM::lerp(uvec4_v(rgba0), uvec4_v(rgba1), 0.5f).rgba(rgba1);
+		SFM::lerp(uvec4_v(rgba0), uvec4_v(rgba1), weight * 0.5f).rgba(rgba1);
 
 		voxel.Color = SFM::pack_rgba(rgba1);
 	}
@@ -1573,12 +1551,45 @@ namespace { // anonymous - local to this file only
 	constinit static inline vxl_support* _support{ nullptr }; // global local to this file only
 } // end ns
 
-
-static void __vectorcall ToVoxel(uvec4_v const ivPosition, FXMVECTOR const xmUV)
+static void __vectorcall ToVoxelNeighbour(uvec4_v const ivPosition, FXMVECTOR xmUV, float const weight)
 {
 	uvec4_t curVoxel;
-	SFM::saturate_to_u8(ivPosition, curVoxel); // makes sure that all coordinates are clamped to [0, 255], within the limits for model dimensions.
 	ivPosition.xyzw(curVoxel);
+
+	size_t const index(model_volume::get_index(curVoxel.x, curVoxel.y, curVoxel.z));
+
+	if (_support->bits->read_bit(index)) {  // existing
+
+		// slices ordered by Y: <---- USING Y
+		// (y * xMax * zMax) + (z * xMax) + x;
+
+		// blend with existing
+		voxB::voxelDescPacked& __restrict voxel(_support->allVoxels[_support->allIndices[index]]);
+		apply_material(voxel, xmUV, _support->material, _support->image, weight);
+
+	}
+	else { // new ?
+		_support->bits->set_bit(index);
+
+		_support->allIndices[index] = (uint32_t)_support->allVoxels.size(); // potential lookup
+		_support->allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.y, curVoxel.z), 0, 0);
+
+		apply_material(_support->allVoxels.back(), xmUV, _support->material, _support->image, weight);
+
+		// bounding box calculation //
+		__m128i const xmPosition(_support->allVoxels.back().getPosition());
+		_support->mini = SFM::min(_support->mini, xmPosition);
+		_support->maxi = SFM::max(_support->maxi, xmPosition);
+	}
+}
+// all positions and uv's are positive
+static void __vectorcall ToVoxel(FXMVECTOR xmPosition, FXMVECTOR const xmUV)
+{
+	uvec4_t curVoxel;
+	uvec4_v(SFM::floor(XMVectorAdd(xmPosition, XMVectorSet(0.5f, 0.5f, 0.5f, 0.0f)))).xyzw(curVoxel);
+
+	XMFLOAT3A vFractionalPosition;
+	XMStoreFloat3A(&vFractionalPosition, SFM::fract(xmPosition));
 
 	// only add the voxel if it hasn't already been added
 	size_t const index(model_volume::get_index(curVoxel.x, curVoxel.y, curVoxel.z));
@@ -1590,14 +1601,21 @@ static void __vectorcall ToVoxel(uvec4_v const ivPosition, FXMVECTOR const xmUV)
 
 		// blend with existing
 		voxB::voxelDescPacked& __restrict voxel(_support->allVoxels[_support->allIndices[index]]);
-
 		apply_material(voxel, xmUV, _support->material, _support->image);
 
+		if ((curVoxel.x + 1) < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+			ToVoxelNeighbour(uvec4_v(curVoxel.x + 1, curVoxel.y, curVoxel.z), xmUV, vFractionalPosition.x);
+		}
+		if ((curVoxel.y + 1) < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+			ToVoxelNeighbour(uvec4_v(curVoxel.x, curVoxel.y + 1, curVoxel.z), xmUV, vFractionalPosition.y);
+		}
+		if ((curVoxel.z + 1) < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+			ToVoxelNeighbour(uvec4_v(curVoxel.x, curVoxel.y, curVoxel.z + 1), xmUV, vFractionalPosition.z);
+		}
 	}
 	else { // new ?
 		_support->bits->set_bit(index);
-
-		// each color channel contains a value from [0, 255] representing a volume temperature, density, etc. voxel color is instead packed data.
+        
 		_support->allIndices[index] = (uint32_t)_support->allVoxels.size(); // potential lookup
 		_support->allVoxels.emplace_back(voxCoord(curVoxel.x, curVoxel.y, curVoxel.z), 0, 0);
 
@@ -1607,6 +1625,18 @@ static void __vectorcall ToVoxel(uvec4_v const ivPosition, FXMVECTOR const xmUV)
 		__m128i const xmPosition(_support->allVoxels.back().getPosition());
 		_support->mini = SFM::min(_support->mini, xmPosition);
 		_support->maxi = SFM::max(_support->maxi, xmPosition);
+
+		{ // fractional filling
+			if ((curVoxel.x + 1) < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+				ToVoxelNeighbour(uvec4_v(curVoxel.x + 1, curVoxel.y, curVoxel.z), xmUV, vFractionalPosition.x);
+			}
+			if ((curVoxel.y + 1) < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+				ToVoxelNeighbour(uvec4_v(curVoxel.x, curVoxel.y + 1, curVoxel.z), xmUV, vFractionalPosition.y);
+			}
+			if ((curVoxel.z + 1) < Volumetric::MODEL_MAX_DIMENSION_XYZ) {
+				ToVoxelNeighbour(uvec4_v(curVoxel.x, curVoxel.y, curVoxel.z + 1), xmUV, vFractionalPosition.z);
+			}
+		}
 	}
 }
 
@@ -1619,22 +1649,23 @@ NO_INLINE static void __vectorcall Voxelize(tri_v const& __restrict tri) // !!!!
 
 		// convert to integer
 		for (uint32_t i = 0; i < 3; ++i) {
-			itri.v[i].v = uvec4_v(SFM::round(tri.v[i].v));
+
+			itri.v[i].v = uvec4_v(SFM::floor(XMVectorAdd(tri.v[i].v, XMVectorSet(0.5f, 0.5f, 0.5f, 0.0f))));
 		}
 
 		if (uvec4_v::all<3>(itri.v0.v == itri.v1.v) &&
 			uvec4_v::all<3>(itri.v0.v == itri.v2.v)) {
 			// triangle occupies exactly 1 voxel
-			ToVoxel(itri.v0.v, tri.v0.uv);
+			ToVoxel(tri.v0.v, tri.v0.uv);
 			return;
 		}
 
 		if (uvec4_v::all<3>(uvec4_v(SFM::abs(_mm_sub_epi32(itri.v0.v, itri.v1.v))) < uvec4_v(2)) &&  // signed comparison is actually performed (safetly), then abs before returning to unsigned.
 			uvec4_v::all<3>(uvec4_v(SFM::abs(_mm_sub_epi32(itri.v0.v, itri.v2.v))) < uvec4_v(2))) {
 			// triangle occupies neighbour voxel(s)
-			ToVoxel(itri.v0.v, tri.v0.uv);
-			ToVoxel(itri.v1.v, tri.v1.uv);
-			ToVoxel(itri.v2.v, tri.v2.uv);
+			ToVoxel(tri.v0.v, tri.v0.uv);
+			ToVoxel(tri.v1.v, tri.v1.uv);
+			ToVoxel(tri.v2.v, tri.v2.uv);
 			return;
 		}
 	}
@@ -1720,13 +1751,69 @@ NO_INLINE static void __vectorcall Voxelize(tri_v const& __restrict tri) // !!!!
 
 }
 
-static void LoadGLTFFrame(gltf& __restrict model,
+static void Solidfy(model_volume* const __restrict bits, vector<Volumetric::voxB::voxelDescPacked>& __restrict allVoxels)
+{
+	static constexpr uint32_t const GRAIN_SIZE = 2u;
+
+	// output linear access array
+	VecVoxels tmpVectors;
+
+	tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+	tbb::parallel_for(tbb::blocked_range2d<uint32_t, uint32_t>(0u, (uint32_t)model_volume::depth(), GRAIN_SIZE,
+		                                                       0u, (uint32_t)model_volume::width(), GRAIN_SIZE),
+		[&](tbb::blocked_range2d<uint32_t, uint32_t> const& r) {
+
+			uint32_t const	// pull out into registers from memory
+				z_begin(r.rows().begin()),
+				z_end(r.rows().end()),
+				x_begin(r.cols().begin()),
+				x_end(r.cols().end());
+
+				for (uint32_t z = z_begin; z < z_end; ++z) {
+					for (uint32_t x = x_begin; x < x_end; ++x) {
+
+						bool bLastState(false), bState(false); // false = reading, true = reading & writing
+
+						// filling down...
+						for (uint32_t y = 0; y < (uint32_t)model_volume::height(); ++y) {
+
+							size_t const index(model_volume::get_index(x, y, z));
+							bool const voxelState(bits->read_bit(index));
+
+							if (((!bLastState) & voxelState) | (bLastState & (!voxelState))) {
+								bState = voxelState; // on existing voxel -from- non existing voxel [entrance]
+							}                        // *or*
+							                         // on non-existing voxel -from- existing voxel [exit]
+							if (bState & (!voxelState)) { // writing (new voxels only)
+								bits->set_bit(index);
+								tmpVectors.local().emplace_back(std::move<voxelDescPacked&&>(voxelDescPacked(voxCoord(x, y, z), 0, 0))); // interior voxel (black)
+							}
+
+							bLastState = bState;
+						}
+
+					}
+				}
+			
+		},
+		part
+	);
+
+	tbb::flattened2d<VecVoxels> flat_view = tbb::flatten2d(tmpVectors);
+	for (tbb::flattened2d<VecVoxels>::const_iterator
+		i = flat_view.begin(); i != flat_view.end(); ++i) {
+
+		allVoxels.emplace_back(std::move(*i));
+	}
+}
+static void LoadGLTFFrame(gltf& __restrict model, 
 	                      voxelModelBase* const __restrict pDestMem, 
+	                      uint32_t const voxel_resolution,
 	                      voxelSequence& __restrict sequence, 
 	                      FXMVECTOR xmMin, FXMVECTOR xmMax,
 	                      __m128i& __restrict mini, __m128i& __restrict maxi)
 {
-	static constexpr float const MAX_DIMENSIONS = (float)Volumetric::MODEL_MAX_DIMENSION_XYZ * 0.5f;
+	float const MAX_DIMENSIONS((float)voxel_resolution);
 
 	uint32_t frameOffset(0),
 		     numVoxels(0);
@@ -1787,16 +1874,17 @@ static void LoadGLTFFrame(gltf& __restrict model,
 					xmPosition = SFM::linearstep(xmMin, xmMax, xmPosition);          // data value is *now* normalized to [0, 1]
 					
 					// scale to maximum volume bounds
-					xmPosition = XMVectorScale(xmPosition, MAX_DIMENSIONS - 1.0f); // re-scale value to [0, 255]
+					xmPosition = XMVectorScale(xmPosition, MAX_DIMENSIONS - 1.0f); // re-scale value to [0, voxel_resolution]
 
 					tri.v[i].v = xmPosition;
 					tri.v[i].uv = XMLoadFloat2((XMFLOAT2 const* const)&uvs[vertex_index]);
 				}
 				
-				Voxelize(tri);
+				Voxelize(tri); // ** recursive ** 
 			}
+			SAFE_DELETE(_support); // no longer required
 		}
-		SAFE_DELETE(_support); // no longer required
+		allIndices.clear(); allIndices.shrink_to_fit(); // no longer required
 
 		numVoxels = (uint32_t)allVoxels.size(); // actual voxel count
 
@@ -1850,7 +1938,7 @@ static void LoadGLTFFrame(gltf& __restrict model,
 }
 
 // builds the voxel model, loading from academysoftwarefoundation .vdb format, returning the model with the voxels loaded for a sequence folder.
-int const LoadGLTF(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem)
+int const LoadGLTF(std::filesystem::path const path, voxelModelBase* const __restrict pDestMem, uint32_t const voxel_resolution)
 {
 	static constexpr float const UPDATE_RATE = (float)((2.0 * fp_seconds(critical_delta()).count()));
 
@@ -2036,7 +2124,7 @@ int const LoadGLTF(std::filesystem::path const path, voxelModelBase* const __res
 				break; // invalid frame, exit
 			}
 			
-			LoadGLTFFrame(model, pDestMem, sequence, xmMinPosition, xmMaxPosition, mini.v, maxi.v);
+			LoadGLTFFrame(model, pDestMem, voxel_resolution, sequence, xmMinPosition, xmMaxPosition, mini.v, maxi.v);
 
 #ifdef VOX_DEBUG_ENABLED
 			bar2.tick();
