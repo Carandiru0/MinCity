@@ -255,7 +255,7 @@ namespace Volumetric
 		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("tiny_explosion");
 
-		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray", 128);
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray", 256);
 
 		// last!
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last

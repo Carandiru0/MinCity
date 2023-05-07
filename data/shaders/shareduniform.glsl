@@ -3,12 +3,11 @@
 
 layout (binding = 0) restrict readonly uniform SharedUniform {
   
-  mat4		_viewproj;
-  mat4		_view;
-  mat4      _inv_view;  
-  mat4      _proj;
-  vec4		_eyePos;
-  vec4		_eyeDir;	 // direction to origin(0,0,0) fixes rendering artifacts of raymarch
+  precise mat4      _proj;
+  precise mat4		_view; 
+
+  precise vec4		_eyePos;
+  precise vec4		_eyeDir;	 // direction to origin(0,0,0) fixes rendering artifacts of raymarch
 
   precise vec4		_aligned_data0;  // components #define below
 

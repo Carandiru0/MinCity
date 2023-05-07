@@ -70,8 +70,10 @@ layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain text
 #define DD 0
 #define COLOR 1
 
-layout (binding = 3) uniform sampler3D volumeMap[2];
-layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
+layout (binding = 2) uniform sampler3D volumeMap[2];
+layout (input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput ambientLightMap;
+layout (binding = 4) uniform samplerCube reflectionCubeMap; // light coming from the sky/space surrounding the volume
+
 // binding 5 - is the shared common image array bundle
 // for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
@@ -82,15 +84,18 @@ layout (binding = 6) uniform sampler2D colorMap;
 #endif
 #if defined(T2D) // only for terrain
 layout (binding = 7) uniform sampler3D detailDerivativeMap;
-layout (binding = 8) uniform samplerCube reflectionCubeMap; // light coming from the sky/space surrounding the volume
-//#define DEBUG_SHADER
-
 #endif
 
 
 
 #include "lightmap.glsl"
 #include "lighting.glsl"
+
+// COMMON //
+float skylight(in const vec3 V, in const vec3 N)
+{
+	return texture(reflectionCubeMap, reflect(-V, N)).r;
+}
 
 // occlusion was causing noticable aliasing  *removed*
 
@@ -520,18 +525,9 @@ void main() {
 	// lighting
 	const vec3 albedo_rough_ao = texture(_texArray[TEX_TERRAIN2], vec3(In.world_uvw.xy, 0)).rgb;
 
-	vec3 color = vec3(0);
-	
 	//const float roughness = 0.5f;//1.0f - sq(albedo_ao.x*height);
 	//const vec3 grid_segment = texture(_texArray[TEX_GRID], vec3(VolumeDimensions * 3.0f * vec2(In.world_uv.x, In.world_uv.y), 0)).rgb;
 	//const float grid = (1.0f - dot(grid_segment.rgb, LUMA)) * max(0.0f, dot(N, vec3(0,0,-1)));
-	const vec3 star_direction = normalize(reflect(V, N));
-	const float star_color = texture(reflectionCubeMap, star_direction).r;
-
-	// twilight/starlight terrain lighting
-	color.rgb += lit( albedo_rough_ao.xxx, make_material(0.0f, 0.0f, albedo_rough_ao.y), star_color.xxx * 2.0f,				 
-				      albedo_rough_ao.z, getAttenuation(InvVolumeDimensions * (1.0f - (height_detail * InvVolumeDimensions + height * InvVolumeDimensions)) * VolumeDimensions), // on a single voxel
-				      normalize(star_direction + -N), N, V, false); // don't want to double-add reflections
 
 	// regular terrain lighting
 	vec3 light_color;
@@ -543,11 +539,10 @@ void main() {
 	Ld.z = -Ld.z; // vulkan
 
 						// only emissive can have color
-	color.rgb += lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,		
-					  albedo_rough_ao.z, getAttenuation(Ld.dist * VolumeLength),
-					  Ld.xyz, N, V, true);
-
-	outColor.rgb = color;
+	outColor.rgb = lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,	
+	                    skylight(V, N), // ambient lighting start (twilight/starlight)
+					    albedo_rough_ao.z, getAttenuation(Ld.dist),
+					    Ld.xyz, N, V);
 }
 
 #else // voxels, w/lighting 
@@ -570,10 +565,10 @@ void main() {
 	Ld.z = -Ld.z; // vulkan
 
 #ifndef TRANS              
-    
 	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,
-						1.0f, getAttenuation(Ld.dist * VolumeLength),
-						Ld.xyz, N, V, true);
+	                    skylight(V, N), // ambient lighting start (twilight/starlight)
+						1.0f, getAttenuation(Ld.dist),
+						Ld.xyz, N, V);
 
 	//outColor.rgb = vec3(attenuation);
 	//outColor.xyz = vec3(getOcclusion(In.uv.xyz));
@@ -582,8 +577,9 @@ void main() {
 
 	float fresnelTerm;  // feedback from lit       
 	const vec3 lit_color = lit( unpackColorHDR(In._color), In.material, light_color,
-						    1.0f, getAttenuation(Ld.dist * VolumeLength),
-						    Ld.xyz, N, V, true, fresnelTerm );
+	                            skylight(V, N), // ambient lighting start (twilight/starlight)
+						        1.0f, getAttenuation(Ld.dist),
+						        Ld.xyz, N, V, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //
 
@@ -593,7 +589,7 @@ void main() {
 	vec3 refract_color;  
 	const float weight = refraction_color(refract_color, colorMap, density);                                                    
          
-	vec3 color = mix(refract_color * lit_color, lit_color, In._transparency + In._transparency * In.material.emission);
+	const vec3 color = mix(refract_color * lit_color, lit_color, In._transparency + In._transparency * In.material.emission);
 
 	outColor = applyTransparency( color, In._transparency + In._transparency*density*density, weight );
 	

@@ -2,6 +2,7 @@
 #include <Math/superfastmath.h>
 #include <Math/v2_rotation_t.h>
 #include <Math/point2D_t.h>
+#include <Utility/bit_row.h>
 #include "tTime.h"
 #include "IsoVoxel.h"
 #include "voxelKonstants.h"
@@ -201,9 +202,10 @@ namespace Volumetric
 
 	public:
 		__inline bool const XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
+											   voxelBufferReference_Static&& __restrict statics,
+											   voxelBufferReference_Dynamic&& __restrict dynamics,
+											   voxelBufferReference_Dynamic&& __restrict trans,
+											   tbb::affinity_partitioner& __restrict part) const;
 
 	private:
 		bool const __vectorcall synchronize(FXMVECTOR const xmLoc, v2_rotation_t const vYaw) const; // internally used only
@@ -225,9 +227,10 @@ namespace Volumetric
 	{
 	public:
 		__inline bool const XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const;
+											   voxelBufferReference_Static&& __restrict statics,
+											   voxelBufferReference_Dynamic&& __restrict dynamics,
+											   voxelBufferReference_Dynamic&& __restrict trans,
+											   tbb::affinity_partitioner& __restrict part) const;
 
 	private:
 		// model must be loaded b4 any instance creation!
@@ -244,9 +247,10 @@ namespace Volumetric
 
 	// DYNAMIC INSTANCE RENDER
 	__inline bool const XM_CALLCONV voxelModelInstance_Dynamic::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+																	   voxelBufferReference_Static&& __restrict statics,
+																	   voxelBufferReference_Dynamic&& __restrict dynamics,
+																	   voxelBufferReference_Dynamic&& __restrict trans,
+																	   tbb::affinity_partitioner& __restrict part) const
 	{
 		if (!bVisible) {
 			// completely outside of visible grid?			   
@@ -258,14 +262,14 @@ namespace Volumetric
 
 		//* bugfix - hoisted out of parallel loop, don't change.
 		if (!bVisible || isEmissionOnly()) {
-			model.Render<true, false>(xmVoxelOrigin, orientation.v4(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			model.Render<true, false>(xmVoxelOrigin, orientation.v4(), *this, std::forward<voxelBufferReference_Static&& __restrict>(statics), std::forward<voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic&& __restrict>(trans), part);
 			return(false); // model not actually visible, only lights are seeded
 		}
 		else if (isFaded()) {
-			model.Render<false, true>(xmVoxelOrigin, orientation.v4(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			model.Render<false, true>(xmVoxelOrigin, orientation.v4(), *this, std::forward<voxelBufferReference_Static&& __restrict>(statics), std::forward<voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic&& __restrict>(trans), part);
 		}
 		else {
-			model.Render<false, false>(xmVoxelOrigin, orientation.v4(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			model.Render<false, false>(xmVoxelOrigin, orientation.v4(), *this, std::forward<voxelBufferReference_Static&& __restrict>(statics), std::forward<voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic&& __restrict>(trans), part);
 		}
 
 		return(true);
@@ -273,9 +277,10 @@ namespace Volumetric
 
 	// STATIC INSTANCE RENDER
 	__inline bool const XM_CALLCONV voxelModelInstance_Static::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-		tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-		tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans) const
+																	  voxelBufferReference_Static&& __restrict statics,
+																	  voxelBufferReference_Dynamic&& __restrict dynamics,
+																	  voxelBufferReference_Dynamic&& __restrict trans,
+																	  tbb::affinity_partitioner& __restrict part) const
 	{
 		if (!bVisible) {
 			// completely outside of visible grid?				   
@@ -285,14 +290,14 @@ namespace Volumetric
 
 		//* bugfix - hoisted out of parallel loop, don't change.
 		if (!bVisible || isEmissionOnly()) {
-			model.Render<true, false>(xmVoxelOrigin, XMVectorZero(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			model.Render<true, false>(xmVoxelOrigin, XMVectorZero(), *this, std::forward<voxelBufferReference_Static && __restrict>(statics), std::forward<voxelBufferReference_Dynamic && __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic && __restrict>(trans), part);
 			return(false); // model not actually visible, only lights are seeded
 		}
 		else if (isFaded()) {
-			model.Render<false, true>(xmVoxelOrigin, XMVectorZero(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			model.Render<false, true>(xmVoxelOrigin, XMVectorZero(), *this, std::forward<voxelBufferReference_Static && __restrict>(statics), std::forward<voxelBufferReference_Dynamic && __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic && __restrict>(trans), part);
 		}
 		else {
-			model.Render<false, false>(xmVoxelOrigin, XMVectorZero(), voxelIndex, *this, voxels_static, voxels_dynamic, voxels_trans);
+			model.Render<false, false>(xmVoxelOrigin, XMVectorZero(), *this, std::forward<voxelBufferReference_Static && __restrict>(statics), std::forward<voxelBufferReference_Dynamic && __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic && __restrict>(trans), part);
 		}
 
 		return(true);

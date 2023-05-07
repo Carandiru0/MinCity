@@ -21,7 +21,7 @@ namespace Volumetric
 		VOXEL_GRID_VISIBLE_X = Iso::SCREEN_VOXELS_X,
 		VOXEL_GRID_VISIBLE_Y = Iso::SCREEN_VOXELS_Y,
 		VOXEL_GRID_VISIBLE_Z = Iso::SCREEN_VOXELS_Z,
-		VOXEL_GRID_VISIBLE_TOTAL = VOXEL_GRID_VISIBLE_X * VOXEL_GRID_VISIBLE_Z, // terrainvoxels
+		VOXEL_GRID_VISIBLE_TOTAL = VOXEL_GRID_VISIBLE_X * VOXEL_GRID_VISIBLE_Z, // terrainvoxels (must be divisable by 64)
 
 		VOXEL_MINIGRID_VISIBLE_X = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_X,  // minivoxels
 		VOXEL_MINIGRID_VISIBLE_Y = Iso::VOXELS_GRID_SLOT_XZ * Iso::SCREEN_VOXELS_Y,
@@ -38,10 +38,14 @@ namespace Volumetric
 		                              // So what is the maximum buffer size and corresponding number of voxels that can actually squeeze into the 16 GB/s bandwidth available if that gpu buffer was fully used?    - 266 MB theoretical maximum/frame
 		                              // ****** 256 MB maximum/frame --> ~591,000 voxels/frame, so around *****[600k]***** voxels total be used. ****** WRONG
 		                              // --------------------------------------------------------------------------------------------------------------
-		                              // WELL *2000k* (2,000,000) is working just fine can probably go higher if required. < 1.5ms jump in frametime with stress test multiple explosion sequences...
-		VOXEL_MINIGRID_VISIBLE_TOTAL = 2000000,	// static voxels
-		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_TOTAL	// dynamic voxels 
+		                              // Reserving 16.7 million - each (static, dynamic)
+		VOXEL_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Z * (VOXEL_MINIGRID_VISIBLE_Y >> 3),	// static voxels (must be divisable by 64)
+		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_TOTAL	// dynamic voxels (must be divisable by 64)
 	);
+
+	static_assert(0 == (Allocation::VOXEL_GRID_VISIBLE_TOTAL % 64), "terrain voxel visible total not divisable by 64");
+	static_assert(0 == (Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL % 64), "static voxel visible total not divisable by 64");
+	static_assert(0 == (Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL % 64), "dynamic voxel visible total not divisable by 64");
 
 	read_only inline XMVECTORF32 const VOXEL_GRID_VISIBLE_XYZ{ (float)Allocation::VOXEL_GRID_VISIBLE_X, (float)Allocation::VOXEL_GRID_VISIBLE_Y, (float)Allocation::VOXEL_GRID_VISIBLE_Z };
 	read_only inline XMVECTORF32 const VOXEL_MINIGRID_VISIBLE_XYZ{ (float)Allocation::VOXEL_MINIGRID_VISIBLE_X, (float)Allocation::VOXEL_MINIGRID_VISIBLE_Y, (float)Allocation::VOXEL_MINIGRID_VISIBLE_Z };
@@ -58,10 +62,10 @@ namespace Volumetric
 	// main transform position to uvw constants (works for both normal ground voxels and mini voxels; the scale and bias math is equal)
 	read_only inline XMVECTORF32 const _xmTransformToIndexScale{ 2.0f, -2.0f, 2.0f };
 	read_only inline XMVECTORF32 const _xmInvTransformToIndexScale{ 0.5f, -0.5f, 0.5f };
-	read_only inline XMVECTORF32 const _xmTransformToIndexBias{ (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f, 0.0f, (float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f };
-	read_only inline XMVECTORF32 const _xmTransformToIndexBiasOverScale{ ((float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f) / 2.0f, 0.0f, ((float)Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f) / 2.0f};
-	read_only inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_MINIGRID_VISIBLE_X, Volumetric::INVERSE_MINIGRID_VISIBLE_Y, Volumetric::INVERSE_MINIGRID_VISIBLE_Z, 1.0f };
+	read_only inline XMVECTORF32 const _xmTransformToIndexBias{ (float)Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f, 0.0f, (float)Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f };
+	read_only inline XMVECTORF32 const _xmTransformToIndexBiasOverScale{ ((float)Allocation::VOXEL_MINIGRID_VISIBLE_X * 0.5f) / 2.0f, 0.0f, ((float)Allocation::VOXEL_MINIGRID_VISIBLE_Z * 0.5f) / 2.0f};
+	read_only inline XMVECTORF32 const _xmInverseVisible{ INVERSE_MINIGRID_VISIBLE_X, INVERSE_MINIGRID_VISIBLE_Y, INVERSE_MINIGRID_VISIBLE_Z, 1.0f };
 
-}// end ns
+}// end ns 
 
 

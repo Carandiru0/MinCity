@@ -61,8 +61,8 @@ namespace Iso
 	*/
 	// uniforms.vert   ,  isovoxel.h   ,    globals.h
 	static constexpr uint32_t const
-		VOXELS_GRID_SLOT_XZ_BITS_2N = 1,						 // modify to get desired voxel size, uniforms.vert must equal
-		VOXELS_GRID_SLOT_XZ = (1 << VOXELS_GRID_SLOT_XZ_BITS_2N);// max num voxels in x or z direction for a single slot / square on "minigrid" : "grid"
+		VOXELS_GRID_SLOT_XZ_BITS_2N = 1,						 // modify to //////////////////////////////-****get desired voxel size, uniforms.vert must equal
+		VOXELS_GRID_SLOT_XZ = (1 << VOXELS_GRID_SLOT_XZ_BITS_2N);// max96++++/ num voxels in x or z direction for a single slot / square on "minigrid" : "grid"
 			// 2^3 bits = 8
 	static constexpr float const
 		VOXELS_GRID_SLOT_XZ_FP = ((float)(VOXELS_GRID_SLOT_XZ));
@@ -74,7 +74,7 @@ namespace Iso
 		SCREEN_VOXELS = 256,                  // must be divisable by 8, 16 and 64 - *required* to play nice with compute dispatch, bit_volumes & power of 2 square textures.
 		SCREEN_VOXELS_X = SCREEN_VOXELS,	  // must be *uniform* on all dimensions (x,y,z) - non-uniform volume sizes are inherently limited and cannot be used practically. There are so many things that go wrong, raymarch skew, incorrect scaling, voxels are no longer cubes but rather elongated boxes, etc. nightmare!
 		SCREEN_VOXELS_Y = SCREEN_VOXELS,
-		SCREEN_VOXELS_Z = SCREEN_VOXELS;;
+		SCREEN_VOXELS_Z = SCREEN_VOXELS;                                                                                                    
 
 	static constexpr float const
 		VOX_SIZE = 0.5f,			// this value and shader value for normal vox size need to always match

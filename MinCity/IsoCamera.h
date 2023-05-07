@@ -29,8 +29,8 @@ namespace Iso
 
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	static constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= CUSTOM_ISOMETRIC_ANGLES;
-	static constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= CUSTOM_ISOMETRIC;
+	static constexpr XMFLOAT3A   const ISOMETRIC_ANGLES_USED		= TRUE_ISOMETRIC_ANGLES;
+	static constexpr XMFLOAT3A   const ISOMETRIC_PERSPECTIVE_USED	= TRUE_ISOMETRIC;
 	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	read_only inline XMVECTORF32 const

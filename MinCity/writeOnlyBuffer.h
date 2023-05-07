@@ -83,7 +83,7 @@ protected:
 		// Slice "window/range" tracking
 		uint32_t const unique = PsuedoRandomNumber(0, ATOMIC_SPREAD - 1);
 
-		_trackedHash[unique].fetch_and_add<tbb::release>(index);
+		_trackedHash[unique].fetch_and_add(index);
 	}
 #endif
 

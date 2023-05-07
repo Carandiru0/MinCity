@@ -26,8 +26,6 @@
 #define INVERSE_ANSI_OFF "\x1b[27m"
 #endif
 
-//#define GIF_MODE
-
 #ifndef NDEBUG			// Debug TESTS //
 
 //#define VKU_VMA_DEBUG_ENABLED
@@ -38,6 +36,7 @@
 #define DEBUG_DISABLE_MUSIC
 //#define DEBUG_TRAFFIC
 //#define DEBUG_OUTPUT_STREAMING_STATS
+#define DEBUG_VOXEL_BANDWIDTH
 //#define DEBUG_EXPORT_TERRAIN_KTX
 //#define DEBUG_EXPORT_BLUENOISE_KTX
 //#define DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
@@ -89,6 +88,7 @@ extern void debug_out_nuklear_off();
 //#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
 //#define DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
 //#define DEBUG_OUTPUT_STREAMING_STATS
+#define DEBUG_VOXEL_BANDWIDTH
 
 #define FMT_LOG_DEBUG(message, ...) //{ (void)message; (void)__VA_ARGS__; }
 #define FMT_NUKLEAR_DEBUG(bLog, message, ...) //{ (void)bLog; (void)message; (void)__VA_ARGS__; }
@@ -104,6 +104,7 @@ extern void debug_out_nuklear_off();
 	|| defined(DEBUG_PERFORMANCE_VOXEL_SUBMISSION)	\
 	|| defined(DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP) \
     || defined(DEBUG_OUTPUT_STREAMING_STATS) \
+    || defined(DEBUG_VOXEL_BANDWIDTH) \
     || defined(TRACY_ENABLE) \
 
 #ifndef DEBUG_OPTIONS_USED
@@ -170,7 +171,7 @@ namespace Globals
 #define DEBUG_DIR DATA_DIR L"debug/"
 #endif
 // ####################################################################################################################################################//
-	static constexpr uint32_t const DEFAULT_STACK_SIZE = 262144;	// in bytes, 256KB
+	static constexpr uint32_t const DEFAULT_STACK_SIZE = (1 << 19);	// in bytes, 512KB for any tbb thread. main thread uses program defined stack size (default 1MB))   *bugfix - stack overflow encountered @ 256KB, increased to 512KB
 
 	static constexpr uint32_t const DEFAULT_SCREEN_WIDTH = 1920,	// 16:9 default, should not be used directly
 									DEFAULT_SCREEN_HEIGHT = 1080;  
@@ -188,8 +189,8 @@ namespace Globals
 								 ZOOM_SPEED = 0.44f; // see Iso::CAMERA_SCROLL_DISTANCE_MULTIPLIER for edge scrolling speed
 	
 							// Parallel Projections have a magnitude greater range in precision. Orthographic projection has nearly infinite accuracy compared to perspective projection. *Do not optimize these values further* The high depth buffer precision is supported, when coupled with a 32bit depth buffer.
-	static constexpr double const MINZ_DEPTH = (0.0000111 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
-	static constexpr double const MAXZ_DEPTH = 4.0 * (411.111111 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
+	static constexpr double const MINZ_DEPTH = (0.111111 * SFM::GOLDEN_RATIO);			// Tweaked Z Range, don't change, type purposely double
+	static constexpr double const MAXZ_DEPTH = 9.0 * (111.111111 * SFM::GOLDEN_RATIO);	// remember orthographic projection makes the distribution of z values linear - best precision possible
 											/* DO NOT CHANGE, PERFECT RAYMARCH PRECISION */	// **** this affects clipping of the raymarch "unit cube", do not change values
 
 	static constexpr uint32_t const INTERVAL_GUI_UPDATE = 16;	 // 16ms = 60fps maximum gui update interval when no input is flagging the gui to be updated (set for minimum latency)

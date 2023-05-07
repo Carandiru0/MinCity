@@ -284,11 +284,11 @@ void cVulkan::CreateComputeResources()
 			vku::DescriptorSetLayoutMaker	dslm;
 
 			auto const samplers{ getSamplerArray
-				<eSamplerAddressing::REPEAT>(
+				<eSamplerAddressing::CLAMP>(
 					eSamplerSampling::LINEAR, eSamplerSampling::LINEAR
 				)
 			};
-			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, samplers); // 3d volume seed (lightprobes) &getNearestSampler<eSamplerAddressing::REPEAT>()
+			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, &samplers[0]); // 3d volume seed (lightprobes) &getNearestSampler<eSamplerAddressing::REPEAT>()
 			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
 			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1286,7 +1286,13 @@ void cVulkan::CreateSharedVoxelResources()
 
 	auto const samplers_common{ getSamplerArray
 			<eSamplerAddressing::CLAMP>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear (3d texture samplers, etc)
+				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear
+			)
+	};
+
+	auto const samplers_border{ getSamplerArray
+			<eSamplerAddressing::BORDER>(
+				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear border *bugfix - must use border addressing to correct light leaking
 			)
 	};
 
@@ -1294,12 +1300,12 @@ void cVulkan::CreateSharedVoxelResources()
 		vku::DescriptorSetLayoutMaker	dslm;
 		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eGeometry, 1);
 		dslm.buffer(1U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex, 1);
-		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers_common);							               // 3d textures (direction/distance & light color)
-		dslm.image(4U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);											                   // 2d texture(ambient light reflection)
+		dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers_border);							               // 3d textures (direction/distance & light color)
+		dslm.image(3U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);											                   // 2d texture(ambient light reflection)
+		dslm.image(4U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &samplers_common[0]);                                     // reflection cube map
 		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, TEXTURE_ARRAY_LENGTH, samplers_tex_array);			       // 2d texture array
 		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &samplers_common[0]);					                   // 2d texture (last color backbuffer) - transparent voxels only
 		dslm.image(7U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getAnisotropicSampler<eSamplerAddressing::REPEAT>());	   // 3d texture (terrain detail & derivative maps) - terrain voxels only
-		dslm.image(8U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &getLinearSampler<eSamplerAddressing::CLAMP>());          // reflection cube map
 		_rtSharedData.descLayout[eVoxelDescSharedLayout::VOXEL_COMMON] = dslm.createUnique(_device);
 	}
 
@@ -1566,10 +1572,12 @@ void cVulkan::CreateIndirectActiveCountBuffer() // required critical buffer need
 	using buf = vk::BufferUsageFlagBits;
 	using pfb = vk::MemoryPropertyFlagBits;
 
-	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
-	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
-	_indirectActiveCount[0] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
-	_indirectActiveCount[1] = new vku::IndirectBuffer(eVoxelVertexBuffer::_size() * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
+	constexpr uint32_t const maximum_draw_command_count = eVoxelVertexBuffer::_size() + eVoxelPipelineCustomized::_size() + 2;
+
+	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, maximum_draw_command_count * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
+	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, maximum_draw_command_count * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
+	_indirectActiveCount[0] = new vku::IndirectBuffer(maximum_draw_command_count * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
+	_indirectActiveCount[1] = new vku::IndirectBuffer(maximum_draw_command_count * sizeof(vk::DrawIndirectCommand), true); // this is the gpu buffer, use staging buffer to update.
 }
 
 void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t const resource_index)
@@ -1577,41 +1585,226 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 	using buf = vk::BufferUsageFlagBits;
 	using pfb = vk::MemoryPropertyFlagBits;
 
-	vk::DrawIndirectCommand const drawCommand[eVoxelVertexBuffer::_size()]{
+	sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS]{};
 
-		/*
+	// MAIN_PARTITION, CLEAR_MASK PARTITION & CUSTOM_PIPELINES
+	vk::DrawIndirectCommand main_partition{},
+		                    clear_partition{},
+		                    custom_partitions[eVoxelPipelineCustomized::_size()]{};
+
+	uint32_t ActivePartitionCount(0);
+
+	{
+		// MAIN_PARTITION & CUSTOM_PIPELINES
+		uint32_t ActiveMaskCount(0);
+
+		// dynamic voxels
+		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_DYNAMIC_BASIC;
+
+		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
+		if (0 != ActiveVertexCount) {
+
+			// main partition (always starts at vertex position 0)
+			{
+				uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].active_vertex_count;
+				if (0 != partition_vertex_count) {
+					/*
+					vertexCount
+					instanceCount
+					firstVertex
+					firstInstance
+					*/
+					main_partition = vk::DrawIndirectCommand{ partition_vertex_count, 1, 0, 0 };
+					++ActivePartitionCount;
+				}
+			}
+
+			// draw children dynamic shader voxels (customized) (opaque voxel shaders only)
+			// leveraging existing vb already bound
+
+			for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+
+				sRTDATA_CHILD const& __restrict rtDataChild(_rtDataChild[child]);
+				vku::VertexBufferPartition const* const __restrict child_partition = rtDataChild.vbo_partition_info[resource_index];
+				if (nullptr != child_partition && !rtDataChild.transparency) {
+
+					if (!rtDataChild.mask) {
+						uint32_t const partition_vertex_count = child_partition->active_vertex_count;
+						if (0 != partition_vertex_count) {
+
+							uint32_t const partition_start_vertex = child_partition->vertex_start_offset;
+							/*
+							vertexCount
+							instanceCount
+							firstVertex
+							firstInstance
+							*/
+							custom_partitions[child] = vk::DrawIndirectCommand{ partition_vertex_count, 1, partition_start_vertex, 0 };
+							++ActivePartitionCount;
+						}
+					}
+					else {
+						deferredChildMasks[ActiveMaskCount++] = &rtDataChild;  // clear masks are draw later....
+					}
+				}
+			}
+		}
+
+		// CLEAR_MASK PARTITION
+		// batching of all clears (*** requires all clears to be grouped together in vb layout)
+		vku::VertexBufferPartition clear_partitions{};
+		
+		for (uint32_t child = 0; child < ActiveMaskCount; ++child) {
+
+			sRTDATA_CHILD const& __restrict rtDataChild(*deferredChildMasks[child]);
+			vku::VertexBufferPartition const* const __restrict child_partition = rtDataChild.vbo_partition_info[resource_index];
+
+			if (0 != child_partition->active_vertex_count) {
+				if (0 == clear_partitions.active_vertex_count) {
+					clear_partitions.vertex_start_offset = child_partition->vertex_start_offset;
+				}
+				clear_partitions.active_vertex_count += child_partition->active_vertex_count;
+			}
+		}
+
+		// draw batch of clear masks
+		if (0 != clear_partitions.active_vertex_count) {
+			/*
+			vertexCount
+			instanceCount
+			firstVertex
+			firstInstance
+			*/
+			clear_partition = vk::DrawIndirectCommand{ clear_partitions.active_vertex_count, 1, clear_partitions.vertex_start_offset, 0 };
+			++ActivePartitionCount;
+		}
+	}
+
+	vk::DrawIndirectCommand transparency_partitions[eVoxelPipelineCustomized::_size()]{};
+
+	// TRANSPARENCY PARTITION
+	{ // dynamic voxels
+		uint32_t const ActiveVertexCount = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
+		if (0 != ActiveVertexCount) {
+
+			// draw children dynamic shader voxels (customized) (transparent voxel shaders only)
+			for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+
+				vku::VertexBufferPartition const* const __restrict child_partition = _rtDataChild[child].vbo_partition_info[resource_index];
+				if (nullptr != child_partition && _rtDataChild[child].transparency) {
+
+					uint32_t const partition_vertex_count = child_partition->active_vertex_count;
+					if (0 != partition_vertex_count) {
+
+						uint32_t const partition_start_vertex = child_partition->vertex_start_offset;
+
+						/*
+							vertexCount
+							instanceCount
+							firstVertex
+							firstInstance
+						*/
+						transparency_partitions[child] = vk::DrawIndirectCommand{ partition_vertex_count, 1, partition_start_vertex, 0 };
+						++ActivePartitionCount;
+					}
+				}
+			}
+		}
+	}
+
+	uint32_t const drawCommandSize(eVoxelVertexBuffer::_size() + ActivePartitionCount);
+
+	// fast dynamic stack allocation, memory is automatically freed upon exiting scope
+	vk::DrawIndirectCommand* const drawCommand((vk::DrawIndirectCommand* const)alloca(drawCommandSize * sizeof(vk::DrawIndirectCommand)) );
+
+	/*
 		vertexCount
 		instanceCount
 		firstVertex
 		firstInstance
-		*/
-
-		// VOXEL_TERRAIN
-		{ (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>(), 1, 0, 0 },
-
-		// VOXEL_STATIC
-		{ (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>(), 1, 0, 0 },
-		
-		// VOXEL_DYNAMIC
-		{ (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>(), 1, 0, 0 },
-
-	};
+	*/
 	
+	uint32_t drawCommandIndex(0);
+	uint32_t vertexCount(0), vertexStart(0);
+
+	_drawCommandIndices.reset();  // reset every frame!
+
+	// VOXEL_TERRAIN
+	vertexCount = (*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
+	if (0 != vertexCount) {
+		drawCommand[drawCommandIndex] = vk::DrawIndirectCommand{ vertexCount, 1, 0, 0 };
+		_drawCommandIndices.voxel_terrain = drawCommandIndex;
+		++drawCommandIndex;
+	}
+
+	// VOXEL_STATIC
+	vertexCount = (*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
+	if (0 != vertexCount) {
+		drawCommand[drawCommandIndex] = vk::DrawIndirectCommand{ vertexCount, 1, 0, 0 };
+		_drawCommandIndices.voxel_static = drawCommandIndex;
+		++drawCommandIndex;
+	}
+
+	// VOXEL_DYNAMIC
+	vertexCount = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
+	if (0 != vertexCount) {
+		drawCommand[drawCommandIndex] = vk::DrawIndirectCommand{ vertexCount, 1, 0, 0 };
+		_drawCommandIndices.voxel_dynamic = drawCommandIndex;
+		++drawCommandIndex;
+	}
+
+	// VOXEL_DYNAMIC_MAIN_PARTITION
+	if (0 != main_partition.vertexCount) {
+		drawCommand[drawCommandIndex] = main_partition;
+		_drawCommandIndices.partition.voxel_dynamic_main = drawCommandIndex;
+		++drawCommandIndex;
+	}
+
+	// CLEAR_MASK PARTITION
+	if (0 != clear_partition.vertexCount) {
+		drawCommand[drawCommandIndex] = clear_partition;
+		_drawCommandIndices.partition.voxel_dynamic_clear_mask = drawCommandIndex;
+		++drawCommandIndex;
+	}
+
+	// CUSTOM_PIPELINES
+	for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+
+		if (0 != custom_partitions[child].vertexCount) {
+			drawCommand[drawCommandIndex] = custom_partitions[child];
+			_drawCommandIndices.partition.voxel_dynamic_custom_pipelines[child] = drawCommandIndex;
+			++drawCommandIndex;
+		}
+	}
+
+	// TRANSPARENCY PARTITION
+	for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+
+		if (0 != transparency_partitions[child].vertexCount) {
+			drawCommand[drawCommandIndex] = transparency_partitions[child];
+			_drawCommandIndices.partition.voxel_dynamic_transparency[child] = drawCommandIndex;
+			++drawCommandIndex;
+		}
+	}
+
 	// this function is always called once per frame by the compute transfer uniform operation.
 	// so this copy actually happens on the cpu->staging buffer here
 	// the staging buffer->gpu copy is deferred until command buffer execution by the transfer queue.
 	// this is in the beginning of the frame, coherent before any usage of the indirect buffer.
 	// always updates the counts (active voxels)
-	vk::DrawIndirectCommand const* const updateDrawCommand(drawCommand);
-	_activeCountBuffer[resource_index].updateLocal(updateDrawCommand, sizeof(drawCommand)); // template cannot use an array of drawCommands, so give it a pointer to the array's first element in memory. All elements are copied as the size copied is equal to the total number of elements.
+	if (0 != drawCommandIndex) {
+		                                                            // New validated count (drawCommandIndex)
+		_activeCountBuffer[resource_index].updateLocal(drawCommand, drawCommandIndex * sizeof(vk::DrawIndirectCommand)); // template cannot use an array of drawCommands, so give it a pointer to the array's first element in memory. All elements are copied as the size copied is equal to the total number of elements.
 
-	_indirectActiveCount[resource_index]->uploadDeferred(cb, _activeCountBuffer[resource_index]); // fast single copy to gpu only indirect draw buffer - only once per frame.
+		_indirectActiveCount[resource_index]->uploadDeferred(cb, _activeCountBuffer[resource_index]); // fast single copy to gpu only indirect draw buffer - only once per frame.
+	}
 }
 
-// macros for sampler sets
+// macros for sampler sets **can be combined**
 #define SAMPLER_SET_LINEAR getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>()
-#define SAMPLER_SET_LINEAR_POINT getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>(), getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>()
-#define SAMPLER_SET_LINEAR_POINT_ANISO getLinearSampler(), getLinearSampler<eSamplerAddressing::REPEAT>(), getLinearSampler<eSamplerAddressing::MIRRORED_REPEAT>(), getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>(), getAnisotropicSampler(), getAnisotropicSampler<eSamplerAddressing::REPEAT>()
+#define SAMPLER_SET_LINEAR_POINT SAMPLER_SET_LINEAR, getNearestSampler(), getNearestSampler<eSamplerAddressing::REPEAT>()
+#define SAMPLER_SET_LINEAR_POINT_ANISO SAMPLER_SET_LINEAR_POINT, getAnisotropicSampler(), getAnisotropicSampler<eSamplerAddressing::REPEAT>()
+#define SAMPLER_SET_BORDER getLinearSampler<eSamplerAddressing::BORDER>()
 
 void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 {
@@ -1654,7 +1847,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value - common descriptor set uses the lastColorImageView in binding 6, for transparency usage in the overlay/transparency pass, at that point, it only contains the scene rendered of opaques. "grab pass"
-			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_LINEAR_POINT_ANISO);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_LINEAR_POINT_ANISO, SAMPLER_SET_BORDER);
 			
 		}
 	}
@@ -1828,14 +2021,16 @@ inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 	return(MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData)); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
 }
 
-void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CHILD const* (& __restrict deferredChildMasks)[NUM_CHILD_MASKS], uint32_t const ActiveMaskCount)
+void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s)
 {
 	uint32_t const resource_index(s.resource_index);
 	// ***** descriptor set must be set outside of this function ***** //
 
 	// ## deferred mask dynamic children "Transparent Mask" voxels
 	//    has to be last as the depth buffer must be complete by this point for correct masking
-	if (ActiveMaskCount) {
+	
+	// draw batch of clear masks
+	if (_drawCommandIndices.partition.voxel_dynamic_clear_mask >= 0) {
 
 		// leveraging dynamic vb 
 		// all children that use a clear mask use common descriptor set and pipeline
@@ -1848,26 +2043,7 @@ void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s, sRTDATA_CH
 			s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE]);
 		}
 
-		// batching of all clears (*** requires all clears to be grouped together in vb layout)
-		vku::VertexBufferPartition clear_partitions{};
-
-		for (uint32_t child = 0; child < ActiveMaskCount; ++child) {
-
-			sRTDATA_CHILD const& __restrict rtDataChild(*deferredChildMasks[child]);
-			vku::VertexBufferPartition const* const __restrict child_partition = rtDataChild.vbo_partition_info[resource_index];
-
-			if (0 != child_partition->active_vertex_count) {
-				if (0 == clear_partitions.active_vertex_count) {
-					clear_partitions.vertex_start_offset = child_partition->vertex_start_offset;
-				}
-				clear_partitions.active_vertex_count += child_partition->active_vertex_count;
-			}
-		}
-
-		// draw batch of clear masks
-		if (0 != clear_partitions.active_vertex_count) {
-			s.cb.draw(clear_partitions.active_vertex_count, 1, clear_partitions.vertex_start_offset, 0);
-		}
+		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_clear_mask), 1, 0);
 	}
 }
 
@@ -1876,32 +2052,32 @@ void cVulkan::clearAllVoxels(vku::clear_renderpass&& __restrict c)  // for clear
 	uint32_t const resource_index(c.resource_index);
 	// ***** descriptor set must be set outside of this function ***** //
 
-	{ // dynamic voxels
+	if (_drawCommandIndices.voxel_dynamic >= 0) { // dynamic voxels
 
 		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_DYNAMIC_BASIC_CLEAR;
 
 		c.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		c.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_DYNAMIC), 1, 0);
+		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_dynamic), 1, 0);
 	}
 
-	{ // static voxels
+	if (_drawCommandIndices.voxel_static >= 0) { // static voxels
 		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC_CLEAR;
 
 		c.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		c.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_STATIC), 1, 0);
+		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_static), 1, 0);
 	}
 
-	{ // terrain
+	if (_drawCommandIndices.voxel_terrain >= 0) { // terrain
 		constexpr uint32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC_CLEAR;
 
 		c.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
 		c.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectActiveCountOffset(eVoxelVertexBuffer::VOXEL_TERRAIN), 1, 0);
+		c.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_terrain), 1, 0);
 	}
 }
 
@@ -2138,7 +2314,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// all voxels share the same descriptor set
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_ZONLY>(resource_index, s.cb);	
 
-	(void)renderAllVoxels<ZONLY, 0>(s);
+	renderAllVoxels<ZONLY>(s);
 
 	s.cb.nextSubpass(vk::SubpassContents::eInline);
 
@@ -2156,11 +2332,8 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// all voxels share the same descriptor set
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(resource_index, s.cb);
 
-	{
-		sRTDATA_CHILD const* deferredChildMasks[NUM_CHILD_MASKS];
-		uint32_t const ActiveMaskCount = renderAllVoxels<BASIC, NUM_CHILD_MASKS>(s, deferredChildMasks);
-		renderClearMasks(std::forward<vku::static_renderpass&&>(s), deferredChildMasks, ActiveMaskCount);
-	}
+	renderAllVoxels<BASIC>(s);
+	renderClearMasks(std::forward<vku::static_renderpass&&>(s));
 
 	s.cb.endRenderPass();
 
@@ -2211,7 +2384,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// Volume Rendering using raymarch of 3d/volume texture:
 	{
-
 		s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_volData.pipelineLayout, 0,
 								_volData.sets[resource_index], nullptr);
 
@@ -2224,7 +2396,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 		// renderpass changes layout - update state of image to match
 		_window->depthResolvedImage(1).setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
-
 	}
 
 	// SUBPASS - resolve //

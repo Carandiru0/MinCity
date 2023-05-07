@@ -19,7 +19,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // with appropriatte defines for its shader
 // *******************************************************//
 // optional outputs:
-// OUT_REFLECTION
 // OUT_FRESNEL
 // ....
 
@@ -157,12 +156,8 @@ float fresnel(in const vec3 N, in const vec3 V, in const float power)  // fresne
 #endif
 
 // Albedo = straight color no shading or artificial lighting (voxel color in)
-vec3 lit( in const vec3 albedo, in const vec4 material, in vec3 light_color, in const float occlusion, in const float attenuation,
-          in const vec3 L, in const vec3 N, in const vec3 V, // L = light direction, N = normal, V = eye direction   all expected to be normalized
-		  in const bool reflection_on
-#ifdef OUT_REFLECTION
-		  , out vec3 ambient_reflection
-#endif
+vec3 lit( in const vec3 albedo, in const vec4 material, in vec3 light_color, in const float ambient, in const float occlusion, in const float attenuation,
+          in const vec3 L, in const vec3 N, in const vec3 V // L = light direction, N = normal, V = eye direction   all expected to be normalized
 #ifdef OUT_FRESNEL
 		  , out float fresnelTerm
 #endif
@@ -174,31 +169,22 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in vec3 light_color, in 
 	const float NdotL = max(0.0f, dot(N, L));
 	const float NdotH = max(0.0f, dot(N, normalize(L + V)));
 	
-	const float fresnelPower = 5.0f;
-
 #ifdef OUT_FRESNEL
-	fresnelTerm = fresnel(N, V, fresnelPower);
+	fresnelTerm = fresnel(N, V, 5.0f);
 #elif defined(INOUT_FRESNEL)
-	fresnelTerm = fresnel(N, V, fresnelPower) * fresnelTerm;
+	fresnelTerm = fresnel(N, V, 5.0f) * fresnelTerm;
 #else
-	const float fresnelTerm = fresnel(N, V, fresnelPower);
+	const float fresnelTerm = fresnel(N, V, 5.0f);
 #endif
-	//light_color = light_color * 100.0f;//attenuation;
+	light_color = light_color * attenuation; // with the reflection this balances out
 
 	const float luminance = min(1.0f, dot(light_color, LUMA)); // bugfix: light_color sampled can exceed normal [0.0f ... 1.0f] range, cap luminance at 1.0f maximum
 	const float emission_term = (luminance + smoothstep(0.5f, 1.0f, attenuation)) * material.emission; /// emission important formula do not change (see notes below)
 	const float specular_reflection_term = GGX_Distribution(NdotH, material.roughness) * fresnelTerm;
 	const float diffuse_reflection_term = NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 
-#ifndef OUT_REFLECTION
-	vec3 ambient_reflection = vec3(0);
-#endif
-    movc(reflection_on, ambient_reflection, reflection());
-
-	const vec3 ambient_reflection_term = unpackColorHDR(material.ambient) + ambient_reflection;
-
 			// ambient
-	return ( albedo * occlusion * ambient_reflection_term +
+	return ( fma( albedo * occlusion, reflection(), unpackColorHDR(material.ambient) + ambient * occlusion) +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					
 		     fma( albedo * occlusion, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
 			       // emission		// ^^^^^^ this splits the distribution of light to the albedo color and the actual light color 50/50, it is biased toward to the albedo color in the event the albedo color component is greater than 0.5f. Making bright objects appear brighter. (all modulated by the current occlusion). This makes occulusion emphasized, which looks nice as the effect of ambient occlusion is always very visible. *do not change*

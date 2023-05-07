@@ -1,3 +1,12 @@
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
 #pragma once
 #include "Declarations.h"
 #include "globals.h"
@@ -183,11 +192,12 @@ namespace world
 		
 		// [[deprecated]] void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
 
-		// macros for sampler sets
+		// macros for sampler sets (**can be combined**)
 #define SAMPLER_SET_SINGLE vk::Sampler const& sampler
 #define SAMPLER_SET_LINEAR vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat
-#define SAMPLER_SET_LINEAR_POINT vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat
-#define SAMPLER_SET_LINEAR_POINT_ANISO vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
+#define SAMPLER_SET_LINEAR_POINT SAMPLER_SET_LINEAR, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat
+#define SAMPLER_SET_LINEAR_POINT_ANISO SAMPLER_SET_LINEAR_POINT, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
+#define SAMPLER_SET_BORDER vk::Sampler const& __restrict samplerLinearBorder
 
 		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp);
 		//[[deprecated]] void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
@@ -199,7 +209,7 @@ namespace world
 		void UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict lastFrameView, SAMPLER_SET_LINEAR_POINT);
 		void UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView, SAMPLER_SET_LINEAR_POINT);
 		
-		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO);
+		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO, SAMPLER_SET_BORDER);
 		void UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict ds, SAMPLER_SET_LINEAR);
 
 		__inline point2D_t const* const __restrict lookupVoxelModelInstanceRootIndex(uint32_t const hash) const;  // read-only access

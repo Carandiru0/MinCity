@@ -245,8 +245,8 @@ void main() {
 
   vec3 worldPos = inWorldPos.xyz;
 
-  // out position //
-  gl_Position = vec4(worldPos * VOX_STEP, 1.0f);  // *bugfix - was only 1.0 for all voxel sizes. Scaling must occur as the last transformation, this solves the problem for of RenderGrid() incrementing by only 1 for each voxel, rather than by VOX_STEP which is based off of the VOX_SIZE. VOX_SIZE is a "radius", so it would take 2.0f * VOX_SIZE to translate between any 2 voxel origins, accounting for the size thwy are. VOX_STEP is only applied here to keep the scale as it was before (1.0) before this point in the entire program. This is visual only.  
+  // out position //            // offset to bottom of volume to match raymarch (added)
+  gl_Position = vec4((worldPos + vec3(0.0f, VolumeDimensions * 0.5f * 0.5f, 0.0f)) * VOX_STEP, 1.0f);  // *bugfix - was only 1.0 for all voxel sizes. Scaling must occur as the last transformation, this solves the problem for of RenderGrid() incrementing by only 1 for each voxel, rather than by VOX_STEP which is based off of the VOX_SIZE. VOX_SIZE is a "radius", so it would take 2.0f * VOX_SIZE to translate between any 2 voxel origins, accounting for the size thwy are. VOX_STEP is only applied here to keep the scale as it was before (1.0) before this point in the entire program. This is visual only.  
 
 #ifndef ZONLY
 

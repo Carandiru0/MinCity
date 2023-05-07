@@ -3,6 +3,7 @@
 #include <Math/superfastmath.h>
 #include <Utility/mem.h>
 #include <Utility/class_helper.h>
+#include "streaming_sizes.h"
 
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
@@ -29,10 +30,7 @@ namespace VertexDecl
 		__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_color_, uint32_t const hash) noexcept
 			: worldPos(XMVectorSetW(worldPos_, SFM::uintBitsToFloat(hash))), uv_color(uv_color_)
 		{}
-		//__forceinline explicit __vectorcall VoxelNormal(FXMVECTOR worldPos_, FXMVECTOR uv_vr_) noexcept
-		//	: worldPos(worldPos_), uv_vr(uv_vr_)
-		//{}
-		VoxelNormal() = default;
+		constexpr VoxelNormal() = default;
 		__forceinline __vectorcall VoxelNormal(VoxelNormal&& relegate) noexcept = default;
 		__forceinline void __vectorcall operator=(VoxelNormal&& relegate) noexcept {
 			worldPos = std::move(relegate.worldPos);
@@ -50,7 +48,7 @@ namespace VertexDecl
 		__forceinline explicit __vectorcall VoxelDynamic(FXMVECTOR worldPos_, FXMVECTOR orient_color_, uint32_t const hash) noexcept
 			: VoxelNormal(worldPos_, orient_color_, hash)
 		{}
-		VoxelDynamic() = default;
+		constexpr VoxelDynamic() = default;
 		__forceinline __vectorcall VoxelDynamic(VoxelDynamic&& relegate) noexcept = default;
 		__forceinline void __vectorcall operator=(VoxelDynamic&& relegate) noexcept {
 
@@ -86,10 +84,8 @@ namespace UniformDecl
 	// BUFFER alignment should not be explicity specified on struct, rather use alignment rules of Vulkan spec and do ordering of struct members manually
 
 	struct no_vtable VoxelSharedUniform {
-		XMMATRIX    viewproj;
-		XMMATRIX	view;
-		XMMATRIX	inv_view;
 		XMMATRIX	proj;
+		XMMATRIX	view;
 		XMVECTOR	eyePos;         // .w = camera elevation delta
 		XMVECTOR	eyeDir;
 		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
@@ -134,21 +130,97 @@ namespace UniformDecl
 
 } // end ns UniformDecl
 
-// special functions for declaration streaming
-INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelNormal* const __restrict dest, VertexDecl::VoxelNormal const& __restrict src)
+// special functions for declaration streaming sBatched
+template<typename T>
+INLINE_MEMFUNC __streaming_store(T* const __restrict dest, T const& __restrict src)
 {
 	// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h [STATIC ALLOCATION SIZE]
 	// 
 	// VertexDecl::VoxelNormal works with _mm256 (fits size), 8 floats total / element
 	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_color, src.worldPos));
 }
-INLINE_MEMFUNC __streaming_store(VertexDecl::VoxelDynamic* const __restrict dest, VertexDecl::VoxelDynamic const& __restrict src)
+
+// special functions for declaration streaming sBatchedByIndexXXX variants
+template<typename T>
+INLINE_MEMFUNC __streaming_store_residual_out(T* const __restrict dest, T const& __restrict src, uint32_t const index) // single usage (residual/remainder)
 {
-	// ** remeber if the program breaks here, the gpu voxel buffers are too conservative and there size needs to be increased. voxelAlloc.h [DYNAMIC ALLOCATION SIZE]
-	// 
-	// VertexDecl::VoxelDyanmic works with _mm256 (fits size), 8 floats total / element
-	_mm256_stream_ps((float* const __restrict)dest, _mm256_set_m128(src.uv_color, src.worldPos));
+	//*(dest + index) = *(src + index);
+	_mm256_stream_ps((float* const __restrict)(dest + index), _mm256_set_m128(src.uv_color, src.worldPos));
 }
 
+template<typename T, size_t const Size>
+INLINE_MEMFUNC __streaming_store_out(T* const __restrict dest, T const (&__restrict src)[Size], uint32_t const (&__restrict index)[Size]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
+{
+	static constexpr uint32_t const STREAM_BITS = 3,
+		                            STREAM_COUNT = Size,
+		                            STREAM_BATCH = (1 << STREAM_BITS);
 
+#pragma loop( ivdep )
+	for (uint32_t i = 0; i < STREAM_COUNT; i += STREAM_BATCH) {
 
+		// unrolled by 8 seperating streaming stores
+		__m256 const stream_in[STREAM_BATCH]{
+			_mm256_set_m128(src[i].uv_color, src[i].worldPos),
+			_mm256_set_m128(src[i + 1].uv_color, src[i + 1].worldPos),
+			_mm256_set_m128(src[i + 2].uv_color, src[i + 2].worldPos),
+			_mm256_set_m128(src[i + 3].uv_color, src[i + 3].worldPos),
+			_mm256_set_m128(src[i + 4].uv_color, src[i + 4].worldPos),
+			_mm256_set_m128(src[i + 5].uv_color, src[i + 5].worldPos),
+			_mm256_set_m128(src[i + 6].uv_color, src[i + 6].worldPos),
+			_mm256_set_m128(src[i + 7].uv_color, src[i + 7].worldPos)
+		};
+
+		//*(dest + index[i]) = *(src + index[i]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i]), stream_in[0]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 1]), stream_in[1]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 2]), stream_in[2]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 3]), stream_in[3]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 4]), stream_in[4]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 5]), stream_in[5]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 6]), stream_in[6]);
+		_mm256_stream_ps((float* const __restrict)(dest + index[i + 7]), stream_in[7]);
+	}
+}
+
+template<typename T>
+INLINE_MEMFUNC __streaming_store_residual_in(T* const __restrict dest, T const* const __restrict src, uint32_t const index) // single usage (residual/remainder)
+{
+	//*(dest + index) = *(src + index);
+	_mm256_stream_ps((float* const __restrict)dest, _mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index))));
+}
+
+template<typename T, size_t const Size>
+INLINE_MEMFUNC __streaming_store_in(T* const __restrict dest, T const * const __restrict src, uint32_t const (&__restrict index)[Size]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
+{
+	static constexpr uint32_t const STREAM_BITS = 3,
+		                            STREAM_COUNT = Size,
+		                            STREAM_BATCH = (1 << STREAM_BITS);
+
+#pragma loop( ivdep )
+	for (uint32_t i = 0; i < STREAM_COUNT; i += STREAM_BATCH) {
+
+		// unrolled by 8 seperating streaming stores
+		__m256 const stream_in[STREAM_BATCH]{
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 1]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 2]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 3]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 4]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 5]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 6]))),
+			_mm256_castsi256_ps(_mm256_stream_load_si256((__m256i const* const __restrict)(src + index[i + 7])))
+		};
+
+		//*(dest + index[i]) = *(src + index[i]);
+		_mm256_stream_ps((float* const __restrict)(dest + i), stream_in[0]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 1)), stream_in[1]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 2)), stream_in[2]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 3)), stream_in[3]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 4)), stream_in[4]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 5)), stream_in[5]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 6)), stream_in[6]);
+		_mm256_stream_ps((float* const __restrict)(dest + (i + 7)), stream_in[7]);
+	}
+}
+
+       

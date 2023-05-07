@@ -1,97 +1,48 @@
 #pragma once
+#include "streaming_sizes.h"
+
+template<typename T>
+INLINE_MEMFUNC __streaming_store_residual(T* const __restrict dest, T const* const __restrict src, uint32_t const index) // single usage (residual/remainder)
+{
+	//*(dest + index) = *(src + index);
+	_mm_stream_si64x((__int64* const __restrict)(dest + index), (__int64 const)*(src + index));
+}
+template<typename T, size_t const Size>
+INLINE_MEMFUNC __streaming_store(T* const __restrict dest, T const* const __restrict src, uint32_t const (& __restrict index)[Size]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
+{
+#pragma loop( ivdep )
+	for (uint32_t i = 0; i < Size; ++i) {
+
+		//*(dest + index[i]) = *(src + index[i]);
+		uint32_t const offset(index[i]);
+		_mm_stream_si64x((__int64* const __restrict)(dest + offset), (__int64 const)*(src + offset));
+	}
+}
+
+#include "sBatchedByIndex.h"  // __streaming store & __streaming_store_residual must be defined before inclusion of sBatched to override
 #include "writeOnlyBuffer.h"
 #include "globals.h"
 #include <Math/superfastmath.h>
 #include <atomic>
 #include "ComputeLightConstants.h"
 #include "world.h"
-#include "sBatched.h"
-
 #include <Imaging/Imaging/Imaging.h>
 #include <Utility/mem.h>
+
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
 #pragma intrinsic(_InterlockedExchange64)
 #pragma intrinsic(_InterlockedXor64)
 #pragma intrinsic(_InterlockedOr64)
 
-INLINE_MEMFUNC __streaming_store_residual(uint64_t* const __restrict dest, uint64_t const* const __restrict src, uint32_t const index) // single usage (residual/remainder)
-{
-	//*(dest + index) = *(src + index);
-	_mm_stream_si64x((__int64* const __restrict)(dest + index), (__int64 const)*(src + index));
-}
-INLINE_MEMFUNC __streaming_store(uint64_t* const __restrict dest, uint64_t const* const __restrict src, uint32_t const (& __restrict index)[eStreamingBatchSize::LIGHTS]) // batches by size of 8, src should be recently cached values, dest is write-combined so the streaming stores are batched effectively here.
-{
-#pragma loop( ivdep )
-	for (uint32_t i = 0; i < eStreamingBatchSize::LIGHTS; ++i) {
-
-		//*(dest + index[i]) = *(src + index[i]);
-		_mm_stream_si64x((__int64* const __restrict)(dest + index[i]), (__int64 const)*(src + index[i]));
-	}
-}
-
-template<typename T, uint32_t const Size>
-struct sBatchedByIndex
-{
-private:
-	uint32_t				indices[Size];
-	uint32_t				Count;
-
-	__SAFE_BUF __inline void __vectorcall out_batched(T* const __restrict out_, T const* const __restrict in_)
-	{
-		__streaming_store(out_, in_, indices); // must be capable of Size output
-		Count = 0;
-	}
-
-public:
-	__SAFE_BUF __inline void __vectorcall out(T* const __restrict out_, T const* const __restrict in_) // use this at the end of the process - done in commit()
-	{
-		if (Size == Count) {
-			out_batched(out_, in_); // batched output
-		}
-		else {
-#pragma loop( ivdep )
-			for (uint32_t i = 0; i < Count; ++i) { // in case there are less than Size elements left, output individually.
-				__streaming_store_residual(out_, in_, indices[i]);
-			}
-			Count = 0;
-		}
-	}
-
-	template<class... Args>
-	__SAFE_BUF __inline void __vectorcall emplace_back(T* const __restrict out_, T const* const __restrict in_, uint32_t const index) { // normal usage at any time after clear() and before commit()
-
-		indices[Count] = index;
-
-		if (++Count >= Size) {
-			out_batched(out_, in_); // batched output
-		}
-	}
-
-	constexpr sBatchedByIndex() = default;
-};
-
-template<typename T, uint32_t const Size>
-struct sBatchedByIndexReferenced : public sBatchedByIndex<T, Size>  // referenced thread local structure
-{
-	bool const referenced() const { return(_referenced); }
-	void	   referenced(bool const value) { _referenced = value; }
-
-private:
-	bool _referenced;
-
-public:
-	constexpr sBatchedByIndexReferenced() = default;
-};
-
 using lightBatch = sBatchedByIndexReferenced<uint64_t, eStreamingBatchSize::LIGHTS>;
 
 namespace local
 {
 #ifdef __clang__
-	extern __declspec(selectany) inline constinit thread_local lightBatch lights{};
+	extern __declspec(selectany) inline thread_local lightBatch lights{};
 #else
-	extern __declspec(selectany) inline constinit thread_local lightBatch lights;
+	extern __declspec(selectany) inline thread_local lightBatch lights;
 #endif
 }
 
@@ -99,7 +50,7 @@ typedef tbb::enumerable_thread_specific< XMFLOAT3A, tbb::cache_aligned_allocator
 
 // 3D Version ################################################################################################ //
 template< typename PackedLight, uint32_t const LightSize,                                        // uniform size for light volume
-							    uint32_t const Size, uint32_t const HeightDivider = 0>			 // uniform size for world visible volume, volume height divider is modifies the maximum usable volume height = Size >> HeightDivider
+							    uint32_t const Size>			                                 // uniform size for world visible volume
 struct lightBuffer3D : public writeonlyBuffer3D<PackedLight, LightSize, LightSize, LightSize> // ** meant to be used with staging buffer that uses system side memory, not gpu memory
 {
 	constexpr static uint32_t const DATA_MAX = 1023; // 10 bit per component 0x3FF = 1023
@@ -125,10 +76,10 @@ public:
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
 
 		// clear internal cache
-		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightSize * LightSize * (LightSize >> HeightDivider) * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
+		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		// clear staging buffer (right before usage)
 		if (_staging[resource_index]) {
-			___memset_threaded_stream<32>(_staging[resource_index], 0, LightSize * LightSize * (LightSize >> HeightDivider) * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
+			___memset_threaded_stream<32>(_staging[resource_index], 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		}
 	}
 
@@ -369,10 +320,6 @@ public:
 		uvec4_t uiIndex;
 		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
 
-		// check height is ok 
-		[[unlikely]] if (uiIndex.y >= (LightSize >> HeightDivider))
-			return;
-
 		// slices ordered by Z 
 		// (z * xMax * yMax) + (y * xMax) + x;
 
@@ -382,7 +329,7 @@ public:
 		uint32_t const index((uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x);
 
 		// allow bounds to be updated
-		const_cast<lightBuffer3D<PackedLight, LightSize, Size, HeightDivider>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
+		const_cast<lightBuffer3D<PackedLight, LightSize, Size>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
 		// dummy light ?
 		[[unlikely]] if (0 == srgbColor)
@@ -390,7 +337,7 @@ public:
 
 		// thread_local init (only happens once/thread)
 		[[unlikely]] if (!local::lights.referenced()) {
-			const_cast<lightBuffer3D<PackedLight, LightSize, Size, HeightDivider>* const __restrict>(this)->_lights.reference(&local::lights);
+			const_cast<lightBuffer3D<PackedLight, LightSize, Size>* const __restrict>(this)->_lights.reference(&local::lights);
 		}
 
 		// *must convert from srgb to linear
@@ -403,7 +350,7 @@ public:
 	{
 		size_t size(0);
 
-		size = LightSize * LightSize * (LightSize >> HeightDivider) * sizeof(PackedLight);
+		size = LightSize * LightSize * LightSize * sizeof(PackedLight);
 		_cache = (PackedLight * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
 		_block_size_cache = (uint32_t)(size / hardware_concurrency);
 

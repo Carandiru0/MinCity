@@ -81,24 +81,26 @@ layout(location = 0) in streamIn
 } In[];
 #endif
 
+layout (constant_id = 0) const float VolumeDimensions = 0.0f;
+
 #ifndef ZONLY
 
 #if !defined(BASIC)
 // corresponding to volume dimensions
 const vec3 TransformToIndexScale = vec3(2.0f, -2.0f, 2.0f);
-layout (constant_id = 0) const float TransformToIndexBias_X = 0.0f;
-layout (constant_id = 1) const float TransformToIndexBias_Y = 0.0f;
-layout (constant_id = 2) const float TransformToIndexBias_Z = 0.0f;
+layout (constant_id = 1) const float TransformToIndexBias_X = 0.0f;
+layout (constant_id = 2) const float TransformToIndexBias_Y = 0.0f;
+layout (constant_id = 3) const float TransformToIndexBias_Z = 0.0f;
 #define TransformToIndexBias vec3(TransformToIndexBias_X, TransformToIndexBias_Y, TransformToIndexBias_Z)
-layout (constant_id = 3) const float InvToIndex_X = 0.0f;
-layout (constant_id = 4) const float InvToIndex_Y = 0.0f;
-layout (constant_id = 5) const float InvToIndex_Z = 0.0f;
+layout (constant_id = 4) const float InvToIndex_X = 0.0f;
+layout (constant_id = 5) const float InvToIndex_Y = 0.0f;
+layout (constant_id = 6) const float InvToIndex_Z = 0.0f;
 #define InvToIndex vec3(InvToIndex_X, InvToIndex_Y, InvToIndex_Z)
 
 #if defined(HEIGHT) // terrain
 
-layout (constant_id = 6) const float HALF_TEXEL_OFFSET_U = 0.0f;
-layout (constant_id = 7) const float HALF_TEXEL_OFFSET_V = 0.0f;
+layout (constant_id = 7) const float HALF_TEXEL_OFFSET_U = 0.0f;
+layout (constant_id = 8) const float HALF_TEXEL_OFFSET_V = 0.0f;
 #define HALF_TEXEL_OFFSET_TEXTURE vec2(HALF_TEXEL_OFFSET_U, HALF_TEXEL_OFFSET_V)
 
 #include "terrain.glsl"
@@ -195,15 +197,16 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 #endif
 #endif
 
-	gl_Position = u._viewproj * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
+	gl_Position = u._proj * u._view * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
 #ifndef ZONLY
 
 #if !defined(BASIC)
 	
 	// main uvw coord for light, common to terrain, normal voxels
+	vec3 offsetPos = worldPos - vec3(0.0f, VolumeDimensions * 0.5f * 0.5f, 0.0f); // offset to bottom of volume to match raymarch (removal)
 															// *bugfix - half-voxel offset required to sample center of voxel
-	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
+	Out.uv.xzy = fma(TransformToIndexScale, offsetPos, TransformToIndexBias + 0.5f) * InvToIndex;
 
 	// final output must be xzy and transformed to eye/view space for fragment shader
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0

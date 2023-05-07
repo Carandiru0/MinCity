@@ -1591,7 +1591,7 @@ static void __vectorcall ToVoxel(FXMVECTOR xmPosition, FXMVECTOR const xmUV)
 	XMFLOAT3A vFractionalPosition;
 	XMStoreFloat3A(&vFractionalPosition, SFM::fract(xmPosition));
 
-	// only add the voxel if it hasn't already been added
+	// only add the voxel if it hasn't already been added 
 	size_t const index(model_volume::get_index(curVoxel.x, curVoxel.y, curVoxel.z));
 
 	if (_support->bits->read_bit(index)) {  // existing
@@ -1750,7 +1750,8 @@ NO_INLINE static void __vectorcall Voxelize(tri_v const& __restrict tri) // !!!!
 	}
 
 }
-
+/*
+* 
 static void Solidfy(model_volume* const __restrict bits, vector<Volumetric::voxB::voxelDescPacked>& __restrict allVoxels)
 {
 	static constexpr uint32_t const GRAIN_SIZE = 2u;
@@ -1758,7 +1759,7 @@ static void Solidfy(model_volume* const __restrict bits, vector<Volumetric::voxB
 	// output linear access array
 	VecVoxels tmpVectors;
 
-	tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+	tbb::auto_partitioner part; 
 	tbb::parallel_for(tbb::blocked_range2d<uint32_t, uint32_t>(0u, (uint32_t)model_volume::depth(), GRAIN_SIZE,
 		                                                       0u, (uint32_t)model_volume::width(), GRAIN_SIZE),
 		[&](tbb::blocked_range2d<uint32_t, uint32_t> const& r) {
@@ -1805,7 +1806,8 @@ static void Solidfy(model_volume* const __restrict bits, vector<Volumetric::voxB
 
 		allVoxels.emplace_back(std::move(*i));
 	}
-}
+}*/
+
 static void LoadGLTFFrame(gltf& __restrict model, 
 	                      voxelModelBase* const __restrict pDestMem, 
 	                      uint32_t const voxel_resolution,
@@ -1813,8 +1815,6 @@ static void LoadGLTFFrame(gltf& __restrict model,
 	                      FXMVECTOR xmMin, FXMVECTOR xmMax,
 	                      __m128i& __restrict mini, __m128i& __restrict maxi)
 {
-	float const MAX_DIMENSIONS((float)voxel_resolution);
-
 	uint32_t frameOffset(0),
 		     numVoxels(0);
 
@@ -1874,7 +1874,7 @@ static void LoadGLTFFrame(gltf& __restrict model,
 					xmPosition = SFM::linearstep(xmMin, xmMax, xmPosition);          // data value is *now* normalized to [0, 1]
 					
 					// scale to maximum volume bounds
-					xmPosition = XMVectorScale(xmPosition, MAX_DIMENSIONS - 1.0f); // re-scale value to [0, voxel_resolution]
+					xmPosition = XMVectorScale(xmPosition, ((float)voxel_resolution) - 1.0f); // re-scale value to [0, voxel_resolution]
 
 					tri.v[i].v = xmPosition;
 					tri.v[i].uv = XMLoadFloat2((XMFLOAT2 const* const)&uvs[vertex_index]);

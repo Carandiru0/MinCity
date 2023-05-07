@@ -354,6 +354,12 @@
     <ClInclude Include="cCharacterGameObject.h">
       <Filter>Header Files\Gameplay\Characters</Filter>
     </ClInclude>
+    <ClInclude Include="streaming_sizes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="references.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

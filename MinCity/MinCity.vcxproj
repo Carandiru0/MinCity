@@ -344,10 +344,12 @@
     <ClInclude Include="prices.h" />
     <ClInclude Include="rain.h" />
     <ClInclude Include="RedirectIO.h" />
+    <ClInclude Include="references.h" />
     <ClInclude Include="RenderInfo.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="sBatched.h" />
     <ClInclude Include="StreamingGrid.h" />
+    <ClInclude Include="streaming_sizes.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="tbb.h" />
     <ClInclude Include="tTime.h" />

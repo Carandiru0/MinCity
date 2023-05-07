@@ -1,6 +1,16 @@
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
 #include "pch.h"
 #include "Declarations.h"
 #include "sBatched.h"
+#include "sBatchedByIndexIn.h"
 #include "cVoxelWorld.h"
 #include "MinCity.h"
 #include "IsoCamera.h"
@@ -10,6 +20,7 @@
 #include <Random/superrandom.hpp>
 #include <Imaging/Imaging/Imaging.h>
 #include <Utility/bit_volume.h>
+#define BIT_ROW_ATOMIC
 #include <Utility/bit_row.h>
 #include "cNuklear.h"
 #include "cPostProcess.h"
@@ -40,6 +51,8 @@
 #pragma intrinsic(_InterlockedExchangePointer)
 #pragma intrinsic(memcpy)
 #pragma intrinsic(memset)
+#pragma intrinsic(_BitScanReverse64) // MSB set
+#pragma intrinsic(_BitScanForward64) // LSB set
 
 using namespace world;
 
@@ -1782,11 +1795,79 @@ namespace world
 //XMGLOBALCONST inline XMVECTORF32 const _xmInverseVisible{ Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z, Volumetric::INVERSE_GRID_VISIBLE_X, Volumetric::INVERSE_GRID_VISIBLE_Z };
 //XMGLOBALCONST inline XMVECTORF32 const _visibleLight{ 2.0f, 1.0f, 2.0f, 1.0f }; // for scaling model extents to account for potential lighting radius
 
+template<typename VertexDeclaration>
+struct voxelBuffer {
+	inline static constexpr VertexDeclaration const type;
+
+	VertexDeclaration* direct{};
+	size_t                                 active_size{};
+
+	vku::double_buffer<vku::GenericBuffer> staging;  // WC (WriteCombined) Memory, only sequential writes and no reads allowed.
+
+	constexpr voxelBuffer() = default; // allow constinit optimization.
+
+	~voxelBuffer()
+	{
+		if (nullptr != direct) {
+			tbb::cache_aligned_allocator< VertexDeclaration > deallocator;
+
+			deallocator.deallocate(direct, 0);
+			direct = nullptr;
+		}
+		active_size = 0;
+	}
+private:
+	// Deny assignment
+	voxelBuffer& operator=(const voxelBuffer&) = delete;
+
+	// Deny copy construction
+	voxelBuffer(const voxelBuffer&) = delete;
+};
+
+// all instances belong in here
+namespace // private to this file (anonymous)
+{
+	constinit inline static struct voxelData
+	{
+		struct {
+
+			struct {
+				voxelBuffer<VertexDecl::VoxelDynamic>
+					buffer;
+				bit_row<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>*
+					bits{};
+			} opaque;
+
+			struct {
+				voxelBuffer<VertexDecl::VoxelDynamic>
+					buffer;
+				bit_row<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>*
+					bits{};
+			} trans;
+		} visibleDynamic;
+
+		struct {
+			voxelBuffer<VertexDecl::VoxelNormal>
+				buffer;
+			bit_row<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>*
+				bits{};
+		} visibleStatic;
+
+		struct {
+			voxelBuffer<VertexDecl::VoxelNormal>
+				buffer;
+			bit_row<Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL>*
+				bits{};
+		} visibleTerrain;
+
+	} voxels;
+}
+
 namespace // private to this file (anonymous)
 {
 	constinit static struct voxelRender // ** static container, all methods and members must be static inline ** //
 	{
-		constinit static struct
+		static struct
 		{
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -1802,13 +1883,6 @@ namespace // private to this file (anonymous)
 		// this construct significantly improves throughput of voxels, by batching the streaming stores //
 		// *and* reducing the contention on the atomic pointer fetch_and_add to nil (Used to profile at 25% cpu utilization on the lock prefix, now is < 0.3%)
 		using VoxelLocalBatch = sBatched<VertexDecl::VoxelNormal, eStreamingBatchSize::GROUND>;
-		using VoxelThreadBatch = tbb::enumerable_thread_specific<
-			VoxelLocalBatch,
-			tbb::cache_aligned_allocator<VoxelLocalBatch>,
-			tbb::ets_key_per_instance >;
-
-		static inline VoxelThreadBatch batchedGround;
-
 
 		STATIC_INLINE_PURE void XM_CALLCONV RenderGround(XMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, // voxelIndex is already transformed local
 			Iso::Voxel const& __restrict oVoxel,
@@ -1860,17 +1934,16 @@ namespace // private to this file (anonymous)
 
 		template<bool const Dynamic>
 		STATIC_INLINE bool const XM_CALLCONV RenderModel(uint32_t const index, FXMVECTOR xmVoxelOrigin, point2D_t const& __restrict voxelIndex,
-			Iso::Voxel const& __restrict oVoxel,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxels_static,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_dynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxels_trans)
+			bool bVisible, Iso::Voxel const& __restrict oVoxel,
+			Volumetric::voxelBufferReference_Static&& __restrict statics,
+			Volumetric::voxelBufferReference_Dynamic&& __restrict dynamics,
+			Volumetric::voxelBufferReference_Dynamic&& __restrict trans,
+			tbb::affinity_partitioner& __restrict part)
 		{
-			bool bVisible(false);
-
 			auto const ModelInstanceHash = Iso::getHash(oVoxel, index);
 			auto const * const FoundModelInstance = MinCity::VoxelWorld->lookupVoxelModelInstance<Dynamic>(ModelInstanceHash);
 
-			if (FoundModelInstance) {
+			[[likely]] if (FoundModelInstance) {
 
 				XMVECTOR xmPreciseOrigin(FoundModelInstance->getLocation()); // *bugfix - precise model origin is now used properly so fractional component is actually there. extremely precise. *do not change* *major bugfix*
 				XMVECTOR const xmOffset(XMVectorSubtract(XMVectorSetY(xmPreciseOrigin, 0.0f), xmVoxelOrigin));
@@ -1878,11 +1951,14 @@ namespace // private to this file (anonymous)
 				xmPreciseOrigin = XMVectorSubtract(xmPreciseOrigin, XMVectorFloor(xmOffset));
 				xmPreciseOrigin = XMVectorSelect(xmPreciseOrigin, XMVectorNegate(xmPreciseOrigin), XMVectorSelectControl(0, 1, 0, 0)); // negate y-axis starts here
 
-				bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP));
+				if (!bVisible) { // *bugfix - models could still be visible if ground voxel is not, this will also force the ground voxel visible if the model is visible (back in RenderGrid) - good thing for the opacitymap will have thoe ground voxels that would be otherwise missing when they are so close to the view frustum.
+					bVisible = Volumetric::VolumetricLink->Visibility.AABBTestFrustum(xmPreciseOrigin, XMVectorScale(XMLoadFloat3A(&FoundModelInstance->getModel()._Extents), Iso::VOX_STEP));
+				}
 				// lighting from instance is still "rendered/added to light buffer" but no voxels are rendered.
 				// voxels of model are not rendered. it is not currently visible. the light emitted from the model may still be visible - so the ^^^^above is done.
 
-				bVisible = FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, bVisible, voxels_static, voxels_dynamic, voxels_trans);
+				bVisible = FoundModelInstance->Render(xmPreciseOrigin, voxelIndex, bVisible, 
+					                                  std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(statics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(trans), part);
 
 #ifndef NDEBUG
 #ifdef DEBUG_VOXEL_RENDER_COUNTS
@@ -1931,9 +2007,9 @@ namespace // private to this file (anonymous)
 
 		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
 			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround,
-			tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic,
-			tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans)
+			Volumetric::voxelBufferReference_Static&& __restrict statics,
+			Volumetric::voxelBufferReference_Dynamic&& __restrict dynamics,
+			Volumetric::voxelBufferReference_Dynamic&& __restrict trans)
 		{
 			ZoneScopedN("RenderGrid");
 #ifndef NDEBUG
@@ -1952,32 +2028,47 @@ namespace // private to this file (anonymous)
 				point2D_t const 								voxelStart;
 				rect2D_t const                                  visibleArea;
 				
-				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelGround;
-				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	voxelStatic;
-				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelDynamic;
-				tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict	voxelTrans;
+				tbb::atomic<VertexDecl::VoxelNormal*>& __restrict	 voxelGround;
+				Volumetric::voxelBufferReference_Static&& __restrict  statics;
+				Volumetric::voxelBufferReference_Dynamic&& __restrict dynamics;
+				Volumetric::voxelBufferReference_Dynamic&& __restrict trans;
 				
+				tbb::affinity_partitioner& __restrict part;
+
 				sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
 
 				// shared constants
 				float const ground_voxel_radius = Volumetric::volumetricVisibility::getVoxelRadius();
 
 			public:
-				__forceinline explicit __vectorcall sRenderFuncBlockChunk(
+				__forceinline explicit sRenderFuncBlockChunk(
 					StreamingGrid const* const __restrict streamingGrid_,
 					point2D_t const voxelStart_,
 					rect2D_t const visibleArea_,
 					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelGround_,
-					tbb::atomic<VertexDecl::VoxelNormal*>& __restrict voxelStatic_,
-					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelDynamic_,
-					tbb::atomic<VertexDecl::VoxelDynamic*>& __restrict voxelTrans_)
+					Volumetric::voxelBufferReference_Static&& __restrict statics_,
+					Volumetric::voxelBufferReference_Dynamic&& __restrict dynamics_,
+					Volumetric::voxelBufferReference_Dynamic&& __restrict trans_,
+					tbb::affinity_partitioner& __restrict part_)
 					: streamingGrid(streamingGrid_), voxelStart(voxelStart_), visibleArea(visibleArea_),
-					voxelGround(voxelGround_), voxelStatic(voxelStatic_), voxelDynamic(voxelDynamic_), voxelTrans(voxelTrans_)
+					voxelGround(voxelGround_), 
+					statics(std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(statics_)), 
+					dynamics(std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(dynamics_)), 
+					trans(std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(trans_)),
+					part(part_)
+				{}
+				sRenderFuncBlockChunk(sRenderFuncBlockChunk const& rhs)
+					: streamingGrid(rhs.streamingGrid), voxelStart(rhs.voxelStart), visibleArea(rhs.visibleArea),
+					voxelGround(rhs.voxelGround),
+					statics(std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(rhs.statics)),
+					dynamics(std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(rhs.dynamics)),
+					trans(std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(rhs.trans)),
+					part(rhs.part)
 				{}
 
 				void __vectorcall operator()(tbb::blocked_range2d<int32_t, int32_t> const& r) const {
 
-					VoxelLocalBatch& __restrict localGround(batchedGround.local());
+					VoxelLocalBatch localGround{};
 
 					int32_t const	// pull out into registers from memory
 						y_begin(r.rows().begin()),
@@ -2001,7 +2092,7 @@ namespace // private to this file (anonymous)
 							// Add the offset of the world origin calculated	// *bugfix - this trickles down thru the voxel output position, to uv's, to light emitter position in the lightmap. All is the same. don't fuck with the fractional offset, it's not required here
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(p2D_sub(voxelIndex, voxelStart)))); // make relative to render start position
 							
-							// test ground voxel visiible at ground height
+							// test ground voxel visible at ground height
 							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped)), ground_voxel_radius));
 
 							/* @todo (optional)
@@ -2024,7 +2115,7 @@ namespace // private to this file (anonymous)
 							if (Iso::isOwner(oVoxel, Iso::STATIC_HASH))	// only roots actually do rendering work.
 							{
 #ifndef DEBUG_NO_RENDER_STATIC_MODELS
-								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+								bRenderVisible |= RenderModel<false>(Iso::STATIC_HASH, xmVoxelOrigin, voxelIndexWrapped, bRenderVisible, oVoxel, std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(statics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(trans), part);
 #endif
 							} // root
 							// a voxel in the grid can have a static model and dynamic model simultaneously
@@ -2032,7 +2123,7 @@ namespace // private to this file (anonymous)
 								for (uint32_t i = Iso::DYNAMIC_HASH; i < Iso::HASH_COUNT; ++i) {
 									if (Iso::isOwner(oVoxel, i)) {
 
-										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, oVoxel, voxelStatic, voxelDynamic, voxelTrans);
+										bRenderVisible |= RenderModel<true>(i, xmVoxelOrigin, voxelIndexWrapped, bRenderVisible, oVoxel, std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(statics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(trans), part);
 									}
 								}
 							}
@@ -2042,8 +2133,12 @@ namespace // private to this file (anonymous)
 							}
 						} // for
 
-					} // for
+					} // for                                                                                                                             
 
+					// ####################################################################################################################
+			        // ensure all batches are output (RESIDUAL)
+					localGround.out(voxelGround);
+					// ####################################################################################################################
 				} // operation
 
 			} const RenderFuncBlockChunk;
@@ -2060,23 +2155,16 @@ namespace // private to this file (anonymous)
 				rect2D_t const visibleArea(voxelReset, voxelEnd); // store original visible area before extension rect2D_t const visible_area(MinCity::VoxelWorld->getVisibleGridBounds());
 
 				// account for maximum model dimensions / 2 (extending in or out of the screen visible area, prevents "popping" visibility of voxel models //
-				uint32_t const half_maximum_extent((Volumetric::MODEL_MAX_DIMENSION_XYZ >> 1u) / MINIVOXEL_FACTOR);
+				constexpr uint32_t const half_maximum_extent((Volumetric::MODEL_MAX_DIMENSION_XYZ >> 1u) / MINIVOXEL_FACTOR);
 				voxelReset = p2D_subs(voxelReset, half_maximum_extent);
 				voxelEnd = p2D_adds(voxelEnd, half_maximum_extent);
 
-				tbb::auto_partitioner part; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
+				tbb::affinity_partitioner part{}; /*load balancing - do NOT change - adapts to variance of whats in the voxel grid*/
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** 
-					RenderFuncBlockChunk(((StreamingGrid const* const __restrict)::grid), voxelStart, visibleArea, voxelGround, voxelStatic, voxelDynamic, voxelTrans), part
+					RenderFuncBlockChunk(((StreamingGrid const* const __restrict)::grid), voxelStart, visibleArea, voxelGround, std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(statics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(trans), part), part
 				);
 			}
-			// ####################################################################################################################
-			// ensure all batches are output and cleared for next trip
-			for (auto i = batchedGround.begin(); i != batchedGround.end(); ++i) {
-				i->out(voxelGround);
-			}
-			batchedGround.clear();
-			// ####################################################################################################################
 
 			{ // optimization for compute:
 
@@ -2096,43 +2184,6 @@ namespace // private to this file (anonymous)
 		}
 	} inline voxelRender; // end struct voxelRender
 } // end ns
-
-template<typename VertexDeclaration>
-struct voxelBuffer {
-	vku::double_buffer<vku::GenericBuffer> stagingBuffer;
-	inline static constexpr VertexDeclaration const type;
-
-	constexpr voxelBuffer() = default; // allow constinit optimization.
-
-private:
-	// Deny assignment
-	voxelBuffer& operator=(const voxelBuffer&) = delete;
-
-	// Deny copy construction
-	voxelBuffer(const voxelBuffer&) = delete;
-};
-
-// all instances belong in here
-namespace // private to this file (anonymous)
-{
-	constinit inline static struct voxelData
-	{
-		struct {
-			voxelBuffer<VertexDecl::VoxelDynamic>
-				opaque;
-			voxelBuffer<VertexDecl::VoxelDynamic>
-				trans;
-
-		} visibleDynamic;
-
-		voxelBuffer<VertexDecl::VoxelNormal>
-			visibleStatic;
-
-		voxelBuffer<VertexDecl::VoxelNormal>
-			visibleTerrain;
-
-	} voxels;
-}
 
 namespace Volumetric
 {
@@ -2322,7 +2373,7 @@ namespace world
 
 		// other textures, not part of common texture array:
 		MinCity::TextureBoy->LoadKTXTexture(_terrainDetail, TEXTURE_DIR "moon_detail.ktx");
-		MinCity::TextureBoy->LoadKTXTexture(_spaceCubemapTexture, TEXTURE_DIR "space_cubemap.ktx");
+		MinCity::TextureBoy->LoadKTXTexture(_spaceCubemapTexture, TEXTURE_DIR "space_cubemap.ktx2");
 		 
 		// [[deprecated]] texture shaders:
 		//createTextureShader(eTextureShader::WIND_FBM, supernoise::blue.getTexture2D(), true, point2D_t(256, 256), vk::Format::eR16Unorm); // texture shader uses single channel, single slice of bluenoise.
@@ -2629,7 +2680,7 @@ namespace world
 	{
 		Clear();
 		MinCity::DispatchEvent(eEvent::PAUSE_PROGRESS, new uint32_t(10));
-
+		 
 		GenerateGround(); // generate new ground
 		
 		// must be last
@@ -2647,15 +2698,21 @@ namespace world
 		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
 
-		placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
-		/*
-		for (int32_t offset = -256; offset <= 256; offset += 64)
+		//placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+		//	Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+		
+		static constexpr int32_t const SIZE = 512,
+			                           OFFSET = SIZE >> 2;
+
+		for (int32_t offsetz = -SIZE; offsetz <= SIZE; offsetz += OFFSET)
 		{
-			placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_adds(getHoveredVoxelIndex(), offset),
-				Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			for (int32_t offsetx = -SIZE; offsetx <= SIZE; offsetx += OFFSET)
+			{
+				placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(getHoveredVoxelIndex(), point2D_t(offsetx, offsetz)),
+					Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+			}
 		}
-		*/
+		
 #ifdef GIF_MODE
 
 #define STAGE
@@ -2976,27 +3033,56 @@ namespace world
 		// ##### allocation totals for gpu buffers of *minigrid* voxels are always halved. requirement/assumption is given
 		// a linear access pattern (rendering) - only half of the total volume is occupied ####
 		// main vertex buffer for static voxels - **** buffer allocation sqrt'd and doubled
+		tbb::cache_aligned_allocator< VertexDecl::VoxelDynamic > allocator_dynamic;
+		tbb::cache_aligned_allocator< VertexDecl::VoxelNormal > allocator_normal;
 
 		// these are cpu side "staging" buffers, matching in size to the gpu buffers that are allocated for them in cVulkan
 		// *** these staging buffers are dynamic, the active size is reset to zero for a reason here.
+
+		// dynamic - opaque
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
-			voxels.visibleDynamic.opaque.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleDynamic.opaque.stagingBuffer[i].setActiveSizeBytes(0);
 
-			voxels.visibleDynamic.trans.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleDynamic.trans.stagingBuffer[i].setActiveSizeBytes(0);
-
-			voxels.visibleStatic.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleStatic.stagingBuffer[i].setActiveSizeBytes(0);
-
-			voxels.visibleTerrain.stagingBuffer[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleTerrain.stagingBuffer[i].setActiveSizeBytes(0);
+			voxels.visibleDynamic.opaque.buffer.staging[i].createAsStagingBuffer(
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.buffer.type), vku::eMappedAccess::Sequential, true, true);
+			voxels.visibleDynamic.opaque.buffer.staging[i].setActiveSizeBytes(0);
 		}
+		voxels.visibleDynamic.opaque.buffer.direct = allocator_dynamic.allocate(Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL);
+		memset(voxels.visibleDynamic.opaque.buffer.direct, 0, Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.buffer.type));
+		voxels.visibleDynamic.opaque.bits = bit_row<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>::create();
 
+		// dynamic - transparents
+		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+
+			voxels.visibleDynamic.trans.buffer.staging[i].createAsStagingBuffer(
+				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.buffer.type), vku::eMappedAccess::Sequential, true, true);
+			voxels.visibleDynamic.trans.buffer.staging[i].setActiveSizeBytes(0);
+		}
+		voxels.visibleDynamic.trans.buffer.direct = allocator_dynamic.allocate(Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL);
+		memset(voxels.visibleDynamic.trans.buffer.direct, 0, Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.buffer.type));
+		voxels.visibleDynamic.trans.bits = bit_row<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>::create();
+
+		// static
+		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+
+			voxels.visibleStatic.buffer.staging[i].createAsStagingBuffer(
+				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.buffer.type), vku::eMappedAccess::Sequential, true, true);
+			voxels.visibleStatic.buffer.staging[i].setActiveSizeBytes(0);
+		}
+		voxels.visibleStatic.buffer.direct = allocator_normal.allocate(Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL);
+		memset(voxels.visibleStatic.buffer.direct, 0, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.buffer.type));
+		voxels.visibleStatic.bits = bit_row<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>::create();
+
+		// terrain
+		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+
+			voxels.visibleTerrain.buffer.staging[i].createAsStagingBuffer(
+				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.buffer.type), vku::eMappedAccess::Sequential, true, true);
+			voxels.visibleTerrain.buffer.staging[i].setActiveSizeBytes(0);
+		}
+		voxels.visibleTerrain.buffer.direct = allocator_normal.allocate(Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL);
+		memset(voxels.visibleTerrain.buffer.direct, 0, Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.buffer.type));
+		voxels.visibleTerrain.bits = bit_row<Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL>::create();
+		
 
 		// shared buffer and other buffers
 		{
@@ -3044,20 +3130,174 @@ namespace world
 		*/
 	}
 
+#ifdef DEBUG_VOXEL_BANDWIDTH
+	static NO_INLINE size_t const frameBandwidth(tTime const& tNow, size_t const frame_voxel_count) // real-time domain
+	{
+		static constexpr milliseconds const PRINT_FRAME_INTERVAL = milliseconds(4000); // ms
+		static constexpr uint32_t const OVERLAP_WEIGHT_CURRENT = 6, // frames
+			                            OVERLAP_WEIGHT_LAST = OVERLAP_WEIGHT_CURRENT >> 1; // frames
+
+		constinit static microseconds tSum{}, tLastAverage{};
+		constinit static size_t sum{}, peak{}, aboveaveragelevel{}, lastaverage{};
+
+		constinit static size_t framecount(0), aboveaveragecount(0), belowaveragecount(0);
+
+		static auto start = high_resolution_clock::now();
+		static auto lastPrint = high_resolution_clock::now();
+
+		static_assert(sizeof(VertexDecl::VoxelNormal) == sizeof(VertexDecl::VoxelDynamic), "VoxelNormal != VoxelDynamic declaration in size, voxel bandwidth is incorrect.");
+		static constexpr size_t const voxelSize = sizeof(VertexDecl::VoxelNormal);
+
+		auto const deltaNano = tNow - start;
+		start = tNow;
+		tSum += duration_cast<microseconds>(deltaNano);
+
+		size_t const deltaVoxel = frame_voxel_count;
+
+		peak = std::max(peak, deltaVoxel);
+		sum += deltaVoxel;
+		if (deltaVoxel > aboveaveragelevel)
+			++aboveaveragecount;
+		else if (deltaVoxel < lastaverage)
+			++belowaveragecount;
+
+		++framecount;
+
+		microseconds const tAvgDelta = tSum / framecount;
+		size_t const avgdelta = sum / framecount;
+
+		if (tNow - lastPrint > PRINT_FRAME_INTERVAL) {
+			lastPrint = tNow;
+
+			size_t const frame_avg_memory = avgdelta * voxelSize;
+			size_t const frame_avg_bandwidth = frame_avg_memory * (double)tAvgDelta.count() / 1000.0;  // in  bytes / s
+			size_t const frame_avg_bw_mb = frame_avg_bandwidth >> 20;
+			double const frame_avg_bw_mb_fr = double(frame_avg_bandwidth & 0xFFFFF) / double(0xFFFFF);
+
+			size_t const frame_peak_memory = peak * voxelSize;
+			size_t const frame_peak_bandwidth = frame_peak_memory * (double)tAvgDelta.count() / 1000.0;  // in  bytes / s
+			size_t const frame_peak_bw_mb = frame_peak_bandwidth >> 20;
+			double const frame_peak_bw_mb_fr = double(frame_peak_bandwidth & 0xFFFFF) / double(0xFFFFF);
+
+			fmt::print(fg(fmt::color::dodger_blue), "\n" "[ {:n}.{:d} MB/s, {:n}.{:d} MB/s peak ]\n", frame_avg_bw_mb, (size_t)(frame_avg_bw_mb_fr * 10.0), frame_peak_bw_mb, (size_t)(frame_peak_bw_mb_fr * 10.0));
+			
+			if (aboveaveragecount && belowaveragecount) {
+
+				size_t const belowaverage = (belowaveragecount * 100) / framecount;   // percentage of frames below average
+				size_t const aboveaverage = (aboveaveragecount * 100) / framecount;   //  ""    ""  ""  "" "" avove ""   ""
+
+				fmt::print(fg(fmt::color::white), "[ ");
+
+				if (belowaverage < 24) {
+					fmt::print(fg(fmt::color::red), "-{:d}% ", belowaverage);
+				}
+				else if (belowaverage < 48) {
+					fmt::print(fg(fmt::color::yellow), "-{:d}% ", belowaverage);
+				}
+				else {
+					fmt::print(fg(fmt::color::lime_green), "-{:d}% ", belowaverage);
+				}
+				if (aboveaverage < 24) {
+					fmt::print(fg(fmt::color::lime_green), " +{:d}% ", aboveaverage);
+				}
+				else if (aboveaverage < 48) {
+					fmt::print(fg(fmt::color::yellow), " +{:d}% ", aboveaverage);
+				}
+				else {
+					fmt::print(fg(fmt::color::red), " +{:d}% ", aboveaverage);
+				}
+
+				fmt::print(fg(fmt::color::white), " ]\n");
+			}
+
+			aboveaveragelevel = (avgdelta + peak) >> 1;                          // bugfix - there would be a large spike in framerate every print interval due to framecount being set to zero while the next starting sum contained the last average.
+			peak = 0; 
+			
+			tSum = tAvgDelta * OVERLAP_WEIGHT_CURRENT + tLastAverage * OVERLAP_WEIGHT_LAST;
+			sum = avgdelta * OVERLAP_WEIGHT_CURRENT + lastaverage * OVERLAP_WEIGHT_LAST; 
+
+			framecount = OVERLAP_WEIGHT_CURRENT + OVERLAP_WEIGHT_LAST; 
+			aboveaveragecount = 0; belowaveragecount = 0;
+			lastaverage = avgdelta;
+			tLastAverage = tAvgDelta;
+		}
+
+		return(avgdelta);
+	}
+#endif
+
+	template<typename VertexDeclaration, size_t const Size>
+	__declspec(safebuffers) STATIC_INLINE_PURE size_t const StreamCompaction(VertexDeclaration* __restrict out, VertexDeclaration const* const __restrict in, bit_row<Size> const* const __restrict bits)
+	{
+		using streaming_batch = sBatchedByIndexIn<VertexDeclaration, eStreamingBatchSize::MODEL>;
+		static constexpr size_t const block_count(bit_row<Size>::stride());
+
+		streaming_batch local;
+		auto const* const __restrict stream_bits(bits->data());
+		size_t active_count(0);
+
+		// iterate thru each chunk of 64 bits
+		for (size_t block = 0; block < block_count; ++block) {
+
+			// current block
+			auto block_bits = stream_bits[block];
+
+			// integral component for "stream compaction"
+			// public domain - Daniel Lemire's blog
+			// algorithm: https://github.com/lemire/Code-used-on-Daniel-Lemire-s-blog/blob/master/2018/02/20/bitmapdecode.c
+	
+			// ** this iterates only on the set bits, zero-skipping upto 64 bits
+			while (0 != block_bits) {
+
+				// bitstream memory layout:
+				// [           0             ] [            1            ] [            2            ]              [            n            ]  : block
+				// [64                      0] [64                      0] [64                      0]     ....     [64                      0]  : bits
+				//   1111 1111 1111 .... 1111    1111 1111 1111 .... 1111    1111 1111 1111 .... 1111                 1111 1111 1111 .... 1111   
+				//   ^                           ^                           ^                                        ^
+				//   MSB  
+				//   0111 1111 1111 .... 1111 
+				//    ^
+				//    MSB   
+				//   0011 1111 1111 .... 1111
+				//     ^
+				//     MSB
+				//            ....
+				// 
+				//   0000 0000 0000 .... 0001     -and then iterate to next block....
+				//                          ^
+				//                          MSB
+				//
+				// get index of highest bit set	(MSB)
+				unsigned long r;
+				(void)_BitScanForward64(&r, block_bits); // block_bits is never zero here, so return value does not need to be checked
+
+				// clear that bit for this block
+				block_bits &= ~(1ui64 << ((uint64_t)r));
+
+				local.emplace_back(out, in, r + block * 64); // out is sequentially streamed to, while in is accessed at index r of the current block plus the count of all bits before this bit that have been processed as a block 
+				++active_count;
+			}
+		}
+
+		local.out(out, in); // residual
+
+		return(active_count);
+	}
+
 	void cVoxelWorld::RenderTask_Normal(uint32_t const resource_index) const // OPACITY is enabled for update, and reources are mapped during normal rendering
 	{
 		ZoneScopedN("Stage Resources");
 
-		// mapping //
-		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.stagingBuffer[resource_index].map();
+		// mapping direct buffers //
+		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.buffer.direct;
 		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Terrain(MappedVoxels_Terrain_Start);
 
-		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Static_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleStatic.stagingBuffer[resource_index].map();
+		VertexDecl::VoxelNormal* const __restrict MappedVoxels_Static_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleStatic.buffer.direct;
 		tbb::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Static(MappedVoxels_Static_Start);
 
 		VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::_size()] = {
-			(VertexDecl::VoxelDynamic* const __restrict)voxels.visibleDynamic.opaque.stagingBuffer[resource_index].map(),
-			(VertexDecl::VoxelDynamic* const __restrict)voxels.visibleDynamic.trans.stagingBuffer[resource_index].map(),
+			(VertexDecl::VoxelDynamic* const __restrict)voxels.visibleDynamic.opaque.buffer.direct,
+			(VertexDecl::VoxelDynamic* const __restrict)voxels.visibleDynamic.trans.buffer.direct,
 		};
 		tbb::atomic<VertexDecl::VoxelDynamic*> MappedVoxels_Dynamic[Volumetric::eVoxelType::_size()]{
 			MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque],
@@ -3077,106 +3317,137 @@ namespace world
 		voxelRender::RenderGrid(
 			oCamera.voxelIndex_TopLeft,
 			MappedVoxels_Terrain,
-			MappedVoxels_Static,
-			MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque], MappedVoxels_Dynamic[Volumetric::eVoxelType::trans]);
+			std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(Volumetric::voxelBufferReference_Static(MappedVoxels_Static, MappedVoxels_Static_Start, voxels.visibleStatic.bits)),
+			std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(Volumetric::voxelBufferReference_Dynamic(MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque], MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.bits)),
+			std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(Volumetric::voxelBufferReference_Dynamic(MappedVoxels_Dynamic[Volumetric::eVoxelType::trans], MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], voxels.visibleDynamic.trans.bits))
+		);
+
 
 		_OpacityMap.commit(); // (commits the new bounds, unmaps)
 
 		// game related asynchronous methods
 		// physics can be "cleared" as early as here. corresponding wait is in Update() of VoxelWorld.
 		MinCity::Physics->AsyncClear();
-		
-		{ // voxels //
-			vku::VertexBufferPartition* const __restrict& __restrict dynamic_partition_info_updater(MinCity::Vulkan->getDynamicPartitionInfo(resource_index));
 
-			VertexDecl::VoxelDynamic* running_offset_start(MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque]);
+		/// all voxels
+#ifdef DEBUG_VOXEL_BANDWIDTH
+		size_t voxel_count(0);
+#endif
+		// mapping staging buffers //
+
+		{ // dynamic voxels (dynamic partition size and offset updates) //
+			vku::VertexBufferPartition* const __restrict& __restrict dynamic_partition_info_updater(MinCity::Vulkan->getDynamicPartitionInfo(resource_index));
 			size_t running_offset_size(0);
 
-			{
-				// begin main (opaques only)
-				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
-				size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque];
+			{ // dynamic (opaques)
+				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_End = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
+				size_t activeSize = MappedVoxels_Dynamic_End - MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque];
+				voxels.visibleDynamic.opaque.buffer.active_size = activeSize * sizeof(VertexDecl::VoxelDynamic); // direct buffer size
+
+				VertexDecl::VoxelDynamic* const __restrict Mapped_Staging_Voxels_Dynamic_Start = (VertexDecl::VoxelDynamic* const __restrict)voxels.visibleDynamic.opaque.buffer.staging[resource_index].map();
+				//___memcpy_threaded<32>(Mapped_Staging_Voxels_Dynamic_Start, MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], bytes);
+				activeSize = StreamCompaction<VertexDecl::VoxelDynamic, Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>(Mapped_Staging_Voxels_Dynamic_Start, MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque],
+					                                                                                                                  voxels.visibleDynamic.opaque.bits);
+				voxels.visibleDynamic.opaque.buffer.staging[resource_index].unmap();
+				voxels.visibleDynamic.opaque.buffer.staging[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelDynamic)); // staging buffer size
+
 				// set the parent / main partition info
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].active_vertex_count = (uint32_t const)current_dynamic_size;
+				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].active_vertex_count = (uint32_t const)activeSize;
 				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].vertex_start_offset = (uint32_t const)running_offset_size;
-				running_offset_size += current_dynamic_size;
-				running_offset_start = MappedVoxels_Dynamic_Current;
-			}
+				running_offset_size += activeSize;
 
-			// Update Dynamic VertexBuffer Offsets for "Custom Voxel Shader Children"
-			// ########### only use [Volumetric::eVoxelType::opaque] even if the child is a transparent pipeline
-			// ########### the [Volumetric::eVoxelType::trans] is reserved for voxels belong to model instances on the grid and is soley for PARENT_TRANS usage
-
-			/* do not delete, required reference for custom voxel fragment shader implementation details
-			if (_activeRain) {
-
-				RenderRain(_activeRain, MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque]);
-			}
-			{ // RAIN
-				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
-				size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - running_offset_start;
-				// set the parent / main partition info
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].active_vertex_count = (uint32_t const)current_dynamic_size;
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].vertex_start_offset = (uint32_t const)running_offset_size;
-				running_offset_size += current_dynamic_size;
-				running_offset_start = MappedVoxels_Dynamic_Current;
-
-#ifdef DEBUG_RAIN_COUNT 
-				if (dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].active_vertex_count) {
-					FMT_NUKLEAR_DEBUG(false, "      {:d} rain voxels being rendered", dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].active_vertex_count);
-				}
-				else {
-					FMT_NUKLEAR_DEBUG_OFF();
-				}
+#ifdef DEBUG_VOXEL_BANDWIDTH
+				voxel_count += activeSize;
 #endif
-
 			}
-			*/
-			// todo add other children here for added partitions of dynamic voxel parent
-
-
-			// append "parent" transparents  ***MUST BE LAST***
 			{
-				// this is treated as if the transparents were being added to the opaque buffer the whole time
-				// this must be done LAST after all voxel children partitions as the data is actually appended at the end.
-				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::trans];
-				size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans];
+				// Update Dynamic VertexBuffer Offsets for "Custom Voxel Shader Children"
+				// ########### only use [Volumetric::eVoxelType::opaque] even if the child is a transparent pipeline
+				// ########### the [Volumetric::eVoxelType::trans] is reserved for voxels belong to model instances on the grid and is soley for PARENT_TRANS usage
+
+				/* do not delete, required reference for custom voxel fragment shader implementation details
+				if (_activeRain) {
+
+					RenderRain(_activeRain, MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque]);
+				}
+				{ // RAIN
+					VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_Current = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
+					size_t const current_dynamic_size = MappedVoxels_Dynamic_Current - running_offset_start;
+					// set the parent / main partition info
+					dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].active_vertex_count = (uint32_t const)current_dynamic_size;
+					dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].vertex_start_offset = (uint32_t const)running_offset_size;
+					running_offset_size += current_dynamic_size;
+					running_offset_start = MappedVoxels_Dynamic_Current;
+
+	#ifdef DEBUG_RAIN_COUNT
+					if (dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].active_vertex_count) {
+						FMT_NUKLEAR_DEBUG(false, "      {:d} rain voxels being rendered", dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::VOXEL_SHADER_RAIN].active_vertex_count);
+					}
+					else {
+						FMT_NUKLEAR_DEBUG_OFF();
+					}
+	#endif
+
+				}
+				*/
+				// todo add other children here for added partitions of dynamic voxel parent
+			}
+			{ // dynamic (transparents) ***MUST BE LAST DYNAMIC***
+				VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_End = MappedVoxels_Dynamic[Volumetric::eVoxelType::trans];
+				size_t activeSize = MappedVoxels_Dynamic_End - MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans];
+				voxels.visibleDynamic.trans.buffer.active_size = activeSize * sizeof(VertexDecl::VoxelDynamic); // direct buffer size
+
+				VertexDecl::VoxelDynamic* const __restrict Mapped_Staging_Voxels_Dynamic_Start = (VertexDecl::VoxelDynamic* const __restrict)voxels.visibleDynamic.trans.buffer.staging[resource_index].map();
+				//___memcpy_threaded<32>(Mapped_Staging_Voxels_Dynamic_Start, MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans], bytes);
+				activeSize = StreamCompaction<VertexDecl::VoxelDynamic, Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>(Mapped_Staging_Voxels_Dynamic_Start, MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans],
+					                                                                                                                  voxels.visibleDynamic.trans.bits);
+				voxels.visibleDynamic.trans.buffer.staging[resource_index].unmap();
+				voxels.visibleDynamic.trans.buffer.staging[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelDynamic)); // staging buffer size
+
 				// set the parent / main partition info
-				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_TRANS].active_vertex_count = (uint32_t const)current_dynamic_size;
+				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_TRANS].active_vertex_count = (uint32_t const)activeSize;
 				dynamic_partition_info_updater[eVoxelDynamicVertexBufferPartition::PARENT_TRANS].vertex_start_offset = (uint32_t const)running_offset_size;  // special handling injecting transparents into opaque / main part
+#ifdef DEBUG_VOXEL_BANDWIDTH
+				voxel_count += activeSize;
+#endif
 			}
 		}
 
-		///
-		{
-			VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_End = MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque];
-			size_t const activeSize = MappedVoxels_Dynamic_End - MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque];
-			voxels.visibleDynamic.opaque.stagingBuffer[resource_index].unmap();
-
-			voxels.visibleDynamic.opaque.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelDynamic));
-		}
-		{
-			VertexDecl::VoxelDynamic* const __restrict MappedVoxels_Dynamic_End = MappedVoxels_Dynamic[Volumetric::eVoxelType::trans];
-			size_t const activeSize = MappedVoxels_Dynamic_End - MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::trans];
-			voxels.visibleDynamic.trans.stagingBuffer[resource_index].unmap();
-
-			voxels.visibleDynamic.trans.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelDynamic));
-		}
-		{
+		{ // static
 			VertexDecl::VoxelNormal* const __restrict MappedVoxels_Static_End = MappedVoxels_Static;
-			size_t const activeSize = MappedVoxels_Static_End - MappedVoxels_Static_Start;
-			voxels.visibleStatic.stagingBuffer[resource_index].unmap();
+			size_t activeSize = MappedVoxels_Static_End - MappedVoxels_Static_Start;
+			voxels.visibleStatic.buffer.active_size = activeSize * sizeof(VertexDecl::VoxelNormal); // direct buffer size
 
-			voxels.visibleStatic.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelNormal));
+			VertexDecl::VoxelNormal* const __restrict Mapped_Staging_Voxels_Static_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleStatic.buffer.staging[resource_index].map();
+			//___memcpy_threaded<32>(Mapped_Staging_Voxels_Static_Start, MappedVoxels_Static_Start, bytes);
+			activeSize = StreamCompaction<VertexDecl::VoxelNormal, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>(Mapped_Staging_Voxels_Static_Start, MappedVoxels_Static_Start,
+				                                                                                                         voxels.visibleStatic.bits);
+			voxels.visibleStatic.buffer.staging[resource_index].unmap();
+			voxels.visibleStatic.buffer.staging[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelNormal)); // staging buffer size
+			
+#ifdef DEBUG_VOXEL_BANDWIDTH
+			voxel_count += activeSize;
+#endif 
 		}
-
-		{
+		{ // terrain
 			VertexDecl::VoxelNormal* const __restrict MappedVoxels_Terrain_End = MappedVoxels_Terrain;
 			size_t const activeSize = MappedVoxels_Terrain_End - MappedVoxels_Terrain_Start;
-			voxels.visibleTerrain.stagingBuffer[resource_index].unmap();
+			size_t const bytes(activeSize * sizeof(VertexDecl::VoxelNormal));
 
-			voxels.visibleTerrain.stagingBuffer[resource_index].setActiveSizeBytes(activeSize * sizeof(VertexDecl::VoxelNormal));
+			VertexDecl::VoxelNormal* const __restrict Mapped_Staging_Voxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.buffer.staging[resource_index].map();
+			___memcpy_threaded<32>(Mapped_Staging_Voxels_Terrain_Start, MappedVoxels_Terrain_Start, bytes);
+			voxels.visibleTerrain.buffer.staging[resource_index].unmap();
+
+			voxels.visibleTerrain.buffer.staging[resource_index].setActiveSizeBytes(bytes);
+			voxels.visibleTerrain.buffer.active_size = bytes;
+#ifdef DEBUG_VOXEL_BANDWIDTH
+			voxel_count += activeSize;
+#endif
 		}
+
+#ifdef DEBUG_VOXEL_BANDWIDTH
+		frameBandwidth(high_resolution_clock::now(), voxel_count);
+#endif
 	}
 
 	void cVoxelWorld::RenderTask_Minimap() const // OPACITY is not updated on minimap rendering enabled, so it is removed at compile time and not resources for it are mapped
@@ -3362,9 +3633,9 @@ namespace world
 
 		{ // ######################### STAGE 2 - VBO SUBMIT //
 
-			vbo[eVoxelVertexBuffer::VOXEL_TERRAIN]->uploadDeferred(cb, voxels.visibleTerrain.stagingBuffer[resource_index]);
-			vbo[eVoxelVertexBuffer::VOXEL_STATIC]->uploadDeferred(cb, voxels.visibleStatic.stagingBuffer[resource_index]);
-			vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC]->uploadDeferred(cb, voxels.visibleDynamic.opaque.stagingBuffer[resource_index], voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
+			vbo[eVoxelVertexBuffer::VOXEL_TERRAIN]->uploadDeferred(cb, voxels.visibleTerrain.buffer.staging[resource_index]);
+			vbo[eVoxelVertexBuffer::VOXEL_STATIC]->uploadDeferred(cb, voxels.visibleStatic.buffer.staging[resource_index]);
+			vbo[eVoxelVertexBuffer::VOXEL_DYNAMIC]->uploadDeferred(cb, voxels.visibleDynamic.opaque.buffer.staging[resource_index], voxels.visibleDynamic.trans.buffer.staging[resource_index]);
 		}
 
 		{ // ######################### STAGE 3 - BUFFER BARRIERS //		
@@ -3774,7 +4045,7 @@ namespace world
 
 		////////////////////////////////////////////////////////////////////////////////////////////////////////// Fractional Offset (ONLY Location)
 		XMVECTOR xmFract(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
-		xmFract = XMVectorSubtract(xmFract, XMVectorSet(0.0f, Iso::WORLD_MAX_HEIGHT * Iso::VOX_SIZE * 0.5f, 0.0f, 0.0f));
+		//xmFract = XMVectorAdd(xmFract, XMVectorSet(0.0f, Iso::WORLD_MAX_HEIGHT * Iso::VOX_SIZE * 0.5f, 0.0f, 0.0f));
 		xmEyePos = XMVectorAdd(xmEyePos, xmFract);  // this all allows fractional movement of the camera *do not change*
 		//////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -3788,7 +4059,6 @@ namespace world
 		// *bugfix - ***do not change***
 		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
 		_currentState.Uniform.view = xmView;
-		_currentState.Uniform.inv_view = XMMatrixInverse(nullptr, xmView);
 
 		// Update Frustum, which updates projection matrix, which is derived from ZoomFactor
 		_currentState.zoom = SFM::lerp(_lastState.zoom, _targetState.zoom, tRemainder);
@@ -3796,8 +4066,8 @@ namespace world
 
 		// Get current projection matrix after update of frustum and in turn projection
 		_currentState.Uniform.proj = _Visibility.getProjectionMatrix();
-		_currentState.Uniform.viewproj = XMMatrixMultiply(xmView, _currentState.Uniform.proj);			// matrices can not be interpolated effectively they must be recalculated
-																										// from there base components
+		// matrices can not be interpolated effectively they must be recalculated
+		// from there base components
 	}
 	void __vectorcall cVoxelWorld::UpdateUniformStateTarget(tTime const& __restrict tNow, bool const bFirstUpdate) // fixed timestep state
 	{
@@ -3908,58 +4178,33 @@ namespace world
 
 	void cVoxelWorld::AsyncClears(uint32_t const resource_index)
 	{
-		if (0 == resource_index) { // required for template argument
+		_AsyncClearTaskID = async_long_task::enqueue<background_critical>([&] {
 
-			_AsyncClearTaskID = async_long_task::enqueue<background_critical, 0>([&, resource_index] { // unique lambda [0]
-
-				{
-					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				{
-					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				{
-					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				{
-					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-			});
-		}
-		else {
-
-			_AsyncClearTaskID = async_long_task::enqueue<background_critical, 1>([&, resource_index] {  // unique lambda [1]
-
-				{
-					auto const& stagingBuffer(voxels.visibleTerrain.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				{
-					auto const& stagingBuffer(voxels.visibleStatic.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				{
-					auto const& stagingBuffer(voxels.visibleDynamic.opaque.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-				{
-					auto const& stagingBuffer(voxels.visibleDynamic.trans.stagingBuffer[resource_index]);
-					___memset_threaded_stream<32>(stagingBuffer.map(), 0, stagingBuffer.activesizebytes());
-					stagingBuffer.unmap();
-				}
-			});
-		}
+			{ // terrain
+				auto const& directBuffer(voxels.visibleTerrain.buffer.direct);
+				___memset_threaded_stream<64>(directBuffer, 0, voxels.visibleTerrain.buffer.active_size);
+				voxels.visibleTerrain.buffer.active_size = 0;
+				voxels.visibleTerrain.bits->clear();
+			}
+			{ // static
+				auto const& directBuffer(voxels.visibleStatic.buffer.direct);
+				___memset_threaded_stream<64>(directBuffer, 0, voxels.visibleStatic.buffer.active_size);
+				voxels.visibleStatic.buffer.active_size = 0;
+				voxels.visibleStatic.bits->clear();
+			}
+			{ // dynamic - opaque
+				auto const& directBuffer(voxels.visibleDynamic.opaque.buffer.direct);
+				___memset_threaded_stream<64>(directBuffer, 0, voxels.visibleDynamic.opaque.buffer.active_size);
+				voxels.visibleDynamic.opaque.buffer.active_size = 0;
+				voxels.visibleDynamic.opaque.bits->clear();
+			}
+			{ // dynamic - transparent
+				auto const& directBuffer(voxels.visibleDynamic.trans.buffer.direct);
+				___memset_threaded_stream<64>(directBuffer, 0, voxels.visibleDynamic.trans.buffer.active_size);
+				voxels.visibleDynamic.trans.buffer.active_size = 0;
+				voxels.visibleDynamic.trans.bits->clear();
+			}
+		});
 
 		{
 			// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
@@ -4136,6 +4381,8 @@ namespace world
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
+		constants.emplace_back(vku::SpecializationConstant(0, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+
 		// used for uv creation in geometry shader
 
 		XMFLOAT3A transformBias, transformInv;
@@ -4144,13 +4391,13 @@ namespace world
 		XMStoreFloat3A(&transformInv, Volumetric::_xmInverseVisible);
 
 		// do not swizzle or change order
-		constants.emplace_back(vku::SpecializationConstant(0, (float)transformBias.x));
-		constants.emplace_back(vku::SpecializationConstant(1, (float)transformBias.y));
-		constants.emplace_back(vku::SpecializationConstant(2, (float)transformBias.z));
+		constants.emplace_back(vku::SpecializationConstant(1, (float)transformBias.x));
+		constants.emplace_back(vku::SpecializationConstant(2, (float)transformBias.y));
+		constants.emplace_back(vku::SpecializationConstant(3, (float)transformBias.z));
 
-		constants.emplace_back(vku::SpecializationConstant(3, (float)transformInv.x));
-		constants.emplace_back(vku::SpecializationConstant(4, (float)transformInv.y));
-		constants.emplace_back(vku::SpecializationConstant(5, (float)transformInv.z));
+		constants.emplace_back(vku::SpecializationConstant(4, (float)transformInv.x));
+		constants.emplace_back(vku::SpecializationConstant(5, (float)transformInv.y));
+		constants.emplace_back(vku::SpecializationConstant(6, (float)transformInv.z));
 	}
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{             
@@ -4161,8 +4408,8 @@ namespace world
 		SetSpecializationConstants_Voxel_GS_Common(constants);
 		
 		// used for uv creation in geometry shader 
-		constants.emplace_back(vku::SpecializationConstant(6, (0.5f / (float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
-		constants.emplace_back(vku::SpecializationConstant(7, (0.5f / (float)_terrainTexture->extent().height)));
+		constants.emplace_back(vku::SpecializationConstant(7, (0.5f / (float)_terrainTexture->extent().width))); // _terrainTexture2 matches extents of _terrainTexture
+		constants.emplace_back(vku::SpecializationConstant(8, (0.5f / (float)_terrainTexture->extent().height)));
 	}
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_FS(std::vector<vku::SpecializationConstant>& __restrict constants)
@@ -4323,21 +4570,21 @@ namespace world
 
 		MinCity::PostProcess->UpdateDescriptorSet_PostAA_Final(dsu, guiImageView, samplerLinearClamp);
 	}
-	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO)
+	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO, SAMPLER_SET_BORDER)
 	{
 		dsu.beginBuffers(1U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
+		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearBorder, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearBorder, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.beginImages(3U, 0, vk::DescriptorType::eInputAttachment);
+		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.image(samplerLinearClamp, _spaceCubemapTexture->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		// finalize texture array and commit to descriptor set #######################################################################
 		tbb::concurrent_vector<vku::TextureImage2DArray const*> const& rTextures(MinCity::TextureBoy->lockTextureArray());
-
-		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(4U, 0, vk::DescriptorType::eInputAttachment);
-		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
-
 		
 		dsu.beginImages(5U, TEX_NOISE, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_NOISE_SAMPLER, rTextures[TEX_NOISE]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
@@ -4364,9 +4611,6 @@ namespace world
 
 		dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerAnisoRepeat, _terrainDetail->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-
-		dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerAnisoRepeat, _spaceCubemapTexture->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
 	void cVoxelWorld::UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_LINEAR)
 	{
@@ -4745,10 +4989,22 @@ namespace world
 		_OpacityMap.release();
 
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
-			voxels.visibleDynamic.opaque.stagingBuffer[i].release();
-			voxels.visibleDynamic.trans.stagingBuffer[i].release();
-			voxels.visibleStatic.stagingBuffer[i].release();
-			voxels.visibleTerrain.stagingBuffer[i].release();
+			voxels.visibleDynamic.opaque.buffer.staging[i].release();
+			voxels.visibleDynamic.trans.buffer.staging[i].release();
+			voxels.visibleStatic.buffer.staging[i].release();
+			voxels.visibleTerrain.buffer.staging[i].release();
+		}
+		if (voxels.visibleDynamic.opaque.bits) {
+			bit_row<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>::destroy(voxels.visibleDynamic.opaque.bits);
+		}
+		if (voxels.visibleDynamic.trans.bits) {
+			bit_row<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>::destroy(voxels.visibleDynamic.trans.bits);
+		}
+		if (voxels.visibleStatic.bits) {
+			bit_row<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>::destroy(voxels.visibleStatic.bits);
+		}
+		if (voxels.visibleTerrain.bits) {
+			bit_row<Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL>::destroy(voxels.visibleTerrain.bits);
 		}
 
 		SAFE_RELEASE_DELETE(_terrainDetail);

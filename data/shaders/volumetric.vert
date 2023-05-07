@@ -19,15 +19,12 @@ layout (constant_id = 0) const float WorldDimensions = 0.0f;
 
 void main() {
  			
-	// volume needs to begin at ground level - this is properly aligned with depth do not change
-
+	// this aligned to the origin (0,0,0) - this is properly aligned with depth do not change0
 	precise vec3 volume_translation = 0.5f - (WorldDimensions.xxx * 0.5f);
-	volume_translation.y -= (WorldDimensions + 20.0f) * 0.5f;
 
 	precise const vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
-	// inverted y translation, also put at groundlevel
-	gl_Position = u._viewproj * vec4(0.5f * position, 1.0f);
+	gl_Position = u._proj * u._view * vec4(0.5f * position, 1.0f);
 
 	// Compute eye position and ray directions in the unit cube space
 	precise vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*

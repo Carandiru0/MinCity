@@ -93,3 +93,4 @@ StructLayoutSettings.json
 *.ktx
 imgui.ini
 data/vox/named/alien_gray/A51_Alien2_TXTR.ktx2.blue
+*.older

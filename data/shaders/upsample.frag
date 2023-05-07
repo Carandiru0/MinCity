@@ -216,7 +216,7 @@ layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumet
 layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
 
-const float POISSON_RADIUS = 9.0f;
+const float POISSON_RADIUS = 11.11111111f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
 
 const int TAPS = 12;
