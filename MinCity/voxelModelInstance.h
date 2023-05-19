@@ -202,9 +202,9 @@ namespace Volumetric
 
 	public:
 		__inline bool const XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-											   voxelBufferReference_Static&& __restrict statics,
-											   voxelBufferReference_Dynamic&& __restrict dynamics,
-											   voxelBufferReference_Dynamic&& __restrict trans,
+											   voxelBufferReference_Static& __restrict statics,
+											   voxelBufferReference_Dynamic& __restrict dynamics,
+											   voxelBufferReference_Dynamic& __restrict trans,
 											   tbb::affinity_partitioner& __restrict part) const;
 
 	private:
@@ -227,9 +227,9 @@ namespace Volumetric
 	{
 	public:
 		__inline bool const XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-											   voxelBufferReference_Static&& __restrict statics,
-											   voxelBufferReference_Dynamic&& __restrict dynamics,
-											   voxelBufferReference_Dynamic&& __restrict trans,
+											   voxelBufferReference_Static& __restrict statics,
+											   voxelBufferReference_Dynamic& __restrict dynamics,
+											   voxelBufferReference_Dynamic& __restrict trans,
 											   tbb::affinity_partitioner& __restrict part) const;
 
 	private:
@@ -247,9 +247,9 @@ namespace Volumetric
 
 	// DYNAMIC INSTANCE RENDER
 	__inline bool const XM_CALLCONV voxelModelInstance_Dynamic::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-																	   voxelBufferReference_Static&& __restrict statics,
-																	   voxelBufferReference_Dynamic&& __restrict dynamics,
-																	   voxelBufferReference_Dynamic&& __restrict trans,
+																	   voxelBufferReference_Static& __restrict statics,
+																	   voxelBufferReference_Dynamic& __restrict dynamics,
+																	   voxelBufferReference_Dynamic& __restrict trans,
 																	   tbb::affinity_partitioner& __restrict part) const
 	{
 		if (!bVisible) {
@@ -262,14 +262,14 @@ namespace Volumetric
 
 		//* bugfix - hoisted out of parallel loop, don't change.
 		if (!bVisible || isEmissionOnly()) {
-			model.Render<true, false>(xmVoxelOrigin, orientation.v4(), *this, std::forward<voxelBufferReference_Static&& __restrict>(statics), std::forward<voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic&& __restrict>(trans), part);
+			model.Render<true, false>(xmVoxelOrigin, orientation.v4(), *this, statics, dynamics, trans, part);
 			return(false); // model not actually visible, only lights are seeded
 		}
 		else if (isFaded()) {
-			model.Render<false, true>(xmVoxelOrigin, orientation.v4(), *this, std::forward<voxelBufferReference_Static&& __restrict>(statics), std::forward<voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic&& __restrict>(trans), part);
+			model.Render<false, true>(xmVoxelOrigin, orientation.v4(), *this, statics, dynamics, trans, part);
 		}
 		else {
-			model.Render<false, false>(xmVoxelOrigin, orientation.v4(), *this, std::forward<voxelBufferReference_Static&& __restrict>(statics), std::forward<voxelBufferReference_Dynamic&& __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic&& __restrict>(trans), part);
+			model.Render<false, false>(xmVoxelOrigin, orientation.v4(), *this, statics, dynamics, trans, part);
 		}
 
 		return(true);
@@ -277,9 +277,9 @@ namespace Volumetric
 
 	// STATIC INSTANCE RENDER
 	__inline bool const XM_CALLCONV voxelModelInstance_Static::Render(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex, bool bVisible,
-																	  voxelBufferReference_Static&& __restrict statics,
-																	  voxelBufferReference_Dynamic&& __restrict dynamics,
-																	  voxelBufferReference_Dynamic&& __restrict trans,
+																	  voxelBufferReference_Static& __restrict statics,
+																	  voxelBufferReference_Dynamic& __restrict dynamics,
+																	  voxelBufferReference_Dynamic& __restrict trans,
 																	  tbb::affinity_partitioner& __restrict part) const
 	{
 		if (!bVisible) {
@@ -290,14 +290,14 @@ namespace Volumetric
 
 		//* bugfix - hoisted out of parallel loop, don't change.
 		if (!bVisible || isEmissionOnly()) {
-			model.Render<true, false>(xmVoxelOrigin, XMVectorZero(), *this, std::forward<voxelBufferReference_Static && __restrict>(statics), std::forward<voxelBufferReference_Dynamic && __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic && __restrict>(trans), part);
+			model.Render<true, false>(xmVoxelOrigin, XMVectorZero(), *this, statics, dynamics, trans, part);
 			return(false); // model not actually visible, only lights are seeded
 		}
 		else if (isFaded()) {
-			model.Render<false, true>(xmVoxelOrigin, XMVectorZero(), *this, std::forward<voxelBufferReference_Static && __restrict>(statics), std::forward<voxelBufferReference_Dynamic && __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic && __restrict>(trans), part);
+			model.Render<false, true>(xmVoxelOrigin, XMVectorZero(), *this, statics, dynamics, trans, part);
 		}
 		else {
-			model.Render<false, false>(xmVoxelOrigin, XMVectorZero(), *this, std::forward<voxelBufferReference_Static && __restrict>(statics), std::forward<voxelBufferReference_Dynamic && __restrict>(dynamics), std::forward<voxelBufferReference_Dynamic && __restrict>(trans), part);
+			model.Render<false, false>(xmVoxelOrigin, XMVectorZero(), *this, statics, dynamics, trans, part);
 		}
 
 		return(true);

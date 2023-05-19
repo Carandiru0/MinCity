@@ -456,13 +456,13 @@ namespace world
 			float const maximum_clearance = SFM::__fms(Iso::WORLD_MAX_HEIGHT * 0.75f, Iso::VOX_STEP, Iso::VOX_STEP * getModelInstance()->getModel()._Extents.y * 2.0f);
 
 			float const elevation = SFM::linearstep(current_ground_clearance, maximum_clearance, Instance->getElevation());
-
+			/*
 			FMT_NUKLEAR_DEBUG(false, "velocity{:.3f}   main{:.3f}   up{:.3f}  elevation{:.3f} elevation{:.6f} {:d}times", 
 				_body.velocity.y,
 				(XMVectorGetX(XMVector3Length(XMLoadFloat3A(&_thruster[MAIN].thrust))) / _body.mass),
 				(_thruster[UP].thrust.y / _body.mass),
 				elevation, Instance->getElevation(), integrations
-			);
+			);*/
 		}
 	}
 

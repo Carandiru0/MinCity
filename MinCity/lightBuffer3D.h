@@ -128,9 +128,8 @@ public:
 			auto& light(*iter);
 			light->out((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache);
 		}
-		___streaming_store_fence();
-		_stagingBuffer[_active_resource_index].unmap(); // buffer is only HOST VISIBLE, requires flush when writing memory is complete.
-		_stagingBuffer[_active_resource_index].flush();
+		
+		_stagingBuffer[_active_resource_index].unmap();
 	}
 
 #ifdef DEBUG_PERF_LIGHT_RELOADS
@@ -316,18 +315,6 @@ public:
 				return; // reject
 		}
 
-		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
-		uvec4_t uiIndex;
-		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
-
-		// slices ordered by Z 
-		// (z * xMax * yMax) + (y * xMax) + x;
-
-		// slices ordered by Y: <---- USING Y
-		// (y * xMax * zMax) + (z * xMax) + x;
-		
-		uint32_t const index((uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x);
-
 		// allow bounds to be updated
 		const_cast<lightBuffer3D<PackedLight, LightSize, Size>* const __restrict>(this)->updateBounds(xmPosition); // ** non-swizzled - in xyz form
 
@@ -340,10 +327,20 @@ public:
 			const_cast<lightBuffer3D<PackedLight, LightSize, Size>* const __restrict>(this)->_lights.reference(&local::lights);
 		}
 
-		// *must convert from srgb to linear
+		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
+		uvec4_t uiIndex;
+		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
+
+		// slices ordered by Z 
+		// (z * xMax * yMax) + (y * xMax) + x;
+
+		// slices ordered by Y: <---- USING Y
+		// (y * xMax * zMax) + (z * xMax) + x;
+
+		// also must convert from srgb to linear
 
 		// swizzle position to remap position to texture matched xzy rather than xyz
-		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), index, ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conersion
+		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conersion
 	}
 
 	void create(size_t const hardware_concurrency)

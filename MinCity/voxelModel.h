@@ -11,6 +11,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #ifndef VOXEL_MODEL_H
 #define VOXEL_MODEL_H
 
+#define BIT_ROW_ATOMIC // bugfix - must be atomic otherwise voxels are randomly missed on rendering
+
 #include "globals.h"
 #include <Math/superfastmath.h>
 #include <Math/v2_rotation_t.h>
@@ -45,21 +47,26 @@ namespace Volumetric
 // definitions //
 namespace Volumetric
 {
-	template<typename VertexDeclaration, size_t const Size>
+	template<typename VertexDeclaration, size_t const direct_buffer_size>
 	struct voxelBufferReference
 	{
-		tbb::atomic<VertexDeclaration*>& __restrict     voxels;
-		VertexDeclaration const* const __restrict       voxels_start;
-		bit_row<Size>* const __restrict& __restrict     bits;
+		std::atomic<VertexDeclaration*>& __restrict                   voxels;
+		VertexDeclaration const* const                                voxels_start;
+		bit_row<direct_buffer_size>* const __restrict& __restrict     bits;
 
-		explicit voxelBufferReference(tbb::atomic<VertexDeclaration*>& __restrict voxels_, VertexDeclaration const* const __restrict& __restrict voxels_start_, bit_row<Size>* const __restrict& __restrict bits_)
+		explicit voxelBufferReference(std::atomic<VertexDeclaration*>& __restrict voxels_, VertexDeclaration const* const& __restrict voxels_start_, bit_row<direct_buffer_size>* const __restrict& __restrict bits_)
 		: voxels(voxels_), voxels_start(voxels_start_), bits(bits_)
 		{}
 	};
 
-	using voxelBufferReference_Static = voxelBufferReference<VertexDecl::VoxelNormal, Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>;
-	using voxelBufferReference_Dynamic = voxelBufferReference<VertexDecl::VoxelDynamic, Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>;
+	constexpr size_t const terrain_direct_buffer_size = Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL; // terrain does not require multiplier
+	constexpr size_t const static_direct_buffer_size  = Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * Volumetric::DIRECT_BUFFER_SIZE_MULTIPLIER;
+	constexpr size_t const dynamic_direct_buffer_size = Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * Volumetric::DIRECT_BUFFER_SIZE_MULTIPLIER;
 
+	using voxelBufferReference_Terrain = voxelBufferReference<VertexDecl::VoxelNormal, terrain_direct_buffer_size>;
+	using voxelBufferReference_Static  = voxelBufferReference<VertexDecl::VoxelNormal, static_direct_buffer_size>;
+	using voxelBufferReference_Dynamic = voxelBufferReference<VertexDecl::VoxelDynamic, dynamic_direct_buffer_size>;
+	
 namespace voxB
 {
 	typedef struct voxCoord	
@@ -230,7 +237,7 @@ namespace voxB
 			uint32_t const index((y * Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ) + (z * Volumetric::MODEL_MAX_DIMENSION_XYZ) + x);
 			uint32_t const index_rhs((rhs.y * Volumetric::MODEL_MAX_DIMENSION_XYZ * Volumetric::MODEL_MAX_DIMENSION_XYZ) + (rhs.z * Volumetric::MODEL_MAX_DIMENSION_XYZ) + rhs.x);
 
-			return(index >= index_rhs);
+			return(index >= index_rhs); // *bugfix: this must be greater-than-equal for correct ordering of voxels, zbuffer depends on this to increase precision & performance (culling, zero overdraw)
 		}
 		
 		__inline __declspec(noalias) bool const operator!=(voxelDescPacked const& rhs) const
@@ -409,24 +416,23 @@ namespace voxB
 		template<bool const EmissionOnly, bool const Faded>
 		__inline void XM_CALLCONV Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient, 
 										 voxelModelInstance<Dynamic> const& __restrict instance,
-										 voxelBufferReference_Static&& __restrict statics,
-										 voxelBufferReference_Dynamic&& __restrict dynamics,
-										 voxelBufferReference_Dynamic&& __restrict trans,
+										 voxelBufferReference_Static& __restrict statics,
+										 voxelBufferReference_Dynamic& __restrict dynamics,
+										 voxelBufferReference_Dynamic& __restrict trans,
 										 tbb::affinity_partitioner& __restrict part) const;
 
 	private:
-		voxelModel(voxelModel<Dynamic> const&) = delete;
+		voxelModel(voxelModel<Dynamic> const&) = delete; 
 		voxelModel<Dynamic>& operator=(voxelModel<Dynamic> const&) = delete;
 	};
 		
-	read_only inline XMVECTORF32 const _xmORIGINMOVE{ 0.5f, 0.5f, 0.5f, 0.5f };
 	STATIC_INLINE_PURE XMVECTOR XM_CALLCONV getMiniVoxelGridIndex(FXMVECTOR maxDimensions, FXMVECTOR maxDimensionsInv,
 		                                                          FXMVECTOR xmVoxelRelativeModelPosition)
 	{
 		// Use relative coordinates in signed fashion so origin is forced to middle of model
 
 		// normalize relative coordinates (mul)  -  change from [0.0f ... 1.0f] tp [-1.0f ... 1.0f]
-		XMVECTOR xmPlotGridSpace = SFM::__fms(xmVoxelRelativeModelPosition, maxDimensionsInv, _xmORIGINMOVE);
+		XMVECTOR xmPlotGridSpace = SFM::__fms(xmVoxelRelativeModelPosition, maxDimensionsInv, XMVectorReplicate(0.5f));
 
 		// now scale by dimension size (this is halved by now scaling above by two - already * 2.0f dont worry)
 		xmPlotGridSpace = XMVectorMultiply(xmPlotGridSpace, maxDimensions);
@@ -438,28 +444,28 @@ namespace voxB
 	template<bool const EmissionOnly, bool const Faded>
 	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient,
 														  voxelModelInstance<Dynamic> const& __restrict instance,
-														  voxelBufferReference_Static&& __restrict statics,
-														  voxelBufferReference_Dynamic&& __restrict dynamics,
-														  voxelBufferReference_Dynamic&& __restrict trans,
+														  voxelBufferReference_Static& __restrict statics,
+														  voxelBufferReference_Dynamic& __restrict dynamics,
+														  voxelBufferReference_Dynamic& __restrict trans,
 														  tbb::affinity_partitioner& __restrict part) const
 	{
 		typedef struct no_vtable sRenderFuncBlockChunk {
 
 		private:
-			XMVECTOR const											xmVoxelOrigin;
-			[[maybe_unused]] XMVECTOR const                         xmVoxelOrient;
-			uint32_t const                                          vxl_offset;
-			voxB::voxelDescPacked const* const __restrict			voxelsIn;
-			VertexDecl::VoxelNormal* const __restrict		        voxels_static;
-			VertexDecl::VoxelDynamic* const __restrict		        voxels_dynamic;
-			VertexDecl::VoxelDynamic* const __restrict		        voxels_trans;
-			bit_row_reference<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>&& __restrict         voxels_static_bits;
-			bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict voxels_dynamic_bits;
-			bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict voxels_trans_bits;
-			voxelModelInstance<Dynamic> const& __restrict			instance;
+			XMVECTOR const											            xmVoxelOrigin;
+			[[maybe_unused]] XMVECTOR const                                     xmVoxelOrient;
+			uint32_t const                                                      vxl_offset;
+			voxB::voxelDescPacked const* const __restrict  			            voxelsIn;
+			VertexDecl::VoxelNormal* const __restrict          		            voxels_static;
+			VertexDecl::VoxelDynamic* const __restrict		                    voxels_dynamic;
+			VertexDecl::VoxelDynamic* const __restrict		                    voxels_trans;
+			bit_row_reference<static_direct_buffer_size>&& __restrict           voxels_static_bits;
+			bit_row_reference<dynamic_direct_buffer_size>&& __restrict          voxels_dynamic_bits;
+			bit_row_reference<dynamic_direct_buffer_size>&& __restrict          voxels_trans_bits;
+			voxelModelInstance<Dynamic> const& __restrict                       instance;
 
 			XMVECTOR const  maxDimensionsInv, maxDimensions;
-			[[maybe_unused]] float Sign = 1.0f;  // packing/encoding of quaternion and color
+			[[maybe_unused]] float const Sign;  // packing/encoding of quaternion and color
 			float const		YDimension;
 			uint32_t const	Transparency;
 
@@ -475,9 +481,9 @@ namespace voxB
 				VertexDecl::VoxelNormal* const __restrict& __restrict voxels_static_,
 				VertexDecl::VoxelDynamic* const __restrict& __restrict voxels_dynamic_,
 				VertexDecl::VoxelDynamic* const __restrict& __restrict voxels_trans_,
-				bit_row_reference<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>&& __restrict voxels_static_bits_,
-				bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict voxels_dynamic_bits_,
-				bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict voxels_trans_bits_,
+				bit_row_reference<static_direct_buffer_size>&& __restrict voxels_static_bits_,
+				bit_row_reference<dynamic_direct_buffer_size>&& __restrict voxels_dynamic_bits_,
+				bit_row_reference<dynamic_direct_buffer_size>&& __restrict voxels_trans_bits_,
 				voxelModelInstance<Dynamic> const& __restrict instance_
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				, PerformanceType& PerformanceCounters_
@@ -487,58 +493,53 @@ namespace voxB
 				xmVoxelOrigin(xmVoxelOrigin_), xmVoxelOrient(xmVoxelOrient_), vxl_offset(vxl_offset_),
 				voxelsIn(voxelsIn_), 
 				voxels_static(voxels_static_), voxels_dynamic(voxels_dynamic_), voxels_trans(voxels_trans_),
-				voxels_static_bits(std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>&& __restrict>(voxels_static_bits_)),
-				voxels_dynamic_bits(std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict>(voxels_dynamic_bits_)),
-				voxels_trans_bits(std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict>(voxels_trans_bits_)),
+				voxels_static_bits(std::forward<bit_row_reference<static_direct_buffer_size>&&>(voxels_static_bits_)),
+				voxels_dynamic_bits(std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(voxels_dynamic_bits_)),
+				voxels_trans_bits(std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(voxels_trans_bits_)),
 				instance(instance_),
 				maxDimensionsInv(XMLoadFloat3A(&instance_.getModel()._maxDimensionsInv)), 
 				maxDimensions(uvec4_v(instance_.getModel()._maxDimensions).v4f()),
 				YDimension(XMVectorGetY(maxDimensions)),
-				Transparency(instance_.getTransparency())
-#ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
+				Transparency(instance_.getTransparency()),
+				Sign((XMVectorGetW(xmVoxelOrient_) < 0.0f) ? -1.0f : 1.0f) // trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
+#ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION                                  // default is positive. the sign is packed into color. *color* must not equal zero for sign to be preserved
 				, PerformanceCounters(PerformanceCounters_)
 #endif
-			{
-				if constexpr (Dynamic) { // rotation quaternion (optimized out depending on "Dynamic")
-					// trick, the first 3 components x,y,z are sent to vertex shader where the quaternion is then decoded. see uniforms.vert - decode_quaternion() [bandwidth optimization]
-
-					if (XMVectorGetW(xmVoxelOrient_) < 0.0f)
-						Sign = -Sign; // default is positive. the sign is packed into color. *color* must not equal zero for sign to be preserved
-				}
-			}
+			{}
 			sRenderFuncBlockChunk(sRenderFuncBlockChunk const& rhs)
 				: xmVoxelOrigin(rhs.xmVoxelOrigin), xmVoxelOrient(rhs.xmVoxelOrient), vxl_offset(rhs.vxl_offset),
 				voxelsIn(rhs.voxelsIn),
 				voxels_static(rhs.voxels_static), voxels_dynamic(rhs.voxels_dynamic), voxels_trans(rhs.voxels_trans),
-				voxels_static_bits(std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>&& __restrict>(rhs.voxels_static_bits)),
-				voxels_dynamic_bits(std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict>(rhs.voxels_dynamic_bits)),
-				voxels_trans_bits(std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict>(rhs.voxels_trans_bits)),
+				voxels_static_bits(std::forward<bit_row_reference<static_direct_buffer_size>&&>(rhs.voxels_static_bits)),
+				voxels_dynamic_bits(std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(rhs.voxels_dynamic_bits)),
+				voxels_trans_bits(std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(rhs.voxels_trans_bits)),
 				instance(rhs.instance),
 				maxDimensionsInv(rhs.maxDimensionsInv),
 				maxDimensions(rhs.maxDimensions),
 				YDimension(rhs.YDimension),
 				Transparency(rhs.Transparency),
 				Sign(rhs.Sign)
+#ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION                                    
+				, PerformanceCounters(rhs.PerformanceCounters)
+#endif
 			{}
 
 			void operator()(tbb::blocked_range<uint32_t> const& r) const {
 
-				typedef struct no_vtable out_local {
-					using VoxelLocalBatchNormal = sBatchedByIndexOut<VertexDecl::VoxelNormal, eStreamingBatchSize::MODEL>;
-					using VoxelLocalBatchDynamic = sBatchedByIndexOut<VertexDecl::VoxelDynamic, eStreamingBatchSize::MODEL>;
-					                                  
-					VoxelLocalBatchNormal voxels_static{};
-					VoxelLocalBatchDynamic voxels_dynamic{};
-					VoxelLocalBatchDynamic voxels_trans{};
-				} out_local;
-
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 				PerformanceType::reference local_perf = PerformanceCounters.local();
 				tTime const tStartOp = high_resolution_clock::now();
-				                  
+
 				++local_perf.operations;
 #endif
-				out_local local; // *bugfix - no need for thread_local global variable(s), skips the lookup (hashmap for thread_locals) aswell. this reserve a little stack memory instead.
+				struct no_vtable {
+					    
+					using VoxelLocalBatchNormal = sBatchedByIndexOut<VertexDecl::VoxelNormal, eStreamingBatchSize::MODEL>;
+					using VoxelLocalBatchDynamic = sBatchedByIndexOut<VertexDecl::VoxelDynamic, eStreamingBatchSize::MODEL>;
+
+					std::conditional_t<Dynamic, VoxelLocalBatchDynamic, VoxelLocalBatchNormal> voxels{};
+					VoxelLocalBatchDynamic voxels_trans{};
+				} local; // *bugfix - no need for thread_local global variable(s), skips the lookup (hashmap for thread_locals) aswell. this reserve a little stack memory instead.
 
 				uint32_t const // pull out into registers from memory
 					vxl_begin(r.begin()),
@@ -575,18 +576,20 @@ namespace voxB
 
 					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 					
+					bool const Transparent(Faded | voxel.Transparent); // [must be const] transparency cannot be dynamically set, as the number of transparent voxels for the entire voxel model must be known and its already registered.
+
 					uint32_t color(0);
 					bool seed_a_light(false);
 					
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
-						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
+						           && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
 					{			
 						voxel = instance.OnVoxel(xmIndex, voxel, vxl);  // per voxel operations!
 
 						if (voxel.Hidden)
 							continue;
 
-						color = voxel.getColor();
+						color = voxel.getColor(); // (srgb 8bpc)
 						seed_a_light = (voxel.Emissive & !Faded); // only on successful bounds check can an actual light be added safetly
 
 						if constexpr (!EmissionOnly) // only matters.....
@@ -595,39 +598,37 @@ namespace voxB
 							xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
 						}
 					}
-					else
-						continue;  
+					else {
+					 	continue;
+					}
 
 					// finally submit voxel //
 					if constexpr (!EmissionOnly) {
-
-						voxel.Emissive = seed_a_light; // no light, no emission
 
 						// Build hash //
 
 						// ** see uniforms.vert for definition of constants used here **
 						uint32_t hash(voxel.getAdjacency());                //           0000 0000 0011 1111
-						hash |= ((voxel.Emissive & !Faded) << 6);			//           0000 0000 01xx xxxx
+						hash |= (seed_a_light << 6);			            //           0000 0000 01xx xxxx    // no light, no emission
 						hash |= (voxel.Metallic << 7);						// 0000 0000 0000 xxxx 1xxx xxxx
 						hash |= (voxel.Roughness << 8);						// 0000 0000 0000 1111 xxxx xxxx
 
 						uint32_t const index(vxl - vxl_offset);
-						bool const Transparent(Faded | voxel.Transparent); // [must be const] transparency cannot be dynamically set, as the number of transparent voxels for the entire voxel model must be known and its already registered.
 
 						if (!Transparent) {
 
 							if constexpr (Dynamic) {
 
-								local.voxels_dynamic.emplace_back(
+								local.voxels.emplace_back(            
 									voxels_dynamic, index,
 									xmStreamOut,
-									XMVectorSetW(xmVoxelOrient, Sign * (float)(SFM::max(1u, color) & 0x00FFFFFFu)),  // ensure color not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+									XMVectorSetW(xmVoxelOrient, Sign * (float)SFM::max(1u, color)),  // ensure color not equal to zero so packed sign is valid, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 									hash
 								);
 								voxels_dynamic_bits.set_bit(index);
 							}
 							else {
-								local.voxels_static.emplace_back(
+								local.voxels.emplace_back(
 									voxels_static, index,
 									xmStreamOut,
 									XMVectorSet(0.0f, 0.0f, 0.0f, (float)color),
@@ -646,7 +647,7 @@ namespace voxB
 								local.voxels_trans.emplace_back(
 									voxels_trans, index,
 									xmStreamOut,
-									XMVectorSetW(xmVoxelOrient, Sign * (float)(SFM::max(1u, color) & 0x00FFFFFFu)),  // ensure color not equal to zero so packed sign is valid & remove alpha, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
+									XMVectorSetW(xmVoxelOrient, Sign * (float)SFM::max(1u, color)),  // ensure color not equal to zero so packed sign is valid, srgb is passed to vertex shader which converts it to linear; which is faster than here with cpu
 									hash
 								);
 
@@ -681,10 +682,10 @@ namespace voxB
 				// ####################################################################################################################
 				// ensure all batches are  output (residual/remainder)
 				if constexpr (Dynamic) {
-					local.voxels_dynamic.out(voxels_dynamic);
+					local.voxels.out(voxels_dynamic);
 				}
 				else {
-					local.voxels_static.out(voxels_static);
+					local.voxels.out(voxels_static);
 				}
 				
 				local.voxels_trans.out(voxels_trans);
@@ -700,24 +701,34 @@ namespace voxB
 
 		//##########################################################################################################################################//
 
-		VertexDecl::VoxelNormal* __restrict pVoxelsOutStatic{};
-		VertexDecl::VoxelDynamic* __restrict pVoxelsOutDynamic{};
-		VertexDecl::VoxelDynamic* __restrict pVoxelsOutTrans{};
+		VertexDecl::VoxelNormal* pVoxelsOutStatic{};
+		VertexDecl::VoxelDynamic* pVoxelsOutDynamic{};
+		VertexDecl::VoxelDynamic* pVoxelsOutTrans{};
 
 		uint32_t const vxl_count(instance.getCount());
 		uint32_t const vxl_transparent_count(instance.getTransparentCount());
 
+		// *bugfix
+		// reserve enough memory in the direct buffer for direct addressing output
+		// -- due to direct addressing all pointers must advance by the total count
+		//    not the difference between the total count and transparent count as it was before
+		//    so that the outputs into either buffer are at the correct locations in the direct buffer
+		//    the locations are deterministic, always the same, and stream compaction is used later 
+		//    to remove all "dead space" between voxels in the buffer.
 		if constexpr (!Faded) {
+
 			if constexpr (Dynamic) {
-				pVoxelsOutDynamic = dynamics.voxels.fetch_and_add(vxl_count - vxl_transparent_count);
+				pVoxelsOutDynamic = dynamics.voxels.fetch_add(vxl_count);
 			}
 			else {
-				pVoxelsOutStatic = statics.voxels.fetch_and_add(vxl_count - vxl_transparent_count);
+				pVoxelsOutStatic = statics.voxels.fetch_add(vxl_count);
 			}
-			pVoxelsOutTrans = trans.voxels.fetch_and_add(vxl_transparent_count);
+			if (0 != vxl_transparent_count) {
+				pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
+			}
 		}
 		else { // faded (all transparent)
-			pVoxelsOutTrans = trans.voxels.fetch_and_add(vxl_count);
+			pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
 		}
 
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
@@ -725,11 +736,15 @@ namespace voxB
 #endif
 		uint32_t const vxl_offset(instance.getOffset());
 
-		/* // serial
-		RenderFuncBlockChunk(xmVoxelOrigin, xmVoxelOrient,
-			_Voxels,
-			pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
-			instance
+		/*
+		// serial
+		RenderFuncBlockChunk(xmVoxelOrigin, xmVoxelOrient, vxl_offset,
+							_Voxels,
+							pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
+							std::forward<bit_row_reference<static_direct_buffer_size>&&>(bit_row_reference<static_direct_buffer_size>::create(*statics.bits, pVoxelsOutStatic - statics.voxels_start)),
+							std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(bit_row_reference<dynamic_direct_buffer_size>::create(*dynamics.bits, pVoxelsOutDynamic - dynamics.voxels_start)),
+							std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(bit_row_reference<dynamic_direct_buffer_size>::create(*trans.bits, pVoxelsOutTrans - trans.voxels_start)),
+							instance
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 			, PerformanceCounters
 #endif
@@ -740,25 +755,25 @@ namespace voxB
 		tbb::this_task_arena::isolate([&] {
 
 			tbb::parallel_for(tbb::blocked_range<uint32_t>(vxl_offset, vxl_offset + vxl_count, eThreadBatchGrainSize::MODEL),
-				RenderFuncBlockChunk(xmVoxelOrigin, xmVoxelOrient, vxl_offset,
-									 _Voxels,
-									 pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
-									 std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>&& __restrict>(bit_row_reference<Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL>::create(*statics.bits, pVoxelsOutStatic - statics.voxels_start)),
-									 std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict>(bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>::create(*dynamics.bits, pVoxelsOutDynamic - dynamics.voxels_start)),
-									 std::forward<bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>&& __restrict>(bit_row_reference<Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL>::create(*trans.bits, pVoxelsOutTrans - trans.voxels_start)),
-									 instance
+			    std::forward<RenderFuncBlockChunk&&>(RenderFuncBlockChunk(xmVoxelOrigin, xmVoxelOrient, vxl_offset,
+					_Voxels,
+					pVoxelsOutStatic, pVoxelsOutDynamic, pVoxelsOutTrans,
+					std::forward<bit_row_reference<static_direct_buffer_size>&&>(bit_row_reference<static_direct_buffer_size>::create(*statics.bits, pVoxelsOutStatic - statics.voxels_start)),
+					std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(bit_row_reference<dynamic_direct_buffer_size>::create(*dynamics.bits, pVoxelsOutDynamic - dynamics.voxels_start)),
+					std::forward<bit_row_reference<dynamic_direct_buffer_size>&&>(bit_row_reference<dynamic_direct_buffer_size>::create(*trans.bits, pVoxelsOutTrans - trans.voxels_start)),
+					instance
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
-									, PerformanceCounters
+					, PerformanceCounters
 #endif
-				), part
+				)), part
 			);
 
-	    });
+		});
+
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceResult& result(getDebugVariableReference(PerformanceResult, DebugLabel::PERFORMANCE_VOXEL_SUBMISSION));
 		result += PerformanceCounters;	// add to global total this model instance performance counters
 #endif
-
 	}
 } // end namespace voxB
 } // end namespace Volumetric

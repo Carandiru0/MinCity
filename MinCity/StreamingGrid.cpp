@@ -64,29 +64,29 @@ namespace // private to this file (anonymous)
 	} Chunk; // 128 bytes
 	static_assert(sizeof(Chunk) <= 128); // Ensure Chunk is correct size @ compile time
 
-	static inline thread_local struct no_vtable alignas(64) decompressed {
+	constinit static inline thread_local struct no_vtable alignas(64) decompressed {
 
 		static constexpr uint32_t const
 			DECOMPRESS_SAFE_BUFFER_SIZE = 2304;  // 2304 is a safe decompression size for density for 2048 bytes below in chunk
 
 		struct {
-			uint8_t    buffer[DECOMPRESS_SAFE_BUFFER_SIZE]{};          // 2304 is a safe decompression size for density for 2048 bytes above in chunk
+			uint8_t    buffer[DECOMPRESS_SAFE_BUFFER_SIZE];          // 2304 is a safe decompression size for density for 2048 bytes above in chunk
 		} safe;
 
-	} thread_local_decompress_chunks;
+	} thread_local_decompress_chunks{};
 	
-	static inline thread_local struct no_vtable alignas(64) compressed {
+	constinit static inline thread_local struct no_vtable alignas(64) compressed {
 
 		static constexpr uint32_t const
 			COMPRESS_SAFE_BUFFER_SIZE = 2784;    // 2784 ""    ""  compression    ""         ""        ""    ""    ""      ""
 
 		struct {
-			uint8_t    buffer[COMPRESS_SAFE_BUFFER_SIZE]{};          // 2784 is a safe compression size for density for 2048 bytes above in chunk
+			uint8_t    buffer[COMPRESS_SAFE_BUFFER_SIZE];          // 2784 is a safe compression size for density for 2048 bytes above in chunk
 		} safe;
 
-	} thread_local_compress_chunks;
+	} thread_local_compress_chunks{};
 
-	static inline constinit struct no_vtable WorldGrid
+	constinit static inline struct no_vtable WorldGrid
 	{
 		static constexpr uint32_t const CHUNK_VOXELS = StreamingGrid::CHUNK_VOXELS; // Must always be power of 2
 		static constexpr uint32_t const CHUNK_BITS = 6; // must be CHUNK_VOXELS = (1 << CHUNK_BITS) (manually set to match)

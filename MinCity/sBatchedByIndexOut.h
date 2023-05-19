@@ -23,7 +23,7 @@ struct sBatchedByIndexOut
 private:
 	T                       data_set[Size];
 	uint32_t				indices[Size];
-	uint32_t				Count;
+	uint32_t             	Count;
 
 	__SAFE_BUF __inline void __vectorcall out_batched(T* const __restrict out_)
 	{

@@ -15,6 +15,9 @@ namespace Volumetric
 	static constexpr uint32_t const
 		VOXEL_MINIMAP_LINES_PER_CHUNK = 2;		// should be an even factor of world size - caution the world size volume will eat memory exponenially,
 												// 512x256x512 times VoxelNormal = 12.8 GB !!!! where a "line" of 2x256x512 times VoxelNormal = 50 MB
+	
+	static constexpr uint32_t const DIRECT_BUFFER_SIZE_MULTIPLIER = 4; // direct buffers require more memory to support direct addressing, where staging buffers do not, as they are sequential and compact.
+
 	// needs measurement from stress test
 	BETTER_ENUM(Allocation, uint32_t const,
 
@@ -29,20 +32,14 @@ namespace Volumetric
 
 		// split in half for dynamic + static *** important *** should be less than 256MB total for a dynamic + static combined buffer size.
 
-		                              // 8,388,608 visible mini voxels ( 4,194,304 dynamic + 4,194,304 static )  -  compare to a full/filled 512x512x512 volume 134,217,728 voxels. less than 6.25% of the visible volume can contain a mini voxel - counting on lots of empty space!!!
-		                              // this is a 3,628,072,960 bytes (3.6 GB) capacity for the visible voxels gpu buffer.
-		                              // this buffer is uploaded to the gpu every frame, however it's size is dynamic being the active/visible voxels for that frame. So it's far less than 3.6 GB uploaded/frame typically.
-		                              // If the buffer was completely used, is there enough bandwidth on the PCI Express 3.0 x16 bus?
-		                              // PCI Express 3.0 x16 total bandwidth: 16GB/s
-		                              // 60 frames/s * 3.6GB = 217,684,377,600 bytes/s - (217 GB/s) ouch.
 		                              // So what is the maximum buffer size and corresponding number of voxels that can actually squeeze into the 16 GB/s bandwidth available if that gpu buffer was fully used?    - 266 MB theoretical maximum/frame
 		                              // ****** 256 MB maximum/frame --> ~591,000 voxels/frame, so around *****[600k]***** voxels total be used. ****** WRONG
 		                              // --------------------------------------------------------------------------------------------------------------
-		                              // Reserving 16.7 million - each (static, dynamic)
-		VOXEL_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Z * (VOXEL_MINIGRID_VISIBLE_Y >> 3),	// static voxels (must be divisable by 64)
+		                              // Reserving 1x (1,048,576) - each (static, dynamic)
+		VOXEL_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_X * VOXEL_MINIGRID_VISIBLE_Z * (VOXEL_MINIGRID_VISIBLE_Y >> 7),	// static voxels (must be divisable by 64)
 		VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL = VOXEL_MINIGRID_VISIBLE_TOTAL	// dynamic voxels (must be divisable by 64)
 	);
-
+	
 	static_assert(0 == (Allocation::VOXEL_GRID_VISIBLE_TOTAL % 64), "terrain voxel visible total not divisable by 64");
 	static_assert(0 == (Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL % 64), "static voxel visible total not divisable by 64");
 	static_assert(0 == (Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL % 64), "dynamic voxel visible total not divisable by 64");

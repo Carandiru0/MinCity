@@ -1572,7 +1572,7 @@ void cVulkan::CreateIndirectActiveCountBuffer() // required critical buffer need
 	using buf = vk::BufferUsageFlagBits;
 	using pfb = vk::MemoryPropertyFlagBits;
 
-	constexpr uint32_t const maximum_draw_command_count = eVoxelVertexBuffer::_size() + eVoxelPipelineCustomized::_size() + 2;
+	constexpr uint32_t const maximum_draw_command_count = eVoxelVertexBuffer::_size() + eVoxelPipelineCustomized::_size();
 
 	_activeCountBuffer[0] = vku::GenericBuffer(buf::eTransferSrc, maximum_draw_command_count * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
 	_activeCountBuffer[1] = vku::GenericBuffer(buf::eTransferSrc, maximum_draw_command_count * sizeof(vk::DrawIndirectCommand), pfb::eHostVisible, VMA_MEMORY_USAGE_AUTO_PREFER_HOST, (uint32_t)vku::eMappedAccess::Sequential, true, true); // persistantly mapped
@@ -1591,8 +1591,6 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 	vk::DrawIndirectCommand main_partition{},
 		                    clear_partition{},
 		                    custom_partitions[eVoxelPipelineCustomized::_size()]{};
-
-	uint32_t ActivePartitionCount(0);
 
 	{
 		// MAIN_PARTITION & CUSTOM_PIPELINES
@@ -1615,7 +1613,6 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 					firstInstance
 					*/
 					main_partition = vk::DrawIndirectCommand{ partition_vertex_count, 1, 0, 0 };
-					++ActivePartitionCount;
 				}
 			}
 
@@ -1640,7 +1637,6 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 							firstInstance
 							*/
 							custom_partitions[child] = vk::DrawIndirectCommand{ partition_vertex_count, 1, partition_start_vertex, 0 };
-							++ActivePartitionCount;
 						}
 					}
 					else {
@@ -1676,7 +1672,6 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 			firstInstance
 			*/
 			clear_partition = vk::DrawIndirectCommand{ clear_partitions.active_vertex_count, 1, clear_partitions.vertex_start_offset, 0 };
-			++ActivePartitionCount;
 		}
 	}
 
@@ -1705,17 +1700,16 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 							firstInstance
 						*/
 						transparency_partitions[child] = vk::DrawIndirectCommand{ partition_vertex_count, 1, partition_start_vertex, 0 };
-						++ActivePartitionCount;
 					}
 				}
 			}
 		}
 	}
 
-	uint32_t const drawCommandSize(eVoxelVertexBuffer::_size() + ActivePartitionCount);
+	constexpr uint32_t const maximum_draw_command_count = eVoxelVertexBuffer::_size() + eVoxelPipelineCustomized::_size();
 
 	// fast dynamic stack allocation, memory is automatically freed upon exiting scope
-	vk::DrawIndirectCommand* const drawCommand((vk::DrawIndirectCommand* const)alloca(drawCommandSize * sizeof(vk::DrawIndirectCommand)) );
+	vk::DrawIndirectCommand drawCommand[maximum_draw_command_count]{};
 
 	/*
 		vertexCount
@@ -1796,6 +1790,7 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 		                                                            // New validated count (drawCommandIndex)
 		_activeCountBuffer[resource_index].updateLocal(drawCommand, drawCommandIndex * sizeof(vk::DrawIndirectCommand)); // template cannot use an array of drawCommands, so give it a pointer to the array's first element in memory. All elements are copied as the size copied is equal to the total number of elements.
 
+		// the indirect buffer (offsets & counts) must match the state of the vertex buffers (points) for the current frame
 		_indirectActiveCount[resource_index]->uploadDeferred(cb, _activeCountBuffer[resource_index]); // fast single copy to gpu only indirect draw buffer - only once per frame.
 	}
 }
@@ -2582,7 +2577,7 @@ static NO_INLINE microseconds const frameTiming(tTime const& tNow) // real-time 
 {
 	static constexpr milliseconds const PRINT_FRAME_INTERVAL = milliseconds(6000); // ms
 	static constexpr uint32_t const OVERLAP_WEIGHT_CURRENT = 6, // frames
-		                            OVERLAP_WEIGHT_LAST = OVERLAP_WEIGHT_CURRENT >> 1; // frames
+		                            OVERLAP_WEIGHT_LAST = OVERLAP_WEIGHT_CURRENT >> 2; // frames
 
 	constinit static microseconds sum{}, peak{}, aboveaveragelevel{}, lastaverage{};
 	constinit static size_t framecount(0), aboveaveragecount(0), belowaveragecount(0);

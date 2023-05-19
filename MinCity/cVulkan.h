@@ -948,9 +948,8 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 	if (_drawCommandIndices.voxel_static >= 0) {
 		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC + voxel_pipeline_index;
 
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_static), 1, 0);
 	}
 }
@@ -964,9 +963,8 @@ STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 	if (_drawCommandIndices.voxel_terrain >= 0) {
 		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC + voxel_pipeline_index;
 
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_terrain), 1, 0);
 	}
 }

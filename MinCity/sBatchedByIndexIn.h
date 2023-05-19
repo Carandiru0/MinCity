@@ -22,7 +22,7 @@ struct sBatchedByIndexIn
 {
 private:
 	uint32_t				indices[Size];
-	uint32_t      			Count{};
+	uint32_t	            Count;
 
 	// methods to use coupled with a normal pointer that is bounded by a known local range ( minimal benefit, only grouping streaming stores together in batches )
 	__SAFE_BUF __inline void __vectorcall out_batched(T*& __restrict out_, T const* const __restrict in_)

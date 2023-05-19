@@ -124,14 +124,13 @@ namespace Volumetric
 		// always update jittered projection
 		XMMATRIX const xmProj = UpdateProjection(ZoomFactor, framecount);
 
-		XMMATRIX const xmViewProj( XMMatrixMultiply(xmView, xmProj) ); // always using the first projection matrix to prevent temporal visibility changes
 		// save view
 		XMStoreFloat4x4A(&_matView, xmView);
 		// save projection
 		XMStoreFloat4x4A(&_matProj, xmProj);
 
 		XMFLOAT4X4A vp;
-		XMStoreFloat4x4A(&vp, xmViewProj);
+		XMStoreFloat4x4A(&vp, XMMatrixMultiply(xmView, xmProj));
 		
 		// this is the best way to build the frustum culling volume, as we can use the combined view projection matrix
 		// and this will result in a culling volume in world space coordinates !
