@@ -34,8 +34,9 @@ layout(location = 0) in streamIn
 #if defined (SMAA_PASS_2) || defined(OVERLAY)
 	readonly flat float	slice;
 #endif
-
-#ifdef OVERLAY
+#if defined (SMAA_PASS_2)
+	flat float  time;
+	flat float  time_delta;
 #endif
 } In;
 #define texcoord uv // alias
@@ -327,6 +328,18 @@ void main() {
 	outLastFrame = vec4(color, temporal_color.a); // must preserve temporal alpha channel in output
 	// motion vectors ? color = vec3(normalize(vec2(dFdxFine(temporal_color.a), dFdyFine(temporal_color.a))) * 0.5f + 0.5f, 0.0f);
 
+	// *bugfix - improved anti-aliased output - found temporal map is better looking on edges and anti-aliasing in general looks better.
+	// however it is also less detailed and can be "blurred" by a few pixels in a pixels neighbouring area,
+	// so the main color output is mixed again with the temporal map using bluenoise and a fractional factor of time to be uniform and random
+	// results in near perfect anti-aliasing, the blue noise and fractional time factor contribute to the resultant mix factor independently on seperate dimensions. bluenoise (y-axis) + time factor (x-axis)
+	// variations in the blue noise and time factor provide an equal distribution of blending that is also equal distributed over n frames (always consistent for all frames)
+	// *bugfix - using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
+	const float blue_noise = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r;
+	// also note that the last color output (above) does not contain any noise, as to not screw up next frames temporal output, which depends on this property.
+	color = mix(temporal_color.rgb, color, fract(In.time/In.time_delta) * blue_noise); // the same blue noise has to be used here as used again below for dithering, otherwise white noise will result (bad)
+	
+	// *final color is now set* //
+
 	{ // 1.) LUT & add in the finalized bloom
 	
 		// ############# Final Post Processing Pass ###################### //
@@ -340,8 +353,7 @@ void main() {
 	}
 
 	const float luma = dot(color, LUMA); // b4 non-linear transform
-	// using textureLod here is better than texelFetch - texelFetch makes the noise appear non "blue", more like white noise
-	const float noise_dither = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
+	const float noise_dither = blue_noise * BLUE_NOISE_DITHER_SCALAR; // *bluenoise RED channel used* //
 	{ // ANAMORPHIC FLAREc
 	
 		// anamorphic flare minus dithering on these parts to maximize the dynamic range of the flare (could be above 1.0f, subtracting the dither result maximizes the usable range of [0.0f ... 1.0f]

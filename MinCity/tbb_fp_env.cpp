@@ -2,6 +2,7 @@
 #include <pmmintrin.h>
 #include <tbb/tbb.h>
 #include <locale.h>
+#pragma fenv_access (on)
 
 // CALL from any thread other than main thread
 __declspec(noinline) void local_init_tbb_floating_point_env()
@@ -10,11 +11,14 @@ __declspec(noinline) void local_init_tbb_floating_point_env()
 	_configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
 	_wsetlocale(LC_ALL, L"en-US");
 	
-	// Set Desired Behaviour of Denormals //
-	uint_fast32_t control_word;
-	_controlfp_s(&control_word, _DN_FLUSH, _MCW_DN);
+	// Set Desired Behaviour of Denormals (flush to zero) & floating point exceptions (off) //
+	// https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/controlfp-s
+	uint_fast32_t control_word{};
+	_controlfp_s(&control_word, 0, 0); // read
+	_controlfp_s(&control_word, _DN_FLUSH, _MCW_DN); // write
 	_MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
 	_MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+	_controlfp_s(&control_word, _EM_INVALID|_EM_DENORMAL|_EM_ZERODIVIDE|_EM_OVERFLOW|_EM_UNDERFLOW|_EM_INEXACT, _MCW_EM); // all exceptions masked (turned off)
 }
 
 // CALL from MAIN THREAD //

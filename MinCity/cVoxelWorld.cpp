@@ -10,8 +10,6 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 #include "pch.h"
 
-#define BIT_ROW_ATOMIC // bugfix - must be atomic otherwise voxels are randomly missed on rendering
-
 #include "Declarations.h"
 #include "sBatched.h"
 #include "sBatchedByIndexIn.h"
@@ -623,8 +621,16 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 	if (eInputEnabledBits::KEYS != (_inputEnabledBits & eInputEnabledBits::KEYS))
 		return; // input disabled!
 
+#ifndef NDEBUG // debug variables
+#ifdef DEBUG_WORLD_PLANE_HEIGHT
+	static constexpr float ADJUST_SCALE = 0.1f;
+	static float fPlaneHeightOffset{};
+	bool bChangedPlaneHeight{};
+#endif
+#endif
+
 	switch (key)
-	{
+	{ // overrides (these cases are higher priority)
 	case GLFW_KEY_SPACE:
 		if (!down) { // on released
 			MinCity::Pause(!MinCity::isPaused());
@@ -640,10 +646,32 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 	//		cMinCity::UserInterface->setActivatedTool(eTools::SELECT);
 	//	}
 	//	break;
+#ifndef NDEBUG
+#ifdef DEBUG_WORLD_PLANE_HEIGHT
+	case GLFW_KEY_UP:
+		fPlaneHeightOffset -= ADJUST_SCALE;
+		bChangedPlaneHeight = true;
+		break;
+	case GLFW_KEY_DOWN:
+		fPlaneHeightOffset += ADJUST_SCALE;
+		bChangedPlaneHeight = true;
+		break;
+#endif
+#endif
+	
 	default: // further processing delegated to user interface and the tools it consists of
 		cMinCity::UserInterface->KeyAction(key, down, ctrl);
 		break;
 	}
+
+#ifndef NDEBUG
+#ifdef DEBUG_WORLD_PLANE_HEIGHT
+	if (bChangedPlaneHeight) {
+		setDebugVariable(float, DebugLabel::WORLD_PLANE_HEIGHT, fPlaneHeightOffset);
+		FMT_NUKLEAR_DEBUG(false, "world plane height offset: {:02f}\n", fPlaneHeightOffset);
+	}
+#endif
+#endif
 }
 
 bool const __vectorcall cVoxelWorld::OnMouseMotion(FXMVECTOR xmMotionIn, bool const bIgnore)
@@ -957,7 +985,7 @@ namespace world
 	}
 
 	// Grid Space (-x,-y) to (X, Y) Coordinates Only
-	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex)   /// todo - needs to be tested again. second isVoxelVisible working proof in usage during RenderGrid
+	bool const __vectorcall isVoxelVisible(point2D_t const voxelIndex)   /// used in the red ground lines (cAbstractToolMethods)
 	{
 		auto const localvoxelIndex(world::getLocalVoxelIndexAt(voxelIndex));
 
@@ -1833,19 +1861,20 @@ namespace // private to this file (anonymous)
 {
 	constinit inline static struct voxelData
 	{
+		// *bugfix - bit_row must be atomic, otherwise random voxels are not rendered
 		struct {
 
 			struct {
 				voxelBuffer<VertexDecl::VoxelDynamic>
 					buffer;
-				bit_row<Volumetric::dynamic_direct_buffer_size>*
+				bit_row_atomic<Volumetric::dynamic_direct_buffer_size>*
 					bits{};
 			} opaque;
 
 			struct {
 				voxelBuffer<VertexDecl::VoxelDynamic>
 					buffer;
-				bit_row<Volumetric::dynamic_direct_buffer_size>*
+				bit_row_atomic<Volumetric::dynamic_direct_buffer_size>*
 					bits{};
 			} trans;
 		} visibleDynamic;
@@ -1853,14 +1882,14 @@ namespace // private to this file (anonymous)
 		struct {
 			voxelBuffer<VertexDecl::VoxelNormal>
 				buffer;
-			bit_row<Volumetric::static_direct_buffer_size>*
+			bit_row_atomic<Volumetric::static_direct_buffer_size>*
 				bits{};
 		} visibleStatic;
 
 		struct {
 			voxelBuffer<VertexDecl::VoxelNormal>
 				buffer;
-			bit_row<Volumetric::terrain_direct_buffer_size>*
+			bit_row_atomic<Volumetric::terrain_direct_buffer_size>*
 				bits{};
 		} visibleTerrain;
 
@@ -1995,7 +2024,7 @@ namespace // private to this file (anonymous)
 
 		STATIC_INLINE void __vectorcall RenderMaxVisibleVolumeLight(FXMVECTOR xmVoxelOrigin, point2D_t const voxelIndex)  // this is for optimizing compute light dispatch, by exeecuting only below the maximum *visible* volume height
 		{                                                                                                                 // by placing a "dummy" light that registers the maximum bound of the heoght of the light volume that is visible on-screen
-			float const voxel_radius(Volumetric::volumetricVisibility::getVoxelRadius());                                 // because nothing above this height requires lighting, so it's not computed!
+			static constexpr float const voxel_radius(Volumetric::volumetricVisibility::getVoxelRadius());                                 // because nothing above this height requires lighting, so it's not computed!
 			float current_height(Iso::getRealHeight(voxelIndex));
 
 			while (isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -current_height), voxel_radius)) {
@@ -2040,10 +2069,6 @@ namespace // private to this file (anonymous)
 				tbb::affinity_partitioner& __restrict part;
 
 				sRenderFuncBlockChunk& operator=(const sRenderFuncBlockChunk&) = delete;
-
-				// shared constants
-				float const ground_voxel_radius = Volumetric::volumetricVisibility::getVoxelRadius();
-
 			public:
 				__forceinline explicit sRenderFuncBlockChunk(
 					StreamingGrid const* const __restrict streamingGrid_,
@@ -2080,7 +2105,7 @@ namespace // private to this file (anonymous)
 #pragma loop( ivdep )
 						for (voxelIndex.x = x_begin; voxelIndex.x < x_end; ++voxelIndex.x)
 						{
-							// *bugfix: Rendering is FRONT to BACK only (roughly), to optimize usage of visibility checking, and get more correct visibility. (less pop-in) //
+							// *bugfix: Rendering is FRONT to BACK only (roughly)
 							point2D_t const voxelIndexWrapped(p2D_wrap_pow2(voxelIndex, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT))); // [0...16384] world grid coord
 							
 							// Make index relative to starting index voxel
@@ -2090,8 +2115,12 @@ namespace // private to this file (anonymous)
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(renderIndex))); // [0.0...256.0]
 							
 							// test ground voxel visible at ground height
-							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped)), ground_voxel_radius));
-
+#if !defined(NDEBUG) && defined(DEBUG_WORLD_PLANE_HEIGHT)
+							float const fWorldPlaneHeightOffset(getDebugVariable(float, DebugLabel::WORLD_PLANE_HEIGHT));
+							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped) + fWorldPlaneHeightOffset), Volumetric::volumetricVisibility::getVoxelRadius()));
+#else // normal:
+							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped)), Volumetric::volumetricVisibility::getVoxelRadius()));
+#endif
 							/* @todo (optional)
 							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
 							{
@@ -2128,6 +2157,14 @@ namespace // private to this file (anonymous)
 							if (bRenderVisible && r2D_contains(visibleArea, voxelIndexWrapped)) {
 								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oVoxel, grounds, localGround);
 							}
+#if !defined(NDEBUG) && defined(DEBUG_WORLD_PLANE_HEIGHT)
+							else {
+								Iso::Voxel oOutVoxel(oVoxel);
+								Iso::setColor(oOutVoxel, 0x0000007f);
+								Iso::setEmissive(oOutVoxel);
+								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oOutVoxel, grounds, localGround);
+							}
+#endif
 						} // for
 
 					} // for                                                                                                                             
@@ -2160,9 +2197,9 @@ namespace // private to this file (anonymous)
 				rect2D_t const visibleArea(voxelReset, voxelEnd); // store original visible area before extension rect2D_t const visible_area(MinCity::VoxelWorld->getVisibleGridBounds());
 
 				// account for maximum model dimensions / 2 (extending in or out of the screen visible area, prevents "popping" visibility of voxel models //
-				constexpr uint32_t const half_maximum_extent((Volumetric::MODEL_MAX_DIMENSION_XYZ >> 1u) / MINIVOXEL_FACTOR);
-				voxelReset = p2D_subs(voxelReset, half_maximum_extent);
-				voxelEnd = p2D_adds(voxelEnd, half_maximum_extent);
+				//constexpr uint32_t const half_maximum_extent((Volumetric::MODEL_MAX_DIMENSION_XYZ >> 1u) / MINIVOXEL_FACTOR);
+				//voxelReset = p2D_subs(voxelReset, half_maximum_extent);
+				//voxelEnd = p2D_adds(voxelEnd, half_maximum_extent);
 
 				
 				// serial
@@ -2712,10 +2749,10 @@ namespace world
 		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
 
-		placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-			Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
-		
-		/*static constexpr int32_t const SIZE = 512,
+		//placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+		//	Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+		/*
+		static constexpr int32_t const SIZE = 512,
 			                           OFFSET = SIZE >> 2;
 
 		bool odd(false);
@@ -2723,15 +2760,15 @@ namespace world
 		{
 			for (int32_t offsetx = -SIZE; offsetx <= SIZE; offsetx += OFFSET)
 			{
-				if (!odd) {
+				//if (!odd) {
 					placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(getHoveredVoxelIndex(), point2D_t(offsetx, offsetz)),
 						Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
-				}
+				//}
 
 				odd = !odd;
 			}
-		}*/
-		
+		}
+		*/
 
 #ifdef GIF_MODE
 
@@ -3068,7 +3105,7 @@ namespace world
 		}
 		voxels.visibleDynamic.opaque.buffer.direct = allocator_dynamic.allocate(Volumetric::dynamic_direct_buffer_size);
 		memset(voxels.visibleDynamic.opaque.buffer.direct, 0, Volumetric::dynamic_direct_buffer_size * sizeof(voxels.visibleDynamic.opaque.buffer.type));
-		voxels.visibleDynamic.opaque.bits = bit_row<Volumetric::dynamic_direct_buffer_size>::create();
+		voxels.visibleDynamic.opaque.bits = bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::create();
 
 		// dynamic - transparents
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
@@ -3079,7 +3116,7 @@ namespace world
 		}
 		voxels.visibleDynamic.trans.buffer.direct = allocator_dynamic.allocate(Volumetric::dynamic_direct_buffer_size);
 		memset(voxels.visibleDynamic.trans.buffer.direct, 0, Volumetric::dynamic_direct_buffer_size * sizeof(voxels.visibleDynamic.trans.buffer.type));
-		voxels.visibleDynamic.trans.bits = bit_row<Volumetric::dynamic_direct_buffer_size>::create();
+		voxels.visibleDynamic.trans.bits = bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::create();
 
 		// static
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
@@ -3090,7 +3127,7 @@ namespace world
 		}
 		voxels.visibleStatic.buffer.direct = allocator_normal.allocate(Volumetric::static_direct_buffer_size);
 		memset(voxels.visibleStatic.buffer.direct, 0, Volumetric::static_direct_buffer_size * sizeof(voxels.visibleStatic.buffer.type));
-		voxels.visibleStatic.bits = bit_row<Volumetric::static_direct_buffer_size>::create();
+		voxels.visibleStatic.bits = bit_row_atomic<Volumetric::static_direct_buffer_size>::create();
 
 		// terrain
 		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
@@ -3101,7 +3138,7 @@ namespace world
 		}
 		voxels.visibleTerrain.buffer.direct = allocator_normal.allocate(Volumetric::terrain_direct_buffer_size);
 		memset(voxels.visibleTerrain.buffer.direct, 0, Volumetric::terrain_direct_buffer_size * sizeof(voxels.visibleTerrain.buffer.type));
-		voxels.visibleTerrain.bits = bit_row<Volumetric::terrain_direct_buffer_size>::create();
+		voxels.visibleTerrain.bits = bit_row_atomic<Volumetric::terrain_direct_buffer_size>::create();
 		
 
 		// shared buffer and other buffers
@@ -3245,10 +3282,10 @@ namespace world
 #endif
 
 	template<typename VertexDeclaration, size_t const direct_buffer_size>
-	__declspec(safebuffers) STATIC_INLINE_PURE size_t const StreamCompaction(VertexDeclaration* __restrict out, VertexDeclaration const* const __restrict in, size_t const max_count, bit_row<direct_buffer_size> const* const __restrict bits)
+	__declspec(safebuffers) STATIC_INLINE_PURE size_t const StreamCompaction(VertexDeclaration* __restrict out, VertexDeclaration const* const __restrict in, size_t const max_count, bit_row_atomic<direct_buffer_size> const* const __restrict bits)
 	{
 		using streaming_batch = sBatchedByIndexIn<VertexDeclaration, eStreamingBatchSize::MODEL>;
-		static constexpr size_t const block_count(bit_row<direct_buffer_size>::stride());
+		static constexpr size_t const block_count(bit_row_atomic<direct_buffer_size>::stride());
 		
 		streaming_batch local;
 		auto const* const __restrict stream_bits(bits->data());
@@ -3359,7 +3396,9 @@ namespace world
 #endif
 		// mapping staging buffers //
 
-		{ // dynamic voxels (dynamic partition size and offset updates) //
+		tbb::parallel_invoke( // [dynamic] [static] [terrain] staging buffers compaction are independent of each other
+
+		[&]{ // dynamic voxels (dynamic partition size and offset updates) //
 			vku::VertexBufferPartition* const __restrict& __restrict dynamic_partition_info_updater(MinCity::Vulkan->getDynamicPartitionInfo(resource_index));
 			size_t running_offset_size(0);
 
@@ -3436,9 +3475,9 @@ namespace world
 				voxel_count += activeSize;
 #endif
 			}
-		}
+		},
 
-		{ // static
+		[&]{ // static
 			VertexDecl::VoxelNormal const* const MappedVoxels_Static_End = MappedVoxels_Static;
 			size_t activeSize = MappedVoxels_Static_End - MappedVoxels_Static_Start;
 			voxels.visibleStatic.buffer.active_size = activeSize * sizeof(VertexDecl::VoxelNormal); // direct buffer size
@@ -3453,8 +3492,9 @@ namespace world
 #ifdef DEBUG_VOXEL_BANDWIDTH
 			voxel_count += activeSize;
 #endif 
-		}
-		{ // terrain
+		},
+
+		[&]{ // terrain
 			voxels.visibleTerrain.buffer.active_size = Volumetric::terrain_direct_buffer_size * sizeof(VertexDecl::VoxelNormal); // direct buffer size
 
 			VertexDecl::VoxelNormal* const __restrict Mapped_Staging_Voxels_Terrain_Start = (VertexDecl::VoxelNormal* const __restrict)voxels.visibleTerrain.buffer.staging[resource_index].map();
@@ -3468,7 +3508,7 @@ namespace world
 			voxel_count += activeSize;
 #endif
 		}
-
+	   ); // end parallel_invoke
 #ifdef DEBUG_VOXEL_BANDWIDTH
 		frameBandwidth(high_resolution_clock::now(), voxel_count);
 #endif
@@ -5019,17 +5059,16 @@ namespace world
 			voxels.visibleTerrain.buffer.staging[i].release();
 		}
 		if (voxels.visibleDynamic.opaque.bits) {
-			
-			bit_row<Volumetric::dynamic_direct_buffer_size>::destroy(voxels.visibleDynamic.opaque.bits);
+			bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::destroy(voxels.visibleDynamic.opaque.bits);
 		}
 		if (voxels.visibleDynamic.trans.bits) {
-			bit_row<Volumetric::dynamic_direct_buffer_size>::destroy(voxels.visibleDynamic.trans.bits);
+			bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::destroy(voxels.visibleDynamic.trans.bits);
 		}
 		if (voxels.visibleStatic.bits) {
-			bit_row<Volumetric::static_direct_buffer_size>::destroy(voxels.visibleStatic.bits);
+			bit_row_atomic<Volumetric::static_direct_buffer_size>::destroy(voxels.visibleStatic.bits);
 		}
 		if (voxels.visibleTerrain.bits) {
-			bit_row<Volumetric::terrain_direct_buffer_size>::destroy(voxels.visibleTerrain.bits);
+			bit_row_atomic<Volumetric::terrain_direct_buffer_size>::destroy(voxels.visibleTerrain.bits);
 		}
 
 		SAFE_RELEASE_DELETE(_terrainDetail);

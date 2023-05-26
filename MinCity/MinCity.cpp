@@ -75,9 +75,10 @@ namespace // private to this file (anonymous)
 
 static void InitializeDebugVariables()
 {
-	static XMVECTOR xmZero = XMVectorZero();
-	static uint8_t uZero = 0;
-	static bool bZero = false;
+	constinit static XMVECTOR xmZero{};
+	constinit static float fZero{};
+	constinit static uint8_t uZero{};
+	constinit static bool bZero{};
 
 		
 	setDebugVariable(XMVECTOR, DebugLabel::CAMERA_FRACTIONAL_OFFSET, xmZero);
@@ -86,6 +87,7 @@ static void InitializeDebugVariables()
 	setDebugVariable(bool, DebugLabel::TOGGLE_1_BOOL, bZero);
 	setDebugVariable(bool, DebugLabel::TOGGLE_2_BOOL, bZero);
 	setDebugVariable(bool, DebugLabel::TOGGLE_3_BOOL, bZero);
+	setDebugVariable(float, DebugLabel::WORLD_PLANE_HEIGHT, fZero);
 
 #ifdef DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
 	static microseconds tZero = {};

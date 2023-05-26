@@ -170,10 +170,10 @@ namespace Iso
 
 	using heightstep = uint16_t;
 
-	class no_vtable alignas(32) Voxel  // 32 bytes / voxel
+	class no_vtable alignas(32) Voxel  // 32 bytes / voxel (ground/grid voxel)
 	{
 	public:
-		static ImagingMemoryInstance* const& __restrict   HeightMap();
+		static ImagingMemoryInstance* const& __restrict                           HeightMap();
 		__declspec(safebuffers) static heightstep const __vectorcall              HeightMap(point2D_t const voxelIndex);
 		__declspec(safebuffers) static heightstep* const __restrict __vectorcall  HeightMapReference(point2D_t const voxelIndex);
 
@@ -380,7 +380,7 @@ namespace Iso
 		// glsl :
 		return(SFM::max(1.0f, TERRAIN_MAX_HEIGHT * fHeightStep) * Iso::VOX_SIZE); // transform by voxel size and minivoxel size, minimum of 1 minivoxel (in world voxel space coordinates) for real height.
 	}
-	STATIC_INLINE float const __vectorcall getRealHeight(point2D_t const voxelIndex)
+	STATIC_INLINE float const __vectorcall getRealHeight(point2D_t const voxelIndex) // voxelIndex must be local (0...n)
 	{
 		return(getRealHeight(Voxel::HeightMap(voxelIndex))); // returns in world space voxel coordinates the height same as above however directly accessed fron Heightmap automatically for the passed in voxelIndex
 	}

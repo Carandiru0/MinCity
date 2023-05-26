@@ -961,9 +961,9 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				}
 			}
 
-			// ** only gui related actions here ** //
 			switch (nk_input.keys[i].key)
 			{
+			// ** only gui related actions here ** //
 			/* ADD AS NEEDED
 			case GLFW_KEY_DELETE:
 				nk_input_key(ctx, NK_KEY_DEL, down);
@@ -1173,7 +1173,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 	nk_input.mouse_state.handled = true; // mark as handled
 	//
 	
-	{ // rate limited keys
+	/* obsolete - use new repeat ready key handling above (left for reference only) { // rate limited keys
 		static tTime tLast;
 		static uint32_t LastPressed(0), WasPressed(0);
 
@@ -1197,7 +1197,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 			WasPressed = 0;
 		}
 
-		/*
+		/* debug variables
 		static tTime tLastPress(zero_time_point);
 		if (tLocal - tLastPress > milliseconds(164)) { // repeat rate 
 			
@@ -1238,7 +1238,7 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				FMT_NUKLEAR_DEBUG(false, "push_constant_vector: x{:02f} , y{:02f}\n", XMVectorGetX(xmPushConstant), XMVectorGetY(xmPushConstant));
 				tLastPress = tLocal;
 			}
-			*/
+			
 			/*
 			static uint8_t uAdjust{0};
 			if (glfwGetKey(win, GLFW_KEY_PAGE_UP) == GLFW_PRESS) {
@@ -1298,20 +1298,20 @@ static bool const UpdateInput(struct nk_context* const __restrict ctx, GLFWwindo
 				WasPressed = GLFW_KEY_3;
 				tLastPress = tLocal;
 			}
-			*/
-			/*if (glfwGetKey(win, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {
+			
+			if (glfwGetKey(win, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {
 
 				xmPushConstant = XMVectorZero();
 
 				setDebugVariable(XMVECTOR, DebugLabel::PUSH_CONSTANT_VECTOR, xmPushConstant);
-
+				
 				FMT_NUKLEAR_DEBUG(false, "<< all debug variables zeroed >>");
 
 				WasPressed = GLFW_KEY_BACKSPACE;
 				tLastPress = tLocal;
-			}*/
+			}
 		//} // repeatrate
-	}
+	}*/
 	
 	tLocalLast = tLocal;
 

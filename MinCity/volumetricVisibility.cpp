@@ -41,24 +41,6 @@ namespace Volumetric
 			                       Iso::VOX_MINZ_SCALAR * Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
 	}
 
-	namespace radius { // private to this file
-
-		static float const
-			vox = SFM::__sqrt((Iso::VOX_SIZE * Iso::VOX_SIZE) + (Iso::VOX_SIZE * Iso::VOX_SIZE) + (Iso::VOX_SIZE * Iso::VOX_SIZE)),
-
-			mini_voxel = SFM::__sqrt((Iso::MINI_VOX_SIZE * Iso::MINI_VOX_SIZE) + (Iso::MINI_VOX_SIZE * Iso::MINI_VOX_SIZE) + (Iso::MINI_VOX_SIZE * Iso::MINI_VOX_SIZE));
-
-	} // end ns
-
-	float const volumetricVisibility::getVoxelRadius()
-	{
-		return(radius::vox);
-	}
-	float const volumetricVisibility::getMiniVoxelRadius()
-	{
-		return(radius::mini_voxel);
-	}
-
 	volumetricVisibility::volumetricVisibility()
 		: _matProj{}, _Plane{}
 	{
@@ -71,6 +53,16 @@ namespace Volumetric
 
 		// Extract the 6 clipping planes and save them for frustum culling
 		UpdateFrustum(XMMatrixIdentity(), Globals::DEFAULT_ZOOM_SCALAR, 0);
+
+#ifndef NDEBUG
+		// hard-coded radius value check
+		static constexpr float const RADII_EPSILON = 0.01f; // looking for the numbers to significantly differ while not being prone to floating point error or roundoff
+		// std::hypot(Iso::VOX_SIZE, Iso::VOX_SIZE, Iso::VOX_SIZE)
+		assert_print(std::abs(getVoxelRadius() - std::hypot(Iso::VOX_SIZE, Iso::VOX_SIZE, Iso::VOX_SIZE)) < RADII_EPSILON, "Voxel radius is incorrect for current voxel size, update required!");
+		// std::hypot(Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE)
+		assert_print(std::abs(getMiniVoxelRadius() - std::hypot(Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE)) < RADII_EPSILON, "Mini Voxel radius is incorrect for current minivoxel size, update required!");
+#endif
+
 	}
 
 	/*void XM_CALLCONV volumetricVisibility::CreateFromMatrixLH(FXMMATRIX const Projection)

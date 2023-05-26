@@ -39,6 +39,7 @@
 #define DEBUG_VOXEL_BANDWIDTH
 //#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 #define DEBUG_VOXEL_RENDER_COUNTS
+#define DEBUG_WORLD_PLANE_HEIGHT
 //#define DEBUG_EXPORT_TERRAIN_KTX
 //#define DEBUG_EXPORT_BLUENOISE_KTX
 //#define DEBUG_EXPORT_BLUENOISE_DUAL_CHANNEL_KTX
@@ -86,7 +87,7 @@ extern void debug_out_nuklear_off();
 #define VOX_DEBUG_ENABLED
 //#define DEBUG_EXPLOSION_WINDOW
 //#define DEBUG_DEPTH_CUBE
-//#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
+#define DEBUG_PERFORMANCE_VOXEL_SUBMISSION		// all debug performance defines are mutually exclusive, ie.) only one of them should be enabled at any given time/build
 //#define DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
 //#define DEBUG_OUTPUT_STREAMING_STATS
 #define DEBUG_VOXEL_BANDWIDTH

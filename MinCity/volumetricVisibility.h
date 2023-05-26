@@ -18,10 +18,12 @@ namespace Volumetric
 	
 	class alignas(16) volumetricVisibility
 	{
-		static constexpr float const ERROR_COMPENSATION = 1.05; // 5% error removed
-	public:
-		static float const getVoxelRadius();
-		static float const getMiniVoxelRadius();
+		static constexpr float const ERROR_COMPENSATION = 1.05; // 5% error removed          // radius - hardcoded values are checked on init to be correct for a matching voxel size. If mismatched, an error is logged (debug builds only)
+		static constexpr float const VOX_RADIUS = 866.025403784438646764e-3f,                // std::hypot(Iso::VOX_SIZE, Iso::VOX_SIZE, Iso::VOX_SIZE) where Iso::VOX_SIZE == 0.5f
+                                     MINI_VOX_RADIUS = 433.012701892219323382e-3f;           // std::hypot(Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE) where Iso::MINI_VOX_SIZE == 0.25f
+	public:                                                                                  // *bugfix: only alternative adds unneccesary overhead of a static (non-constinit) and a function call, this was queried repeatedly.
+		static inline constexpr float const getVoxelRadius() { return(VOX_RADIUS); }         // now uses a constexpr immediate value (hard-coded compile-time value) - voxel size, once selected, never changes after selection!
+		static inline constexpr float const getMiniVoxelRadius() { return(MINI_VOX_RADIUS); }
 
 		// accessors //
 		__inline XMMATRIX const XM_CALLCONV getViewMatrix() const { return(XMLoadFloat4x4A(&_matView)); }

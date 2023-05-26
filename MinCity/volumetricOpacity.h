@@ -375,7 +375,7 @@ namespace Volumetric
 	private:
 		__inline bool const upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex, uint32_t& __restrict dispatch_volume_height);
 
-		__inline void renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input);
+		__inline void renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input, uint32_t const step);
 
 		__inline void renderJFA(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data,
 			uint32_t const index_input, uint32_t const index_output, uint32_t const step);
@@ -494,9 +494,9 @@ namespace Volumetric
 #endif
 
 	template< uint32_t Size >
-	__inline void volumetricOpacity<Size>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_output)
+	__inline void volumetricOpacity<Size>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_output, uint32_t const step)
 	{
-		PushConstants.step = 1; // (1 + JFA) //
+		PushConstants.step = step;
 		PushConstants.index_output = index_output;
 		PushConstants.index_input = !index_output; // last frames output is this frames secondary input
 
@@ -648,23 +648,25 @@ namespace Volumetric
 				// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
 				c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[resource_index], nullptr);
 
-				// Jump flooding runs in a specfic series from seed (1 + JFA) to jumpflooding (JFA) to finally (JFA + 1) being the last step.
-				
-				// (1 + JFA) & Seed
+				// Jump flooding runs in a specfic series from seed to jumpflooding (JFA) to finally (JFA + 1) being the last step.
+				uint32_t step(MAX_STEP_PINGPONG >> 1);
+
+				// Seed
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
-				renderSeed(c, render_data, resource_index); // output alternates every frame
+				renderSeed(c, render_data, resource_index, step); // output alternates every frame
 
 				//*bugfix - sync validation, solved by automation
 				vku::memory_barrier(c.cb_render_light,
 					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
 					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
 				
+				step >>= 1;
+
 				// ( JFA ) //
 				uint32_t uPing(resource_index), uPong(!resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
 
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
 
-				uint32_t step(MAX_STEP_PINGPONG >> 1);
 				do
 				{
 					renderJFA(c, render_data, uPing, uPong, step);
