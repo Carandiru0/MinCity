@@ -11,10 +11,6 @@ writeonly layout(location = 0) out streamOut
 #if defined (SMAA_PASS_2) || defined(RESOLVE) || defined(OVERLAY)
 	flat float	slice;
 #endif
-#if defined (SMAA_PASS_2)
-	flat float  time;
-	flat float  time_delta;
-#endif
 
 } Out;
 #define texcoord uv // alias
@@ -29,8 +25,4 @@ void main()
 	Out.slice = frame_to_slice(); // +blue noise over time (every two frames are matched as raymarch is done one frame checkerboard odd, one frame checkerboard even - the blue noise slice *must* be the same one for both frames (to not create white noise badd!!)
 #endif
 
-#ifdef SMAA_PASS_2
-	Out.time = time();
-	Out.time_delta = time_delta();
-#endif
 }

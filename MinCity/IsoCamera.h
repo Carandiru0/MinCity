@@ -7,7 +7,7 @@
 
 namespace Iso
 {
-	static constexpr double       const EYE_DISTANCE				= (Globals::MAXZ_DEPTH - (Iso::VOX_MINZ_SCALAR * Globals::MINZ_DEPTH)) * 0.75; // *do not change* // (see xmEyePt_Iso below)
+	static constexpr double       const EYE_DISTANCE				= (Globals::MAXZ_DEPTH - (Iso::VOX_Z_RESOLUTION * Globals::MINZ_DEPTH)) * 0.5f; // *do not change* // (see xmEyePt_Iso below)
 
 	// True Isometric (TOO LOW):								  
 	static constexpr XMFLOAT3A   const TRUE_ISOMETRIC_ANGLES		= { 0.52359877559829887308f, 0.52359877559829887308f, 0.0f };   // in radians  x,y,z ( 30 degrees, 30 degrees, 0 degrees )

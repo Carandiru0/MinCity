@@ -6,7 +6,7 @@
 namespace Volumetric
 {
 	STATIC_INLINE_PURE XMMATRIX const XM_CALLCONV getProjectionMatrix(float const Width, float const Height,
-																	  float const MinZ, float const MaxZ)
+		float const MinZ, float const MaxZ)
 	{
 		return(XMMatrixOrthographicLH(Width, Height, MinZ, MaxZ));
 	}
@@ -30,7 +30,7 @@ namespace Volumetric
 		// simplify & pre-scale
 		ZoomFactor = ZoomFactor * BASE_ZOOM_LEVEL;
 
-		XMVECTOR xmJitter = XMVectorDivide(XMVectorReplicate(jitter), xmFrameBufferSz); 
+		XMVECTOR xmJitter = XMVectorDivide(XMVectorReplicate(jitter), xmFrameBufferSz);
 		xmJitter = XMVectorScale(xmJitter, ZoomFactor); // simplify & pre-scale //*bugfix - keep it at half pixel
 
 		XMFLOAT2A vJitterSz;
@@ -38,12 +38,15 @@ namespace Volumetric
 
 		// return new projection matrix - jitter applied - Temporal Antialiasing Post Process shader can use the subpixel jitter and produce a better neighbourhood clamping result. Effectively the subpixel component of the anti-aliasing.
 		return(getProjectionMatrix(SFM::__fma(fAspect, ZoomFactor, vJitterSz.x), ZoomFactor + vJitterSz.y,
-			                       Iso::VOX_MINZ_SCALAR * Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
+			Iso::VOX_Z_RESOLUTION * Globals::MINZ_DEPTH, Globals::MAXZ_DEPTH));
 	}
 
 	volumetricVisibility::volumetricVisibility()
-		: _matProj{}, _Plane{}
+		: _matProj{}, _matView{}, _matWorld{}, _Plane{}
 	{
+		XMStoreFloat4x4A(&_matProj, XMMatrixIdentity());
+		XMStoreFloat4x4A(&_matView, XMMatrixIdentity());
+		XMStoreFloat4x4A(&_matWorld, XMMatrixIdentity());
 	}
 
 	void volumetricVisibility::Initialize()
@@ -63,6 +66,11 @@ namespace Volumetric
 		assert_print(std::abs(getMiniVoxelRadius() - std::hypot(Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE, Iso::MINI_VOX_SIZE)) < RADII_EPSILON, "Mini Voxel radius is incorrect for current minivoxel size, update required!");
 #endif
 
+	}
+
+	void XM_CALLCONV volumetricVisibility::SetWorldOrigin(FXMVECTOR xmOrigin)
+	{
+		XMStoreFloat4x4A(&_matWorld, XMMatrixTranslationFromVector(xmOrigin));
 	}
 
 	/*void XM_CALLCONV volumetricVisibility::CreateFromMatrixLH(FXMMATRIX const Projection)
@@ -113,21 +121,22 @@ namespace Volumetric
 	
 	void XM_CALLCONV volumetricVisibility::UpdateFrustum(FXMMATRIX const xmView, float const ZoomFactor, size_t const framecount)
 	{
+		// save view
+		XMStoreFloat4x4A(&_matView, xmView);
+
 		// always update jittered projection
 		XMMATRIX const xmProj = UpdateProjection(ZoomFactor, framecount);
 
-		// save view
-		XMStoreFloat4x4A(&_matView, xmView);
 		// save projection
 		XMStoreFloat4x4A(&_matProj, xmProj);
 
 		XMFLOAT4X4A vp;
-		XMStoreFloat4x4A(&vp, XMMatrixMultiply(xmView, xmProj));
+		XMStoreFloat4x4A(&vp, XMMatrixMultiply(XMMatrixMultiply(XMMatrixTranslationFromVector(Iso::FRUSTUM_ORIGIN_OFFSET), xmView), xmProj)); // frustum offset is applied here to only affect the planes used to form the frustum. This is done so it is applied globaly, and not for every visibility query
 		
 		// this is the best way to build the frustum culling volume, as we can use the combined view projection matrix
 		// and this will result in a culling volume in world space coordinates !
 
-		// *BUGFIX - planes must be normalized. do NOT change. They work when not normalized, but at a higly reduced precision. Normalization is neccessary to maintain accuracy/precision. (As seen by usage of sphere frustum check function)		
+		// *BUGFIX - planes must be normalized. do NOT change. They work when not normalized, but at a highly reduced precision. Normalization is necessary to maintain accuracy/precision. (As seen by usage of sphere frustum check function)		
 		XMStoreFloat4A(&_Plane[ePlane::P_NEAR],		XMPlaneNormalize(XMVectorSet(vp._13,  vp._23, vp._33, vp._43 )));
 		XMStoreFloat4A(&_Plane[ePlane::P_FAR],		XMPlaneNormalize(XMVectorSet(vp._14 - vp._13, vp._24 - vp._23, vp._34 - vp._33, vp._44 - vp._43)));
 		XMStoreFloat4A(&_Plane[ePlane::P_RIGHT],	XMPlaneNormalize(XMVectorSet(vp._14 - vp._11, vp._24 - vp._21, vp._34 - vp._31, vp._44 - vp._41)));

@@ -622,10 +622,17 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 		return; // input disabled!
 
 #ifndef NDEBUG // debug variables
-#ifdef DEBUG_WORLD_PLANE_HEIGHT
+#ifdef DEBUG_WORLD_ORIGIN
+	static XMVECTOR const xmOriginalOrigin(SFM::getPositionVector(_Visibility.getWorldMatrix()));
 	static constexpr float ADJUST_SCALE = 0.1f;
-	static float fPlaneHeightOffset{};
-	bool bChangedPlaneHeight{};
+	constinit static uint32_t uiAxis{1};
+	constinit static bool bAxisLocked{};
+	bool bAxisDelta{};
+
+	XMVECTOR const xmWorldOrigin = getDebugVariable(XMVECTOR, DebugLabel::WORLD_ORIGIN);
+
+	XMFLOAT3A vOrigin{};
+	XMStoreFloat3A(&vOrigin, xmWorldOrigin);
 #endif
 #endif
 
@@ -647,14 +654,68 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 	//	}
 	//	break;
 #ifndef NDEBUG
-#ifdef DEBUG_WORLD_PLANE_HEIGHT
-	case GLFW_KEY_UP:
-		fPlaneHeightOffset -= ADJUST_SCALE;
-		bChangedPlaneHeight = true;
+#ifdef DEBUG_WORLD_ORIGIN
+	case GLFW_KEY_L: // lock all axis, but allow visibility frustum adjustment
+	{
+		if (!down) { // on released
+
+			bAxisLocked = getDebugVariable(bool, DebugLabel::WORLD_ORIGIN_LOCKED);
+			bAxisLocked = !bAxisLocked;
+			setDebugVariable(bool, DebugLabel::WORLD_ORIGIN_LOCKED, bAxisLocked);
+			if (bAxisLocked) {
+				uiAxis = 1; // restrict visibility frustum changes to y axis only
+			}
+			bAxisDelta = true;
+		}
 		break;
-	case GLFW_KEY_DOWN:
-		fPlaneHeightOffset += ADJUST_SCALE;
-		bChangedPlaneHeight = true;
+	}
+	case GLFW_KEY_X: // select axis
+		if (!down) { // on released
+			uiAxis = 0;
+			bAxisDelta = true;
+		}
+		break;
+	case GLFW_KEY_Y: // select axis
+		if (!down) { // on released
+			uiAxis = 1;
+			bAxisDelta = true;
+		}
+		break;
+	case GLFW_KEY_Z: // select axis
+		if (!down) { // on released
+			uiAxis = 2;
+			bAxisDelta = true;
+		}
+		break;
+	case GLFW_KEY_UP: // adjust axis -
+	{
+		float* const pOrigin(reinterpret_cast<float* const>(&vOrigin));
+		pOrigin[uiAxis] -= ADJUST_SCALE;
+		bAxisDelta = true;
+		break;
+	}
+	case GLFW_KEY_DOWN: // adjust axis +
+	{
+		float* const pOrigin(reinterpret_cast<float* const>(&vOrigin));
+		pOrigin[uiAxis] += ADJUST_SCALE;
+		bAxisDelta = true;
+		break;
+	}
+	case GLFW_KEY_BACKSPACE: // reset all axis
+		if (!down) { // on released
+			XMStoreFloat3A(&vOrigin, xmOriginalOrigin);
+			bAxisDelta = true;
+		}
+		break;
+	case GLFW_KEY_DELETE: // reset axis
+		if (!down) { // on released
+			XMFLOAT3A vOriginalOrigin;
+			XMStoreFloat3A(&vOriginalOrigin, xmOriginalOrigin);
+			float* const pOriginalOrigin(reinterpret_cast<float* const>(&vOriginalOrigin));
+			float* const pOrigin(reinterpret_cast<float* const>(&vOrigin));
+			pOrigin[uiAxis] = pOriginalOrigin[uiAxis];
+			bAxisDelta = true;
+		}
 		break;
 #endif
 #endif
@@ -665,10 +726,19 @@ void cVoxelWorld::OnKey(int32_t const key, bool const down, bool const ctrl)
 	}
 
 #ifndef NDEBUG
-#ifdef DEBUG_WORLD_PLANE_HEIGHT
-	if (bChangedPlaneHeight) {
-		setDebugVariable(float, DebugLabel::WORLD_PLANE_HEIGHT, fPlaneHeightOffset);
-		FMT_NUKLEAR_DEBUG(false, "world plane height offset: {:02f}\n", fPlaneHeightOffset);
+#ifdef DEBUG_WORLD_ORIGIN
+	constexpr char const active_axis[3] = { 'X', 'Y', 'Z' };
+
+	if (bAxisDelta) {
+		constinit static XMVECTOR xmOrigin{};
+
+		xmOrigin = XMLoadFloat3A(&vOrigin);
+		
+		// axis locked ? nothing happens here, the update() method for the world origin disables instead.
+
+		setDebugVariable(XMVECTOR, DebugLabel::WORLD_ORIGIN, xmOrigin);
+
+		FMT_NUKLEAR_DEBUG(false, "world origin:  {:02f}, {:02f}, {:02f}    active axis:  {:s}     {:s}", vOrigin.x, vOrigin.y, vOrigin.z, std::string(&active_axis[uiAxis], 1), (bAxisLocked ? "locked" : ""));
 	}
 #endif
 #endif
@@ -2030,8 +2100,8 @@ namespace // private to this file (anonymous)
 			while (isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -current_height), voxel_radius)) {
 				current_height += voxel_radius * 2.0f;
 			}
-
-			XMVECTOR const xmIndex(XMVectorMultiplyAdd(XMVectorSetY(xmVoxelOrigin, -current_height), Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+			//                                                                       at a distance of 2.0 above the light, ~20% illumination
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(XMVectorSetY(xmVoxelOrigin, -(current_height + 2.0f)), Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 				           && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
@@ -2044,7 +2114,10 @@ namespace // private to this file (anonymous)
 			}
 		}
 
-		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart,
+#ifndef NDEBUG // force enable optimizations - affects debug builds only
+#pragma optimize( "s", on )
+#endif
+		static void XM_CALLCONV RenderGrid(point2D_t const voxelStart, float const heightOffset,
 			Volumetric::voxelBufferReference_Terrain&& __restrict grounds,
 			Volumetric::voxelBufferReference_Static&& __restrict statics,
 			Volumetric::voxelBufferReference_Dynamic&& __restrict dynamics,
@@ -2060,7 +2133,8 @@ namespace // private to this file (anonymous)
 
 				point2D_t const 								voxelStart;
 				rect2D_t const                                  visibleArea;
-				
+				float const                                     heightOffset;
+
 				Volumetric::voxelBufferReference_Terrain& __restrict grounds;
 				Volumetric::voxelBufferReference_Static& __restrict  statics;
 				Volumetric::voxelBufferReference_Dynamic& __restrict dynamics;
@@ -2074,12 +2148,14 @@ namespace // private to this file (anonymous)
 					StreamingGrid const* const __restrict streamingGrid_,
 					point2D_t const voxelStart_,
 					rect2D_t const visibleArea_,
+					float const heightOffset_,
 					Volumetric::voxelBufferReference_Terrain& __restrict grounds_,
 					Volumetric::voxelBufferReference_Static& __restrict statics_,
 					Volumetric::voxelBufferReference_Dynamic& __restrict dynamics_,
 					Volumetric::voxelBufferReference_Dynamic& __restrict trans_,
 					tbb::affinity_partitioner& __restrict part_)
-					: streamingGrid(streamingGrid_), voxelStart(voxelStart_), visibleArea(visibleArea_),
+					: streamingGrid(streamingGrid_), 
+					voxelStart(voxelStart_), visibleArea(visibleArea_), heightOffset(heightOffset_),
 					grounds(grounds_),
 					statics(statics_), 
 					dynamics(dynamics_), 
@@ -2115,11 +2191,12 @@ namespace // private to this file (anonymous)
 							XMVECTOR const xmVoxelOrigin(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(p2D_to_v2(renderIndex))); // [0.0...256.0]
 							
 							// test ground voxel visible at ground height
-#if !defined(NDEBUG) && defined(DEBUG_WORLD_PLANE_HEIGHT)
-							float const fWorldPlaneHeightOffset(getDebugVariable(float, DebugLabel::WORLD_PLANE_HEIGHT));
-							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped) + fWorldPlaneHeightOffset), Volumetric::volumetricVisibility::getVoxelRadius()));
+#if !defined(NDEBUG) && defined(DEBUG_WORLD_ORIGIN)
+							XMVECTOR const xmWorldOrigin(getDebugVariable(XMVECTOR, DebugLabel::WORLD_ORIGIN));
+							float const fWorldPlaneHeightOffset(XMVectorGetY(xmWorldOrigin));
+							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -(Iso::getRealHeight(voxelIndexWrapped)) - fWorldPlaneHeightOffset), Volumetric::volumetricVisibility::getVoxelRadius()));
 #else // normal:
-							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped)), Volumetric::volumetricVisibility::getVoxelRadius()));
+							bool bRenderVisible(isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -Iso::getRealHeight(voxelIndexWrapped) - heightOffset), Volumetric::volumetricVisibility::getVoxelRadius()));
 #endif
 							/* @todo (optional)
 							if (Iso::isOwner(oVoxel, Iso::GROUND_HASH) && isExtended(oVoxel))
@@ -2155,9 +2232,16 @@ namespace // private to this file (anonymous)
 							}
 
 							if (bRenderVisible && r2D_contains(visibleArea, voxelIndexWrapped)) {
+#if !defined(NDEBUG) && defined(DEBUG_WORLD_ORIGIN)
+								Iso::Voxel oOutVoxel(oVoxel);
+								Iso::setColor(oOutVoxel, 0x00007f00);
+								Iso::setEmissive(oOutVoxel);
+								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oOutVoxel, grounds, localGround);
+#else // normal
 								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oVoxel, grounds, localGround);
+#endif
 							}
-#if !defined(NDEBUG) && defined(DEBUG_WORLD_PLANE_HEIGHT)
+#if !defined(NDEBUG) && defined(DEBUG_WORLD_ORIGIN)
 							else {
 								Iso::Voxel oOutVoxel(oVoxel);
 								Iso::setColor(oOutVoxel, 0x0000007f);
@@ -2207,11 +2291,10 @@ namespace // private to this file (anonymous)
 				//	(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 				//			                                voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D));
 				
-				
 				// parallel
 				tbb::parallel_for(tbb::blocked_range2d<int32_t, int32_t>(voxelReset.y, voxelEnd.y, eThreadBatchGrainSize::GRID_RENDER_2D,
 					                                                     voxelReset.x, voxelEnd.x, eThreadBatchGrainSize::GRID_RENDER_2D), // **critical loop** 
-					RenderFuncBlockChunk(((StreamingGrid const* const __restrict)::grid), voxelStart, visibleArea, 
+					RenderFuncBlockChunk(((StreamingGrid const* const __restrict)::grid), voxelStart, visibleArea, heightOffset,
 						                 grounds, statics, dynamics, trans, part), part
 				);
 				
@@ -2235,6 +2318,9 @@ namespace // private to this file (anonymous)
 		}
 	}; // end struct voxelRender
 } // end ns
+#ifndef NDEBUG // revert optimizations - affects debug builds only
+#pragma optimize( "", off )
+#endif
 
 namespace Volumetric
 {
@@ -2456,6 +2542,7 @@ namespace world
 	void cVoxelWorld::Initialize()
 	{
 		_Visibility.Initialize();
+		_Visibility.SetWorldOrigin(Iso::WORLD_ORIGIN_OFFSET); // see IsoVoxel.h for modifing the world origin
 
 		::grid._protected = &_streamingGrid; // assign global reference (global only to this file)
 		_streamingGrid.Initialize();
@@ -2751,9 +2838,9 @@ namespace world
 
 		//placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
 		//	Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
-		/*
+		
 		static constexpr int32_t const SIZE = 512,
-			                           OFFSET = SIZE >> 2;
+			                           OFFSET = SIZE >> 4;
 
 		bool odd(false);
 		for (int32_t offsetz = -SIZE; offsetz <= SIZE; offsetz += OFFSET)
@@ -2768,7 +2855,7 @@ namespace world
 				odd = !odd;
 			}
 		}
-		*/
+		
 
 #ifdef GIF_MODE
 
@@ -3343,6 +3430,9 @@ namespace world
 		return(active_count);
 	}
 
+#ifndef NDEBUG // force enable optimizations - affects debug builds only
+#pragma optimize( "s", on )
+#endif
 	void cVoxelWorld::RenderTask_Normal(uint32_t const resource_index) const // OPACITY is enabled for update, and reources are mapped during normal rendering
 	{
 		ZoneScopedN("Stage Resources");
@@ -3376,7 +3466,7 @@ namespace world
 		tbb::affinity_partitioner part{}; // *bugfix - lifetime of partioner should be in this scope
 
 		voxelRender::RenderGrid(
-			oCamera.voxelIndex_TopLeft,
+			oCamera.voxelIndex_TopLeft, XMVectorGetY(SFM::getPositionVector(_Visibility.getWorldMatrix())),
 			std::forward<Volumetric::voxelBufferReference_Terrain&& __restrict>(Volumetric::voxelBufferReference_Terrain(MappedVoxels_Terrain, MappedVoxels_Terrain_Start, voxels.visibleTerrain.bits)),
 			std::forward<Volumetric::voxelBufferReference_Static&& __restrict>(Volumetric::voxelBufferReference_Static(MappedVoxels_Static, MappedVoxels_Static_Start, voxels.visibleStatic.bits)),
 			std::forward<Volumetric::voxelBufferReference_Dynamic&& __restrict>(Volumetric::voxelBufferReference_Dynamic(MappedVoxels_Dynamic[Volumetric::eVoxelType::opaque], MappedVoxels_Dynamic_Start[Volumetric::eVoxelType::opaque], voxels.visibleDynamic.opaque.bits)),
@@ -3513,6 +3603,9 @@ namespace world
 		frameBandwidth(high_resolution_clock::now(), voxel_count);
 #endif
 	}
+#ifndef NDEBUG // revert optimizations - affects debug builds only
+#pragma optimize( "", off )
+#endif
 
 	void cVoxelWorld::RenderTask_Minimap() const // OPACITY is not updated on minimap rendering enabled, so it is removed at compile time and not resources for it are mapped
 	{
@@ -4104,26 +4197,25 @@ namespace world
 		time_last = _currentState.time; // update last interpolated time
 		time_delta_last = time_delta;	//   ""    ""       ""      time delta
 
+		// world matrix
+		_currentState.Uniform.world = _Visibility.getWorldMatrix();
+
 		// view matrix derived from eyePos
 		XMVECTOR xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
 
-		////////////////////////////////////////////////////////////////////////////////////////////////////////// Fractional Offset (ONLY Location)
-		XMVECTOR xmFract(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
-		//xmFract = XMVectorAdd(xmFract, XMVectorSet(0.0f, Iso::WORLD_MAX_HEIGHT * Iso::VOX_SIZE * 0.5f, 0.0f, 0.0f));
-		xmEyePos = XMVectorAdd(xmEyePos, xmFract);  // this all allows fractional movement of the camera *do not change*
-		//////////////////////////////////////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////////////////////////////// Fractional Offset (*ONLY* Location) ////////////////////////////////////////////////////////
+		// Must only be applied here, to the view (eyePos->lookAt->matView)
+		XMVECTOR const xmFract(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
+		xmEyePos = XMVectorAdd(xmEyePos, xmFract);  // <---------------------------------------------------------- this all allows fractional movement of the camera *do not change* note: *cannot apply to world matrix instead, raymarch is out of sync*
 
 		_currentState.Uniform.eyePos = xmEyePos;
 		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, xmFract)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
-		
-		// All positions in game are transformed by the view matrix in all shaders. Fractional Offset does not work with xmEyePos, something internal to the function XMMatrixLookAtLH, xmEyePos must remain the same w/o fractional offset))
-		
+
 		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, xmFract, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 
-		// *bugfix - ***do not change***
-		// view matrix is independent of fractional offset, fractional offset is no longer applied to the view matrix. don't fuck with the fractional_offset, it's not required here
 		_currentState.Uniform.view = xmView;
-
+		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		
 		// Update Frustum, which updates projection matrix, which is derived from ZoomFactor
 		_currentState.zoom = SFM::lerp(_lastState.zoom, _targetState.zoom, tRemainder);
 		_Visibility.UpdateFrustum(xmView, _currentState.zoom, MinCity::getFrameCount());
@@ -4196,6 +4288,28 @@ namespace world
 		ZoneScopedN("Update");
 
 		// ***** Anything that will affect uniform state BEFORE
+#ifndef NDEBUG
+#ifdef DEBUG_WORLD_ORIGIN
+		constinit static XMVECTOR xmLastOrigin{};
+		XMVECTOR const xmPendingOrigin = getDebugVariable(XMVECTOR, DebugLabel::WORLD_ORIGIN);
+		XMVECTOR const xmCurrentOrigin = SFM::getPositionVector(_Visibility.getWorldMatrix());
+
+		if (!XMVector3Equal(xmPendingOrigin, xmLastOrigin)) { // update the world origin
+
+			if (!getDebugVariable(bool, DebugLabel::WORLD_ORIGIN_LOCKED)) {
+				_Visibility.SetWorldOrigin(xmPendingOrigin);
+				xmLastOrigin = xmPendingOrigin;
+			}
+			/*else {
+				// locked
+			}*/
+		}
+		else if (!XMVector3Equal(xmPendingOrigin, xmCurrentOrigin)) {
+			xmLastOrigin = xmCurrentOrigin;
+			setDebugVariable(XMVECTOR, DebugLabel::WORLD_ORIGIN, xmLastOrigin); // update debug variable
+		}
+#endif
+#endif
 		UpdateCamera(tNow, tDelta);
 
 		//###########################################################//
@@ -4318,7 +4432,7 @@ namespace world
 		// For depth reconstruction from hardware depth buffer
 		// https://mynameismjp.wordpress.com/2010/09/05/position-from-depth-3/
 		constexpr double ZFar = Globals::MAXZ_DEPTH;
-		constexpr double ZNear = Globals::MINZ_DEPTH * Iso::VOX_MINZ_SCALAR;
+		constexpr double ZNear = Globals::MINZ_DEPTH * Iso::VOX_Z_RESOLUTION;
 		constants.emplace_back(vku::SpecializationConstant(9, (float)ZFar)); 
 		constants.emplace_back(vku::SpecializationConstant(10, (float)ZNear));
 	}

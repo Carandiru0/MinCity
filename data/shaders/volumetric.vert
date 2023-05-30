@@ -24,7 +24,7 @@ void main() {
 
 	precise const vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
 
-	gl_Position = u._proj * u._view * vec4(0.5f * position, 1.0f);
+	gl_Position = u._proj * u._view * u._world * vec4(0.5f * position, 1.0f);
 
 	// Compute eye position and ray directions in the unit cube space
 	precise vec3 eyePos = u._eyePos.xyz + inPos.xyz; // this perfectly aligns the center of the volume *do not change*

@@ -334,7 +334,7 @@ void main()
 
 	populateLDS(warp, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 
-	propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), any(notEqual(vec2(0), warp.zw))); 
+	propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), isEmitter(warp)); 
 
 	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
 }
@@ -499,6 +499,7 @@ void main()
 
 		vec4 current_direction_distance = vec4(current_warp.emitter_location, emitter_to_distance(current_warp.emitter_location, current_location));
 		
+		// -0.5 for trilinear sampling
 		sample_warp(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, current_direction_distance, current_color, current_location);
 
 		current_direction_distance.xyz = current_direction_distance.xyz / WorldDimensions; // normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
@@ -513,7 +514,7 @@ void main()
 			// Input sample of blended area, see : 
 			// https://www.shadertoy.com/view/fdjXDD
 
-			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(mix(original_color, current_color, getAttenuation(d * VOX_SIZE)), 1.0f)); // *do not change* increases accuracy as lights get closer to the current location by an order of magnitude!
+			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color, 1.0f));
 		}
 	}
 

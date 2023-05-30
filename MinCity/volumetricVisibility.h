@@ -26,6 +26,7 @@ namespace Volumetric
 		static inline constexpr float const getMiniVoxelRadius() { return(MINI_VOX_RADIUS); }
 
 		// accessors //
+		__inline XMMATRIX const XM_CALLCONV getWorldMatrix() const { return(XMLoadFloat4x4A(&_matWorld)); }
 		__inline XMMATRIX const XM_CALLCONV getViewMatrix() const { return(XMLoadFloat4x4A(&_matView)); }
 		__inline XMMATRIX const XM_CALLCONV getProjectionMatrix() const { return(XMLoadFloat4x4A(&_matProj)); } 
 		
@@ -40,12 +41,13 @@ namespace Volumetric
 		void XM_CALLCONV UpdateFrustum(FXMMATRIX const xmView, float const ZoomFactor, size_t const framecount);
 
 		void Initialize();
-
+		void XM_CALLCONV SetWorldOrigin(FXMVECTOR xmOrigin);
 	private:
 		XMFLOAT4A			_Plane[6];			
 
-		XMFLOAT4X4A			_matProj;
-		XMFLOAT4X4A			_matView;			// view matrix is saved here and is current for every frame
+		XMFLOAT4X4A			_matProj,
+			                _matView,
+			                _matWorld;
 	public:
 		volumetricVisibility();
 		~volumetricVisibility() = default;

@@ -80,7 +80,7 @@ namespace world
 	VOXEL_EVENT_FUNCTION_RETURN __vectorcall cCharacterGameObject::OnVoxel(VOXEL_EVENT_FUNCTION_RESOLVED_PARAMETERS) const
 	{
 		//voxel.Color = 0x00ffffff;
-		voxel.Emissive = true;
+		//voxel.Emissive = true;
 
 		return(voxel);
 	}

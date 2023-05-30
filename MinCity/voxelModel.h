@@ -438,6 +438,9 @@ namespace voxB
 		return(xmPlotGridSpace);
 	}
 
+#ifndef NDEBUG // force enable optimizations - affects debug builds only
+#pragma optimize( "s", on )
+#endif
 	template<bool const Dynamic>
 	template<bool const EmissionOnly, bool const Faded>
 	__inline void XM_CALLCONV voxelModel<Dynamic>::Render(FXMVECTOR xmVoxelOrigin, FXMVECTOR xmVoxelOrient,
@@ -711,22 +714,23 @@ namespace voxB
 		//    so that the outputs into either buffer are at the correct locations in the direct buffer
 		//    the locations are deterministic, always the same, and stream compaction is used later 
 		//    to remove all "dead space" between voxels in the buffer.
-		if constexpr (!Faded) {
+		if constexpr (!EmissionOnly) { // *bugfix: only reserve space in direct buffer if voxels will be streamed out. If emission only, then this instance is actually not visible, however lighting needs to be included, if any voxel light of this instance is within the bounds of the visible volume.
+			if constexpr (!Faded) {
 
-			if constexpr (Dynamic) {
-				pVoxelsOutDynamic = dynamics.voxels.fetch_add(vxl_count);
+				if constexpr (Dynamic) {
+					pVoxelsOutDynamic = dynamics.voxels.fetch_add(vxl_count);
+				}
+				else {
+					pVoxelsOutStatic = statics.voxels.fetch_add(vxl_count);
+				}
+				if (0 != vxl_transparent_count) {
+					pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
+				}
 			}
-			else {
-				pVoxelsOutStatic = statics.voxels.fetch_add(vxl_count);
-			}
-			if (0 != vxl_transparent_count) {
+			else { // faded (all transparent)
 				pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
 			}
 		}
-		else { // faded (all transparent)
-			pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
-		}
-
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceType PerformanceCounters;
 #endif
@@ -771,6 +775,9 @@ namespace voxB
 		result += PerformanceCounters;	// add to global total this model instance performance counters
 #endif
 	}
+#ifndef NDEBUG // revert optimizations - affects debug builds only
+#pragma optimize( "", off )
+#endif
 } // end namespace voxB
 } // end namespace Volumetric
 

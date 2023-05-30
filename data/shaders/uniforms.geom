@@ -197,7 +197,7 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 #endif
 #endif
 
-	gl_Position = u._proj * u._view * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
+	gl_Position = u._proj * u._view * u._world * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
 #ifndef ZONLY
 

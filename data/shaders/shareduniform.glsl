@@ -5,6 +5,7 @@ layout (binding = 0) restrict readonly uniform SharedUniform {
   
   precise mat4      _proj;
   precise mat4		_view; 
+  precise mat4		_world; 
 
   precise vec4		_eyePos;
   precise vec4		_eyeDir;	 // direction to origin(0,0,0) fixes rendering artifacts of raymarch

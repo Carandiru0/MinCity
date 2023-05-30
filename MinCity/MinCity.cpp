@@ -87,7 +87,8 @@ static void InitializeDebugVariables()
 	setDebugVariable(bool, DebugLabel::TOGGLE_1_BOOL, bZero);
 	setDebugVariable(bool, DebugLabel::TOGGLE_2_BOOL, bZero);
 	setDebugVariable(bool, DebugLabel::TOGGLE_3_BOOL, bZero);
-	setDebugVariable(float, DebugLabel::WORLD_PLANE_HEIGHT, fZero);
+	setDebugVariable(XMVECTOR, DebugLabel::WORLD_ORIGIN, xmZero);
+	setDebugVariable(bool, DebugLabel::WORLD_ORIGIN_LOCKED, bZero);
 
 #ifdef DEBUG_PERFORMANCE_VOXELINDEX_PIXMAP
 	static microseconds tZero = {};

@@ -576,7 +576,7 @@ namespace Volumetric
 	__inline bool const volumetricOpacity<Size>::renderCompute(vku::compute_pass&& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data)
 	{
 		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
-		constinit static uint32_t dispatch_volume_height{ LightSize };
+		constinit static uint32_t dispatch_volume_height{ LightSize }, last_dispatch_volume_height{ LightSize };
 
 		uint32_t const resource_index(c.resource_index);
 
@@ -591,6 +591,13 @@ namespace Volumetric
 
 			// Record Compute Command buffer if not flagged as already recorded. 
 			if (!bRecorded[resource_index]) {
+			
+				uint32_t const current_height(dispatch_volume_height); // *bugfix: light was not being cleared on shrink eg.) when the ship is descending.
+
+				if (dispatch_volume_height < last_dispatch_volume_height) { // Required to "erase" lights that are no longer in the current bound (height shrinking)
+					dispatch_volume_height = last_dispatch_volume_height;   // set to last dispatch height
+				}
+				last_dispatch_volume_height = current_height; // always updated to latest
 
 				// Select the closest dispatch height
 				SelectedDispatchHeightIndex = SFM::max(0, ((int32_t)(DispatchHeights - (dispatch_volume_height >> 3u))) - 1);  // need *index* ie.) 128 >> 3 = 16, 120 >> 3 = 15, 112 >> 3 = 14 ... etc *note: order needs to be reversed - index 0 equals highest dispatch height, index n equals lowest dispatch height ... *note: also needs to select the closest maximum dispatch height
@@ -657,10 +664,10 @@ namespace Volumetric
 
 				//*bugfix - sync validation, solved by automation
 				vku::memory_barrier(c.cb_render_light,
-					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
+					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
 					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
 				
-				step >>= 1;
+				step >>= 1; // correct, halving rather than doubling is required - otherwise major JFA error count results
 
 				// ( JFA ) //
 				uint32_t uPing(resource_index), uPong(!resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
@@ -671,22 +678,22 @@ namespace Volumetric
 				{
 					renderJFA(c, render_data, uPing, uPong, step);
 
-					//*bugfix - sync validation, solved by automation
+					//*bugfix - sync validation
 					vku::memory_barrier(c.cb_render_light,
-						vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
+						vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
 						vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
 					
 					std::swap(uPing, uPong);
 
-					step >>= 1;
+					step >>= 1; // correct, halving rather than doubling is required - otherwise major JFA error count results
 				} while (0 != step);
 
-				// (JFA + 1)
+				// (JFA + 1) (Greatly reduces error)
 				renderJFA(c, render_data, uPing, uPong, 1);
 
-				//*bugfix - sync validation, solved by automation
+				//*bugfix - sync validation
 				vku::memory_barrier(c.cb_render_light,
-					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eComputeShader,
+					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
 					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
 				
 				// Last step, filtering - temporal super-sampling, blending & antialiasing

@@ -134,7 +134,7 @@
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <CallingConvention>Cdecl</CallingConvention>
       <AdditionalOptions>/D_WIN32_WINNT=0x0A00 /d2vzeroupper /favor:INTEL64 %(AdditionalOptions)</AdditionalOptions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -145,6 +145,8 @@
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <OmitFramePointers>false</OmitFramePointers>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <TranslateIncludes>false</TranslateIncludes>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -165,6 +167,7 @@
       <ForceSymbolReferences>
       </ForceSymbolReferences>
       <UACExecutionLevel>AsInvoker</UACExecutionLevel>
+      <Profile>false</Profile>
     </Link>
     <Manifest>
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
@@ -217,7 +220,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <FloatingPointExceptions>false</FloatingPointExceptions>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
-      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
       <AdditionalOptions>/D_WIN32_WINNT=0x0A00 /GA /Gw /d2vzeroupper /favor:INTEL64 %(AdditionalOptions)</AdditionalOptions>
@@ -235,6 +238,8 @@
       <StringPooling>true</StringPooling>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <TranslateIncludes>false</TranslateIncludes>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

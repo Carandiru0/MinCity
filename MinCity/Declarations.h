@@ -86,6 +86,7 @@ namespace UniformDecl
 	struct no_vtable VoxelSharedUniform {
 		XMMATRIX	proj;
 		XMMATRIX	view;
+		XMMATRIX	world;
 		XMVECTOR	eyePos;         // .w = camera elevation delta
 		XMVECTOR	eyeDir;
 		XMVECTOR	aligned_data0;	// .xy = free, .z = time, .w = frame time delta
