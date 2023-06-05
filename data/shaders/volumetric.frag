@@ -71,6 +71,7 @@ layout(location = 0) in streamIn
 	readonly noperspective vec3	rd;
 	readonly noperspective vec3	eyePos;
 	readonly flat vec3			eyeDir;
+	readonly flat vec2          offset;
 	readonly flat float			slice;
 } In;
 
@@ -185,7 +186,9 @@ float fetch_light( out vec3 light_color, out vec3 light_position, in const vec3 
 	vec4 Ld;
 	getLightFast(light_color, Ld, uvw);
 
+	Ld.pos.xy -= In.offset.xy; // *bugfix - fixes jittering lights
 	light_position = Ld.pos;
+
 	return(Ld.dist);  
 }
 

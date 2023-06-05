@@ -25,6 +25,7 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 #else // voxels only
 	flat vec4 material;
 #endif
+	flat vec2 offset; // fractional offset for light position
 } Out;
 #endif
 //---------------------------------------------------------------------------------------------------------
@@ -49,6 +50,7 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 #else // voxels only
 	readonly flat vec4 material;
 #endif
+	readonly flat vec2 offset; // fractional offset for light position
 } In;
 #endif
 #endif

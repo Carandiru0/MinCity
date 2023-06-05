@@ -191,9 +191,9 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	
 #if defined(HEIGHT) 
 #ifdef ZONLY
-   // worldPos.y = min(worldPos.y, In[0].terrain_min);
+    //worldPos.y = min(worldPos.y, In[0].terrain_min + VolumeDimensions * 0.5f * 0.5f);
 #else // !ZONLY
-   // worldPos.y = min(worldPos.y, In[0].world_uvw.w);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
+    //worldPos.y = min(worldPos.y, In[0].world_uvw.w + VolumeDimensions * 0.5f * 0.5f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
 #endif
 #endif
 
@@ -206,7 +206,8 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 	// main uvw coord for light, common to terrain, normal voxels
 	vec3 offsetPos = worldPos - vec3(0.0f, VolumeDimensions * 0.5f * 0.5f, 0.0f); // offset to bottom of volume to match raymarch (removal)
 															// *bugfix - half-voxel offset required to sample center of voxel
-	Out.uv.xzy = fma(TransformToIndexScale, offsetPos, TransformToIndexBias + 0.5f) * InvToIndex;
+	Out.uv.xzy = fma(TransformToIndexScale, offsetPos, TransformToIndexBias) * InvToIndex;
+	Out.offset = fractional_offset();
 
 	// final output must be xzy and transformed to eye/view space for fragment shader
 	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
@@ -239,7 +240,8 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 
 #endif // not basic
-	
+
+
 	// 2+<--------+1
 	//  |\\       |
 	//  | \\\\    |
@@ -306,8 +308,8 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 #endif
 
 #endif // not basic
-
 	EmitVxlVertex(center + tangent, normal);
+
 
 	EndPrimitive(); // *bugfix: if endprimitive is not used per quad - there are cases where the voxel trianglestrip is not drawing a "face" of the cube
 					//          which is very hard to isolate as its rare, < 2% of all voxels drawn for exammple with ground. 
@@ -341,7 +343,7 @@ void main() {
 		[[dont_flatten]] if ( IsVisible(normal) ) {
 			BeginQuad(center + _normal, right, forward, normal
 #if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
-			, vec2(-In[0].world_uvw.z)
+		, vec2(-In[0].world_uvw.z)
 #endif
 			);
 		}

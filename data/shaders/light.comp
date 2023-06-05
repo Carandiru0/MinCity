@@ -179,12 +179,12 @@ bool isEmitter(in const vec4 warp)
 }
 
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
-#ifdef SEED
+#if defined(SEED)
 vec4 sampleInputVolume( in const vec3 read_location )
 {
 	return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
 }
-#else
+#elif !defined(MIP)
 vec4 sampleInputVolume( in const vec3 read_location )
 {
 	return( texelFetch(pingpongTexture[pc.index_input], ivec3(floor(read_location + 0.5f)), 0) );
@@ -490,8 +490,6 @@ void main()
 	const vec3 original_color = unpackColorHDR(current_warp.packed_color);
 	vec3 current_color = original_color;
 
-	float d = 0.0f;
-
 	// #################################################################################################################
 	{	// distance & direction ###
 		
@@ -503,7 +501,7 @@ void main()
 		sample_warp(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, current_direction_distance, current_color, current_location);
 
 		current_direction_distance.xyz = current_direction_distance.xyz / WorldDimensions; // normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
-		current_direction_distance.w = d = normalize_distance(current_direction_distance.w); // normalize distance to range [0,1] for 16bpc unorm texture precision usage
+		current_direction_distance.w = normalize_distance(current_direction_distance.w); // normalize distance to range [0,1] for 16bpc unorm texture precision usage
 
 		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), current_direction_distance);
 	}

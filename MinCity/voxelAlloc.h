@@ -16,7 +16,7 @@ namespace Volumetric
 		VOXEL_MINIMAP_LINES_PER_CHUNK = 2;		// should be an even factor of world size - caution the world size volume will eat memory exponenially,
 												// 512x256x512 times VoxelNormal = 12.8 GB !!!! where a "line" of 2x256x512 times VoxelNormal = 50 MB
 	
-	static constexpr uint32_t const DIRECT_BUFFER_SIZE_MULTIPLIER = 8; // direct buffers require more memory to support direct addressing, where staging buffers do not, as they are sequential and compact.
+	static constexpr uint32_t const DIRECT_BUFFER_SIZE_MULTIPLIER = 2; // direct buffers require more memory to support direct addressing, where staging buffers do not, as they are sequential and compact.
 
 	// needs measurement from stress test
 	BETTER_ENUM(Allocation, uint32_t const,

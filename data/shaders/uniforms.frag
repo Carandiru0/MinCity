@@ -535,6 +535,7 @@ void main() {
 
 	getLight(light_color, Ld, In.uv.xyz);
 
+	Ld.xy -= In.offset.xy; // *bugfix - fixes jittering lights
 	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 	Ld.z = -Ld.z; // vulkan
 
@@ -555,14 +556,14 @@ void main() {
 	vec3 light_color;    
 	vec4 Ld;
 	 
-	const vec3 N = normalize(In.N.xyz);
-
 	getLight(light_color, Ld, In.uv.xyz);
-
-	const vec3 V = normalize(In.V.xyz);                            
-	
+		                           
+	Ld.xy -= In.offset.xy; // *bugfix - fixes jittering lights
 	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 	Ld.z = -Ld.z; // vulkan
+
+	const vec3 N = normalize(In.N.xyz);
+	const vec3 V = normalize(In.V.xyz); 
 
 #ifndef TRANS              
 	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,

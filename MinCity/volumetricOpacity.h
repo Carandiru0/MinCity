@@ -820,7 +820,7 @@ namespace Volumetric
 			vk::CommandBufferBeginInfo bi{}; // recorded once only
 			cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::TRANSFER_LIGHT);
 
-			vk::BufferImageCopy region{};
+			vk::BufferImageCopy buffer_region{};
 
 			// 
 			// slices ordered by Z 
@@ -828,23 +828,26 @@ namespace Volumetric
 
 			// slices ordered by Y: <---- USING Y
 			// (y * xMax * zMax) + (z * xMax) + x;
-			region.bufferOffset = ((extents_min.y * (LightSize) * (LightSize)) + (extents_min.z * (LightSize)) + extents_min.x) * MappedVoxelLights.element_size();
-			region.bufferOffset = SFM::roundToMultipleOf<false>((int32_t)region.bufferOffset, 8); // rounding down (effectively min)
-			region.bufferRowLength = LightSize;
-			region.bufferImageHeight = LightSize;
+			buffer_region.bufferOffset = ((extents_min.y * (LightSize) * (LightSize)) + (extents_min.z * (LightSize)) + extents_min.x) * MappedVoxelLights.element_size();
+			buffer_region.bufferOffset = SFM::roundToMultipleOf<false>((int32_t)buffer_region.bufferOffset, 8); // rounding down (effectively min)
+			buffer_region.bufferRowLength = LightSize;
+			buffer_region.bufferImageHeight = LightSize;
 
 			// swizzle to xzy
-			region.imageOffset.x = extents_min.x;
-			region.imageOffset.z = extents_min.y; // Y Axis Major (Slices ordered by Y)
-			region.imageOffset.y = extents_min.z;
+			buffer_region.imageOffset.x = extents_min.x;
+			buffer_region.imageOffset.z = extents_min.y; // Y Axis Major (Slices ordered by Y)
+			buffer_region.imageOffset.y = extents_min.z;
 			//  ""  ""  "  ""
-			region.imageExtent.width = extents_max.x - extents_min.x;
-			region.imageExtent.depth = extents_max.y - extents_min.y; // Y Axis Major (Slices ordered by Y)
-			region.imageExtent.height = extents_max.z - extents_min.z;   
+			buffer_region.imageExtent.width = extents_max.x - extents_min.x;
+			buffer_region.imageExtent.depth = extents_max.y - extents_min.y; // Y Axis Major (Slices ordered by Y)
+			buffer_region.imageExtent.height = extents_max.z - extents_min.z;
 
-			region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 };
-				
-			cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, region);
+			buffer_region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }; // for buffer copy
+
+			vk::ImageSubresourceRange const image_subresource{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }; // for image clear
+
+			//cb.clearColorImage(LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, vk::ClearColorValue{}, image_subresource); // bugfix, gpu side needs to be cleared first to ensuire old data is not persistant in the next frame (buffer upload is always smaller)
+			cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, buffer_region);
 
 			{ // [release image barrier]
 				using afb = vk::AccessFlagBits;

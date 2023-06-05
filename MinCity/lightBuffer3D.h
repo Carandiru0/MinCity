@@ -19,7 +19,7 @@ INLINE_MEMFUNC __streaming_store(T* const __restrict dest, T const* const __rest
 	}
 }
 
-#include "sBatchedByIndex.h"  // __streaming store & __streaming_store_residual must be defined before inclusion of sBatched to override
+#include "sBatchedByIndex.h"
 #include "writeOnlyBuffer.h"
 #include "globals.h"
 #include <Math/superfastmath.h>
@@ -284,8 +284,8 @@ private:
 			unpack_seed(position, color, (uint64_t)prev_seed);
 
 			// blend
-			position = uvec4_v(SFM::lerp(position.v4f(), xyz, 0.5f));
-			color = uvec4_v(SFM::lerp(color.v4f(), rgb.v4f(), 0.5f));
+			position = uvec4_v(SFM::floor(SFM::lerp(position.v4f(), xyz, 0.5f)));
+			color = uvec4_v(SFM::floor(SFM::lerp(color.v4f(), rgb.v4f(), 0.5f)));
 
 			// update
 			uint64_t const new_seed = pack_seed(position, color);

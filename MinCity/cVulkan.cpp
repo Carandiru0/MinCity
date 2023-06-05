@@ -1350,7 +1350,7 @@ void cVulkan::CreateSharedVoxelResources()
 void cVulkan::CreateSharedPipeline_VoxelClear()  // clear mask
 {
 	std::vector< vku::SpecializationConstant > constants_voxel_vs, constants_voxel_fs;
-	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, Iso::MINI_VOX_SIZE, Iso::VOX_STEP); // should be minivoxsize & voxstep
+	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_Basic_VS_Common(constants_voxel_vs, Iso::MINI_VOX_SIZE); // should be minivoxsize & voxstep
 	MinCity::VoxelWorld->SetSpecializationConstants_Voxel_ClearMask_FS(constants_voxel_fs);
 
 	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "uniforms_trans_basic_dynamic.vert.bin", constants_voxel_vs };
@@ -2266,8 +2266,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	vk::CommandBufferBeginInfo bi{}; // static cb may persist across multiple frames if no changes in vbo active sizes
 	s.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(s.cb, vkNames::CommandBuffer::STATIC);
 	
-	UpdateIndirectActiveCountBuffer(s.cb, resource_index); // indirect draw active counts are transferred here, they are then used for voxel rendering terrain, static, dynamic where possible and by the clear opacity map operation in the final pass / present.
-
 	// setup opacity map, internal image layout state only needs update here as it's image layout is carried forward from the last present.
 	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eGeneral);
 
@@ -2482,6 +2480,11 @@ inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __res
 {
 	uint32_t const resource_index(d.resource_index);
 
+	vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
+	d.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(d.cb, vkNames::CommandBuffer::DYNAMIC);
+
+	UpdateIndirectActiveCountBuffer(d.cb, resource_index); // indirect draw active counts are transferred here, they are then used for voxel rendering terrain, static, dynamic where possible and by the clear opacity map operation in the final pass / present.
+
 	vku::DynamicVertexBuffer* const __restrict vbos[] = {
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index]),
 		(*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index]),
@@ -2489,6 +2492,8 @@ inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __res
 	};
 
 	MinCity::VoxelWorld->Transfer(resource_index, d.cb, vbos);
+
+	d.cb.end();	// ********* command buffer end is called here only //
 }
 
 inline void cVulkan::_renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o) // fully dynamic command buffer (every frame)

@@ -2238,7 +2238,13 @@ namespace // private to this file (anonymous)
 								Iso::setEmissive(oOutVoxel);
 								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oOutVoxel, grounds, localGround);
 #else // normal
-								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oVoxel, grounds, localGround);
+
+								Iso::Voxel oOutVoxel(oVoxel);
+								Iso::setColor(oOutVoxel, 0x00007f00);
+								if ((voxelIndexWrapped.x & 1) ^ (voxelIndexWrapped.y & 1)) {
+									Iso::setEmissive(oOutVoxel);
+								}
+								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oOutVoxel, grounds, localGround);
 #endif
 							}
 #if !defined(NDEBUG) && defined(DEBUG_WORLD_ORIGIN)
@@ -2836,9 +2842,10 @@ namespace world
 		oCamera.reset();
 		MinCity::UserInterface->OnLoaded();
 
-		//placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
-		//	Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
-		
+
+		placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(getHoveredVoxelIndex(),
+			Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
+	/*
 		static constexpr int32_t const SIZE = 512,
 			                           OFFSET = SIZE >> 4;
 
@@ -2847,16 +2854,16 @@ namespace world
 		{
 			for (int32_t offsetx = -SIZE; offsetx <= SIZE; offsetx += OFFSET)
 			{
-				//if (!odd) {
+				if (!odd) {
 					placeUpdateableInstanceAt<cCharacterGameObject, Volumetric::eVoxelModels_Dynamic::NAMED>(p2D_add(getHoveredVoxelIndex(), point2D_t(offsetx, offsetz)),
 						Volumetric::eVoxelModel::DYNAMIC::NAMED::ALIEN_GRAY, Volumetric::eVoxelModelInstanceFlags::NOT_FADEABLE | Volumetric::eVoxelModelInstanceFlags::IGNORE_EXISTING);
-				//}
+				}
 
 				odd = !odd;
 			}
 		}
-		
-
+	
+	*/
 #ifdef GIF_MODE
 
 #define STAGE
@@ -3778,9 +3785,6 @@ namespace world
 	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb,
 		                       vku::DynamicVertexBuffer* const __restrict (&__restrict vbo)[eVoxelVertexBuffer::_size_constant])
 	{		
-		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
-		cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(cb, vkNames::CommandBuffer::DYNAMIC);
-
 		{ // ######################### STAGE 1 - OTHER BUFFERS (that the static renderpass requires)
 			{
 				_buffers.shared_buffer[resource_index].uploadDeferred(cb, _buffers.reset_shared_buffer);
@@ -3818,10 +3822,6 @@ namespace world
 				);
 			}
 		}
-
-		cb.end();	// ********* command buffer end is called here only //
-
-		// do not believe this is neccessary __streaming_store_fence(); // ensure writes are coherent before queue submission
 	}
 	void cVoxelWorld::AcquireTransferQueueOwnership(uint32_t const resource_index, vk::CommandBuffer& __restrict cb)
 	{		
@@ -4189,8 +4189,11 @@ namespace world
 		// clamp at the 2x step size, don't care or want spurious spikes of time
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
-		//pack into vector for uniform buffer layout			
-		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.z, (time_delta + time_delta_last) * 0.5f, _currentState.time);
+		//pack into vector for uniform buffer layout
+		XMVECTOR xmUVWOffset(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));  // fractional offset, to be transformed to normalized uvw space (for light positions, fractional component)
+		xmUVWOffset = XMVectorMultiply(SFM::__fma(Volumetric::_xmTransformToIndexScale, xmUVWOffset, Volumetric::_xmTransformToIndexBias), Volumetric::_xmInverseVisible);  // same calculation as in geom shader for voxels for worldPos->uvw
+
+		_currentState.Uniform.aligned_data0 = XMVectorSet(XMVectorGetX(xmUVWOffset), XMVectorGetZ(xmUVWOffset), (time_delta + time_delta_last) * 0.5f, _currentState.time);
 		                                                                
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4504,11 +4507,10 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(10, ((float)_terrainTexture->extent().height)));
 	}
 
-	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize, float const voxelStep)
+	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
-		constants.emplace_back(vku::SpecializationConstant(1, (float)voxelStep)); // VS is dependent on type of voxel for geometry step
-		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 
 		XMFLOAT3A transformBias, transformInv;
 
@@ -4527,22 +4529,21 @@ namespace world
 
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP); // should be voxsize & voxstep
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::VOX_SIZE); // should be voxsize & voxstep
 
 		// used for uv -> voxel in vertex shader image store operation for opacity map
 		constants.emplace_back(vku::SpecializationConstant(9, (int)MINIVOXEL_FACTOR));	
 		constants.emplace_back(vku::SpecializationConstant(10, (float)Iso::TERRAIN_MAX_HEIGHT));
 	}
 	
-	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize, float const voxelStep)
+	void cVoxelWorld::SetSpecializationConstants_Voxel_VS_Common(std::vector<vku::SpecializationConstant>& __restrict constants, float const voxelSize)
 	{
 		constants.emplace_back(vku::SpecializationConstant(0, (float)voxelSize)); // VS is dependent on type of voxel for geometry size
-		constants.emplace_back(vku::SpecializationConstant(1, (float)voxelStep)); // VS is dependent on type of voxel for geometry step
-		constants.emplace_back(vku::SpecializationConstant(2, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
+		constants.emplace_back(vku::SpecializationConstant(1, (float)Volumetric::voxelOpacity::getSize())); // should be world visible volume size
 	}
 	void cVoxelWorld::SetSpecializationConstants_VoxelTerrain_VS(std::vector<vku::SpecializationConstant>& __restrict constants) // ** also used for roads 
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE, Iso::VOX_STEP); // should be voxsize & voxstep
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::VOX_SIZE); // should be voxsize & voxstep
 
 		constants.emplace_back(vku::SpecializationConstant(3, (int)MINIVOXEL_FACTOR));
 		constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::TERRAIN_MAX_HEIGHT));
@@ -4550,11 +4551,11 @@ namespace world
 	
 	void cVoxelWorld::SetSpecializationConstants_Voxel_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP); // should be minivoxsize & voxstep
+		SetSpecializationConstants_Voxel_VS_Common(constants, Iso::MINI_VOX_SIZE); // should be minivoxsize & voxstep
 	}
 	void cVoxelWorld::SetSpecializationConstants_Voxel_Basic_VS(std::vector<vku::SpecializationConstant>& __restrict constants)
 	{
-		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE, Iso::VOX_STEP); // should be minivoxsize & voxstep
+		SetSpecializationConstants_Voxel_Basic_VS_Common(constants, Iso::MINI_VOX_SIZE); // should be minivoxsize & voxstep
 	}
 
 	void cVoxelWorld::SetSpecializationConstants_Voxel_GS_Common(std::vector<vku::SpecializationConstant>& __restrict constants)
