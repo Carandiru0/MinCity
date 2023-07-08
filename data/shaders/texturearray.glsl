@@ -45,7 +45,7 @@
 // include where required
 #ifndef __cplusplus
 
-layout (binding = 5) uniform sampler2DArray _texArray[TEXTURE_ARRAY_LENGTH];
+layout (binding = 6) uniform sampler2DArray _texArray[TEXTURE_ARRAY_LENGTH];
 
 
 #endif

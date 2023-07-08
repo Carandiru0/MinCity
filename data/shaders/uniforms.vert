@@ -16,7 +16,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #ifndef BASIC
 #define BASIC
 #endif
-#endif // ZONLY
+#endif
 
 #if defined(DYNAMIC) || !defined(CLEAR)
 #include "common.glsl"
@@ -26,7 +26,10 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #if !defined(ZONLY)
 
 #if !defined(BASIC) && !defined(CLEAR)
-#include "sharedbuffer.glsl"
+#include "sharedbuffer.glsl"  // readonly access
+#elif defined(BASIC)
+#define READWRITE
+#include "sharedbuffer.glsl"  // readwrite access
 #endif
 
 #define emission x
@@ -37,10 +40,15 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #endif // ZONLY
 
 layout(location = 0) in vec4 inWorldPos;
+#if !defined(ZONLY) || defined(DYNAMIC)  // all non-zonly (dynamic, static, terrain) w/exception dynamic uses this vector for a quaternion
 layout(location = 1) in vec4 inUV;
+#endif // ZONLY
 
 layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 layout (constant_id = 1) const float VolumeDimensions = 0.0f;
+
+// * binding 0 - shared uniform buffer - not accessed in vertex shader, only geometry shader  
+// * binding 1 - shared buffer - only accessed in vertex shader
 
 #ifdef ZONLY
 // Depth Only //
@@ -49,7 +57,7 @@ layout (constant_id = 1) const float VolumeDimensions = 0.0f;
 
 #if defined(BASIC)
 
-layout (binding = 1, r8) writeonly restrict uniform image3D opacityMap;
+layout (binding = 3, r8) writeonly restrict uniform image3D opacityMap;
 
 // corresponding to volume dimensions
 const vec3 TransformToIndexScale = vec3(2.0f, -2.0f, 2.0f);
@@ -75,9 +83,8 @@ writeonly layout(location = 0) out streamOut
 #else // !ZONLY
 	flat vec4	world_uvw;
 #ifndef BASIC
-	flat float  ambient;
 	flat float	color;
-	flat float  emission;
+	flat vec4   material;
 #endif
 #endif // ZONLY
 } Out;
@@ -192,8 +199,6 @@ void main() {
   Out.forward = vec3(0.0f, 0.0f, size);
 #endif
 
-#ifndef ZONLY
-
 #if defined(HEIGHT) // terrain voxels only
   const float terrain_min = -TERRAIN_MAX_HEIGHT * minheightstep * size * 0.75f;  // @TODO, should be able to calculate this deterministically, 0.75 * is approximate
 #ifdef ZONLY
@@ -202,9 +207,11 @@ void main() {
   Out.world_uvw.xyzw = vec4(inUV.xy, heightstep, terrain_min); //  - world scale uv's, range [-1.0f ... 1.0f] // ** must be in this order for shader variations to compile.
 #endif
 
-#elif defined(BASIC)
+#elif defined(BASIC) && !defined(ZONLY)
   Out.world_uv.xy = inUV.xy; // only used in BASIC for regular voxels - mousebuffer voxelindex ID
 #endif
+
+#ifndef ZONLY // start.
 
 #ifndef BASIC
   
@@ -224,7 +231,7 @@ void main() {
 
 #ifndef CLEAR
 #ifdef BASIC
-  const float emissive = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
+  const bool emissive = bool((hash & MASK_EMISSION) >> SHIFT_EMISSION);
 #else // not basic:
 
 #if !defined(HEIGHT) // voxels only:
@@ -233,8 +240,10 @@ void main() {
   Out.material.roughness = float((hash & MASK_ROUGHNESS) >> SHIFT_ROUGHNESS) / 15.0f; // 4 bits, 16 values maximum value n - 1 
   Out.material.ambient = packColorHDR(b.average_reflection_color.rgb / float(b.average_reflection_count));
 #else // terrain 
-  Out.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
-  Out.ambient = packColorHDR(b.average_reflection_color.rgb / float(b.average_reflection_count));
+  Out.material.emission = float((hash & MASK_EMISSION) >> SHIFT_EMISSION);
+  Out.material.metallic = 0.0f;
+  Out.material.roughness = 0.0f; 
+  Out.material.ambient = packColorHDR(b.average_reflection_color.rgb / float(b.average_reflection_count));
 #endif
 
 #endif
@@ -244,28 +253,30 @@ void main() {
 
   vec3 worldPos = inWorldPos.xyz;
 
-  // out position //            // offset to bottom of volume to match raymarch (added)
+  // out position //            // offset to bottom of volume to match raymarch (added) *do not remove*
   gl_Position = vec4(worldPos + vec3(0.0f, VolumeDimensions * 0.5f * 0.5f, 0.0f), 1.0f);  
 
-#ifndef ZONLY
+#ifndef ZONLY // start.
 
-#ifndef BASIC
-    Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu.
-#endif                                                            // 
+#ifdef BASIC
+	// derive the normalized index
+	// clamping provides opaque borders for voxel models that intersect the bounds of the visible volume. Makes it so they are not see-thru to the insides of the voxel model.
+	worldPos = clamp(fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex, 0.0f, 1.0f);
+#endif
+
+#if !defined(CLEAR) && !defined(BASIC)
+	Out.color = packColorHDR(toLinear(unpackColor(abs(inUV.w)))); // conversion from SRGB to Linear happens here for all voxels, faster than doing that on the cpu. 
+#endif
 
 // applies to ground and regular voxels
 #ifdef BASIC
 #if !defined(CLEAR) && !defined(TRANS)
 	// Opacity Map generation for lighting in volumetric shaders (direct generation saves uploading a seperate 3D texture that is too LARGE to send every frame)
-	const float opacity = fma(emissive, 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
+	const float opacity = fma(float(emissive), 0.5f, 0.5f);		//  > 0 opaque to 0.5, emissive to 1.0
 #endif
 #endif
 
-#if defined(BASIC) && !defined(TRANS) // only basic past this point
-
-	// derive the normalized index
-	// clamping provides opaque borders for voxel models that intersect the bounds of the visible volume. Makes it so they are not see-thru to the insides of the voxel model.
-	worldPos = clamp(fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex, 0.0f, 1.0f);
+#if defined(BASIC) && !defined(TRANS) // only basic & no transparency past this point
 
   // *** never write to slice 0 (slice 0 contains the always on and filled world ground plane) ***
 
@@ -299,11 +310,12 @@ void main() {
 
 #else // terrain only
   const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
-  const int minimum_height = max(0, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size * 0.75f)) - 1);  // use of > rather than >= below, to always avoid writing to slice 0
+  const int maximum_height = max(1, int(floor(heightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size)) - 1); // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
+  const int minimum_height = max(1, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size * 0.75f)) - 1);  // always avoid writing to slice 0
 
   ivec3 iminivoxel;
-									                                                                                // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
-  [[dependency_infinite]] for( iminivoxel.y = int(floor(heightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size)) - 1; iminivoxel.y > minimum_height ; --iminivoxel.y ) { // slice
+									                                                                                
+  [[dependency_infinite]] for( iminivoxel.y = maximum_height; iminivoxel.y >= minimum_height ; --iminivoxel.y ) { // slice
 
 	[[dependency_infinite]] for( iminivoxel.z = MINIVOXEL_FACTOR - 1; iminivoxel.z >= 0 ; --iminivoxel.z ) {		// depth
 
@@ -318,7 +330,6 @@ void main() {
 	}
   }
 #endif // HEIGHT
-
 #endif // is BASIC
 
 #endif // ZONLY

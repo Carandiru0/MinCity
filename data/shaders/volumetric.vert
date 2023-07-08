@@ -10,7 +10,6 @@ writeonly layout(location = 0) out streamOut
 	noperspective vec3	rd;
 	noperspective vec3	eyePos;
 	flat vec3			eyeDir;
-	flat vec2           offset;
 	flat float			slice;
 
 } Out;
@@ -37,8 +36,6 @@ void main() {
 	eyeDir.y = -eyeDir.y;  // must invert y axis here!! otherwise rotation of camera reveals incorrect depth
 	Out.eyeDir.xzy = normalize(eyeDir); // Out.eyeDir is flat, normalized and good to use in fragment shaders
 	// **************************** // hybrid rendering alignment, ray marching & rasterization are closely aligned. **DO NOT CHANGE** DEEPLY INVESTIGATED, DO NOT CHANGE!
-
-	Out.offset = fractional_offset(); // to be added to light positions
 	Out.slice = frame_to_slice(); // +blue noise over time (every two frames are matched as raymarch is done one frame checkerboard odd, one frame checkerboard even - the blue noise slice *must* be the same one for both frames (to not create white noise badd!!)
 }
 

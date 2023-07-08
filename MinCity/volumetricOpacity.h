@@ -123,8 +123,7 @@ namespace Volumetric
 			// input.output
 			// [pi.po], po.pi, pi.po, po.pi, pi.po, po.pi, pi.po, po.pi, pi.po [po.pi]
 			//  1       2      4      8      16     32     64     128    256    512
-			//return((ePingPongMap::PING == uPingPong ? ePingPongMap::PONG : ePingPongMap::PING));
-			return((ePingPongMap::PING == uPingPong ? ePingPongMap::PING : ePingPongMap::PONG)); // ** extra step "filter" pipeline
+			return(uPingPong);
 		}
 
 		static constexpr uint32_t const
@@ -175,10 +174,14 @@ namespace Volumetric
 			const_cast<volumetricOpacity<Size>* const __restrict>(this)->MappedVoxelLights.commit();
 		}
 
-		void clear(uint32_t const resource_index) {
+		void clear(uint32_t const resource_index) { // clears cache & staging buffer
 			MappedVoxelLights.clear(resource_index);
 		}
 		
+		void clear(vk::CommandBuffer& cb) { // for clearing the light probe map (gpu local)
+			LightProbeMap.imageGPUIn->clear<false>(cb);
+		}
+
 		void release() {
 
 			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
@@ -373,9 +376,9 @@ namespace Volumetric
 		__inline bool const renderCompute(vku::compute_pass&& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data);
 
 	private:
-		__inline bool const upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex, uint32_t& __restrict dispatch_volume_height);
+		__inline bool const upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t& __restrict dispatch_volume_height);
 
-		__inline void renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_input, uint32_t const step);
+		__inline void renderSeed(vku::compute_pass const& __restrict c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_output);
 
 		__inline void renderJFA(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data,
 			uint32_t const index_input, uint32_t const index_output, uint32_t const step);
@@ -401,8 +404,8 @@ namespace Volumetric
 		vku::TextureImageStorage3D*							OpacityMap;
 		voxelVolumeSet										VolumeSet;
 
-		static inline float const							VolumeSize = Size,
-															VolumeLength = (std::hypot(float(VolumeSize), float(VolumeSize), float(VolumeSize))),
+		static inline float const							VolumeSize = Size, 
+															VolumeLength = SFM::__sqrt(VolumeSize*VolumeSize + VolumeSize*VolumeSize + VolumeSize*VolumeSize),
 															InvVolumeLength = (1.0f / VolumeLength);
 
 		UniformDecl::ComputeLightPushConstants				PushConstants;
@@ -494,9 +497,9 @@ namespace Volumetric
 #endif
 
 	template< uint32_t Size >
-	__inline void volumetricOpacity<Size>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_output, uint32_t const step)
+	__inline void volumetricOpacity<Size>::renderSeed(vku::compute_pass const& __restrict  c, struct cVulkan::sCOMPUTEDATA const& __restrict render_data, uint32_t const index_output)
 	{
-		PushConstants.step = step;
+		PushConstants.step = 1; // 1+JFA (error correction) note: 1+JFA is more accurate than JFA+1 by effectively resulting in a jump flood with far less errors.
 		PushConstants.index_output = index_output;
 		PushConstants.index_input = !index_output; // last frames output is this frames secondary input
 
@@ -582,12 +585,10 @@ namespace Volumetric
 
 		if (c.cb_transfer_light)
 		{
-			if (c.async_compute_enabled) {
-				bRecorded[resource_index] = upload_light(resource_index, c.cb_transfer_light, c.transferQueueFamilyIndex, c.computeQueueFamilyIndex, dispatch_volume_height); // compute may need to re-record command buffer
-				return(true); // compute needs to run
-			}
+			bRecorded[resource_index] = upload_light(resource_index, c.cb_transfer_light, dispatch_volume_height); // compute may need to re-record command buffer
 		}
-		else if (c.cb_render_light) { 
+		
+		if (c.cb_render_light) { 
 
 			// Record Compute Command buffer if not flagged as already recorded. 
 			if (!bRecorded[resource_index]) {
@@ -608,7 +609,6 @@ namespace Volumetric
 
 				// grouping barriers as best as possible (down sample depth sets 2 aswell)
 				// set pipeline barriers only once before ping pong begins
-
 				{
 					static constexpr size_t const image_count(2ULL); // batched
 					std::array<vku::GenericImage* const, image_count> const images{ LightMap.DistanceDirection, LightMap.Color };
@@ -616,36 +616,7 @@ namespace Volumetric
 					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY);
 				}
 
-				{ // [acquire image barrier]
-					using afb = vk::AccessFlagBits;
-
-					static constexpr size_t const image_count(1ULL); // batched
-					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn };
-					std::array<vk::ImageMemoryBarrier, image_count> imbs{};
-					
-					for (uint32_t i = 0; i < image_count; ++i) {
-
-						imbs[i].srcQueueFamilyIndex = c.transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-						imbs[i].dstQueueFamilyIndex = c.computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-						imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
-						imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
-						imbs[i].image = images[i]->image();
-						imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-
-						imbs[i].srcAccessMask = (afb)0;
-						imbs[i].dstAccessMask = afb::eShaderRead;
-					}
-
-					using psfb = vk::PipelineStageFlagBits;
-
-					vk::PipelineStageFlags const srcStageMask(psfb::eTopOfPipe),
-												 dstStageMask(psfb::eComputeShader);
-
-					c.cb_render_light.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
-				}
-				
-				// layout actually transitions below
-				{ // bugfix: Must be set for both buffers, validation error.
+				{ 
 					static constexpr size_t const image_count(1ULL); // batched
 					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn };
 
@@ -655,20 +626,18 @@ namespace Volumetric
 				// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
 				c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[resource_index], nullptr);
 
-				// Jump flooding runs in a specfic series from seed to jumpflooding (JFA) to finally (JFA + 1) being the last step.
-				uint32_t step(MAX_STEP_PINGPONG >> 1);
-
-				// Seed
+				// Seed and 1+JFA (error correction) note: 1+JFA is more accurate than JFA+1 by effectively resulting in a jump flood with far less errors.
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
-				renderSeed(c, render_data, resource_index, step); // output alternates every frame
+				renderSeed(c, render_data, resource_index); // output alternates every frame
 
 				//*bugfix - sync validation, solved by automation
 				vku::memory_barrier(c.cb_render_light,
 					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
 					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
 				
-				step >>= 1; // correct, halving rather than doubling is required - otherwise major JFA error count results
-
+				// Jump flooding runs in a specfic series from seed (includes 1+JFA) to jumpflooding (JFA) to finally a Filter being the last step.
+				uint32_t step(MAX_STEP_PINGPONG >> 1);
+				
 				// ( JFA ) //
 				uint32_t uPing(resource_index), uPong(!resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
 
@@ -687,19 +656,11 @@ namespace Volumetric
 
 					step >>= 1; // correct, halving rather than doubling is required - otherwise major JFA error count results
 				} while (0 != step);
-
-				// (JFA + 1) (Greatly reduces error)
-				renderJFA(c, render_data, uPing, uPong, 1);
-
-				//*bugfix - sync validation
-				vku::memory_barrier(c.cb_render_light,
-					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
-					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
 				
 				// Last step, filtering - temporal super-sampling, blending & antialiasing
 				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
 
-				renderFilter(c, render_data, uPong);
+				renderFilter(c, render_data, uPing); // pong has last ping (input), ping has last pong (output)
 
 				{ // bugfix: Must be set for both buffers, validation error.
 					static constexpr size_t const image_count(1ULL); // batched
@@ -744,32 +705,32 @@ namespace Volumetric
 			LightProbeMap.imageGPUIn->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
 			LightMap.DistanceDirection->setCurrentLayout(vk::ImageLayout::eGeneral);
 			LightMap.Color->setCurrentLayout(vk::ImageLayout::eGeneral);
-
-			return(true);
 		}
 
-		return(false);
+		return(true); // always
 	}
 
 	// returns true when "dirty" status should be set, so that compute shader knows it needs to re-record command buffers to adjust dispatch buffer selection change which adapts to the volume height (work reduction).
 	template< uint32_t Size >
-	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t const transferQueueFamilyIndex, uint32_t const computeQueueFamilyIndex, uint32_t& __restrict dispatch_volume_height) {
+	__inline bool const volumetricOpacity<Size>::upload_light(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, uint32_t& __restrict dispatch_volume_height) {
 
 		// optimizations removed due to unsynchronized behaviour of needing 2 frames to process the clear, then an upload of the volumetric area currently occupied by lights.
 		// this de-synchronizes the light positions by lagging behind. then the lights do not occur at the position they should be at for this frame messing with the fractional offset differences between the world and the light.
 		
 		// instead - brute force update of volume occurs every frame (currently 128x128x128 ~33MB to upload every frame (<2ms), **note if 256x256x256 instead the upload size is ~268MB per frame which is dog slow (>21ms))
 		constinit static bool bRecorded[2]{ false, false }; // these are synchronized 
+		constinit static bool bLastClearState{ true };
 		constinit static uvec4_v last_max, last_min;
 
-		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), current_min(MappedVoxelLights.getCurrentVolumeExtentsMin()); // adapt to current volume extents containing lights [optimization]
+		uvec4_v current_max(MappedVoxelLights.getCurrentVolumeExtentsMax()), 
+			    current_min(MappedVoxelLights.getCurrentVolumeExtentsMin()); // adapt to current volume extents containing lights [optimization]
 
 		if (uvec4_v::any<3>(current_max != last_max)) {
 
 			uvec4_v const current(current_max);
 
 			if (uvec4_v::any<3>(current_max < last_max)) { // Required to "erase" lights that are no longer in the current bounds  (volume shrinked)
-				current_max = last_max;                    // set to last bounds
+				current_max.v = SFM::max(current_max.v, last_max.v);                    // set to max bounds union of the last and current
 			}
 
 			last_max = current; // always updated to latest
@@ -782,13 +743,12 @@ namespace Volumetric
 			uvec4_v const current(current_min);
 
 			if (uvec4_v::any<3>(current_min > last_min)) { // Required to "erase" lights that are no longer in the current bounds   (volume shrinked)
-				current_min = last_min;                    // set to last bounds
+				current_min.v = SFM::min(current_min.v, last_min.v);                    // set to min bounds union of the last and current
 			}
 
 			last_min = current; // always updated to latest
 			bRecorded[resource_index] = false; // require cb to be updated
 		} // if equal re-run the last recorded cb
-
 
 		// UPLOAD image already transitioned to transfer dest layout at this point
 		// ################################## //
@@ -824,7 +784,7 @@ namespace Volumetric
 
 			// 
 			// slices ordered by Z 
-			// (z * xMax * yMax) + (y * xMax) + x;3
+			// (z * xMax * yMax) + (y * xMax) + x;
 
 			// slices ordered by Y: <---- USING Y
 			// (y * xMax * zMax) + (z * xMax) + x;
@@ -844,38 +804,11 @@ namespace Volumetric
 
 			buffer_region.imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }; // for buffer copy
 
-			vk::ImageSubresourceRange const image_subresource{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }; // for image clear
+			// image should already be transitioned to eTransferDstOptimal
+							
+			clear(cb); // clearing the light probe map (gpu local)
+			cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, buffer_region); // copy the light probe map (cpu->gpu)
 
-			//cb.clearColorImage(LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, vk::ClearColorValue{}, image_subresource); // bugfix, gpu side needs to be cleared first to ensuire old data is not persistant in the next frame (buffer upload is always smaller)
-			cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn->image(), vk::ImageLayout::eTransferDstOptimal, buffer_region);
-
-			{ // [release image barrier]
-				using afb = vk::AccessFlagBits;
-					
-				static constexpr size_t const image_count(1ULL); // batched
-				std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn };
-				std::array<vk::ImageMemoryBarrier, image_count> imbs{};
-					
-				for (uint32_t i = 0; i < image_count; ++i) {
-
-					imbs[i].srcQueueFamilyIndex = transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-					imbs[i].dstQueueFamilyIndex = computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-					imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
-					imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
-					imbs[i].image = images[i]->image();
-					imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-						
-					imbs[i].srcAccessMask = afb::eTransferWrite;
-					imbs[i].dstAccessMask = (afb)0;
-				}
-
-				using psfb = vk::PipelineStageFlagBits;
-					
-				vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
-											 dstStageMask(psfb::eTopOfPipe);
-					
-				cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
-			}
 			cb.end();
 			bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
 

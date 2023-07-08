@@ -568,7 +568,7 @@ void cVoxelWorld::UpdateCamera(tTime const& __restrict tNow, fp_seconds const& _
 	oCamera.voxelIndex_Center = p2D_wrap_pow2(voxelIndex_Center, point2D_t(Iso::WORLD_GRID_WIDTH, Iso::WORLD_GRID_HEIGHT));
 
 	// Convert Fractional component from GridSpace
-	XMVECTOR const xmFract(SFM::sfract(xmOrigin3D));  // FOR TRUE SMOOTH SCROLLING //
+	XMVECTOR const xmFract(XMVectorNegate(SFM::sfract(xmOrigin3D)));  // FOR TRUE SMOOTH SCROLLING //
 	/* important output */
 	XMStoreFloat3A(&oCamera.voxelFractionalGridOffset, xmFract); // store fractional offset in natural xyz form, keeping fractional y component for future usage.
 	oCamera.voxelFractionalGridOffset.y = 0.0f;
@@ -1993,6 +1993,7 @@ namespace // private to this file (anonymous)
 			Volumetric::voxelBufferReference_Terrain& __restrict grounds,
 			VoxelLocalBatch& __restrict localGround)
 		{
+			//xmVoxelOrigin = XMVectorAdd(xmVoxelOrigin, XMLoadFloat3A(&Volumetric::VolumetricLink->fractional_offset));
 			XMVECTOR const xmIndex(XMVectorMultiplyAdd(xmVoxelOrigin, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 			
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
@@ -2011,7 +2012,8 @@ namespace // private to this file (anonymous)
 				groundHash |= (((uint32_t)heightstep) << 8);                        //            1111 1111 1111 1111 xxxx xxxx
 				groundHash |= (((uint32_t)minheightstep) << 24);	                //  1111 1111 xxxx xxxx xxxx xxxx xxxx xxxx
 				
-				XMVECTOR xmUVs(XMVectorMultiply(p2D_to_v2(voxelIndex), XMVectorSet(Iso::INVERSE_WORLD_GRID_FWIDTH, Iso::INVERSE_WORLD_GRID_FHEIGHT, 0.0f, 0.0f)));
+				// *bugfix - ground uv tiling needs to be centered on voxel + 0.5f, otherwise tiling between voxels do not matchup on adjacent edges.
+				XMVECTOR xmUVs(XMVectorMultiply(XMVectorAdd(p2D_to_v2(voxelIndex), XMVectorReplicate(0.5f)), XMVectorSet(Iso::INVERSE_WORLD_GRID_FWIDTH, Iso::INVERSE_WORLD_GRID_FHEIGHT, 0.0f, 0.0f)));
 
 				xmUVs = XMVectorSetW(xmUVs, (float)color);
 
@@ -2240,9 +2242,11 @@ namespace // private to this file (anonymous)
 #else // normal
 
 								Iso::Voxel oOutVoxel(oVoxel);
-								Iso::setColor(oOutVoxel, 0x00007f00);
+
+								//point2D_t const hashIndex( Hash(voxelIndexWrapped.v) );
+								//Iso::setColor(oOutVoxel, 0x00ffffff);
 								if ((voxelIndexWrapped.x & 1) ^ (voxelIndexWrapped.y & 1)) {
-									Iso::setEmissive(oOutVoxel);
+									//Iso::setEmissive(oOutVoxel);
 								}
 								RenderGround(xmVoxelOrigin, voxelIndexWrapped, renderIndex, oOutVoxel, grounds, localGround);
 #endif
@@ -2349,7 +2353,7 @@ namespace world
 		, DebugStorageBuffer(nullptr)
 #endif
 	{
-		Volumetric::VolumetricLink = new Volumetric::voxLink{ *this, _OpacityMap, _Visibility };
+		Volumetric::VolumetricLink = new Volumetric::voxLink{ *this, _OpacityMap, _Visibility, oCamera.voxelFractionalGridOffset };
 		
 		_occlusion.tToOcclude = Volumetric::Konstants::OCCLUSION_DELAY;
 	}
@@ -3181,74 +3185,77 @@ namespace world
 
 	void cVoxelWorld::createAllBuffers(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue)
 	{
-		// ##### allocation totals for gpu buffers of *minigrid* voxels are always halved. requirement/assumption is given
-		// a linear access pattern (rendering) - only half of the total volume is occupied ####
-		// main vertex buffer for static voxels - **** buffer allocation sqrt'd and doubled
-		tbb::cache_aligned_allocator< VertexDecl::VoxelDynamic > allocator_dynamic;
-		tbb::cache_aligned_allocator< VertexDecl::VoxelNormal > allocator_normal;
+		{
+			// ##### allocation totals for gpu buffers of *minigrid* voxels are always halved. requirement/assumption is given
+			// a linear access pattern (rendering) - only half of the total volume is occupied ####
+			// main vertex buffer for static voxels - **** buffer allocation sqrt'd and doubled
+			tbb::cache_aligned_allocator< VertexDecl::VoxelDynamic > allocator_dynamic;
+			tbb::cache_aligned_allocator< VertexDecl::VoxelNormal > allocator_normal;
 
-		// these are cpu side "staging" buffers, matching in size to the gpu buffers that are allocated for them in cVulkan
-		// *** these staging buffers are dynamic, the active size is reset to zero for a reason here.
+			// these are cpu side "staging" buffers, matching in size to the gpu buffers that are allocated for them in cVulkan
+			// *** these staging buffers are dynamic, the active size is reset to zero for a reason here.
 
-		// dynamic - opaque
-		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+			// dynamic - opaque
+			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
 
-			voxels.visibleDynamic.opaque.buffer.staging[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.buffer.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleDynamic.opaque.buffer.staging[i].setActiveSizeBytes(0);
+				voxels.visibleDynamic.opaque.buffer.staging[i].createAsStagingBuffer(
+					Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.opaque.buffer.type), vku::eMappedAccess::Sequential, true, true);
+				voxels.visibleDynamic.opaque.buffer.staging[i].setActiveSizeBytes(0);
+			}
+			voxels.visibleDynamic.opaque.buffer.direct = allocator_dynamic.allocate(Volumetric::dynamic_direct_buffer_size);
+			memset(voxels.visibleDynamic.opaque.buffer.direct, 0, Volumetric::dynamic_direct_buffer_size * sizeof(voxels.visibleDynamic.opaque.buffer.type));
+			voxels.visibleDynamic.opaque.bits = bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::create();
+
+			// dynamic - transparents
+			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+
+				voxels.visibleDynamic.trans.buffer.staging[i].createAsStagingBuffer(
+					Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.buffer.type), vku::eMappedAccess::Sequential, true, true);
+				voxels.visibleDynamic.trans.buffer.staging[i].setActiveSizeBytes(0);
+			}
+			voxels.visibleDynamic.trans.buffer.direct = allocator_dynamic.allocate(Volumetric::dynamic_direct_buffer_size);
+			memset(voxels.visibleDynamic.trans.buffer.direct, 0, Volumetric::dynamic_direct_buffer_size * sizeof(voxels.visibleDynamic.trans.buffer.type));
+			voxels.visibleDynamic.trans.bits = bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::create();
+
+			// static
+			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+
+				voxels.visibleStatic.buffer.staging[i].createAsStagingBuffer(
+					Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.buffer.type), vku::eMappedAccess::Sequential, true, true);
+				voxels.visibleStatic.buffer.staging[i].setActiveSizeBytes(0);
+			}
+			voxels.visibleStatic.buffer.direct = allocator_normal.allocate(Volumetric::static_direct_buffer_size);
+			memset(voxels.visibleStatic.buffer.direct, 0, Volumetric::static_direct_buffer_size * sizeof(voxels.visibleStatic.buffer.type));
+			voxels.visibleStatic.bits = bit_row_atomic<Volumetric::static_direct_buffer_size>::create();
+
+			// terrain
+			for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
+
+				voxels.visibleTerrain.buffer.staging[i].createAsStagingBuffer(
+					Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.buffer.type), vku::eMappedAccess::Sequential, true, true);
+				voxels.visibleTerrain.buffer.staging[i].setActiveSizeBytes(0);
+			}
+			voxels.visibleTerrain.buffer.direct = allocator_normal.allocate(Volumetric::terrain_direct_buffer_size);
+			memset(voxels.visibleTerrain.buffer.direct, 0, Volumetric::terrain_direct_buffer_size * sizeof(voxels.visibleTerrain.buffer.type));
+			voxels.visibleTerrain.bits = bit_row_atomic<Volumetric::terrain_direct_buffer_size>::create();
+
 		}
-		voxels.visibleDynamic.opaque.buffer.direct = allocator_dynamic.allocate(Volumetric::dynamic_direct_buffer_size);
-		memset(voxels.visibleDynamic.opaque.buffer.direct, 0, Volumetric::dynamic_direct_buffer_size * sizeof(voxels.visibleDynamic.opaque.buffer.type));
-		voxels.visibleDynamic.opaque.bits = bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::create();
-
-		// dynamic - transparents
-		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
-
-			voxels.visibleDynamic.trans.buffer.staging[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_DYNAMIC_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleDynamic.trans.buffer.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleDynamic.trans.buffer.staging[i].setActiveSizeBytes(0);
-		}
-		voxels.visibleDynamic.trans.buffer.direct = allocator_dynamic.allocate(Volumetric::dynamic_direct_buffer_size);
-		memset(voxels.visibleDynamic.trans.buffer.direct, 0, Volumetric::dynamic_direct_buffer_size * sizeof(voxels.visibleDynamic.trans.buffer.type));
-		voxels.visibleDynamic.trans.bits = bit_row_atomic<Volumetric::dynamic_direct_buffer_size>::create();
-
-		// static
-		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
-
-			voxels.visibleStatic.buffer.staging[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_MINIGRID_VISIBLE_TOTAL * sizeof(voxels.visibleStatic.buffer.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleStatic.buffer.staging[i].setActiveSizeBytes(0);
-		}
-		voxels.visibleStatic.buffer.direct = allocator_normal.allocate(Volumetric::static_direct_buffer_size);
-		memset(voxels.visibleStatic.buffer.direct, 0, Volumetric::static_direct_buffer_size * sizeof(voxels.visibleStatic.buffer.type));
-		voxels.visibleStatic.bits = bit_row_atomic<Volumetric::static_direct_buffer_size>::create();
-
-		// terrain
-		for (uint32_t i = 0; i < vku::double_buffer<uint32_t>::count; ++i) {
-
-			voxels.visibleTerrain.buffer.staging[i].createAsStagingBuffer(
-				Volumetric::Allocation::VOXEL_GRID_VISIBLE_TOTAL * sizeof(voxels.visibleTerrain.buffer.type), vku::eMappedAccess::Sequential, true, true);
-			voxels.visibleTerrain.buffer.staging[i].setActiveSizeBytes(0);
-		}
-		voxels.visibleTerrain.buffer.direct = allocator_normal.allocate(Volumetric::terrain_direct_buffer_size);
-		memset(voxels.visibleTerrain.buffer.direct, 0, Volumetric::terrain_direct_buffer_size * sizeof(voxels.visibleTerrain.buffer.type));
-		voxels.visibleTerrain.bits = bit_row_atomic<Volumetric::terrain_direct_buffer_size>::create();
-		
 
 		// shared buffer and other buffers
 		{
 			using buf = vk::BufferUsageFlagBits;
 
-			point2D_t const frameBufferSize(MinCity::getFramebufferSize());
-			size_t const buffer_size(frameBufferSize.x * frameBufferSize.y * sizeof(uint8_t));
+			{
+				point2D_t const frameBufferSize(MinCity::getFramebufferSize());
+				size_t const buffer_size(frameBufferSize.x * frameBufferSize.y * sizeof(uint8_t));
 
-			_buffers.reset_subgroup_layer_count_max.createAsGPUBuffer(device, commandPool, queue, buffer_size, buf::eTransferSrc); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
+				_buffers.reset_subgroup_layer_count_max.createAsGPUBuffer(device, commandPool, queue, buffer_size, buf::eTransferSrc); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
 
-			for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
-				_buffers.subgroup_layer_count_max[resource_index] = vku::StorageBuffer(buffer_size, false, vk::BufferUsageFlagBits::eTransferDst);
-				VKU_SET_OBJECT_NAME(vk::ObjectType::eBuffer, (VkBuffer)_buffers.subgroup_layer_count_max[resource_index].buffer(), vkNames::Buffer::SUBGROUP_LAYER_COUNT);
+				for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
+					_buffers.subgroup_layer_count_max[resource_index] = vku::StorageBuffer(buffer_size, false, vk::BufferUsageFlagBits::eTransferDst);
+					VKU_SET_OBJECT_NAME(vk::ObjectType::eBuffer, (VkBuffer)_buffers.subgroup_layer_count_max[resource_index].buffer(), vkNames::Buffer::SUBGROUP_LAYER_COUNT);
+				}
 			}
-
 
 			_buffers.reset_shared_buffer.createAsGPUBuffer(device, commandPool, queue, sizeof(BufferDecl::VoxelSharedBuffer), buf::eTransferSrc); // reset buffer contains all zeroes on creation  (gpu-local zero copy)
 
@@ -3381,7 +3388,7 @@ namespace world
 		using streaming_batch = sBatchedByIndexIn<VertexDeclaration, eStreamingBatchSize::MODEL>;
 		static constexpr size_t const block_count(bit_row_atomic<direct_buffer_size>::stride());
 		
-		streaming_batch local;
+		streaming_batch local{};
 		auto const* const __restrict stream_bits(bits->data());
 		size_t active_count(0);
 
@@ -3417,13 +3424,15 @@ namespace world
 				//                          MSB
 				//
 				// get index of highest bit set	(MSB)
-				unsigned long r;
+				unsigned long r; // same as uint32_t
 				(void)_BitScanForward64(&r, block_bits); // block_bits is never zero here, so return value does not need to be checked
 
-				// clear that bit for this block
-				block_bits &= ~(1ui64 << ((uint64_t)r));
+				size_t const index((size_t)r); // upcast
 
-				local.emplace_back(out, in, r + block * 64); // out is sequentially streamed to, while in is accessed at index r of the current block plus the count of all bits before this bit that have been processed as a block 
+				// clear that bit for this block
+				block_bits &= ~(1ui64 << index); // <---------- safe shift of 64bit number, will use entire 64 bit range
+				                            // |------safe downcast to 32bit - no overflow as index really on uses a range of 0 - 63
+				local.emplace_back(out, in, (uint32_t)(index + block * 64ui64)); // out is sequentially streamed to, while in is accessed at index r of the current block plus the count of all bits before this bit that have been processed as a block 
 				
 				if (++active_count >= max_count) {
 					block = block_count; // found all possible voxels, early exit (skipping zeroes at the end of the bitstream)
@@ -3778,7 +3787,7 @@ namespace world
 		ubo.barrier( // ## RELEASE ## //
 			cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 			vk::DependencyFlagBits::eByRegion,
-			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
+			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getComputeQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
 	}
 
@@ -3786,7 +3795,7 @@ namespace world
 		                       vku::DynamicVertexBuffer* const __restrict (&__restrict vbo)[eVoxelVertexBuffer::_size_constant])
 	{		
 		{ // ######################### STAGE 1 - OTHER BUFFERS (that the static renderpass requires)
-			{
+			{ // the are all gpu-local copies
 				_buffers.shared_buffer[resource_index].uploadDeferred(cb, _buffers.reset_shared_buffer);
 				_buffers.subgroup_layer_count_max[resource_index].uploadDeferred(cb, _buffers.reset_subgroup_layer_count_max);
 			}
@@ -4190,10 +4199,7 @@ namespace world
 		float const time_delta = SFM::clamp(_currentState.time - time_last, MIN_DELTA, MAX_DELTA);
 
 		//pack into vector for uniform buffer layout
-		XMVECTOR xmUVWOffset(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));  // fractional offset, to be transformed to normalized uvw space (for light positions, fractional component)
-		xmUVWOffset = XMVectorMultiply(SFM::__fma(Volumetric::_xmTransformToIndexScale, xmUVWOffset, Volumetric::_xmTransformToIndexBias), Volumetric::_xmInverseVisible);  // same calculation as in geom shader for voxels for worldPos->uvw
-
-		_currentState.Uniform.aligned_data0 = XMVectorSet(XMVectorGetX(xmUVWOffset), XMVectorGetZ(xmUVWOffset), (time_delta + time_delta_last) * 0.5f, _currentState.time);
+		_currentState.Uniform.aligned_data0 = XMVectorSet(oCamera.voxelFractionalGridOffset.x, oCamera.voxelFractionalGridOffset.z, (time_delta + time_delta_last) * 0.5f, _currentState.time);
 		                                                                
 		_currentState.Uniform.frame = (uint32_t)MinCity::getFrameCount();		// todo check overflow of 32bit frame counter for shaders
 
@@ -4204,18 +4210,15 @@ namespace world
 		_currentState.Uniform.world = _Visibility.getWorldMatrix();
 
 		// view matrix derived from eyePos
-		XMVECTOR xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
+		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
+		_currentState.Uniform.eyePos = xmEyePos;
+		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, XMVectorZero())); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
 
 		////////////////////////////////////////////////////////////////////////////////////////////////////////// Fractional Offset (*ONLY* Location) ////////////////////////////////////////////////////////
 		// Must only be applied here, to the view (eyePos->lookAt->matView)
-		XMVECTOR const xmFract(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset));
-		xmEyePos = XMVectorAdd(xmEyePos, xmFract);  // <---------------------------------------------------------- this all allows fractional movement of the camera *do not change* note: *cannot apply to world matrix instead, raymarch is out of sync*
-
-		_currentState.Uniform.eyePos = xmEyePos;
-		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, xmFract)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
-
-		XMMATRIX const xmView = XMMatrixLookAtLH(xmEyePos, xmFract, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
-
+		XMVECTOR const xmFract(XMVectorNegate(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)));
+		// <---------------------------------------------------------- this all allows fractional movement of the camera *do not change* note: *cannot apply to world matrix instead, raymarch is out of sync*
+		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(xmEyePos, xmFract), xmFract, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 		_currentState.Uniform.view = xmView;
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		
@@ -4753,53 +4756,55 @@ namespace world
 	{
 		dsu.beginBuffers(1U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
-		dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearBorder, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearBorder, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(3U, 0, vk::DescriptorType::eInputAttachment);
+		dsu.beginImages(4U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
-		dsu.beginImages(4U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, _spaceCubemapTexture->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		// finalize texture array and commit to descriptor set #######################################################################
 		tbb::concurrent_vector<vku::TextureImage2DArray const*> const& rTextures(MinCity::TextureBoy->lockTextureArray());
 		
-		dsu.beginImages(5U, TEX_NOISE, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(6U, TEX_NOISE, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_NOISE_SAMPLER, rTextures[TEX_NOISE]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginImages(5U, TEX_BLUE_NOISE, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(6U, TEX_BLUE_NOISE, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_BLUE_NOISE_SAMPLER, rTextures[TEX_BLUE_NOISE]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginImages(5U, TEX_TERRAIN, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(6U, TEX_TERRAIN, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_TERRAIN_SAMPLER, rTextures[TEX_TERRAIN]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginImages(5U, TEX_TERRAIN2, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(6U, TEX_TERRAIN2, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_TERRAIN2_SAMPLER, rTextures[TEX_TERRAIN2]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginImages(5U, TEX_GRID, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(6U, TEX_GRID, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_GRID_SAMPLER, rTextures[TEX_GRID]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginImages(5U, TEX_BLACKBODY, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(6U, TEX_BLACKBODY, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(TEX_BLACKBODY_SAMPLER, rTextures[TEX_BLACKBODY]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 		// #############################################################################################################################
 		
-		dsu.beginImages(6U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerLinearClamp, lastColorImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 
-		dsu.beginImages(7U, 0, vk::DescriptorType::eCombinedImageSampler);
+		dsu.beginImages(8U, 0, vk::DescriptorType::eCombinedImageSampler);
 		dsu.image(samplerAnisoRepeat, _terrainDetail->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 	}
 	void cVoxelWorld::UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, SAMPLER_SET_LINEAR)
 	{
 		// Set initial sampler value
-		dsu.beginImages(1U, 0, vk::DescriptorType::eStorageImage);
-		dsu.image(nullptr, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eGeneral);	// used to clear opacity
-		dsu.beginBuffers(2U, 0, vk::DescriptorType::eStorageBuffer);
-		dsu.buffer(_buffers.subgroup_layer_count_max[resource_index].buffer(), 0, _buffers.subgroup_layer_count_max[resource_index].maxsizebytes());
-		dsu.beginBuffers(3U, 0, vk::DescriptorType::eStorageBuffer);
+		dsu.beginBuffers(1U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
+
+		dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
+		dsu.image(nullptr, _OpacityMap.getVolumeSet().OpacityMap->imageView(), vk::ImageLayout::eGeneral);	// used to clear opacity
+
+		dsu.beginBuffers(4U, 0, vk::DescriptorType::eStorageBuffer);
+		dsu.buffer(_buffers.subgroup_layer_count_max[resource_index].buffer(), 0, _buffers.subgroup_layer_count_max[resource_index].maxsizebytes());
 	}
 	
 	// queries if voxel model instance of type intersects a voxel. does not have to be owner voxel.

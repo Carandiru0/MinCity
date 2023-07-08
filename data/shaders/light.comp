@@ -52,6 +52,7 @@ layout (constant_id = 3) const float InvVolumeDimensions = 0.0f;
 
 layout (constant_id = 4) const float VOX_SIZE = 0.0f;
 
+#define EPSILON 0.000000001f
 #define warp_local vec4
 
 // 26 neighbours + self at i==13 (*compiletime* offset)
@@ -182,7 +183,19 @@ bool isEmitter(in const vec4 warp)
 #if defined(SEED)
 vec4 sampleInputVolume( in const vec3 read_location )
 {
-	return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
+	const ivec3 iread_location = ivec3(floor(read_location + 0.5f));
+
+	vec4 last = texelFetch(pingpongTexture[pc.index_input], iread_location, 0);
+	last = decode_warp(last);
+
+	vec4 now = texelFetch(seedMap, iread_location, 0);
+	now = decode_warp(now);
+
+	// when the distance between the last location and new location is large, blend in the new color slowly. when the distance between the last location and the new location is small, blend in the new color quickly.
+	// is the most stable, no glitch light or jerky light movements. It does slow down the light, but for good reason to interpolate over time. No lag, trails or ghosting visible.
+
+	return( encode_warp(now.xyz, mix(unpackColorHDR(last.a), unpackColorHDR(now.a), getAttenuation(distance(last.xyz, now.xyz) * VOX_SIZE) * 0.5f + 0.5f)) );
+	//return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
 }
 #elif !defined(MIP)
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -330,7 +343,7 @@ void main()
 			return;
 	}
 
-	warp_local warp = sampleInputVolume(global_invocation_id);   /// if SEED is defined this is a simple texelFetch & imageStore (copy)
+	warp_local warp = sampleInputVolume(global_invocation_id);
 
 	populateLDS(warp, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
 
@@ -487,8 +500,7 @@ void main()
 	}
 
 	const warp_local current_warp = decode_warp(textureLod(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, 0));
-	const vec3 original_color = unpackColorHDR(current_warp.packed_color);
-	vec3 current_color = original_color;
+	vec3 current_color = unpackColorHDR(current_warp.packed_color);
 
 	// #################################################################################################################
 	{	// distance & direction ###

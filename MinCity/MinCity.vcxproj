@@ -136,7 +136,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <CallingConvention>Cdecl</CallingConvention>
-      <AdditionalOptions>/D_WIN32_WINNT=0x0A00 /d2vzeroupper /favor:INTEL64 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/D_WIN32_WINNT=0x0A00 /d2vzeroupper /favor:INTEL64 /Zo %(AdditionalOptions)</AdditionalOptions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <MinimalRebuild>false</MinimalRebuild>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
@@ -223,7 +223,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <ControlFlowGuard>false</ControlFlowGuard>
-      <AdditionalOptions>/D_WIN32_WINNT=0x0A00 /GA /Gw /d2vzeroupper /favor:INTEL64 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/D_WIN32_WINNT=0x0A00 /GA /Gw /d2vzeroupper /favor:INTEL64 /Zo %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>
       </DisableSpecificWarnings>
       <CallingConvention>Cdecl</CallingConvention>

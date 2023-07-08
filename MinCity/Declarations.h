@@ -70,10 +70,15 @@ namespace VertexDecl
 
 namespace BufferDecl
 {
-	struct no_vtable VoxelSharedBuffer {
-		XMVECTOR	average_reflection_color;
-		uint32_t    average_reflection_count;
-		uint32_t	new_image_layer_count_max;
+	struct no_vtable VoxelSharedBuffer { // keep cache happy =)
+		XMVECTOR	average_reflection_color;          // 128bits
+		
+		uint32_t    average_reflection_count;          // --+
+		uint32_t	new_image_layer_count_max;         //   | 128bits
+		                                               //   |
+		                                               // --+
+
+		                                               // next 128bits....
 	};
 }
 
@@ -84,7 +89,7 @@ namespace UniformDecl
 	// BUFFER alignment should not be explicity specified on struct, rather use alignment rules of Vulkan spec and do ordering of struct members manually
 
 	struct no_vtable VoxelSharedUniform {
-		XMMATRIX	proj;
+		XMMATRIX	proj;           // by access order: proj, view, world
 		XMMATRIX	view;
 		XMMATRIX	world;
 		XMVECTOR	eyePos;         // .w = camera elevation delta

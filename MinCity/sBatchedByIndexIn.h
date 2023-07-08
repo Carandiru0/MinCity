@@ -54,9 +54,9 @@ public:
 		}
 	}
 
-	constexpr sBatchedByIndexIn()
-		: Count{}
-	{}
+	constexpr sBatchedByIndexIn() = default;
+
+	void reset() { Count = 0; }
 };
 
 // [ Extended functionality ]
@@ -64,7 +64,7 @@ template<typename T, uint32_t const Size>
 struct sBatchedByIndexInReferenced : public sBatchedByIndexIn<T, Size>   // referenced thread local structure
 {
 	bool const referenced() const { return(_referenced); }
-	void	   referenced(bool const value) { _referenced = value; }
+	void	   referenced(bool const value) { _referenced = value; sBatchedByIndexIn<T, Size>::reset(); }
 
 private:
 	bool _referenced;

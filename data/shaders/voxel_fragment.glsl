@@ -22,10 +22,9 @@ writeonly layout(location = 0) out streamOut   // in/out to pixel shader (all me
 	flat vec4 extra;	
 #if defined(HEIGHT)
 	vec3 world_uvw;
-#else // voxels only
-	flat vec4 material;
 #endif
-	flat vec2 offset; // fractional offset for light position
+	flat vec4 material;
+
 } Out;
 #endif
 //---------------------------------------------------------------------------------------------------------
@@ -47,10 +46,8 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 	readonly flat vec4 extra;	
 #if defined(T2D)
 	readonly vec3 world_uvw;
-#else // voxels only
-	readonly flat vec4 material;
 #endif
-	readonly flat vec2 offset; // fractional offset for light position
+	readonly flat vec4 material;
 } In;
 #endif
 #endif
@@ -59,8 +56,8 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 #ifndef BASIC
 
 #define i_extra_00 uv.w			// *                          - free to use by shader - do not assign permanantly, so this interpolated param is flexible
-#define i_extra_0 N.w			// *						  - ambient (only used when road or terrain, normal voxels have material)
-#define i_extra_1 V.w			// *						  - emission (only used when road or terrain, normal voxels have material)
+#define i_extra_0 N.w			// *						  - fractional offset (x)
+#define i_extra_1 V.w			// *						  - fractional offset (y)
 #define f_extra_0 extra.x		// *						  - packed color
 #define f_extra_1 extra.y		// *						  - transparency or (terrain only) height
 #define f_extra_2 extra.z		// *                          - pass thru inverse weight maximum (transparency weighting max for this frame)
@@ -72,10 +69,12 @@ layout(location = 0) in streamIn   // in/out to pixel shader (all members must b
 // defaults //
 // free not used anymore #define _passthru i_extra_00		// could be packed color(voxel model), distance(volumetric radial grid voxel), etc.
 #define _extra i_extra_00
-#define _ambient i_extra_0
-#define _emission i_extra_1
+#define _fractoffset_x N.w
+#define _fractoffset_y V.w
 #define _color f_extra_0
 #define _time f_extra_3
+#undef i_extra_0
+#undef i_extra_1
 #undef i_extra_2
 #undef i_extra_3
 #undef i_extra_4

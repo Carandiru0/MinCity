@@ -8,6 +8,11 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
+// /Zo compiler option provides enhanced debugging for optimized builds.
+// ********************************************************************************************************************************************************************************************************** //
+// **********************8888888888888888888888888888888888888888888[ /Zo COMPILER OPTION must be removed from release build when released ]8888888888888888888888888888888888888888888********************** //
+// ********************************************************************************************************************************************************************************************************** //
+
 #include "pch.h"
 
 #ifndef NDEBUG
@@ -807,7 +812,6 @@ void cMinCity::StageResources(uint32_t const resource_index)
 
 	// Updating the voxel lattice by "rendering" it to the staging buffers, light probe image, etc
 	VoxelWorld->Render(resource_index);
-	Vulkan->checkStaticCommandsDirty(resource_index);
 }
 
 void cMinCity::Render()

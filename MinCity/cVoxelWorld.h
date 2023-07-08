@@ -192,7 +192,7 @@ namespace world
 		
 		// [[deprecated]] void SetSpecializationConstants_TextureShader(std::vector<vku::SpecializationConstant>& __restrict constants, uint32_t const shader);
 
-		// macros for sampler sets (**can be combined**)
+		// macros for sampler sets (**can be combined**) 
 #define SAMPLER_SET_SINGLE vk::Sampler const& sampler
 #define SAMPLER_SET_LINEAR vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerLinearRepeat, vk::Sampler const& __restrict samplerLinearMirroredRepeat
 #define SAMPLER_SET_LINEAR_POINT SAMPLER_SET_LINEAR, vk::Sampler const& __restrict samplerPointClamp, vk::Sampler const& __restrict samplerPointRepeat

@@ -27,13 +27,12 @@ layout(location = 1) out vec2 outMouse;
 
 const uint MAX_LAYERS = 255;
 
-layout(std430, set=0, binding=2) restrict buffer subgroupMaximum { // reset every frame (CPU clear buffer upload to GPU)
-  uint8_t subgroup_layer_count_max[];
-};
-
-#define BINDING 3
 #define READWRITE
 #include "sharedbuffer.glsl"
+
+layout(std430, set=0, binding=4) restrict buffer subgroupMaximum { // reset every frame (CPU clear buffer upload to GPU)
+  uint8_t subgroup_layer_count_max[];
+};
 
 // voxels, accumulating to alpha only
 void main() {

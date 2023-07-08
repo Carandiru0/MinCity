@@ -38,9 +38,14 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #define roughness z
 #define ambient w
 
-// for usage by terrain, road, etc that do not define materials per-voxel but rather the whole surface. Normal voxels *only* have per-voxel materials defined.
-vec4 make_material(in const float emission, in const float metallic, in const float roughness) {
-	return(vec4(emission, metallic, roughness, In._ambient)); // grabs ambient
+// helpers
+vec4 make_material(in vec4 material, in const float ambient) {
+    material.ambient = ambient;
+	return(material);
+}
+
+vec4 make_material(in const float emission, in const float metallic, in const float roughness, in const float ambient) {
+	return(vec4(emission, metallic, roughness, ambient)); // grabs ambient
 }
 
 #ifdef TRANS
@@ -184,9 +189,9 @@ vec3 lit( in const vec3 albedo, in const vec4 material, in vec3 light_color, in 
 	const float diffuse_reflection_term = NdotL * (1.0f - fresnelTerm) * (1.0f - material.metallic);
 
 			// ambient
-	return ( fma( albedo * occlusion, reflection(), unpackColorHDR(material.ambient) + ambient * occlusion) +
+	return ( fma( albedo, reflection(), unpackColorHDR(material.ambient) + ambient) * occlusion +
 			  // diffuse color .							// diffuse shading/lighting	// specular shading/lighting					
-		     fma( albedo * occlusion, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
+		     fma( albedo, ( diffuse_reflection_term + specular_reflection_term ) * light_color, 
 			       // emission		// ^^^^^^ this splits the distribution of light to the albedo color and the actual light color 50/50, it is biased toward to the albedo color in the event the albedo color component is greater than 0.5f. Making bright objects appear brighter. (all modulated by the current occlusion). This makes occulusion emphasized, which looks nice as the effect of ambient occlusion is always very visible. *do not change*
 			       albedo * emission_term)
 		   );					

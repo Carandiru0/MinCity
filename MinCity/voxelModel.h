@@ -574,15 +574,16 @@ namespace voxB
 					}
 
 					XMVECTOR xmStreamOut = XMVectorAdd(xmVoxelOrigin, XMVectorScale(XMVectorSetY(xmMiniVox, SFM::__fms(YDimension, -0.5f, XMVectorGetY(xmMiniVox))), Iso::MINI_VOX_STEP)); // relative to current ROOT voxel origin, precise height offset for center of model
+					//xmStreamOut = XMVectorAdd(xmStreamOut, XMLoadFloat3A(&VolumetricLink->fractional_offset));
 
 					XMVECTOR xmIndex(XMVectorMultiplyAdd(xmStreamOut, Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
-					
+
 					uint32_t color(0);
 					bool seed_a_light(false);
-					
+
 					[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
-						           && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
-					{			
+						&& XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
+					{
 						voxel = instance.OnVoxel(xmIndex, voxel, vxl);  // per voxel operations!
 
 						if (voxel.Hidden)
@@ -591,18 +592,19 @@ namespace voxB
 						color = voxel.getColor(); // (srgb 8bpc)
 						seed_a_light = (voxel.Emissive & !Faded); // only on successful bounds check can an actual light be added safetly
 
-						if constexpr (!EmissionOnly) // only matters.....
-						{	
-							// update xmStreamOut if xmIndex is modified in instance.OnVoxel
-							xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
-						}
+						// update xmStreamOut if xmIndex is modified in instance.OnVoxel
+						xmStreamOut = SFM::__fms(xmIndex, Volumetric::_xmInvTransformToIndexScale, _xmTransformToIndexBiasOverScale);
 					}
 					else {
-					 	continue;
+						continue;
 					}
 
+					constexpr bool const faded = Faded;
+					constexpr bool const emission_only = EmissionOnly; // so that compiler can know beforehand that this is specifically compile-time and the below 
+					                                                   // if statement can combine with a non-constexpr (seed_a_light). The if statewment drops the "if constexpr" safetly here.
+					                                                   // https://stackoverflow.com/questions/55492042/combining-if-constexpr-with-non-const-condition
 					// finally submit voxel //
-					if constexpr (!EmissionOnly) {
+					if constexpr (!emission_only) {
 
 						// Build hash //
 
@@ -615,8 +617,8 @@ namespace voxB
 						uint32_t const index(vxl - vxl_offset);
 
 						// transparency cannot be dynamically set, as the number of transparent voxels for the entire voxel model must be known and its already registered.
-						if (!(Faded | voxel.Transparent)) {
-
+						if (!(faded | voxel.Transparent)) {
+							
 							if constexpr (Dynamic) {
 
 								local.voxels.emplace_back(            
@@ -714,23 +716,24 @@ namespace voxB
 		//    so that the outputs into either buffer are at the correct locations in the direct buffer
 		//    the locations are deterministic, always the same, and stream compaction is used later 
 		//    to remove all "dead space" between voxels in the buffer.
-		if constexpr (!EmissionOnly) { // *bugfix: only reserve space in direct buffer if voxels will be streamed out. If emission only, then this instance is actually not visible, however lighting needs to be included, if any voxel light of this instance is within the bounds of the visible volume.
-			if constexpr (!Faded) {
+		// require all light voxels to send to gpu. this is required for the linear light buffer (gpu only)
+		
+		if constexpr (!Faded) {
 
-				if constexpr (Dynamic) {
-					pVoxelsOutDynamic = dynamics.voxels.fetch_add(vxl_count);
-				}
-				else {
-					pVoxelsOutStatic = statics.voxels.fetch_add(vxl_count);
-				}
-				if (0 != vxl_transparent_count) {
-					pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
-				}
+			if constexpr (Dynamic) {
+				pVoxelsOutDynamic = dynamics.voxels.fetch_add(vxl_count);
 			}
-			else { // faded (all transparent)
+			else {
+				pVoxelsOutStatic = statics.voxels.fetch_add(vxl_count);
+			}
+			if (0 != vxl_transparent_count) {
 				pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
 			}
 		}
+		else { // faded (all transparent)
+			pVoxelsOutTrans = trans.voxels.fetch_add(vxl_count);
+		}
+		
 #ifdef DEBUG_PERFORMANCE_VOXEL_SUBMISSION
 		PerformanceType PerformanceCounters;
 #endif

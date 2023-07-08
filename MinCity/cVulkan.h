@@ -242,7 +242,6 @@ public:
 	
 	// Specific Rendering //
 	void setStaticCommandsDirty();
-	void checkStaticCommandsDirty(uint32_t const resource_index);
 	void enableOffscreenRendering(bool const bEnable);	// *only in main thread* is this a safe operation
 	void enableOffscreenCopy(); // *only in main thread* is this a safe operation
 	std::atomic_flag& getOffscreenCopyStatus() { return(_OffscreenCopied); } // when return value (flag) is cleared offscreen copy is available - to be used asynchronously in a seperate thread only!
@@ -269,7 +268,7 @@ public:
 	}
 
 private:
-	static constexpr uint32_t const getIndirectCountOffset(uint32_t const drawCommandIndex)
+	static constexpr uint32_t const getIndirectCountOffset(uint64_t const drawCommandIndex)
 	{
 		// drawCommandIndex is pulled from "drawCommandIndices" member
 		
@@ -280,7 +279,7 @@ private:
 			firstVertex
 			firstInstance
 		*/
-		return(drawCommandIndex * 4u * sizeof(uint32_t));
+		return(((uint32_t const)drawCommandIndex) * 4u * sizeof(uint32_t));
 	}
 
 	void CreateIndirectActiveCountBuffer();
@@ -380,32 +379,44 @@ private:
 	std::atomic_flag				_OffscreenCopied;
 //-------------------------------------------------------------------------------------------------------------------------------//
 
-	constinit static inline struct {
+	static inline struct drawCommandIndices {
 
-		int32_t
+		uint64_t const
 			voxel_terrain,
 			voxel_static,
 			voxel_dynamic;
 
-		struct {
-			int32_t
+		struct partitions {
+
+			uint64_t 
 				voxel_dynamic_main,
 				voxel_dynamic_clear_mask,
-				voxel_dynamic_custom_pipelines[eVoxelPipelineCustomized::_size()],
-				voxel_dynamic_transparency[eVoxelPipelineCustomized::_size()];
-		} partition;
+				voxel_dynamic_custom_pipelines[eVoxelPipelineCustomized::_size() - 2],
+				voxel_dynamic_transparency[2];
 
-		void reset()
-		{
-			voxel_terrain = -1; voxel_static = -1; voxel_dynamic = -1;
-			partition.voxel_dynamic_main = -1; partition.voxel_dynamic_clear_mask = -1;
-			for (uint32_t i = 0; i < eVoxelPipelineCustomized::_size(); ++i) {
-				partition.voxel_dynamic_custom_pipelines[i] = -1;
-				partition.voxel_dynamic_transparency[i] = -1;
+			partitions(uint64_t& index)
+				: voxel_dynamic_main(++index), voxel_dynamic_clear_mask(++index)
+			{
+				for (uint64_t i = 0; i < 2; ++i) {
+					voxel_dynamic_custom_pipelines[i] = ++index;
+				}
+				for (uint64_t i = 0; i < 2; ++i) {
+					voxel_dynamic_transparency[i] = ++index;
+				}
 			}
-		}
 
-	} _drawCommandIndices{};
+		} const partition;
+		                                                           // (terrain, static, dynamic) + (dynamic_main, clear_mask) + (dynamic_custom_pipelines, dynamic_transparency)
+		static constexpr size_t const maximum_draw_command_count = eVoxelVertexBuffer::_size() + 2 + eVoxelPipelineCustomized::_size();
+
+		uint64_t enabled;
+
+		drawCommandIndices(uint64_t index = 0)
+			: voxel_terrain(index), voxel_static(++index), voxel_dynamic(++index),
+			partition(index), enabled(0)
+		{}
+
+	} _drawCommandIndices;
 
 //-------------------------------------------------------------------------------------------------------------------------------//
 
@@ -912,14 +923,13 @@ STATIC_INLINE void cVulkan::renderDynamicVoxels(vku::static_renderpass const& s)
 
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_DYNAMIC_BASIC + voxel_pipeline_index;
 
-	uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
-	if (0 != ActiveVertexCount) {
+	if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.voxel_dynamic)) {
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 		// main partition (always starts at vertex position 0)
 		{
-			if (_drawCommandIndices.partition.voxel_dynamic_main >= 0) {
+			if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.partition.voxel_dynamic_main)) {
 				s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 				s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_main), 1, 0);
 			}
@@ -928,12 +938,14 @@ STATIC_INLINE void cVulkan::renderDynamicVoxels(vku::static_renderpass const& s)
 		// draw children dynamic shader voxels (customized) (opaque voxel shaders only)
 		// leveraging existing vb already bound
 
-		for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+		for (uint32_t child = 0, index = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
 
-			if (_drawCommandIndices.partition.voxel_dynamic_custom_pipelines[child] >= 0) {
-
-				s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
-				s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_custom_pipelines[child]), 1, 0);
+			if (_rtDataChild[child].pipeline) {
+				if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.partition.voxel_dynamic_custom_pipelines[index])) {
+					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
+					s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_custom_pipelines[index]), 1, 0);
+				}
+				++index;
 			}
 		}
 	}
@@ -945,7 +957,7 @@ STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
 	uint32_t const resource_index(s.resource_index);
 
 	// static voxels
-	if (_drawCommandIndices.voxel_static >= 0) {
+	if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.voxel_static)) {
 		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC + voxel_pipeline_index;
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
@@ -960,7 +972,7 @@ STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
 	uint32_t const resource_index(s.resource_index);
 
 	// terrain
-	if (_drawCommandIndices.voxel_terrain >= 0) {
+	if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.voxel_terrain)) {
 		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC + voxel_pipeline_index;
 
 		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
@@ -1041,22 +1053,22 @@ __inline void cVulkan::renderTransparentVoxels(vku::static_renderpass const& s)
 	// SUBPASS - voxels w/Transparency //
 
 	{ // dynamic voxels
-		uint32_t const ActiveVertexCount = (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
-		if (0 != ActiveVertexCount) {
 
-			// draw children dynamic shader voxels (customized) (transparent voxel shaders only)
+		// draw children dynamic shader voxels (customized) (transparent voxel shaders only)
 
-			// leveraging dynamic vb 
-			// all child shaders share this descriptor set, but have unique pipelines
-			s.cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		// leveraging dynamic vb 
+		// all child shaders share this descriptor set, but have unique pipelines
+		s.cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
-			for (uint32_t child = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
+		for (uint32_t child = 0, index = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
 
-				if (_drawCommandIndices.partition.voxel_dynamic_transparency[child] >= 0) {
+			if (_rtDataChild[child].pipeline) {
+				if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.partition.voxel_dynamic_transparency[index])) {
 
 					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
-					s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_transparency[child]), 1, 0);
+					s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_transparency[index]), 1, 0);
 				}
+				++index;
 			}
 		}
 	}

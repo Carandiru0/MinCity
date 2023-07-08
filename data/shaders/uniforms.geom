@@ -57,9 +57,8 @@ layout(location = 0) in streamIn
 #else // !ZONLY
 	readonly flat vec4	world_uvw;
 #ifndef BASIC
-	readonly flat float ambient;
 	readonly flat float	color;
-	readonly flat float emission;
+	readonly flat vec4  material;
 #endif
 #endif // ZONLY
 } In[];
@@ -71,8 +70,7 @@ layout(location = 0) in streamIn
 #ifndef ZONLY
 #ifdef BASIC
 	readonly flat vec2	world_uv;
-#endif
-#ifndef BASIC
+#else
 	readonly flat float	color;
 	readonly flat vec4  material;
 	readonly flat vec4  extra;
@@ -128,6 +126,12 @@ const uint BIT_ADJ_BELOW = (1<<0),
 #define IsVisible(normal) ( dot(normal, u._eyeDir.xyz) > 0.0f ) // *bugfix - should be greater than not greater than equal, solves the visible shift when rotating camera around voxel *important do not change*
 #endif
 
+#ifndef ZONLY
+#ifndef BASIC
+void frag_fractional_offset(in const vec2 fract_offset) { Out._fractoffset_x = fract_offset.x; Out._fractoffset_y = fract_offset.y; }
+#endif
+#endif
+
 void PerVoxel()
 {
 #ifndef ZONLY
@@ -138,15 +142,8 @@ void PerVoxel()
 	Out._color = In[0].color;
 #endif
 
-#if !defined(HEIGHT) // voxels only
 	Out.material = In[0].material; 
-#else
-	Out._ambient = In[0].ambient;
-#ifdef _emission
-	Out._emission = In[0].emission;
-#endif
-#endif
-
+	frag_fractional_offset(fractional_offset()); // pass thru fractional offset
 #ifdef _time
 	Out._time = time();
 #endif
@@ -196,25 +193,21 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
     //worldPos.y = min(worldPos.y, In[0].world_uvw.w + VolumeDimensions * 0.5f * 0.5f);	// bugfix: clip to zero plane for ground so it doesn't extend downwards incorrectly (default), or *new* calculated minimum height from neighbours (conditional on nonzero normalized heightstep)
 #endif
 #endif
-
+	
 	gl_Position = u._proj * u._view * u._world * vec4(worldPos, 1.0f); // this remains xyz, is not output to fragment shader anyways
 	
 #ifndef ZONLY
-
+	
 #if !defined(BASIC)
 	
-	// main uvw coord for light, common to terrain, normal voxels
-	vec3 offsetPos = worldPos - vec3(0.0f, VolumeDimensions * 0.5f * 0.5f, 0.0f); // offset to bottom of volume to match raymarch (removal)
-															// *bugfix - half-voxel offset required to sample center of voxel
-	Out.uv.xzy = fma(TransformToIndexScale, offsetPos, TransformToIndexBias) * InvToIndex;
-	Out.offset = fractional_offset();
+	Out.V.xzy = normalize(u._eyePos.xyz - worldPos); // fractional offset cancels out (both eyePos & worldPos contain the fractional offset)
 
-	// final output must be xzy and transformed to eye/view space for fragment shader
-	// the worldPos is transformed to view space, in view space eye is always at origin 0,0,0
-	// so no need for eyePos
-														  // *bugfix - V  is the "incident" vector, pointing towards this vertex from the camera eye point, it is not the same as the vector eyeDir, which is from eye to look at point (the origin 0,0,0)
-	Out.V.xzy = /*transformNormalToViewSpace(mat3(u._view),*/ normalize(u._eyePos.xyz - worldPos);//);	 // transforming a direction does not have any position information from view matrix, so the fractional offset it contains is not inadvertently added here.
-																		   // becoming the vec3(0,0,0) - worldPos  view direction vector
+	//worldPos = worldPos - vec3(fractional_offset(), 0).xzy; // *bugfix: important order in applying fractional offset, and the raymarch bottom translation, to final uvw coordinate *careful*
+
+	worldPos = worldPos - vec3(0.0f, VolumeDimensions * 0.5f * 0.5f, 0.0f); // offset to bottom of volume to match raymarch (removal) *do not remove*
+	
+	Out.uv.xzy = fma(TransformToIndexScale, worldPos, TransformToIndexBias) * InvToIndex;
+
 #endif
 
 #endif // ZONLY
@@ -225,7 +218,6 @@ void EmitVxlVertex(in vec3 worldPos, in const vec3 normal)
 // if not BASIC then ZONLY = off
 // if ZONLY then BASIC = on
 // but if BASIC then ZONLY may be on of off
-
 void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in const vec3 normal
 #if !defined(BASIC) && defined(HEIGHT) // !ZONLY if !BASIC
 	, in const vec2 min_max_height
@@ -236,7 +228,8 @@ void BeginQuad(in const vec3 center, in const vec3 right, in const vec3 up, in c
 
 #if defined(HEIGHT) 
 	const vec2 texel_texture = HALF_TEXEL_OFFSET_TEXTURE; // careful....
-	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uvw.xy);  
+	const vec2 uv_center_texture = fma( normal.xz, texel_texture, In[0].world_uvw.xy);
+	
 #endif
 
 #endif // not basic

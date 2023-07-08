@@ -70,20 +70,20 @@ layout (constant_id = 10) const float TextureDimensionsV = 0.0f; // terrain text
 #define DD 0
 #define COLOR 1
 
-layout (binding = 2) uniform sampler3D volumeMap[2];
-layout (input_attachment_index = 0, set = 0, binding = 3) uniform subpassInput ambientLightMap;
-layout (binding = 4) uniform samplerCube reflectionCubeMap; // light coming from the sky/space surrounding the volume
+layout (binding = 3) uniform sampler3D volumeMap[2];
+layout (input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput ambientLightMap;
+layout (binding = 5) uniform samplerCube reflectionCubeMap; // light coming from the sky/space surrounding the volume
 
-// binding 5 - is the shared common image array bundle
+// binding 6 - is the shared common image array bundle
 // for 2D textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], vec3(uv.xy,0), 0); // only one layer
 // for 2D Array textures use : textureLod(_texArray[TEX_YOURTEXTURENAMEHERE], uv.xyz, 0); // z defines layer index (there is no interpolation between layers for array textures so don't bother)
 #include "texturearray.glsl"
 
 #if defined(TRANS) // only for transparent voxels
-layout (binding = 6) uniform sampler2D colorMap;
+layout (binding = 7) uniform sampler2D colorMap;
 #endif
 #if defined(T2D) // only for terrain
-layout (binding = 7) uniform sampler3D detailDerivativeMap;
+layout (binding = 8) uniform sampler3D detailDerivativeMap;
 #endif
 
 
@@ -96,6 +96,8 @@ float skylight(in const vec3 V, in const vec3 N)
 {
 	return texture(reflectionCubeMap, reflect(-V, N)).r;
 }
+
+vec2 frag_fractional_offset() { return(vec2(In._fractoffset_x, In._fractoffset_y)); }
 
 // occlusion was causing noticable aliasing  *removed*
 
@@ -535,12 +537,17 @@ void main() {
 
 	getLight(light_color, Ld, In.uv.xyz);
 
-	Ld.xy -= In.offset.xy; // *bugfix - fixes jittering lights
-	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
-	Ld.z = -Ld.z; // vulkan
+	Ld.pos = (Ld.pos - In.uv.xyz);
+	//Ld.pos = Ld.pos * VolumeDimensions;
+	//Ld.xy += frag_fractional_offset();
+	//Ld.pos = (Ld.pos * VolumeDimensions + 0.5f) * InvVolumeDimensions - In.uv.xyz;
+	//Ld.pos = fma(Ld.pos, VolumeDimensions.xxx, vec3(frag_fractional_offset(),0).xzy) * InvVolumeDimensions - In.uv.xyz;
+	Ld.dist = length(Ld.pos); // distance from light to current position
+	Ld.xyz = Ld.pos / Ld.dist; // normalized light direction
+	Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 						// only emissive can have color
-	outColor.rgb = lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In._emission), make_material(In._emission, 0.0f, albedo_rough_ao.y), light_color,	
+	outColor.rgb = lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In.material.emission), make_material(In.material.emission, In.material.metallic, albedo_rough_ao.y, In.material.ambient), light_color,	
 	                    skylight(V, N), // ambient lighting start (twilight/starlight)
 					    albedo_rough_ao.z, getAttenuation(Ld.dist),
 					    Ld.xyz, N, V);
@@ -556,11 +563,16 @@ void main() {
 	vec3 light_color;    
 	vec4 Ld;
 	 
-	getLight(light_color, Ld, In.uv.xyz);
-		                           
-	Ld.xy -= In.offset.xy; // *bugfix - fixes jittering lights
-	Ld.xyz = normalize(Ld.pos - In.uv.xyz); // relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
-	Ld.z = -Ld.z; // vulkan
+	getLight(light_color, Ld, In.uv.xyz); // Ld = position (xyz), distance (w)  -both are normalized world volume units  ** In.uv.xyz is also normalized world volume units
+	
+	Ld.pos = (Ld.pos - In.uv.xyz);
+	//Ld.pos = Ld.pos * VolumeDimensions;
+	//Ld.xy += frag_fractional_offset();
+	//Ld.pos = (Ld.pos * VolumeDimensions + 0.5f) * InvVolumeDimensions - In.uv.xyz;
+	//Ld.pos = fma(Ld.pos, VolumeDimensions.xxx, vec3(frag_fractional_offset(),0).xzy) * InvVolumeDimensions - In.uv.xyz;
+	Ld.dist = length(Ld.pos); // distance from light to current position
+	Ld.xyz = Ld.pos / Ld.dist; // normalized light direction
+	Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 	const vec3 N = normalize(In.N.xyz);
 	const vec3 V = normalize(In.V.xyz); 

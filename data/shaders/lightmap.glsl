@@ -25,33 +25,33 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
 // *********************************************** private usage : //     
 
-void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
-	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
+void lightmap_internal_fetch_fast( out vec4 light_direction_distance, out vec3 light_color, in const vec3 voxel) { 
 
-	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
+	const vec3 uvw = voxel * InvLightVolumeDimensions; 
 
-	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
+	light_direction_distance = textureLod(volumeMap[DD], uvw, 0);
+
+	light_color = textureLod(volumeMap[COLOR], uvw, 0).rgb;
 }
-void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_color, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
+void lightmap_internal_fetch_fast( out float light_distance, out vec3 light_color, in const vec3 voxel) {  
 	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
-	
-	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
+	const vec3 uvw = voxel * InvLightVolumeDimensions;
 
-	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb;
-}
-void lightmap_internal_fetch_fast( out vec4 light_direction_distance, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
-	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
+	light_distance = textureLod(volumeMap[DD], uvw, 0).a;
 
-	light_direction_distance = textureLod(volumeMap[DD], voxel_coord, 0);
+	light_color = textureLod(volumeMap[COLOR], uvw, 0).rgb;
 }
-void lightmap_internal_fetch_fast( out float light_distance, in const vec3 voxel) {  //  intended usage with rndC (no + 0.5f here)
+void lightmap_internal_fetch_fast( out vec4 light_direction_distance, in const vec3 voxel) {  
+
+	const vec3 uvw = voxel * InvLightVolumeDimensions;
+
+	light_direction_distance = textureLod(volumeMap[DD], uvw, 0);
+}
+void lightmap_internal_fetch_fast( out float light_distance, in const vec3 voxel) {  
 	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions;
-	
-	light_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
+	const vec3 uvw = voxel * InvLightVolumeDimensions;
+
+	light_distance = textureLod(volumeMap[DD], uvw, 0).a;
 }
 
 
@@ -82,39 +82,39 @@ float lightmap_internal_compute_area(in const vec2 uv) {
 }
 void lightmap_internal_fetch_nn( inout vec4 light_direction_distance, inout vec3 light_color, in const float area, in const vec3 voxel) { // intended usage with nn sampling
 	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions; // *bugfix 0.5 is not added here, see other related bugfix
+	const vec3 uvw = voxel * InvLightVolumeDimensions; 
 
-	vec4 light_direction_pre_distance = textureLod(volumeMap[DD], voxel_coord, 0);
+	vec4 light_direction_pre_distance = textureLod(volumeMap[DD], uvw, 0);
 
 	light_direction_distance = light_direction_pre_distance * area + light_direction_distance;
-	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb * area + light_color;
+	light_color = textureLod(volumeMap[COLOR], uvw, 0).rgb * area + light_color;
 }
 void lightmap_internal_fetch_nn( inout float light_distance, inout vec3 light_color, in const float area, in const vec3 voxel) { // intended usage with nn sampling
 	
-	const vec3 voxel_coord = voxel * InvLightVolumeDimensions; // *bugfix 0.5 is not added here, see other related bugfix
+	const vec3 uvw = voxel * InvLightVolumeDimensions; 
 
-	float light_pre_distance = textureLod(volumeMap[DD], voxel_coord, 0).a;
+	float light_pre_distance = textureLod(volumeMap[DD], uvw, 0).a;
 
 	light_distance = light_pre_distance * area + light_distance;
-	light_color = textureLod(volumeMap[COLOR], voxel_coord, 0).rgb * area + light_color;
+	light_color = textureLod(volumeMap[COLOR], uvw, 0).rgb * area + light_color;
 }
 
-void lightmap_internal_sampleNaturalNeighbour(out vec4 light_direction_distance, inout vec3 light_color, in vec3 uvw) {
-     
-    const vec2 n = floor(uvw.xy);
-    const vec2 f = fract(uvw.xy) * 2.0f - (1.0f - 0.000001f);	// fixes NaNs at position 0,0,0 causing black voxels everywhere *compute_area()*, this at least hides in the 1.0f constant (compiler will optimize)
+void lightmap_internal_sampleNaturalNeighbour(out vec4 light_direction_distance, inout vec3 light_color, in vec3 voxel) {
+    
+    const vec2 n = floor(voxel.xy);
+    const vec2 f = fract(voxel.xy) * 2.0f - (1.0f - 0.000001f);	// fixes NaNs at position 0,0,0 causing black voxels everywhere *compute_area()*, this at least hides in the 1.0f constant (compiler will optimize)
 	
 	float w = 0.0f;
 
 	light_direction_distance = vec4(0);		// initialize accumulation here
 	light_color = vec3(0);
 
-    for (uvw.y = -1.0f; uvw.y <= 1.0f; ++uvw.y) {
-        for (uvw.x = -1.0f; uvw.x <= 1.0f; ++uvw.x) {
+    for (voxel.y = -1.0f; voxel.y <= 1.0f; ++voxel.y) {
+        for (voxel.x = -1.0f; voxel.x <= 1.0f; ++voxel.x) {
    
-			const float a = lightmap_internal_compute_area(f - uvw.xy * 2.0f);
+			const float a = lightmap_internal_compute_area(f - voxel.xy * 2.0f);
 			    
-			lightmap_internal_fetch_nn(light_direction_distance, light_color, a, vec3(n + uvw.xy, uvw.z));
+			lightmap_internal_fetch_nn(light_direction_distance, light_color, a, vec3(n + voxel.xy, voxel.z));
 
 			w += a;
 		}
@@ -124,22 +124,22 @@ void lightmap_internal_sampleNaturalNeighbour(out vec4 light_direction_distance,
 	light_direction_distance = light_direction_distance * w;
 	light_color = light_color * w;		
 }
-void lightmap_internal_sampleNaturalNeighbour(out float light_distance, inout vec3 light_color, in vec3 uvw) {
-     
-    const vec2 n = floor(uvw.xy);
-    const vec2 f = fract(uvw.xy) * 2.0f - (1.0f - 0.000001f);	// fixes NaNs at position 0,0,0 causing black voxels everywhere *compute_area()*, this at least hides in the 1.0f constant (compiler will optimize)
+void lightmap_internal_sampleNaturalNeighbour(out float light_distance, inout vec3 light_color, in vec3 voxel) {
+    
+    const vec2 n = floor(voxel.xy);
+    const vec2 f = fract(voxel.xy) * 2.0f - (1.0f - 0.000001f);	// fixes NaNs at position 0,0,0 causing black voxels everywhere *compute_area()*, this at least hides in the 1.0f constant (compiler will optimize)
 	
 	float w = 0.0f;
 
 	light_distance = 0.0f;		// initialize accumulation here
 	light_color = vec3(0);
 
-    for (uvw.y = -1.0f; uvw.y <= 1.0f; ++uvw.y) {
-        for (uvw.x = -1.0f; uvw.x <= 1.0f; ++uvw.x) {
+    for (voxel.y = -1.0f; voxel.y <= 1.0f; ++voxel.y) {
+        for (voxel.x = -1.0f; voxel.x <= 1.0f; ++voxel.x) {
    
-			const float a = lightmap_internal_compute_area(f - uvw.xy * 2.0f);
+			const float a = lightmap_internal_compute_area(f - voxel.xy * 2.0f);
 			    
-			lightmap_internal_fetch_nn(light_distance, light_color, a, vec3(n + uvw.xy, uvw.z));
+			lightmap_internal_fetch_nn(light_distance, light_color, a, vec3(n + voxel.xy, voxel.z));
 
 			w += a;
 		}
@@ -160,34 +160,34 @@ void getLightMapFast( out vec4 light_direction_distance, out vec3 light_color, i
 void getLightMapFast( out float light_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  
 }
 void getLightMapFast( out vec4 light_direction_distance, in const vec3 uvw ) 
 {
 	// linear sampling
-	lightmap_internal_fetch_fast(light_direction_distance, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_direction_distance, uvw * LightVolumeDimensions + 0.5f);  
 }
 void getLightMapFast( out float light_distance, in const vec3 uvw ) 
 {
 	// linear sampling
-	lightmap_internal_fetch_fast(light_distance, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_distance, uvw * LightVolumeDimensions + 0.5f); 
 }
 
 void getLightMap( out vec4 light_direction_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f); 
 
 	// nn sampling
-	//lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	//lightmap_internal_sampleNaturalNeighbour(light_direction_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  
 }
 void getLightMap( out float light_distance, out vec3 light_color, in const vec3 uvw ) 
 {
 	// linear sampling
-	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	lightmap_internal_fetch_fast(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);
 
 	// nn sampling
-	//lightmap_internal_sampleNaturalNeighbour(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  // *bugfix - half voxel offset is exact - required
+	//lightmap_internal_sampleNaturalNeighbour(light_distance, light_color, uvw * LightVolumeDimensions + 0.5f);  
 }
 
 #define att a
@@ -195,35 +195,34 @@ void getLightMap( out float light_distance, out vec3 light_color, in const vec3 
 #define pos xyz
 void getLight(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
-	getLightMap(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	getLightMap(light_direction_distance, light_color, uvw); 
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLight(out vec3 light_color, out float light_distance, in const vec3 uvw) 
 {
-	getLightMap(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	getLightMap(light_distance, light_color, uvw); 
 	// light_direction_distance.a = normalized [0...1] distance
 }
-// getAttenuation(normalized_distance * volume_length); to get attenuation from normalized distance returned from getLight
 
 // less preferred, but when required (fast hw-trilinear sampling)
 void getLightFast(out vec3 light_color, out vec4 light_direction_distance, in const vec3 uvw) 
 {
-	getLightMapFast(light_direction_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	getLightMapFast(light_direction_distance, light_color, uvw); 
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLightFast(out vec3 light_color, out float light_distance, in const vec3 uvw) 
 {
-	getLightMapFast(light_distance, light_color, uvw); // .zw = xz normalized visible uv coords
+	getLightMapFast(light_distance, light_color, uvw); 
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLightFast(out vec4 light_direction_distance, in const vec3 uvw) 
 {
-	getLightMapFast(light_direction_distance, uvw); // .zw = xz normalized visible uv coords
+	getLightMapFast(light_direction_distance, uvw); 
 	// light_direction_distance.a = normalized [0...1] distance
 }
 void getLightFast(out float light_distance, in const vec3 uvw) 
 {
-	getLightMapFast(light_distance, uvw); // .zw = xz normalized visible uv coords
+	getLightMapFast(light_distance, uvw); 
 	// light_direction_distance.a = normalized [0...1] distance
 }
 

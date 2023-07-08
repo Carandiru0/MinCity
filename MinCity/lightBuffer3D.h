@@ -40,9 +40,9 @@ using lightBatch = sBatchedByIndexReferenced<uint64_t, eStreamingBatchSize::LIGH
 namespace local
 {
 #ifdef __clang__
-	extern __declspec(selectany) inline thread_local lightBatch lights{};
+	extern __declspec(selectany) inline constinit thread_local lightBatch lights{};
 #else
-	extern __declspec(selectany) inline thread_local lightBatch lights;
+	extern __declspec(selectany) inline constinit thread_local lightBatch lights;
 #endif
 }
 
@@ -57,8 +57,8 @@ struct lightBuffer3D : public writeonlyBuffer3D<PackedLight, LightSize, LightSiz
 	constexpr static float const FDATA_MAX = (float)DATA_MAX;
 	constinit static inline XMVECTORU32 const _xmMaskBits{ DATA_MAX, DATA_MAX, DATA_MAX, 0 };
 
+	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightSize), float(LightSize), float(LightSize), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Size),  1.0f / float(Size),  1.0f / float(Size), 0.0f }; // needs to be xyz
-	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightSize),  float(LightSize),  float(LightSize), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmWorldLimitMax{ float(Size),  float(Size),  float(Size), 0.0f }; // needs to be xzy
 
 public:
@@ -75,8 +75,10 @@ public:
 		_maximum = std::move<Bounds&&>(Bounds{});
 		_minimum = std::move<Bounds&&>(Bounds(_xmWorldLimitMax));
 
+		// clear internal atomic memory
+		___memset_threaded_stream<CACHE_LINE_BYTES>(_internal, 0, LightSize * LightSize * LightSize * sizeof(std::atomic_uint16_t), _block_size_atomic); // 700KB / thread (12 cores)
 		// clear internal cache
-		___memset_threaded<CACHE_LINE_BYTES>(_cache, 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
+		___memset_threaded_stream<CACHE_LINE_BYTES>(_cache, 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		// clear staging buffer (right before usage)
 		if (_staging[resource_index]) {
 			___memset_threaded_stream<32>(_staging[resource_index], 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
@@ -251,7 +253,7 @@ private:
 		}
 	}
 
-	__declspec(safebuffers) void __vectorcall seed_single(FXMVECTOR in, uint32_t const index, uint32_t const in_packed_color) const	// 3D emplace
+	__declspec(safebuffers) void __vectorcall seed_single(FXMVECTOR in, FXMVECTOR weight, uint32_t const index, uint32_t const in_packed_color) const	// 3D emplace
 	{
 		// slices ordered by Z
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -259,23 +261,94 @@ private:
 		// slices ordered by Y: <---- USING Y
 		// (y * xMax * zMax) + (z * xMax) + x;
 
-		// attenuate emitter linear hdr color by fractional distance to this seeds grid origin
-		//XMVECTOR const xmNorm(SFM::fract(in));
-		//XMVECTOR const xmDSquared(XMVectorAdd(XMVector3Dot(xmNorm,xmNorm), XMVectorReplicate(1.0f)));
-
-		//XMVECTOR const xmColor = XMVectorDivide(_mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(0, (in_packed_color >> 20), (in_packed_color >> 10), in_packed_color), _xmMaskBits)),
-		//	                                    xmDSquared);
-        
-		// pack position + color
+		// must be in world space (fractional component only)
+		//XMVECTOR ss = SFM::fract(in); // fractional coordinates of the light inside this area
+		//ss = XMVectorSubtract(ss, XMVectorReplicate(0.5f)); // convert to vector from middle of area to light
+		//XMVECTOR const tt = XMVector3LengthSq(ss); // d^2 -> d^2 + 1.0f -> 1.0f / (d^2 + 1.0f)
+		//float const dist(XMVectorGetX(tt));
+		//ss = SFM::rcp(XMVectorAdd(tt,XMVectorReplicate(1.0f))); // inverse squared distance of middle to light
+		
 		uvec4_t unpacked_rgb;
 		SFM::unpack_rgb_hdr(in_packed_color, unpacked_rgb);
-		uvec4_v const rgb(unpacked_rgb);
+		XMVECTOR const rgb(XMVectorMultiply(uvec4_v(unpacked_rgb).v4f(), weight)); // attenuate light color by the inverse squared distance
+		//XMVECTOR const rgb(uvec4_v(unpacked_rgb).v4f());
 
 		// pre-transform / scale "in" (location) to increase precision - must rescale final decoded / unpacked value back to WorldLimits in shader
 		XMVECTOR const xyz(XMVectorScale(XMVectorMultiply(in, _xmInvWorldLimitMax), FDATA_MAX));
 
-		uint64_t original_seed = pack_seed(SFM::floor_to_u32(xyz), rgb);
+		uint64_t original_seed = pack_seed(SFM::floor_to_u32(xyz), uvec4_v(rgb));
 
+		// concurrency safe version of: *(_cache + index) = seed;
+		std::atomic_uint16_t* const __restrict area(_internal + index);
+
+		uint32_t size(area->fetch_add(1, std::memory_order_relaxed));
+
+		__int64 prev_seed = _InterlockedExchange64((__int64 volatile* const)(_cache + index), (__int64 const)original_seed); // new light ?
+		while (0 != prev_seed) { // existing light
+			uvec4_v position, color;
+			unpack_seed(position, color, (uint64_t)prev_seed);
+			// * existing light is already attenuated if it was added already...
+			XMVECTOR const xmSize(_mm_cvtepi32_ps(_mm_set1_epi32(size)));
+			XMVECTOR const xmInvSizePlusOne(SFM::rcp(XMVectorAdd(xmSize, XMVectorReplicate(1.0f))));
+			//  (size * average + value) / (size + 1)  [continous average]
+			XMVECTOR const xmPosition = XMVectorMultiply(SFM::__fma(position.v4f(), xmSize, xyz), xmInvSizePlusOne);
+			
+			// light positions are always averaged and floored
+			position = SFM::floor_to_u32(xmPosition);
+			
+			
+			//  (size * average + value) / (size + 1)  [continous average]
+			XMVECTOR const xmColor = XMVectorMultiply(SFM::__fma(color.v4f(), xmSize, rgb), xmInvSizePlusOne);
+			
+			// light colors are always added
+			color = SFM::floor_to_u32(xmColor);
+			//color = SFM::floor_to_u32(SFM::clamp(XMVectorAdd(color.v4f(), rgb), XMVectorZero(), XMVectorReplicate(FDATA_MAX))); // add light
+
+			// update
+			uint64_t const new_seed = pack_seed(position, color);
+			prev_seed = _InterlockedExchange64((__int64 volatile* const)(_cache + index), (__int64 const)new_seed);
+			if (prev_seed == original_seed)
+				break; // done, 2 atomic operations are paired properly as one atomic operation
+
+			// prev seed has been updated, redo from latest atomic value
+			original_seed = new_seed;
+			size = area->load(); // resync size
+		}
+
+		local::lights.emplace_back((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache, index);
+
+	}
+
+	/*
+	template<bool const fractional>
+	__declspec(safebuffers) void __vectorcall seed_single(FXMVECTOR in, uint32_t const index, uint32_t const in_packed_color) const	// 3D emplace
+	{
+		static constexpr fptr const to_u32(getRoundingFunction<fractional>());
+
+		// slices ordered by Z
+		// (z * xMax * yMax) + (y * xMax) + x;
+
+		// slices ordered by Y: <---- USING Y
+		// (y * xMax * zMax) + (z * xMax) + x;
+        
+		// pack position + color
+		uvec4_t unpacked_rgb;
+		SFM::unpack_rgb_hdr(in_packed_color, unpacked_rgb);
+		uvec4_v rgb(unpacked_rgb);
+
+		// pre-transform / scale "in" (location) to increase precision - must rescale final decoded / unpacked value back to WorldLimits in shader
+		XMVECTOR const xyz(XMVectorScale(XMVectorMultiply(in, _xmInvWorldLimitMax), FDATA_MAX));
+
+		if constexpr (fractional) {
+
+			XMVECTOR const xmNorm(SFM::fract(in));
+			XMVECTOR const xmDSquared(XMVectorAdd(XMVector3Dot(xmNorm,xmNorm), XMVectorReplicate(1.0f)));
+
+			rgb = SFM::floor_to_u32(XMVectorDivide(rgb.v4f(), xmDSquared));
+		}
+		
+		uint64_t original_seed = pack_seed(to_u32(xyz), rgb);
+		
 		// concurrency safe version of: *(_cache + index) = seed;
 		
 		__int64 prev_seed = _InterlockedExchange64((__int64 volatile* const)(_cache + index), (__int64 const)original_seed); // new light ?
@@ -284,8 +357,8 @@ private:
 			unpack_seed(position, color, (uint64_t)prev_seed);
 
 			// blend
-			position = uvec4_v(SFM::floor(SFM::lerp(position.v4f(), xyz, 0.5f)));
-			color = uvec4_v(SFM::floor(SFM::lerp(color.v4f(), rgb.v4f(), 0.5f)));
+			position = to_u32(SFM::lerp(position.v4f(), xyz, 0.5f));                                                                                          
+			color = SFM::floor_to_u32(SFM::lerp(color.v4f(), rgb.v4f(), 0.5f));
 
 			// update
 			uint64_t const new_seed = pack_seed(position, color);
@@ -299,10 +372,11 @@ private:
 
 		local::lights.emplace_back((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache, index);
 	}
+	*/
 
-	// there is no bounds checking, values are expected to be within bounds esxcept handling of -1 +1 for seededing X & Z Axis for seeding puposes.
+	// there is no bounds checking, values are expected to be within bounds.
 public:
-	__declspec(safebuffers) void __vectorcall seed(FXMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
+	__declspec(safebuffers) void __vectorcall seed(XMVECTOR xmPosition, uint32_t const srgbColor) const	// 3D emplace
 	{
 		[[likely]] if (0 != srgbColor) { // !dummy light
 
@@ -327,25 +401,41 @@ public:
 			const_cast<lightBuffer3D<PackedLight, LightSize, Size>* const __restrict>(this)->_lights.reference(&local::lights);
 		}
 
-		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
-		uvec4_t uiIndex;
-		SFM::floor_to_u32(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition))).xyzw(uiIndex);
+		// must convert from srgb to linear
+		uint32_t const linearColor(ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conversion
 
-		// slices ordered by Z 
+		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
+		XMVECTOR const xmIndex(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition)));
+
+		// swizzle position to remap position to texture matched xzy rather than xyz
+		xmPosition = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition);
+
+		// slices ordered by Z
 		// (z * xMax * yMax) + (y * xMax) + x;
 
 		// slices ordered by Y: <---- USING Y
 		// (y * xMax * zMax) + (z * xMax) + x;
+		uvec4_t uiIndex;
 
-		// also must convert from srgb to linear
+		// whole voxel light
+		SFM::floor_to_u32(xmIndex).xyzw(uiIndex);
+	
+		seed_single(SFM::floor(xmPosition), XMVectorReplicate(1.0f), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor); 
+	
+		// fractional voxel light
+		//SFM::ceil_to_u32(xmIndex).xyzw(uiIndex);
 
-		// swizzle position to remap position to texture matched xzy rather than xyz
-		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conersion
+		//seed_single(SFM::ceil(xmPosition), SFM::fract(XMVector3Length(xmPosition)), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor);
+
 	}
 
 	void create(size_t const hardware_concurrency)
 	{
 		size_t size(0);
+
+		size = LightSize * LightSize * LightSize * sizeof(std::atomic_uint16_t);
+		_internal = (std::atomic_uint16_t * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance and to prevent false sharing
+		_block_size_atomic = (uint32_t)(size / hardware_concurrency);
 
 		size = LightSize * LightSize * LightSize * sizeof(PackedLight);
 		_cache = (PackedLight * __restrict)scalable_aligned_malloc(size, CACHE_LINE_BYTES); // *bugfix - over-aligned for best performance (wc copy) and to prevent false sharing
@@ -357,11 +447,14 @@ public:
 	}
 
 	lightBuffer3D(vku::double_buffer<vku::GenericBuffer> const& stagingBuffer_)
-		: _stagingBuffer(stagingBuffer_), _cache(nullptr), _active_resource_index(0), _maximum{}, _minimum(_xmWorldLimitMax), _block_size_cache(0), 
+		: _stagingBuffer(stagingBuffer_), _internal(nullptr), _cache(nullptr), _active_resource_index(0), _maximum{}, _minimum(_xmWorldLimitMax), _block_size_atomic(0), _block_size_cache(0),
 		_max_extents{ 1, 1, 1, 0 }, _min_extents{} // *bugfix - initialize initial extents to min volume (prevents an intermittent copy attempt of zero volume on startup)
 	{}
 	~lightBuffer3D()
 	{
+		if (_internal) {
+			scalable_aligned_free(_internal); _internal = nullptr;
+		}
 		if (_cache) {
 			scalable_aligned_free(_cache); _cache = nullptr;
 		}
@@ -373,6 +466,7 @@ private:
 	void operator=(lightBuffer3D const&) = delete;
 	void operator=(lightBuffer3D&&) = delete;
 private:
+	std::atomic_uint16_t* __restrict								    _internal;
 	PackedLight* __restrict											_cache;
 	PackedLight* __restrict									        _staging[2];
 	vku::double_buffer<vku::GenericBuffer> const& __restrict        _stagingBuffer;
@@ -387,7 +481,8 @@ private:
 		                                  _min_extents;
 
 	uint32_t							  _active_resource_index;
-	uint32_t				              _block_size_cache;
+	uint32_t				              _block_size_atomic,
+		                                  _block_size_cache;
 };
 
 

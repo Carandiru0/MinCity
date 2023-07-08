@@ -88,9 +88,9 @@ public:
 		}
 	}
 
-	constexpr sBatched()
-		: Count{}
-	{}
+	constexpr sBatched() = default;
+
+	void reset() { Count = 0; }
 };
 
 // [ Extended functionality ]
@@ -98,7 +98,7 @@ template<typename T, uint32_t const Size>
 struct sBatchedReferenced : public sBatched<T, Size>   // referenced thread local structure
 {
 	bool const referenced() const { return(_referenced); }
-	void	   referenced(bool const value) { _referenced = value; }
+	void	   referenced(bool const value) { _referenced = value; sBatched<T, Size>::reset(); }
 
 private:
 	bool _referenced;

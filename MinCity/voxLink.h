@@ -24,6 +24,8 @@ namespace Volumetric
 		voxelOpacity const& __restrict		Opacity;
 		voxelVisibility const& __restrict	Visibility;
 
+		XMFLOAT3A const& __restrict         fractional_offset;
+
 	} voxLink;
 
 	extern voxLink* VolumetricLink;

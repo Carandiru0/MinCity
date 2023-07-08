@@ -6,8 +6,8 @@ namespace Volumetric
 	namespace ComputeLightConstants
 	{
 		static constexpr uint32_t const
-			LIGHT_RESOLUTION = std::min(192u, Iso::SCREEN_VOXELS << 1u);  // too high and its too taxing for gpu -------- *must* be same resolution as Iso::SCREEN_VOXELS - this synchronizes the light positions with the world movement, so there is no jerky motion! *** important *** //
 
+			LIGHT_RESOLUTION = std::min(192u, Iso::SCREEN_VOXELS);  // too high and its too taxing for gpu -------- *must* be same resolution as Iso::SCREEN_VOXELS - this synchronizes the light positions with the world movement, so there is no jerky motion! *** important *** //
 		using memLayoutV = DirectX::PackedVector::XMUSHORTN4;
 
 		static constexpr uint32_t const
