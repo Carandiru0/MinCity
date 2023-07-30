@@ -19,12 +19,8 @@
 // #define subgroup_quad_enabled		
 // #include "common.glsl"
 
+// boolean "mix" compiles to better spir-v than a "movc" which may branch: https://shader-playground.timjones.io/7ae73817e637866895046c985956f2b6
 #define select(iffalse, iftrue, condition) mix(iffalse, iftrue, condition)
-
-/**
- * ~FAST Conditional move:
- */
-#define movc(cond, variable, value) { if (cond) variable = value; }
 
 float sq(in const float x) { return(x * x); }
 vec3  sq(in const vec3 xyz) { return(xyz * xyz); }

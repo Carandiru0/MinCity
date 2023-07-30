@@ -1,3 +1,12 @@
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
 #include "pch.h"
 #include "MinCity.h"
 #include "cVoxelWorld.h"
@@ -255,7 +264,7 @@ namespace Volumetric
 		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("ground_explosion");
 		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_VDB>("tiny_explosion");
 
-		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray", 64);
+		LoadModelSequenceNamed<DYNAMIC, SEQUENCE_GLTF>("alien_gray", 128);
 
 		// last!
 		LoadModelGroup<DYNAMIC>(FOLDER_DYNAMIC_MISC, isolated_group::DynamicMisc); // last

@@ -199,7 +199,7 @@ namespace world
 #define SAMPLER_SET_LINEAR_POINT_ANISO SAMPLER_SET_LINEAR_POINT, vk::Sampler const& __restrict samplerAnisoClamp, vk::Sampler const& __restrict samplerAnisoRepeat
 #define SAMPLER_SET_BORDER vk::Sampler const& __restrict samplerLinearBorder
 
-		void UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp);
+		void UpdateDescriptorSet_ComputeLight(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp);
 		//[[deprecated]] void UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT);
 
 		void UpdateDescriptorSet_VolumetricLight(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict halfdepthImageView, vk::ImageView const& __restrict fullnormalImageView, vk::ImageView const& __restrict halfvolumetricImageView, vk::ImageView const& __restrict halfreflectionImageView, SAMPLER_SET_LINEAR_POINT);
@@ -209,7 +209,7 @@ namespace world
 		void UpdateDescriptorSet_PostAA_Post(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict lastFrameView, SAMPLER_SET_LINEAR_POINT);
 		void UpdateDescriptorSet_PostAA_Final(vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict colorImageView, vk::ImageView const& __restrict guiImageView, SAMPLER_SET_LINEAR_POINT);
 		
-		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO, SAMPLER_SET_BORDER);
+		void UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO);
 		void UpdateDescriptorSet_Voxel_ClearMask(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict ds, SAMPLER_SET_LINEAR);
 
 		__inline point2D_t const* const __restrict lookupVoxelModelInstanceRootIndex(uint32_t const hash) const;  // read-only access

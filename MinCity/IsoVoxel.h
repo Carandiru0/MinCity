@@ -71,15 +71,14 @@ namespace Iso
 #define MINIVOXEL_FACTORF (Iso::VOXELS_GRID_SLOT_XZ_FP)
 
 	static constexpr uint32_t const
-		SCREEN_VOXELS = 384,                  // must be divisable by 8, 16 and 64 - *required* to play nice with compute dispatch, bit_volumes & power of 2 square textures.
+		SCREEN_VOXELS = 256,                  // must be divisable by 8, 16 and 64 - *required* to play nice with compute dispatch, bit_volumes & power of 2 square textures.
 		SCREEN_VOXELS_X = SCREEN_VOXELS,	  // must be *uniform* on all dimensions (x,y,z) - non-uniform volume sizes are inherently limited and cannot be used practically. There are so many things that go wrong, raymarch skew, incorrect scaling, voxels are no longer cubes but rather elongated boxes, etc. nightmare!
 		SCREEN_VOXELS_Y = SCREEN_VOXELS,
 		SCREEN_VOXELS_Z = SCREEN_VOXELS;                                                                                                    
 
-	// set for 384 cubed volume:
 	static constexpr float const            // Manually set to offset the world matrix so the view is properly aligned with the visible volumes extents, hiding any null (black,empty) area. Use DEBUG_WORLD_ORIGIN to re-calibrate. note: y axis is the only offset that should change, modifing x or z at all results in off-center alignment while the camera orbits full circle.
 		WORLD_ORIGIN_OFFSET_X = 0.0f,          // *bugfix: this all done so that rasterization matches the raymarch properly. can't move the camera, screws up raymarch. so a matrix matWorld allows zero interference with the raymarch.
-		WORLD_ORIGIN_OFFSET_Y = -149.0f,       //          that matrix defines the offset neccessary to cover the entire screen at the default zoom. no null area .
+		WORLD_ORIGIN_OFFSET_Y = -96.0f,// 256 cubed        that matrix defines the offset neccessary to cover the entire screen at the default zoom. no null area .
 		WORLD_ORIGIN_OFFSET_Z = 0.0f;          //          visibility/frustum also depends on an offset equal to 0.5 * WORLD_ORIGIN_OFFSET
 
 	static constexpr float const
@@ -105,7 +104,7 @@ namespace Iso
 		VOX_Z_RESOLUTION = ((double)Iso::MINI_VOX_SIZE);
 
 	read_only inline XMVECTORF32 const WORLD_ORIGIN_OFFSET{ WORLD_ORIGIN_OFFSET_X, WORLD_ORIGIN_OFFSET_Y, WORLD_ORIGIN_OFFSET_Z }; // Manually set to offset the world matrix so the view is properly aligned with the visible volumes extents, hiding any null (black,empty) area. Use DEBUG_WORLD_ORIGIN to re-calibrate. note: y axis is the only offset that should change, modifing x or z at all results in off-center alignment while the camera orbits full circle.
-	read_only inline XMVECTORF32 const FRUSTUM_ORIGIN_OFFSET{ 0.0f, WORLD_ORIGIN_OFFSET_Y - -42.0f, 0.0f }; // set for 384 cubed volume, only applies to frustum planes. do not use this anywhere else, this corrects the visibility so that it is in the correct state around the screen extents.
+	read_only inline XMVECTORF32 const FRUSTUM_ORIGIN_OFFSET{ 0.0f, WORLD_ORIGIN_OFFSET_Y - -32.0f, 0.0f }; // set for 256 cubed volume, only applies to frustum planes. do not use this anywhere else, this corrects the visibility so that it is in the correct state around the screen extents.
 	read_only inline XMVECTORF32 const WORLD_EXTENTS{ MAX_VOXEL_FCOORD_U, WORLD_MAX_HEIGHT, MAX_VOXEL_FCOORD_V }; // AABB Extents of world, note that Y Axis starts at zero, instead of -WORLD_EXTENT.y
 
 	static constexpr int32_t const

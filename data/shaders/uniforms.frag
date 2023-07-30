@@ -538,18 +538,16 @@ void main() {
 	getLight(light_color, Ld, In.uv.xyz);
 
 	Ld.pos = (Ld.pos - In.uv.xyz);
-	//Ld.pos = Ld.pos * VolumeDimensions;
-	//Ld.xy += frag_fractional_offset();
-	//Ld.pos = (Ld.pos * VolumeDimensions + 0.5f) * InvVolumeDimensions - In.uv.xyz;
-	//Ld.pos = fma(Ld.pos, VolumeDimensions.xxx, vec3(frag_fractional_offset(),0).xzy) * InvVolumeDimensions - In.uv.xyz;
-	Ld.dist = length(Ld.pos); // distance from light to current position
-	Ld.xyz = Ld.pos / Ld.dist; // normalized light direction
+	float d = length(Ld.pos); // distance from light to current position
+	Ld.xyz = Ld.pos / d; // normalized light direction
+	d = getAttenuation(d);
+	Ld.dist = d - abs(d - Ld.dist);
 	Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 						// only emissive can have color
 	outColor.rgb = lit( mix(albedo_rough_ao.xxx, unpackColorHDR(In._color), In.material.emission), make_material(In.material.emission, In.material.metallic, albedo_rough_ao.y, In.material.ambient), light_color,	
 	                    skylight(V, N), // ambient lighting start (twilight/starlight)
-					    albedo_rough_ao.z, getAttenuation(Ld.dist),
+					    albedo_rough_ao.z, Ld.dist,
 					    Ld.xyz, N, V);
 }
 
@@ -566,12 +564,10 @@ void main() {
 	getLight(light_color, Ld, In.uv.xyz); // Ld = position (xyz), distance (w)  -both are normalized world volume units  ** In.uv.xyz is also normalized world volume units
 	
 	Ld.pos = (Ld.pos - In.uv.xyz);
-	//Ld.pos = Ld.pos * VolumeDimensions;
-	//Ld.xy += frag_fractional_offset();
-	//Ld.pos = (Ld.pos * VolumeDimensions + 0.5f) * InvVolumeDimensions - In.uv.xyz;
-	//Ld.pos = fma(Ld.pos, VolumeDimensions.xxx, vec3(frag_fractional_offset(),0).xzy) * InvVolumeDimensions - In.uv.xyz;
-	Ld.dist = length(Ld.pos); // distance from light to current position
-	Ld.xyz = Ld.pos / Ld.dist; // normalized light direction
+	float d = length(Ld.pos); // distance from light to current position
+	Ld.xyz = Ld.pos / d; // normalized light direction
+	d = getAttenuation(d);
+	Ld.dist = d - abs(d - Ld.dist);
 	Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 	const vec3 N = normalize(In.N.xyz);
@@ -580,7 +576,7 @@ void main() {
 #ifndef TRANS              
 	outColor.rgb = lit( unpackColorHDR(In._color), In.material, light_color,
 	                    skylight(V, N), // ambient lighting start (twilight/starlight)
-						1.0f, getAttenuation(Ld.dist),
+						1.0f, Ld.dist,
 						Ld.xyz, N, V);
 
 	//outColor.rgb = vec3(attenuation);
@@ -591,7 +587,7 @@ void main() {
 	float fresnelTerm;  // feedback from lit       
 	const vec3 lit_color = lit( unpackColorHDR(In._color), In.material, light_color,
 	                            skylight(V, N), // ambient lighting start (twilight/starlight)
-						        1.0f, getAttenuation(Ld.dist),
+						        1.0f, Ld.dist,
 						        Ld.xyz, N, V, fresnelTerm );
 							             
 	// Apply specific transparecy effect for MinCity //

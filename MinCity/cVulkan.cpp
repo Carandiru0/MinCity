@@ -1,3 +1,12 @@
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
 #include "pch.h"
 #define VKU_IMPLEMENTATION		// required in the one cpp file
 #define VMA_IMPLEMENTATION		// required in the one cpp file
@@ -1290,17 +1299,11 @@ void cVulkan::CreateSharedVoxelResources()
 			)
 	};
 
-	auto const samplers_border{ getSamplerArray
-			<eSamplerAddressing::BORDER>(
-				eSamplerSampling::LINEAR, eSamplerSampling::LINEAR	// should all be linear border *bugfix - must use border addressing to correct light leaking
-			)
-	};
-
 	{ // voxels common ("one descriptor set")
 		vku::DescriptorSetLayoutMaker	dslm;
 		dslm.buffer(0U, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eGeometry, 1);                                                                // shared uniform buffer (geometry *readonly*)
 		dslm.buffer(1U, vk::DescriptorType::eStorageBuffer, vk::ShaderStageFlagBits::eVertex, 1);                                                                  // shared buffer (vertex *readonly*)
-		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers_border);							               // 3d textures (direction/distance & light color)
+		dslm.image(3U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 2, samplers_common);							               // 3d textures (direction/distance & light color)
 		dslm.image(4U, vk::DescriptorType::eInputAttachment, vk::ShaderStageFlagBits::eFragment, 1);											                   // 2d texture(ambient light reflection)
 		dslm.image(5U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1, &samplers_common[0]);                                     // reflection cube map
 		dslm.image(6U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, TEXTURE_ARRAY_LENGTH, samplers_tex_array);			       // 2d texture array
@@ -1813,7 +1816,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	{ // ###### Compute
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 			_dsu.beginDescriptorSet(_comData.light.sets[resource_index]);
-			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(_dsu, getLinearSampler<eSamplerAddressing::CLAMP>());
+			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(resource_index, _dsu, getLinearSampler<eSamplerAddressing::CLAMP>());
 		}
 		// [[deprecated]] ###### Texture Shaders (Compute)
 		/*for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
@@ -1846,7 +1849,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 			_dsu.buffer(_rtSharedData._ubo[resource_index].buffer(), 0, sizeof(UniformDecl::VoxelSharedUniform));
 
 			// Set initial sampler value - common descriptor set uses the lastColorImageView in binding 6, for transparency usage in the overlay/transparency pass, at that point, it only contains the scene rendered of opaques. "grab pass"
-			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_LINEAR_POINT_ANISO, SAMPLER_SET_BORDER);
+			MinCity::VoxelWorld->UpdateDescriptorSet_VoxelCommon(resource_index, _dsu, _window->colorReflectionImageView(), _window->lastColorImageView(0), SAMPLER_SET_LINEAR_POINT_ANISO);
 			
 		}
 	}
@@ -2007,16 +2010,6 @@ void cVulkan::gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index)
 
 inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 {
-	if (c.cb_transfer) { // **** very first gpu transfer on every new frame ***
-
-		vk::CommandBufferBeginInfo bi(vk::CommandBufferUsageFlagBits::eOneTimeSubmit); // updated every frame
-		c.cb_transfer.begin(bi); VKU_SET_CMD_BUFFER_LABEL(c.cb_transfer, vkNames::CommandBuffer::TRANSFER);
-
-		MinCity::VoxelWorld->Transfer(c.resource_index, c.cb_transfer, _rtSharedData._ubo[c.resource_index]);
-
-		c.cb_transfer.end();
-	} // ubo transfer only transferred if cb_transfer is defined
-	
 	return(MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData)); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
 }
 
@@ -2278,6 +2271,12 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// prepare halfres target for writes in depth resolve fragment shader
 	_window->depthResolvedImage(1).setLayout(s.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY);
 
+	// transfer queue ownership of main uniform buffer *required* see voxelworld.cpp Transfer() function
+	_rtSharedData._ubo[resource_index].barrier(	// ## ACQUIRE ## //
+		s.cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexShader,
+		vk::DependencyFlagBits::eByRegion,
+		vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
+	);
 	// transfer queue ownership of vertex buffers *required* see voxelworld.cpp Transfer() function
 	{
 		static constexpr size_t const buffer_count(3ULL);
@@ -2288,12 +2287,6 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eVertexAttributeRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
 	}
-	// transfer queue ownership of main uniform buffer *required* see voxelworld.cpp Transfer() function
-	_rtSharedData._ubo[resource_index].barrier(	// ## ACQUIRE ## //
-		s.cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eVertexShader,
-		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getComputeQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
-	);
 	MinCity::VoxelWorld->AcquireTransferQueueOwnership(resource_index, s.cb);
 
 	_indirectActiveCount[resource_index]->barrier( // required b4 usage //
@@ -2488,13 +2481,14 @@ inline void cVulkan::_renderDynamicCommandBuffer(vku::dynamic_renderpass&& __res
 
 	UpdateIndirectActiveCountBuffer(d.cb, resource_index); // indirect draw active counts are transferred here, they are then used for voxel rendering terrain, static, dynamic where possible and by the clear opacity map operation in the final pass / present.
 
+	MinCity::VoxelWorld->Transfer(resource_index, d.cb, _rtSharedData._ubo[resource_index]); // uniform buffer update
+	
 	vku::DynamicVertexBuffer* const __restrict vbos[] = {
 		(*_rtData[eVoxelPipeline::VOXEL_TERRAIN]._vbo[resource_index]),
 		(*_rtData[eVoxelPipeline::VOXEL_STATIC]._vbo[resource_index]),
 		(*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])
 	};
-
-	MinCity::VoxelWorld->Transfer(resource_index, d.cb, vbos);
+	MinCity::VoxelWorld->Transfer(resource_index, d.cb, vbos); // dynamic buffers
 
 	d.cb.end();	// ********* command buffer end is called here only //
 }

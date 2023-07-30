@@ -35,13 +35,13 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #define REFLECTION_STRENGTH (1.0f) // <--- adjust reflection brightness / intensity *tweakable*
 #define REFLECTION_FADE (20.0f) // <-- adjust reflections fading away at distance more with larger values. *tweakable*
 #define MIN_STEP (0.00005f)	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
-#define MAX_STEPS (VolumeDimensions * 0.5f)
+#define MAX_STEPS (VolumeLength) // this touches just inside the orthographic frustum
 
 // HenyeyGreenstein Phase Function - Light Scattering
 // https://pbr-book.org/3ed-2018/Volume_Scattering/Phase_Functions
 // 
 // * g *  [-1.0 ... 1.0] backward ... forward scattering   0 equals isotropic
-float PHASE_FUNCTION(in const vec3 wo, in const vec3 wi, in const float g)
+float PHASE_FUNCTION(in const vec3 wo, in const vec3 wi, in const float att, in const float g)
 {
 	const float inv_pi = 1.0f / (4.0f * PI);
 	const float denom = 1.0f + g * g + 2.0f * g * dot(wo, wi);
@@ -173,11 +173,9 @@ vec3 computeNormal(in const vec3 uvw)
 
 vec3 getNormal()
 {	
-	vec3 n = textureLod(normalMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f).xyz;
-	n = -normalize(n);
-	//n.z = -n.z; // *bugfix - Vulkan Up Axis negative
+	const vec3 n = textureLod(normalMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f).xyz;
 
-	return( n ); // these are world space normals in xzy frag shader form
+	return( normalize(-n) ); // these are world space normals in xzy frag shader form, negated to match raymarch direction (correction) *do not change*
 }
 
 // returns normalized light distance, light position and light color - uses trilinear sampling on both color and position + distance, intended for *volumetric accumulation*
@@ -187,8 +185,10 @@ float fetch_light_fast( out vec3 light_color, out vec3 light_direction, in const
 	getLightFast(light_color, Ld, uvw);
 
 	Ld.pos = Ld.pos - uvw;
-	Ld.dist = length(Ld.pos);
-	light_direction = Ld.pos / Ld.dist; // normalized light direction
+	float d = length(Ld.pos);
+	light_direction = Ld.pos / d; // normalized light direction
+	d = getAttenuation(d);
+	Ld.dist = d - abs(d - Ld.dist);
 	//Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 	return(Ld.dist);  
@@ -196,7 +196,7 @@ float fetch_light_fast( out vec3 light_color, out vec3 light_direction, in const
 
 float fetch_bluenoise(in const vec2 pixel, in const float slice)
 {																
-	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALAR, slice), 0).g ); // *bluenoise GREEN channel used* 
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALAR, slice), 0).g ); // *bluenoise GREEN channel used* *do not change*
 }
 precise float fetch_depth()
 {
@@ -243,7 +243,7 @@ void integrate(inout float previous_out, in const float current, in const float 
 }
 
 // volumetric light
-void vol_lit(out vec3 light_color, out vec3 light_direction, out float attenuation, inout float opacity, inout float emission,
+void vol_lit(out vec4 light_color, out vec3 light_direction, inout float opacity, inout float emission,
 		     in const vec3 p, in const float dt)
 {
 	const float opacity_emission = fetch_opacity_emission(p);
@@ -257,22 +257,28 @@ void vol_lit(out vec3 light_color, out vec3 light_direction, out float attenuati
 	integrate(opacity, extract_opacity(opacity_emission), dt);
 
 	// lightAmount = attenuation
-	attenuation = getAttenuation(fetch_light_fast(light_color, light_direction, p));
+	light_color.a = fetch_light_fast(light_color.rgb, light_direction, p);
 }
 
 float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emission, in const vec3 p, in const float dt)
 {
 	//#########################
-	vec3 light_color, light_direction;
-	float attenuation;
+	vec4 light_color; vec3 light_direction;  // "attenuation = light_color.a"
 	
-	vol_lit(light_color, light_direction, attenuation, opacity, emission, p, dt);  // shadow march tried, kills framerate 
+	vol_lit(light_color, light_direction, opacity, emission, p, dt);  // shadow march tried, kills framerate 
 
 	const float bn = fetch_bluenoise(p.xy, p.z * BLUE_NOISE_SLICE_SCALAR) * 2.0f - 1.0f; // best for random vector here, no visible noise after accumulation of the ray march light color for this pixel. slice cannot be dynamicly changed every frame, light intensity visibly pulses.
 	float scatter = abs(dot(normalize(light_direction + bn), light_direction)); // random direction in the sphere and the cosine (angle) between light direction (accumulated over raymarch)
 	scatter = pow(scatter, 5.0f);
 
-	attenuation *= PHASE_FUNCTION(In.eyeDir.xyz, light_direction, scatter * BACK_FORWARD_SCATTER_SCALAR); // skew the phasefunction to back-scatter (-1.0f) thru forward-scattering based on normalize(random vector + light_direction) - half angle
+	light_color.a = PHASE_FUNCTION(In.eyeDir.xyz, light_direction, light_color.a, scatter * BACK_FORWARD_SCATTER_SCALAR); // skew the phasefunction to back-scatter (-1.0f) thru forward-scattering based on normalize(random vector + light_direction) - half angle
+
+	{ // Russian roulette based on blue noise
+		const bvec3 weight = lessThan(bn.xxx, vec3(0.25f, 0.5f, 0.75f)); // last choice is simply local unchanged (1.0f)
+		light_color = mix( light_color, subgroupQuadSwapHorizontal(light_color), weight.xxxx );
+		light_color = mix( light_color, subgroupQuadSwapVertical(light_color), weight.yyyy );
+		light_color = mix( light_color, subgroupQuadSwapDiagonal(light_color), weight.zzzz );
+	}
 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
@@ -284,13 +290,13 @@ float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emis
 
 	// Area Light----------------------------------------------------------------------------------------------------------------                                 
     // |-------------------- light amount ----------------------- free space * dt + constant fog amount --- color and intensity-|
-	const vec3 Li = fma( fma(attenuation, emission, attenuation), sigmaS, sigmaS) * light_color * LIGHT_INTENSITY; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
-	const float sigma_dt = exp(-sigmaS * attenuation);
+	const vec3 Li = fma( fma(light_color.a, emission, light_color.a), sigmaS, sigmaS) * light_color.rgb * LIGHT_INTENSITY; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+	const float sigma_dt = exp2(-sigmaS * light_color.a);
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += (voxel.tran + emission * sigma_dt) * Sint; // accumulate and also`` take into account the transmittance from previous steps
 	                                                                                                                                                                                                                                                                                                                                                 
 	// Evaluate transmittance -- to view independently (change in transmittance)---------------
-	voxel.tran = voxel.tran * sigma_dt;
+	voxel.tran = voxel.tran * exp2(-sigmaS * light_color.a * 5.0f);  // *bugfix - transmission sigma_dt needs to be scaled exponentially 4x - 5x for decent precision so unfortuanetly it must be calculated again 
 	// bugfix - adding emission*sigma_dt directly to transmission results in "transparent" sections around emissive light sources. The checkerboard pattern is exposed, and some times the ground is showing thru opaque voxels - no good
 	//          instead of accumulating emission into the transmission, it is applied above to the light momentarily (workaround) - prevents increase in precision_dt below which would slow the raymarch (see below)
 	return(voxel.tran * 0.5f + 0.5f);  // *only* modifies precision_dt on return to a minimum of 50% of its value or greater depending on the current integrated transmission. blue noise tried here, however the accumulation results in noticable white noise / light distortion so its removed.
@@ -301,7 +307,7 @@ float evaluateVolumetric(inout vec4 voxel, inout float opacity, inout float emis
 void reflect_lit(out vec3 light_color, out vec3 light_direction, out float attenuation,
 				 in const vec3 p)
 {
-	attenuation = getAttenuation(fetch_light_fast(light_color, light_direction, p));
+	attenuation = fetch_light_fast(light_color, light_direction, p);
 }
 
 vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec3 n, in const float emission, in const float dt)
@@ -358,7 +364,7 @@ float background(in const vec3 dir, in float d, in const float dt)
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 // all in parameters is important
-vec4 traceReflection(in const float transmission, in vec3 rd, in vec3 p, in const vec3 n, in const float dt, in float interval_remaining, in const float interval_length)
+vec4 traceReflection(in vec3 rd, in vec3 p, in const vec3 n, in const float dt, in float interval_remaining, in const float interval_length)
 {								
 	rd = normalize(reflect(rd, n));
 
@@ -384,12 +390,10 @@ vec4 traceReflection(in const float transmission, in vec3 rd, in vec3 p, in cons
 			integrate(opacity, extract_opacity(opacity_emission), precision_dt); // - passes thru transparent voxels recording a reflection, breaks on opaque.  
 			
 			--early_hits; // if distance is travelled from the start position, this will be less than zero and the bounce is not an early "self-reflection error"
-			[[branch]] if(early_hits < 0 && bounced(opacity, BOUNCE_EPSILON * 0.5f)) { 
+			[[branch]] if(early_hits < 0 && bounced(opacity, BOUNCE_EPSILON * precision_dt)) { 
 					
 				// * reflection bounced * //
-				vec4 r = reflection(distance(p, bounce), p, n, extract_emission(opacity_emission), precision_dt);
-				r.rgb *= transmission;
-				return(r);
+				return(reflection(distance(p, bounce), p, n, extract_emission(opacity_emission), precision_dt));
 			}
 
 			p += precision_dt * rd;
@@ -449,13 +453,12 @@ void main() {
 	precise float pre_dt = interval_length * inv_num_steps;	// dt calculated @ what would be the full volume interval w/o depth clipping	
 	pre_dt = max(pre_dt, interval_length/MAX_STEPS);
 	// ----------------------------------- //
-	precise const float dt = max(MIN_STEP, pre_dt); // fixes infinite loop bug
+	precise const float dt = max(MIN_STEP, pre_dt * 0.5f); // *bugfix - final step size is scaled 0.5 resulting in greater precision (better sampling) - 0.25 is overkill adding 3-4ms overhead, max() fixes infinite loop bug
 	// ----------------------------------- //
 
 	// larger dt = larger step , want largest step for highest depth, smallest step for lowest depth
 	//fma(pre_dt, linear_depth, pre_dt * 0.5f); // ***** if you want to see where the artifacts are coming from, or the accuracy of the ray march LOOK at DT *****
-	// override = vec3(dt*100.0f);							            // as depth increases so do the "holes" this dynamically adjusts the step size and
-																        // gives a good performance to accuracy ratio	
+
 
 	// Step 4: Starting from the entry ,mk,mkpoint, march the ray through the volume
 	// and sample i
@@ -477,8 +480,8 @@ void main() {
 
 	{
 		// adjust start position by "bluenoise step"	
-		const float bn = fetch_bluenoise(gl_FragCoord.xy, In.slice) * 0.5f + 0.5f; // very first jitter step is changed every frame, so that the start position for every pixel varies over time.
-		const float jittered_interval = dt * bn * 0.5f; // //  must scale and bias to prevent really small dt stepsizes. this is strickly for modify the step size so that the samples are jittered, using the green channel is safe and does not mix with the red channel before or after the raymarch as it's isolated due to the accumulation of multiple samples in the volumetric or reflection raymarches. (blurs the bluenoise)
+		const float bn = fetch_bluenoise(gl_FragCoord.xy, In.slice); // very first jitter step is changed every frame, so that the start position for every pixel varies over time.
+		const float jittered_interval = dt * bn; // //  must scale and bias to prevent really small dt stepsizes. this is strickly for modify the step size so that the samples are jittered, using the green channel is safe and does not mix with the red channel before or after the raymarch as it's isolated due to the accumulation of multiple samples in the volumetric or reflection raymarches. (blurs the bluenoise)
 
 		p += jittered_interval * rd; // + jittered offset
 		interval_remaining -= jittered_interval; // interval remaining must be accurate/exact for best results
@@ -501,7 +504,7 @@ void main() {
 			precision_dt *= evaluateVolumetric(voxel, opacity, emission, p, precision_dt);
 
 			// ## test hit voxel
-			[[branch]] if( bounced(opacity, BOUNCE_EPSILON) ) {	
+			[[branch]] if( bounced(opacity, BOUNCE_EPSILON * precision_dt) ) {	
 				break;	// stop raymarch, note: can't do lod here, causes aliasing
 			}
 
@@ -545,7 +548,9 @@ void main() {
 		imageStore(outImage[OUT_VOLUME], ivec2(gl_FragCoord.xy), voxel); 
 
 		// store reflection 
-		imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), traceReflection(voxel.a, rd, p, getNormal(), dt, interval_remaining, interval_length));
+		vec4 reflected = traceReflection(rd, p, getNormal(), dt, interval_remaining, interval_length);
+		reflected.rgb = reflected.rgb * voxel.a;
+		imageStore(outImage[OUT_REFLECT], ivec2(gl_FragCoord.xy), reflected);
 
 	} // end volumetric scope
 }

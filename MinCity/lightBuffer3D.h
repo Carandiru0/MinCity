@@ -1,4 +1,13 @@
 #pragma once
+/* Copyright (C) 20xx Jason Tully - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License
+ * http://www.supersinfulsilicon.com/
+ *
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-sa/4.0/
+or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ */
 #include "streaming_sizes.h"
 
 template<typename T>
@@ -55,7 +64,6 @@ struct lightBuffer3D : public writeonlyBuffer3D<PackedLight, LightSize, LightSiz
 {
 	constexpr static uint32_t const DATA_MAX = 1023; // 10 bit per component 0x3FF = 1023
 	constexpr static float const FDATA_MAX = (float)DATA_MAX;
-	constinit static inline XMVECTORU32 const _xmMaskBits{ DATA_MAX, DATA_MAX, DATA_MAX, 0 };
 
 	constinit static inline XMVECTORF32 const _xmLightLimitMax{ float(LightSize), float(LightSize), float(LightSize), 0.0f }; // needs to be xyz
 	constinit static inline XMVECTORF32 const _xmInvWorldLimitMax{ 1.0f / float(Size),  1.0f / float(Size),  1.0f / float(Size), 0.0f }; // needs to be xyz
@@ -253,7 +261,7 @@ private:
 		}
 	}
 
-	__declspec(safebuffers) void __vectorcall seed_single(FXMVECTOR in, FXMVECTOR weight, uint32_t const index, uint32_t const in_packed_color) const	// 3D emplace
+	__declspec(safebuffers) void __vectorcall seed_single(FXMVECTOR in, uint32_t const index, uint32_t const in_packed_color) const	// 3D emplace
 	{
 		// slices ordered by Z
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -270,8 +278,7 @@ private:
 		
 		uvec4_t unpacked_rgb;
 		SFM::unpack_rgb_hdr(in_packed_color, unpacked_rgb);
-		XMVECTOR const rgb(XMVectorMultiply(uvec4_v(unpacked_rgb).v4f(), weight)); // attenuate light color by the inverse squared distance
-		//XMVECTOR const rgb(uvec4_v(unpacked_rgb).v4f());
+		XMVECTOR const rgb(uvec4_v(unpacked_rgb).v4f());
 
 		// pre-transform / scale "in" (location) to increase precision - must rescale final decoded / unpacked value back to WorldLimits in shader
 		XMVECTOR const xyz(XMVectorScale(XMVectorMultiply(in, _xmInvWorldLimitMax), FDATA_MAX));
@@ -290,29 +297,24 @@ private:
 			// * existing light is already attenuated if it was added already...
 			XMVECTOR const xmSize(_mm_cvtepi32_ps(_mm_set1_epi32(size)));
 			XMVECTOR const xmInvSizePlusOne(SFM::rcp(XMVectorAdd(xmSize, XMVectorReplicate(1.0f))));
+			
 			//  (size * average + value) / (size + 1)  [continous average]
 			XMVECTOR const xmPosition = XMVectorMultiply(SFM::__fma(position.v4f(), xmSize, xyz), xmInvSizePlusOne);
-			
-			// light positions are always averaged and floored
 			position = SFM::floor_to_u32(xmPosition);
-			
 			
 			//  (size * average + value) / (size + 1)  [continous average]
 			XMVECTOR const xmColor = XMVectorMultiply(SFM::__fma(color.v4f(), xmSize, rgb), xmInvSizePlusOne);
-			
-			// light colors are always added
 			color = SFM::floor_to_u32(xmColor);
-			//color = SFM::floor_to_u32(SFM::clamp(XMVectorAdd(color.v4f(), rgb), XMVectorZero(), XMVectorReplicate(FDATA_MAX))); // add light
 
 			// update
 			uint64_t const new_seed = pack_seed(position, color);
 			prev_seed = _InterlockedExchange64((__int64 volatile* const)(_cache + index), (__int64 const)new_seed);
-			if (prev_seed == original_seed)
+			if (prev_seed == (__int64 const)original_seed)
 				break; // done, 2 atomic operations are paired properly as one atomic operation
 
 			// prev seed has been updated, redo from latest atomic value
 			original_seed = new_seed;
-			size = area->load(); // resync size
+			size = area->load(std::memory_order_relaxed); // resync size
 		}
 
 		local::lights.emplace_back((uint64_t* const __restrict)_staging[_active_resource_index], (uint64_t const* const __restrict)_cache, index);
@@ -420,13 +422,28 @@ public:
 		// whole voxel light
 		SFM::floor_to_u32(xmIndex).xyzw(uiIndex);
 	
-		seed_single(SFM::floor(xmPosition), XMVectorReplicate(1.0f), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor); 
-	
-		// fractional voxel light
-		//SFM::ceil_to_u32(xmIndex).xyzw(uiIndex);
+		seed_single(xmPosition, (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor); 
 
-		//seed_single(SFM::ceil(xmPosition), SFM::fract(XMVector3Length(xmPosition)), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor);
-
+		// ------------------------------------------------------ RESEARCH -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// *project above and below*
+		// *trick - to only sample the current slice (8 neighbours) in the compute shader and still propogate the light emitter above and below must be seeded with the same light emitter using the same emitter position
+		// and color (projection). This avoids sampling the above and below slices with the current slice (27 neighbours). The reduction in memory bandwidth (sampling) is substantial. Jumpflooding performance is memory bound, so this results
+		// in a major reduction in the total time the compute shaders run. Around 10 ms or more. with 1+JFA the jumpflooding errors are so low that doing the jumpflood in a slice by slice manner results in near equivalency with a full 3D jumpflood
+		// that samples all 27 neighbours, all the time. This was discovered in the main jfa paper, "Variants of Jump Flooding Algorithm for Computing Discrete Voronoi Diagrams" https://www.comp.nus.edu.sg/~tants/jfa/JFA-Variants.pdf
+		// where they project to all "other" slices on seeding. Additionally the last compute shader step converts the Voronoi diagram to the position of the closest light, and the accumulated light color. This last step, for every voxel, samples 
+		// the neighbours in a trilinear way, which includes the adjacent voxels and takes less samples (14 neighbours), still less than fully sampling the surrounding voxels (27 neighbours). During the sampling if a closer light emitter is found
+		// while sampling trilinearly, there is a correction to the voronoi diagram made at the very end. The exported volumes [position+distance field] & [color] are generated with the corrections inplace.
+		// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		int32_t const up(((int32_t)uiIndex.y) - 1);
+		if (up >= 0) {
+			seed_single(xmPosition, (up * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor);
+		}
+		
+		int32_t const down((int32_t)uiIndex.y + 1);
+		if (down < LightSize) {
+			seed_single(xmPosition, (down * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor);
+		}
+		
 	}
 
 	void create(size_t const hardware_concurrency)

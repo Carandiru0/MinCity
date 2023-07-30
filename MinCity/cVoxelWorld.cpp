@@ -3769,7 +3769,7 @@ namespace world
 		*/
 		return(_OpacityMap.renderCompute(std::forward<vku::compute_pass&& __restrict>(c), render_data));
 	}
-
+	// Transfer(c.resource_index, c.cb_transfer, _rtSharedData._ubo[c.resource_index])
 	void cVoxelWorld::Transfer(uint32_t const resource_index, vk::CommandBuffer& __restrict cb, vku::UniformBuffer& __restrict ubo)
 	{
 		constinit static vku::double_buffer<UniformDecl::VoxelSharedUniform> current_state{};
@@ -3787,7 +3787,7 @@ namespace world
 		ubo.barrier( // ## RELEASE ## //
 			cb, vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eTransfer,
 			vk::DependencyFlagBits::eByRegion,
-			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getComputeQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
+			vk::AccessFlagBits::eHostWrite, vk::AccessFlagBits::eUniformRead, MinCity::Vulkan->getTransferQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex()
 		);
 	}
 
@@ -4635,9 +4635,9 @@ namespace world
 		constants.emplace_back(vku::SpecializationConstant(4, (float)(input_extents.depth - 1)));// // number of frames - 1 (has to be from input texture extents
 	}
 	*/
-	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp)
+	void cVoxelWorld::UpdateDescriptorSet_ComputeLight(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp)
 	{
-		_OpacityMap.UpdateDescriptorSet_ComputeLight(dsu, samplerLinearClamp);
+		_OpacityMap.UpdateDescriptorSet_ComputeLight(resource_index, dsu, samplerLinearClamp);
 	}
 	/*
 	[[deprecated]] void cVoxelWorld::UpdateDescriptorSet_TextureShader(vku::DescriptorSetUpdater& __restrict dsu, uint32_t const shader, SAMPLER_SET_STANDARD_POINT)
@@ -4752,14 +4752,14 @@ namespace world
 
 		MinCity::PostProcess->UpdateDescriptorSet_PostAA_Final(dsu, guiImageView, samplerLinearClamp);
 	}
-	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO, SAMPLER_SET_BORDER)
+	void cVoxelWorld::UpdateDescriptorSet_VoxelCommon(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict fullreflectionImageView, vk::ImageView const& __restrict lastColorImageView, SAMPLER_SET_LINEAR_POINT_ANISO)
 	{
 		dsu.beginBuffers(1U, 0, vk::DescriptorType::eStorageBuffer);
 		dsu.buffer(_buffers.shared_buffer[resource_index].buffer(), 0, _buffers.shared_buffer[resource_index].maxsizebytes());
 		dsu.beginImages(3U, 0, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearBorder, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->DistanceDirection->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(3U, 1, vk::DescriptorType::eCombinedImageSampler);
-		dsu.image(samplerLinearBorder, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
+		dsu.image(samplerLinearClamp, _OpacityMap.getVolumeSet().LightMap->Color->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(4U, 0, vk::DescriptorType::eInputAttachment);
 		dsu.image(nullptr, fullreflectionImageView, vk::ImageLayout::eShaderReadOnlyOptimal);
 		dsu.beginImages(5U, 0, vk::DescriptorType::eCombinedImageSampler);

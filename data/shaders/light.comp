@@ -21,7 +21,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "light.glsl"
 
 
-#define GROUP_SIZE_XYZ 8
+#define GROUP_SIZE_XYZ 8   // must be pow 2 and the same for all axis
 
 layout (local_size_x = GROUP_SIZE_XYZ, local_size_y = GROUP_SIZE_XYZ, local_size_z = GROUP_SIZE_XYZ) in;	
 
@@ -57,6 +57,9 @@ layout (constant_id = 4) const float VOX_SIZE = 0.0f;
 
 // 26 neighbours + self at i==13 (*compiletime* offset)
 #define next_neighbour_offset(i) ivec3((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)
+
+// single slice indices: 1, 4, 7, 10, (self=13), 16, 19, 22, 25
+
 /*
 ivec3 next_neighbour_offset(const in int i) // constant values only (compile time only)   [generated local compile time constant vector values for an offset to a neighbour]
 {										    //                                             -operation is evaluated during compile, no integer divides or modulus actually take place at run time.
@@ -64,36 +67,38 @@ ivec3 next_neighbour_offset(const in int i) // constant values only (compile tim
 }															  //                             -saves using an enormous # of scalar constants or a runtime nested for loop that handles self aswell.
 */															  //							 -self is skipped below
 
-// 26 neighbours (no center sample) [optimal memory access pattern]
-/*const ivec3 offsets[] = ivec3[]( ivec3(-1, -1, -1),
-								 ivec3(0, -1, -1),
-								 ivec3(1, -1, -1),
-								 ivec3(-1, 0, -1),
-								 ivec3(0, 0, -1),
-								 ivec3(1, 0, -1),
-								 ivec3(-1, 1, -1),
-								 ivec3(0, 1, -1),
-								 ivec3(1, 1, -1),
-								
-								 ivec3(-1, -1, 0),
-								 ivec3(0, -1, 0),
-								 ivec3(1, -1, 0),
-								 ivec3(-1, 0, 0),
-								 ivec3(1, 0, 0),
-								 ivec3(-1, 1, 0),
-								 ivec3(0, 1, 0),
-								 ivec3(1, 1, 0),
-								
-								 ivec3(-1, -1, 1),
-								 ivec3(0, -1, 1),
-								 ivec3(1, -1, 1),
-								 ivec3(-1, 0, 1),
-								 ivec3(0, 0, 1),
-								 ivec3(1, 0, 1),
-								 ivec3(-1, 1, 1),
-								 ivec3(0, 1, 1),
-								 ivec3(1, 1, 1) );
+/*
+// GENERATED VECTOR FOR EACH INDEX:
+// * = MOORE NEIGHBOURHOOD                            
+Vector for index 0:  (-1.00, -1.00, -1.00)
+Vector for index 1:  (-1.00, -1.00, 0.00)
+Vector for index 2:  (-1.00, -1.00, 1.00)
+Vector for index 3:  (-1.00, 0.00, -1.00)
+Vector for index 4:  (-1.00, 0.00, 0.00) *
+Vector for index 5:  (-1.00, 0.00, 1.00)
+Vector for index 6:  (-1.00, 1.00, -1.00)
+Vector for index 7:  (-1.00, 1.00, 0.00)
+Vector for index 8:  (-1.00, 1.00, 1.00)
+Vector for index 9:  (0.00, -1.00, -1.00)
+Vector for index 10:  (0.00, -1.00, 0.00) *
+Vector for index 11:  (0.00, -1.00, 1.00)
+Vector for index 12:  (0.00, 0.00, -1.00) *
+Vector for index 13:  (0.00, 0.00, 0.00)
+Vector for index 14:  (0.00, 0.00, 1.00) *
+Vector for index 15:  (0.00, 1.00, -1.00)
+Vector for index 16:  (0.00, 1.00, 0.00) *
+Vector for index 17:  (0.00, 1.00, 1.00)
+Vector for index 18:  (1.00, -1.00, -1.00)
+Vector for index 19:  (1.00, -1.00, 0.00)
+Vector for index 20:  (1.00, -1.00, 1.00)
+Vector for index 21:  (1.00, 0.00, -1.00)
+Vector for index 22:  (1.00, 0.00, 0.00) *
+Vector for index 23:  (1.00, 0.00, 1.00)
+Vector for index 24:  (1.00, 1.00, -1.00)
+Vector for index 25:  (1.00, 1.00, 0.00)
+Vector for index 26:  (1.00, 1.00, 1.00)
 */
+
 // 
 // -----------------------------------------------------------------
 // [light emitter 10bpc relative position]  +  [hdr 10bpc rgb color] 
@@ -183,6 +188,7 @@ bool isEmitter(in const vec4 warp)
 #if defined(SEED)
 vec4 sampleInputVolume( in const vec3 read_location )
 {
+	/* huge perf drop if used....
 	const ivec3 iread_location = ivec3(floor(read_location + 0.5f));
 
 	vec4 last = texelFetch(pingpongTexture[pc.index_input], iread_location, 0);
@@ -195,7 +201,8 @@ vec4 sampleInputVolume( in const vec3 read_location )
 	// is the most stable, no glitch light or jerky light movements. It does slow down the light, but for good reason to interpolate over time. No lag, trails or ghosting visible.
 
 	return( encode_warp(now.xyz, mix(unpackColorHDR(last.a), unpackColorHDR(now.a), getAttenuation(distance(last.xyz, now.xyz) * VOX_SIZE) * 0.5f + 0.5f)) );
-	//return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
+	*/
+	return( texelFetch(seedMap, ivec3(floor(read_location + 0.5f)), 0) );
 }
 #elif !defined(MIP)
 vec4 sampleInputVolume( in const vec3 read_location )
@@ -228,7 +235,7 @@ vec4 sampleInputVolume( in const vec3 read_location )
 //
 shared vec4 warp_lds[GROUP_SIZE_XYZ + 1][GROUP_SIZE_XYZ][GROUP_SIZE_XYZ]; // *do not remove +1 padding on X*
 
-void populateLDS(in const vec4 warp, in const ivec3 local_location) {
+void populateLDS(in const vec4 warp, in ivec3 local_location) {
 
 	warp_lds[local_location.x][local_location.y][local_location.z] = warp;
 	barrier(); // required so that lds is coherent between the last write and now reads (memorybarriershared is included in barrier too)
@@ -243,7 +250,7 @@ vec4 group_load( in const ivec3 local_location ) {
 
 		return( warp_lds[local_location.x][local_location.y][local_location.z] );
 	}
-	// regular path - border texture addressing on texture sampler so out of bounds are handled with no light returned.
+
 	return( sampleInputVolume(localToGlobal(local_location)) );
 	
 	/*
@@ -261,14 +268,14 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	const warp_local read_warp = group_load(read_location);
 
-	if ( isEmitter(read_warp) ) {	// new ? 
+	[[branch]] if ( isEmitter(read_warp) ) {	// new ? 
 			
-		const float read_distance = distance(decode_warp_location(read_warp), current_location);
+		const float read_distance = getAttenuation(distance(decode_warp_location(read_warp), current_location) * VOX_SIZE);
 
-		const bool bLess = read_distance < current_distance;
-			
-		movc(bLess, current_distance, read_distance);
-		movc(bLess, warp, read_warp);
+		const bool bLess = read_distance > current_distance;
+		
+		current_distance = mix(current_distance, read_distance, bLess);
+		warp = mix(warp, read_warp, bLess.xxxx);
 	}
 }
 
@@ -316,16 +323,28 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 void propogateBlocks(inout warp_local warp, in const vec3 current_location, in const bool emitter)
 {
-	float current_distance = mix(9999999.9999999f, distance(decode_warp_location(warp), current_location), emitter);
+	float current_distance = mix(0.0f, getAttenuation(distance(decode_warp_location(warp), current_location) * VOX_SIZE), emitter);
 	
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	#define T(i) \
 		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(i) * pc.current_step); \
 	
 	// unrolled and compile time constant for offset generated. skip 13, self.
+	
+	// current slice neighbours: +-X, +-Y, 0
+	// single slice indices: 1, 4, 7, 10, 16, 19, 22, 25
+	//T(1);  T(4);  T(7);  T(10);  T(16);  T(19);  T(22);  T(25); // 8 samples
+
+	// current slice neighbours: +-X, +-Y, +-Z
+	// moore neighbourhood indices: 4, 10, 12, 14, 16, 22
+	//T(4);  T(10);  T(12);  T(14);  T(16);  T(22);  // 6 samples
+
+
+	// current slice neighbours: +-X, +-Y, +-Z
+	// full neighbourhood
 	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
 	T(9);  T(10); T(11); T(12); T(14); T(15); T(16); T(17); T(18);
-	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 26 texel
+	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 26 samples
 
 	#undef T
 }
@@ -345,7 +364,7 @@ void main()
 
 	warp_local warp = sampleInputVolume(global_invocation_id);
 
-	populateLDS(warp, ivec3(gl_LocalInvocationID.xyz));  // value is properly initialized.
+	populateLDS(warp, ivec3(gl_LocalInvocationID.xyz)); 
 
 	propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), isEmitter(warp)); 
 
@@ -360,7 +379,7 @@ void main()
 		
 float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location)
 {
-	return(distance(emitter_location, current_location));
+	return(getAttenuation(distance(emitter_location, current_location) * VOX_SIZE));
 }
 float normalize_distance(in const float d) // normalized distance, [0.0f ... 1.0f]
 {
@@ -461,21 +480,19 @@ void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout 
 	float neighbour_distance;
 
 	// 1 center
-	current_color = current_color * getAttenuation(current_direction_distance.w * VOX_SIZE);
+	current_color = current_color * current_direction_distance.w;
 	
 	// 26 neighbours
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	// *bugfix - accumulated half angle vectors results in anti-aliased, continous direction vectors. Far better than selecting a min direction which causes a discontunity between 2 light sources.
-#define T(i) \
+#define iiT(i) \
 	neighbour_warp = decode_warp(textureLodOffset(pingpong, uvw, 0, next_neighbour_offset(i))); \
 	neighbour_distance = emitter_to_distance(neighbour_warp.emitter_location, current_location); \
-	if (neighbour_distance < current_direction_distance.w) { \
-		current_direction_distance = vec4(neighbour_warp.emitter_location, neighbour_distance); \
-	} \
-	current_color += unpackColorHDR(neighbour_warp.packed_color) * getAttenuation(neighbour_distance * VOX_SIZE); \
+	current_direction_distance = mix(current_direction_distance, vec4(neighbour_warp.emitter_location, neighbour_distance), bvec4(neighbour_distance > current_direction_distance.w)); \
+	current_color += unpackColorHDR(neighbour_warp.packed_color) * neighbour_distance; \
 
-	//current_direction_distance.xyz = normalize(current_direction_distance.xyz + neighbour_direction_distance.xyz); 
-	//current_direction_distance.w = min(current_direction_distance.w, neighbour_direction_distance.w); 
+#define T(i) \
+			 iiT(i) \
 
 	// unrolled and compile time constant for offset generated. skip 13, self.
 
@@ -513,7 +530,7 @@ void main()
 		sample_warp(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, current_direction_distance, current_color, current_location);
 
 		current_direction_distance.xyz = current_direction_distance.xyz / WorldDimensions; // normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
-		current_direction_distance.w = normalize_distance(current_direction_distance.w); // normalize distance to range [0,1] for 16bpc unorm texture precision usage
+		current_direction_distance.w = current_direction_distance.w; // normalize distance to range [0,1] for 16bpc unorm texture precision usage
 
 		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), current_direction_distance);
 	}

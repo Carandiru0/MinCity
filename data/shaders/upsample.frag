@@ -54,8 +54,8 @@ layout (binding = 2) uniform sampler2D checkeredMap[2]; // half resolution check
 layout (binding = 3) uniform sampler2D fullMap[2]; // full resolution checkered volumetric light  &  bounce light (reflection)
 
 float fetch_bluenoise_scaled(in const vec2 uv, in const float slice)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
-{
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling *bugfix - really needs tooo be scaled * 0.5f + 0.5f, otherwise checkerboard reconstruction partially fails *do not change*
+{                                                                                    // *using RED CHANNEL*
+	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling *bugfix - really needs tooo be scaled * 0.5f and biased + 0.5f, otherwise checkerboard reconstruction partially fails *do not change*
 	// textureLod all float, repeat done by hardware sampler (point repeat)
 }
 vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv, in const float scaled_bluenoise )
@@ -65,16 +65,18 @@ vec4 reconstruct( in const restrict sampler2D checkeredPixels, in const vec2 uv,
 
     // 2x2 rotated grid
 	vec4 color;
-    color  = textureLod(checkeredPixels, uv + uvOffsets * vec2(-1,-1), 0.0f);
-    color += textureLod(checkeredPixels, uv + uvOffsets * vec2(-1, 1), 0.0f);
-    color += textureLod(checkeredPixels, uv + uvOffsets * vec2( 1,-1), 0.0f);
-    color += textureLod(checkeredPixels, uv + uvOffsets * vec2( 1, 1), 0.0f);
+    color  = textureLod(checkeredPixels, fma(uvOffsets, vec2(-1,-1), uv), 0.0f);
+    color += textureLod(checkeredPixels, fma(uvOffsets, vec2(-1, 1), uv), 0.0f);
+    color += textureLod(checkeredPixels, fma(uvOffsets, vec2( 1,-1), uv), 0.0f);
+    color += textureLod(checkeredPixels, fma(uvOffsets, vec2( 1, 1), uv), 0.0f);
 
 	color *= 0.25f; // temporal blending enabled = 0.25, disabled = 0.5f
 
 	return(color);
 }
 // reconstruct is sharper
+
+/*
 // full optimal gaussian offsets & kernel for denoise
 const vec2 offset[25] = vec2[25](
 	vec2(-1,-1),
@@ -184,6 +186,7 @@ vec4 denoise_sample(restrict sampler2D map_last_frame, restrict sampler2D map_cu
 
 	return mix(sf0/wf, sf1/wf, p);
 }
+*/
 
 void main() {
 	
@@ -216,7 +219,7 @@ layout (binding = 4) uniform sampler2D volumetricMap; // half resolution volumet
 layout (binding = 5) uniform sampler2D reflectionMap; // half resolution bounce light (reflection) source
 
 
-const float POISSON_RADIUS = 11.11111111f;
+const float POISSON_RADIUS = 9.111111f;
 const float INV_HALF_POISSON_RADIUS = 0.5f / POISSON_RADIUS;
 
 const int TAPS = 12;
@@ -231,7 +234,7 @@ const vec2 kTaps[TAPS] = {	vec2(-0.326212,-0.40581),vec2(-0.840144,-0.07358),
 
 vec3 poissonBlur( in const restrict sampler2D samp, in vec3 color, in const vec2 center_uv, in float radius ) // pass in center sample 
 {
-    for ( ; radius > 0.0f ; radius -= 2.0f)
+    for ( ; radius >= 0.0f ; radius -= 2.0f)
 	{
 		for ( int tap = 0 ; tap < TAPS ; ++tap ) 
 		{
@@ -266,13 +269,6 @@ vec4 poissonBlur( in const restrict sampler2D samp, in vec4 color, in const vec2
 	return color;
 }
 */
-
-// duplicated because of different noiseMap binding index between reconstruction and resolve shaders, simpler
-float fetch_bluenoise_scaled(in const vec2 uv)  // important for correct reconstruction result that blue noise is scaled by " * 0.5f + 0.5f "
-{
-	return( textureLod(noiseMap, vec3(uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r * 0.5f + 0.5f); // better to use textureLod, point/nearest sampling
-	// textureLod all float, repeat done by hardware sampler (point repeat)
-}
 
 void main() {
 	
