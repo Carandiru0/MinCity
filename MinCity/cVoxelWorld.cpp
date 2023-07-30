@@ -4211,9 +4211,7 @@ namespace world
 
 		// view matrix derived from eyePos
 		XMVECTOR const xmEyePos(SFM::lerp(_lastState.Uniform.eyePos, _targetState.Uniform.eyePos, tRemainder));
-		_currentState.Uniform.eyePos = xmEyePos;
-		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, XMVectorZero())); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
-
+		
 		////////////////////////////////////////////////////////////////////////////////////////////////////////// Fractional Offset (*ONLY* Location) ////////////////////////////////////////////////////////
 		// Must only be applied here, to the view (eyePos->lookAt->matView)
 		XMVECTOR const xmFract(XMVectorNegate(XMLoadFloat3A(&oCamera.voxelFractionalGridOffset)));
@@ -4221,7 +4219,9 @@ namespace world
 		XMMATRIX const xmView = XMMatrixLookAtLH(XMVectorAdd(xmEyePos, xmFract), xmFract, Iso::xmUp); // notice xmUp is positive here (everything is upside down) to get around Vulkan Negative Y Axis see above eyeDirection
 		_currentState.Uniform.view = xmView;
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-		
+		_currentState.Uniform.eyePos = XMVectorAdd(xmEyePos, xmFract);
+		_currentState.Uniform.eyeDir = XMVector3Normalize(XMVectorSubtract(xmEyePos, xmFract)); // target is always 0,0,0 this would normally be 0 - eyePos, it's upside down instead to work with Vulkan Coordinate System more easily.
+
 		// Update Frustum, which updates projection matrix, which is derived from ZoomFactor
 		_currentState.zoom = SFM::lerp(_lastState.zoom, _targetState.zoom, tRemainder);
 		_Visibility.UpdateFrustum(xmView, _currentState.zoom, MinCity::getFrameCount());
@@ -4429,7 +4429,7 @@ namespace world
 		// volume dimensions //																					// xzy
 		constants.emplace_back(vku::SpecializationConstant(4,  (float)Volumetric::voxelOpacity::getSize()));		  // should be world volume size
 		constants.emplace_back(vku::SpecializationConstant(5,  1.0f / ((float)Volumetric::voxelOpacity::getSize())));       // should be inverse world volume size
-		constants.emplace_back(vku::SpecializationConstant(6, (float)Volumetric::voxelOpacity::getVolumeLength() * Iso::MINI_VOX_SIZE)); // should be world volume length scaled by minivoxelsize
+		constants.emplace_back(vku::SpecializationConstant(6, (float)Iso::MINI_VOX_SIZE)); // should minivoxelsize
 
 		// light volume dimensions //																				// xzy
 		constants.emplace_back(vku::SpecializationConstant(7, (float)Volumetric::voxelOpacity::getLightSize()));		   // should be light volume size

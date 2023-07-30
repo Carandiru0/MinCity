@@ -282,7 +282,7 @@ void main() {
 
 #if !defined(HEIGHT)
                              
-  ivec3 ivoxel = ivec3(floor(worldPos * VolumeDimensions + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
+  ivec3 ivoxel = ivec3(floor(worldPos * (VolumeDimensions - 1.0f) + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
   ivoxel.y = max(1, ivoxel.y); // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
 
   // no clamp required, voxels are only rendered if in the clamped range set by voxelModel.h render()
@@ -309,7 +309,7 @@ void main() {
 #endif // dynamic 
 
 #else // terrain only
-  const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * VolumeDimensions + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
+  const ivec3 ivoxel = ivec3(floor(vec3(worldPos.x, 0.0f, worldPos.z) * (VolumeDimensions - 1.0f) + 0.5f)); // *bugfix - must offset by 0.5f to store to center of voxel properly.
   const int maximum_height = max(1, int(floor(heightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size)) - 1); // never write to slice 0 (slice 0 contains the always on and filled world ground plane)
   const int minimum_height = max(1, int(floor(minheightstep * TERRAIN_MAX_HEIGHT * MINIVOXEL_FACTOR * size * 0.75f)) - 1);  // always avoid writing to slice 0
 

@@ -19,10 +19,13 @@ layout (constant_id = 0) const float WorldDimensions = 0.0f;
 
 void main() {
  			
-	// this aligned to the origin (0,0,0) - this is properly aligned with depth do not change0
-	precise vec3 volume_translation = 0.5f - (WorldDimensions.xxx * 0.5f);
+	const float aa_dimensions = mix(WorldDimensions + 1.0f, WorldDimensions - 1.0f, bool(frame() & 1u)); // this achives temporal antialiasing for the raymarch, especially when reconstruction of the checkerboard resolves
+		                                                                                    // *slighlty blurs* which is ok (desired) for the volumetric and reflection outputs
 
-	precise const vec3 position = fma(inPos.xyz, WorldDimensions.xxx, volume_translation);
+	// this aligned to the origin (0,0,0) - this is properly aligned with depth do not change0
+	precise vec3 volume_translation = aa_dimensions.xxx * -0.5f;
+
+	precise const vec3 position = fma(inPos.xyz, aa_dimensions.xxx, volume_translation);
 
 	gl_Position = u._proj * u._view * u._world * vec4(0.5f * position, 1.0f);
 

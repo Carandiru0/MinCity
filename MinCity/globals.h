@@ -180,7 +180,7 @@ namespace Globals
 
 	static constexpr float const INTERPOLATION_TIME_SCALAR = 1.0f; // for slow-motion, or a view of high precision motion, use a really low value
 
-	static constexpr float const DEFAULT_ZOOM_SCALAR = 3.2f * SFM::GOLDEN_RATIO,				// controls "zoom" higher values are farther away
+	static constexpr float const DEFAULT_ZOOM_SCALAR = 3.111111f * SFM::GOLDEN_RATIO,				// controls "zoom" higher values are farther away
 								 MAX_ZOOM_FACTOR = 0.5f,
 #ifndef NDEBUG
 								 MIN_ZOOM_FACTOR = DEFAULT_ZOOM_SCALAR * 4.0f, // allow zoom out in debug builds

@@ -19,18 +19,18 @@ layout (binding = 0) restrict readonly uniform SharedUniform {
 precise vec2  fractional_offset() { return(u._aligned_data0.xy); }
 precise float time_delta() { return(u._aligned_data0.z); }
 precise float time() { return(u._aligned_data0.w); }
-
+uint          frame() { return(u._uframe); }
 
 // aligned data 1
 
-// for consistent bluenoise slice selection across frames
-float frame_to_slice() // achieves pairing of frames and covers distribution of frames uniformly (tested)
+// for consistent bluenoise slice selection across frames - this is done so that there are NOT two distinct bluenoise between 2 frames, as the pixels are reconstructed in the checkerboard resolve every frame. This keeps the bluenoiuse consistent over time, not degenerating into white noise.
+float frame_to_slice() // achieves pairing of frames and covers distribution of frames *uniformly* (tested)
 {
-	const uint frame = u._uframe;
-	const uint frame_n = (frame & 63u);
+	const uint frame_ = u._uframe;
+	const uint frame_n = (frame_ & 63u);
 
 	float slice = float(bool(frame_n & 1u) ? frame_n - 1 : frame_n);
-	slice += float(frame) / 64.0f;
+	slice += float(frame_) / 64.0f;
 	slice = round(slice);
 
 	return( float((uint(slice) & 63u)) );
