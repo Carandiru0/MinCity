@@ -321,7 +321,7 @@ void main() {
 		bounce_color = supersample(reflectionMap, In.uv, vdFd);
 
 		// greater distance between source of reflection & reflected surface = greater blur
-		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb * alphaSumR_Fade, In.uv, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
+		bounce_color = poissonBlur(reflectionMap, bounce_color.rgb * alphaSumR_Fade, rndC(In.uv * ScreenResDimensions) * InvScreenResDimensions, POISSON_RADIUS * (alphaSumR_Blur + INV_HALF_POISSON_RADIUS)); // min radius 0.5f to max radius POISSON_RADIUS + 0.5f
 		// lowers resolution - expandAA(reflectionMap, bounce_color, In.uv);
 
 		// pre-multiply w/ bilateral alpha 

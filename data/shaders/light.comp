@@ -36,15 +36,16 @@ layout (push_constant) restrict readonly uniform PushConstant {
 #define OPACITY 1
 
 layout (binding = 0) uniform sampler3D seedMap;	// lightprobe map
-layout (binding = 1) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
-layout (binding = 2, rgba16) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
+layout (binding = 1) uniform sampler2DArray noiseMap;	// bluenoise
+layout (binding = 2) uniform sampler3D pingpongTexture[2]; // sampling the "ping"
+layout (binding = 3, rgba16) writeonly restrict uniform image3D pingpongImage[2];	// storing the "pong", -only to be used with imageStore (writeonly)
 //////////////////////////////////////////////////////////////////////////////////
-layout (binding = 3, rgba16) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final output --only to be used with imageStore (writeonly) // only signed normalized values
-layout (binding = 4, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
+layout (binding = 4, rgba16) writeonly restrict uniform image3D outTemporalDDFinal; // (distance & direction) final output --only to be used with imageStore (writeonly) // only signed normalized values
+layout (binding = 5, rgba16f) writeonly restrict uniform image3D outTemporalCFinal; // (color) final filtered output
 
 // "World Visible Volume"
 layout (constant_id = 0) const float WorldDimensions = 0.0f;
-layout (constant_id = 1) const float InvWorldLength = 0.0f;
+layout (constant_id = 1) const float WorldLength = 0.0f;
 
 // "Light Volume"
 layout (constant_id = 2) const float VolumeDimensions = 0.0f;
@@ -56,7 +57,7 @@ layout (constant_id = 4) const float VOX_SIZE = 0.0f;
 #define warp_local vec4
 
 // 26 neighbours + self at i==13 (*compiletime* offset)
-#define next_neighbour_offset(i) ivec3((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)
+#define next_neighbour_offset(_type, i) _type((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)
 
 // single slice indices: 1, 4, 7, 10, (self=13), 16, 19, 22, 25
 
@@ -65,7 +66,7 @@ ivec3 next_neighbour_offset(const in int i) // constant values only (compile tim
 {										    //                                             -operation is evaluated during compile, no integer divides or modulus actually take place at run time.
 	return(ivec3((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)); //                             -constants are generated as this function gets iterated
 }															  //                             -saves using an enormous # of scalar constants or a runtime nested for loop that handles self aswell.
-*/															  //							 -self is skipped below
+*/															  //							 -self may be skipped
 
 /*
 // GENERATED VECTOR FOR EACH INDEX:
@@ -83,7 +84,7 @@ Vector for index 9:  (0.00, -1.00, -1.00)
 Vector for index 10:  (0.00, -1.00, 0.00) *
 Vector for index 11:  (0.00, -1.00, 1.00)
 Vector for index 12:  (0.00, 0.00, -1.00) *
-Vector for index 13:  (0.00, 0.00, 0.00)
+Vector for index 13:  (0.00, 0.00, 0.00) [self]
 Vector for index 14:  (0.00, 0.00, 1.00) *
 Vector for index 15:  (0.00, 1.00, -1.00)
 Vector for index 16:  (0.00, 1.00, 0.00) *
@@ -152,6 +153,13 @@ vec3 decode_warp_location( in const warp_local warp ) // [public] when only loca
 
 	// scaling position data back to world limits from data levels
 	return(_decode_warp_vector(encoded.packed_position) / FDATA_MAX * WorldDimensions);
+}
+vec3 decode_warp_color( in const warp_local warp ) // [public] when only location is required, location returned
+{
+	const uvec4 encoded = uvec4(warp * 65535.0f).wzyx;
+
+	// scaling position data back to world limits from data levels
+	return(_decode_warp_vector(encoded.packed_color) / FDATA_MAX);
 }
 
 vec4 decode_warp( in const warp_local warp ) // [public] location & packed hdr color returned
@@ -263,6 +271,16 @@ vec4 group_load( in const ivec3 local_location ) {
 	*/
 }
 
+// smooth version for propogstion only
+float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location) // input: world coordinates  output: normalized distance [0.0f...1.0f]
+{
+	// toroidal (wrap-around) distance - https://blog.demofox.org/2017/10/01/calculating-the-distance-between-points-in-wrap-around-toroidal-space/
+	vec3 dv = abs(emitter_location - current_location) / WorldDimensions;
+
+	dv = mix(dv, 1.0f - dv, greaterThan(dv, vec3(0.5f)));
+	
+	return( smootherstep(0.0f, 1.0f, length(dv)) ); // smoothing of voronoi regions, see: https://www.desmos.com/calculator/qx40ofzx0b  
+}
 
 void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
 
@@ -270,12 +288,11 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 	[[branch]] if ( isEmitter(read_warp) ) {	// new ? 
 			
-		const float read_distance = getAttenuation(distance(decode_warp_location(read_warp), current_location) * VOX_SIZE);
+		const float read_distance = emitter_to_distance(decode_warp_location(read_warp), current_location);
 
-		const bool bLess = read_distance > current_distance;
+		warp = mix(warp, read_warp, (read_distance < current_distance).xxxx);
+		current_distance = min(current_distance, read_distance);
 		
-		current_distance = mix(current_distance, read_distance, bLess);
-		warp = mix(warp, read_warp, bLess.xxxx);
 	}
 }
 
@@ -323,11 +340,15 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 
 void propogateBlocks(inout warp_local warp, in const vec3 current_location, in const bool emitter)
 {
-	float current_distance = mix(0.0f, getAttenuation(distance(decode_warp_location(warp), current_location) * VOX_SIZE), emitter);
+	float current_distance = 999999.999999f;
+	
+	[[branch]] if (emitter) {
+		current_distance = emitter_to_distance(decode_warp_location(warp), current_location);
+	}
 	
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	#define T(i) \
-		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(i) * pc.current_step); \
+		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(ivec3, i) * pc.current_step); \
 	
 	// unrolled and compile time constant for offset generated. skip 13, self.
 	
@@ -376,15 +397,13 @@ void main()
 
 // ###################################################################################################################################
 #if defined(MIP) // FILTER STEP
-		
-float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location)
-{
-	return(getAttenuation(distance(emitter_location, current_location) * VOX_SIZE));
-}
+
+/*		
 float normalize_distance(in const float d) // normalized distance, [0.0f ... 1.0f]
 {
 	return(clamp(d * InvWorldLength, 0.0f, 1.0f));
 }
+*/
 
 /* deprecated for non temporal replacement sample_warp()
 // smin removes discontuities (voronoi edges) by blending distance field data correctly
@@ -469,30 +488,58 @@ vec3 temporalBlendC( in const restrict sampler3D inputTemporalC, in const restri
 }
 */
 
+vec2 fetch_bluenoise(in const vec2 pixel, in const float slice)
+{																
+	return( textureLod(noiseMap, vec3(pixel * BLUE_NOISE_UV_SCALAR, slice), 0).rg ); // *bluenoise RED & GREEN channel used* *do not change*
+}
+
 #define emitter_location xyz
 #define packed_color w
 
+// linear version for filter only
+float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location) // input: world coordinates  output: normalized distance [0.0f...1.0f]
+{
+	// toroidal (wrap-around) distance - https://blog.demofox.org/2017/10/01/calculating-the-distance-between-points-in-wrap-around-toroidal-space/
+	vec3 dv = abs(emitter_location - current_location) / WorldDimensions;
+
+	dv = mix(dv, 1.0f - dv, greaterThan(dv, vec3(0.5f)));
+	
+	return(length(dv));
+}
+
+void sample_neighbour_warp(in const warp_local neighbour_warp, in const vec3 uvw, in const float bn, inout vec3 current_color)
+{
+	const float neighbour_distance = emitter_to_distance(neighbour_warp.emitter_location, uvw * WorldDimensions) * bn; // green channel (bluenoise)
+
+	current_color = current_color + unpackColorHDR(neighbour_warp.packed_color) * getAttenuation(neighbour_distance * WorldLength * VOX_SIZE * MAGIC_SCALAR); // scale must match here and across specialization constants for voxelmodels, volumetric fetchlight
+}
+
 // this function removes the edges in the voronoi structure by making neighbours accurate (minimum distance to light/per voxel)
 // it also calculates the lighting color contributed by all neighbours
-void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout vec4 current_direction_distance, inout vec3 current_color, in const vec3 current_location) 
+void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, in const vec2 bn, in const float current_distance, inout vec3 current_color) 
 {	
-	warp_local neighbour_warp;
-	float neighbour_distance;
-
-	// 1 center
-	current_color = current_color * current_direction_distance.w;
+	/*
+	// 26 neighbours + 1 self
 	
-	// 26 neighbours
-	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
-	// *bugfix - accumulated half angle vectors results in anti-aliased, continous direction vectors. Far better than selecting a min direction which causes a discontunity between 2 light sources.
-#define iiT(i) \
-	neighbour_warp = decode_warp(textureLodOffset(pingpong, uvw, 0, next_neighbour_offset(i))); \
-	neighbour_distance = emitter_to_distance(neighbour_warp.emitter_location, current_location); \
-	current_direction_distance = mix(current_direction_distance, vec4(neighbour_warp.emitter_location, neighbour_distance), bvec4(neighbour_distance > current_direction_distance.w)); \
-	current_color += unpackColorHDR(neighbour_warp.packed_color) * neighbour_distance; \
+	vec3 dir = vec3(0);
+	for ( dir.z = -1.0f; dir.z <= 1.0f; ++dir.z) {
+		for ( dir.y = -1.0f; dir.y <= 1.0f; ++dir.y) {
+			for ( dir.x = -1.0f; dir.x <= 1.0f; ++dir.x) {
+				
+				sample_neighbour_warp(decode_warp(textureLod(pingpong, (uvw * WorldDimensions + dir * (1.0f + (current_distance * bn.g) * WorldLength)) / WorldDimensions, 0)), uvw, bn.g, current_color);  // red channel (bluenoise), green channel passes thru to next
+
+			}
+		}
+	}
+	*/
+
+	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self
+
+#define iiT(i, offset) \
+	sample_neighbour_warp(decode_warp(textureLod(pingpong, (uvw * WorldDimensions + next_neighbour_offset(vec3, i) * offset) / WorldDimensions, 0)), uvw, bn.g, current_color);
 
 #define T(i) \
-			 iiT(i) \
+			 iiT(i, (1.0f + (current_distance * bn.r) * WorldLength)) \
 
 	// unrolled and compile time constant for offset generated. skip 13, self.
 
@@ -500,6 +547,7 @@ void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout 
 	//T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
 
 	T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)    // *bugfix - this is balanced so the - 0.5f offset does not create a "border" on one extent of the 3D texture
+	T(13); // self
 	T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
 
 	//T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
@@ -507,6 +555,10 @@ void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, inout 
 	//T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 26 texel
 
 #undef T
+	
+
+	//current_color /= max(1.0f, samps); // *bugfix - intensity can be captured instead, maximum value is unrestricted (enhancemment)
+	//                                   // intensity is naturally inferred by how many samples land on the same emitter(s), the color is amplified as it accumulates more samples of the same color.
 }
 
 void main() 
@@ -516,23 +568,22 @@ void main()
 			return;
 	}
 
-	const warp_local current_warp = decode_warp(textureLod(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, 0));
-	vec3 current_color = unpackColorHDR(current_warp.packed_color);
+	const vec3 uvw = (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions;
+
+	const vec3 seed_emitter_location = decode_warp_location(textureLod(pingpongTexture[pc.index_input], uvw, 0));
+	vec3 current_color = vec3(0);
 
 	// #################################################################################################################
 	{	// distance & direction ###
-		
-		const vec3 current_location = (gl_GlobalInvocationID.xyz * InvVolumeDimensions * WorldDimensions);
-
-		vec4 current_direction_distance = vec4(current_warp.emitter_location, emitter_to_distance(current_warp.emitter_location, current_location));
+		const vec2 bn = fetch_bluenoise(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z) * 0.5f + 0.5f;
+		const float current_distance = emitter_to_distance(seed_emitter_location, uvw * WorldDimensions);
 		
 		// -0.5 for trilinear sampling
-		sample_warp(pingpongTexture[pc.index_input], (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions, current_direction_distance, current_color, current_location);
+		sample_warp(pingpongTexture[pc.index_input], uvw, bn, current_distance, current_color); // red channel (bluenoise) & green channel passed in...
 
-		current_direction_distance.xyz = current_direction_distance.xyz / WorldDimensions; // normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
-		current_direction_distance.w = current_direction_distance.w; // normalize distance to range [0,1] for 16bpc unorm texture precision usage
-
-		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), current_direction_distance);
+		// normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
+		// distance should already be normalized [0.0f ... 1.0f]
+		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(seed_emitter_location / WorldDimensions, current_distance));
 	}
 
 	{   // color ###

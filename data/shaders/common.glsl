@@ -234,6 +234,7 @@ float smin( in const float a, in const float b, in const float k )
 //    const float h = clamp(0.5f + 0.5f * (b - a) / k, 0.0f, 1.0f);
 //    return mix(b, a, h) - k * h * (1.0f - h);
 //}
+
 // YUV-RGB conversion routine from Hyper3D
 vec3 encodePalYuv(in const vec3 rgb)
 {

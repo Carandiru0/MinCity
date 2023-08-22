@@ -298,11 +298,12 @@ void cVulkan::CreateComputeResources()
 				)
 			};
 			dslm.image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, &samplers[0]); // 3d volume seed (lightprobes) &getNearestSampler<eSamplerAddressing::REPEAT>()
-			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
-			dslm.image(2U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
+			dslm.image(1U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 1, &getNearestSampler<eSamplerAddressing::REPEAT>()); // bluenoise
+			dslm.image(2U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, 2, samplers); // 3d volume pingpong input
+			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 2); // 3d volume pingpong output
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-			dslm.image(3U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
-			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
+			dslm.image(4U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final output (distance & direction)
+			dslm.image(5U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1); // final 16bpc output (light color)
 			
 			_comData.light.descLayout = dslm.createUnique(_device);
 		}
@@ -1816,7 +1817,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	{ // ###### Compute
 		for (uint32_t resource_index = 0; resource_index < vku::double_buffer<uint32_t>::count; ++resource_index) {
 			_dsu.beginDescriptorSet(_comData.light.sets[resource_index]);
-			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(resource_index, _dsu, getLinearSampler<eSamplerAddressing::CLAMP>());
+			MinCity::VoxelWorld->UpdateDescriptorSet_ComputeLight(resource_index, _dsu, getLinearSampler<eSamplerAddressing::CLAMP>(), getNearestSampler<eSamplerAddressing::REPEAT>());
 		}
 		// [[deprecated]] ###### Texture Shaders (Compute)
 		/*for (uint32_t shader = 0; shader < eTextureShader::_size(); ++shader)
@@ -1963,6 +1964,7 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	WaitDeviceIdle(); // be safe and wait
 	
 	// set static pre-recorded command buffers here //
+	_window->setStaticCommands(cVulkan::renderPreStaticCommandBuffer, true);
 	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer, true);
 	_window->setGpuReadbackCommands(cVulkan::gpuReadback);
 	_window->setStaticPresentCommands(cVulkan::renderPresentCommandBuffer);
@@ -1982,6 +1984,10 @@ namespace vku
 bool const cVulkan::renderCompute(vku::compute_pass&& __restrict c)
 {
 	return(MinCity::Vulkan->_renderCompute(std::forward<vku::compute_pass&& __restrict>(c)));
+}
+void cVulkan::renderPreStaticCommandBuffer(vku::pre_static_renderpass&& __restrict s)
+{
+	MinCity::Vulkan->_renderPreStaticCommandBuffer(std::forward<vku::pre_static_renderpass&&>(s));
 }
 void cVulkan::renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
 {
@@ -2013,9 +2019,8 @@ inline bool const cVulkan::_renderCompute(vku::compute_pass&& __restrict c)
 	return(MinCity::VoxelWorld->renderCompute(std::forward<vku::compute_pass&& __restrict>(c), _comData)); // only care about return value from transfer light (if light needs to be uploaded) otherwise return value is not used.
 }
 
-void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s)
+void cVulkan::renderClearMasks(uint32_t const resource_index, vk::CommandBuffer const& cb)
 {
-	uint32_t const resource_index(s.resource_index);
 	// ***** descriptor set must be set outside of this function ***** //
 
 	// ## deferred mask dynamic children "Transparent Mask" voxels
@@ -2026,16 +2031,16 @@ void cVulkan::renderClearMasks(vku::static_renderpass&& __restrict s)
 
 		// leveraging dynamic vb 
 		// all children that use a clear mask use common descriptor set and pipeline
-		s.cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 		if (0 != resource_index) {
-			s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR]);
+			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR]);
 		}
 		else {
-			s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE]);
+			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtSharedPipeline[eVoxelSharedPipeline::VOXEL_CLEAR_MOUSE]);
 		}
 
-		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_clear_mask), 1, 0);
+		cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_clear_mask), 1, 0);
 	}
 }
 
@@ -2193,10 +2198,8 @@ NO_INLINE void cVulkan::queryOffscreenBuffer(uint32_t* const __restrict mem_out)
 	}
 }
 
-void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s) // does not use the indirect active count buffer for dynamic, static & terrain on purpose - customize offscreen voxel rendering enablement.
+void cVulkan::renderOffscreenVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb) // does not use the indirect active count buffer for dynamic, static & terrain on purpose - customize offscreen voxel rendering enablement.
 {
-	uint32_t const resource_index(s.resource_index);
-
 	// front to back
 
 	{ // dynamic voxels
@@ -2206,14 +2209,14 @@ void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s) // does not
 		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelDynamic>();
 		if (0 != ActiveVertexCount) {
 
-			s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+			cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 			// main partition (always starts at vertex positiob 0)
 			{
 				uint32_t const partition_vertex_count = (*_rtData[voxelPipeline]._vbo[resource_index])->partitions()[eVoxelDynamicVertexBufferPartition::PARENT_MAIN].active_vertex_count;
 				if (0 != partition_vertex_count) {
-					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-					s.cb.draw(partition_vertex_count, 1, 0, 0);
+					cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+					cb.draw(partition_vertex_count, 1, 0, 0);
 				}
 			}
 
@@ -2230,10 +2233,10 @@ void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s) // does not
 						uint32_t const partition_vertex_count = child_partition->active_vertex_count;
 						if (0 != partition_vertex_count) {
 
-							s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, rtDataChild.pipeline);
+							cb.bindPipeline(vk::PipelineBindPoint::eGraphics, rtDataChild.pipeline);
 
 							uint32_t const partition_start_vertex = child_partition->vertex_start_offset;
-							s.cb.draw(partition_vertex_count, 1, partition_start_vertex, 0);
+							cb.draw(partition_vertex_count, 1, partition_start_vertex, 0);
 						}
 					}
 				}
@@ -2246,30 +2249,25 @@ void cVulkan::renderOffscreenVoxels(vku::static_renderpass const& s) // does not
 
 		uint32_t const ActiveVertexCount = (*_rtData[voxelPipeline]._vbo[resource_index])->ActiveVertexCount<VertexDecl::VoxelNormal>();
 		if (0 != ActiveVertexCount) {
-			s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
 
-			s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-			s.cb.draw(ActiveVertexCount, 1, 0, 0);
+			cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+			cb.draw(ActiveVertexCount, 1, 0, 0);
 		}
 	}
 
 }
 
-inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
+inline void cVulkan::_renderPreStaticCommandBuffer(vku::pre_static_renderpass&& __restrict s)
 {
 	uint32_t const resource_index(s.resource_index);
 
 	vk::CommandBufferBeginInfo bi{}; // static cb may persist across multiple frames if no changes in vbo active sizes
-	s.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(s.cb, vkNames::CommandBuffer::STATIC);
+	s.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(s.cb, vkNames::CommandBuffer::PRE_STATIC);
 	
 	// setup opacity map, internal image layout state only needs update here as it's image layout is carried forward from the last present.
 	MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet().OpacityMap->setCurrentLayout(vk::ImageLayout::eGeneral);
-
-	// [[deprecated]] transition alll textureshader outputs to shaderreadonlyoptimal
-	// MinCity::VoxelWorld->makeTextureShaderOutputsReadOnly(s.cb);
-
-	// prepare halfres target for writes in depth resolve fragment shader
-	_window->depthResolvedImage(1).setLayout(s.cb, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY, vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_WRITEONLY);
+	_window->depthResolvedImage(1).setLayout<true>(s.cb, vk::ImageLayout::eGeneral);
 
 	// transfer queue ownership of main uniform buffer *required* see voxelworld.cpp Transfer() function
 	_rtSharedData._ubo[resource_index].barrier(	// ## ACQUIRE ## //
@@ -2303,7 +2301,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// all voxels share the same descriptor set
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_ZONLY>(resource_index, s.cb);	
 
-	renderAllVoxels<ZONLY>(s);
+	renderAllVoxels<ZONLY>(resource_index, s.cb);
 
 	s.cb.nextSubpass(vk::SubpassContents::eInline);
 
@@ -2321,16 +2319,28 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// all voxels share the same descriptor set
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_CLEAR>(resource_index, s.cb);
 
-	renderAllVoxels<BASIC>(s);
-	renderClearMasks(std::forward<vku::static_renderpass&&>(s));
+	renderAllVoxels<BASIC>(resource_index, s.cb);
+	renderClearMasks(resource_index, s.cb);
 
 	s.cb.endRenderPass();
+	s.cb.end();
+}
+
+inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restrict s)
+{
+	uint32_t const resource_index(s.resource_index);
+
+	vk::CommandBufferBeginInfo bi{}; // static cb may persist across multiple frames if no changes in vbo active sizes
+	s.cb.begin(bi); VKU_SET_CMD_BUFFER_LABEL(s.cb, vkNames::CommandBuffer::STATIC);
+
+	// [[deprecated]] transition alll textureshader outputs to shaderreadonlyoptimal
+	// MinCity::VoxelWorld->makeTextureShaderOutputsReadOnly(s.cb);
 
 	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
 	auto& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
-	
+
 	volume_set.OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
-		                                   vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
+		                             vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
 	if (s.async_compute_enabled) { // required at this point, light:
 
@@ -2357,7 +2367,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 			using psfb = vk::PipelineStageFlagBits;
 
 			vk::PipelineStageFlags const srcStageMask(psfb::eTopOfPipe),
-										 dstStageMask(psfb::eFragmentShader);
+				dstStageMask(psfb::eFragmentShader);
 
 			s.cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
 		}
@@ -2374,7 +2384,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// Volume Rendering using raymarch of 3d/volume texture:
 	{
 		s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_volData.pipelineLayout, 0,
-								_volData.sets[resource_index], nullptr);
+			_volData.sets[resource_index], nullptr);
 
 		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _volData.pipeline);
 
@@ -2400,7 +2410,7 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 
 	// #### FULL RESOLUTION RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiFull, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
-	
+
 	// SUBPASS - bilateral upsampling //
 	s.cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *_upData[eUpsamplePipeline::UPSAMPLE].pipelineLayout, 0, _upData[eUpsamplePipeline::UPSAMPLE].sets[resource_index], nullptr);
 	s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _upData[eUpsamplePipeline::UPSAMPLE].pipeline);
@@ -2409,23 +2419,23 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	s.cb.draw(3, 1, 0, 0);
 
 	s.cb.endRenderPass();
-		
+
 	// layout is changed in previous renderpass, sync its state
 	_window->colorReflectionImage().setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // fixes bug with validation error on first frame
 
 	//*bugfix - sync validation read after write hazard
-	MinCity::VoxelWorld->getSharedBuffer()[resource_index].barrier(s.cb, 
+	MinCity::VoxelWorld->getSharedBuffer()[resource_index].barrier(s.cb,
 		vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTopOfPipe | vk::PipelineStageFlagBits::eFragmentShader,
 		vk::DependencyFlagBits::eByRegion,
-		vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead, 
+		vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead,
 		MinCity::Vulkan->getGraphicsQueueIndex(), MinCity::Vulkan->getGraphicsQueueIndex());
-		
+
 	// #### MID / INTERMEDIATTE RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiMid, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
-	
+
 	// SUBPASS - Regular voxel rendering
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, s.cb); // all voxels share the same descriptor set
-	(void)renderAllVoxels<1>(s);
+	(void)renderAllVoxels<1>(resource_index, s.cb);
 
 	// SUBPASS - bilateral blend //
 	s.cb.nextSubpass(vk::SubpassContents::eInline);
@@ -2449,19 +2459,19 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, s.cb); // all voxels share the same descriptor set
 
 	// specific voxel rendering for transparency pass //
-	renderTransparentVoxels(s); 
+	renderTransparentVoxels(resource_index, s.cb);
 
 	s.cb.endRenderPass();
-	
+
 	// #### optional OFFSCREEN RENDERPASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiOff, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
-	
+
 	if (_bOffscreenRender) {
 		// SUBPASS - Regular voxel rendering
 		bindVoxelDescriptorSet<eVoxelDescSharedLayoutSet::VOXEL_COMMON>(resource_index, s.cb); // all voxels share the same descriptor set
 
 		// specific voxel rendering for offscreen pass //
-		renderOffscreenVoxels(s); // currently draws all voxels except terrain for GUI presentation
+		renderOffscreenVoxels(resource_index, s.cb); // currently draws all voxels except terrain for GUI presentation
 	}
 	s.cb.endRenderPass();
 

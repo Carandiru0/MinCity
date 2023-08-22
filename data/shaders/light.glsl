@@ -11,16 +11,23 @@ To view a copy of this license, visit http://creativecommons.org/licenses/by-nc-
 or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
  */
 
+
+ // *remember* to [rebuild] whole solution if any of these values are changed.
+
+ #define MAGIC_SCALAR            (1.0f/16.0f)     // for decoding light color from compute only
+
+ #define VOLUMETRIC_INTENSITY    (4.0f)         // *bugfix: important that intensities are applied to light color only
+ #define DIRECT_INTENSITY        (1.0f)       
+
+ #define ATTENUATION_SCALAR      (0.5f)           // *bugfix: should be as close to 1.0 as possible, so that attenuation is not "extending" the range of light by a using a tweaked value. [Tweaking can cause the voronoi edges to show up]
+
 // main public functions:
 
 // for input is world distance units (not normalized) *ONLY* :
 
 // final inverse square law equation used:
-// a = 1.0 / sqrt(d*d + 1.0)  [compute shader]   - light color is pre-multiplied by this equation
-// b = 1.0 / sqrt(d*d + 1.0)  [fragment shader]  - the light color is multiplied again by this equation
-// final attenuation is then b*a*color
-// see : https://www.desmos.com/calculator/qlxe8vxuzh
-float getAttenuation(in const float light_distance)  // this is half of the equation, when light volume is sampled, the other half is calculated. They than combine to make the full equation as above. This seems to be the most accurate for distance.
+// a = 1.0 / (d*d + 1.0)  
+float getAttenuation(in const float light_distance) 
 {
 	return( 1.0f / fma(light_distance,light_distance,1.0f) );
 }

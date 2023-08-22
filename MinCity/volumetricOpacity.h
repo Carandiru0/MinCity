@@ -341,7 +341,7 @@ namespace Volumetric
 		{
 			// full world volume dimensions //
 			constants.emplace_back(vku::SpecializationConstant(0, (float)Size)); // should be world volume uniform size (width=height=depth)
-			constants.emplace_back(vku::SpecializationConstant(1, (float)InvVolumeLength)); // should be inverse world volume length
+			constants.emplace_back(vku::SpecializationConstant(1, (float)VolumeLength)); // should be world volume length
 
 			// light volume dimensions //
 			constants.emplace_back(vku::SpecializationConstant(2, (float)LightSize)); // should be light volume uniform size
@@ -350,27 +350,30 @@ namespace Volumetric
 			constants.emplace_back(vku::SpecializationConstant(4, (float)Iso::MINI_VOX_SIZE)); // should be mini vox size
 		}
 
-		void UpdateDescriptorSet_ComputeLight(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::Sampler const& __restrict samplerLinearClamp) const
+		void UpdateDescriptorSet_ComputeLight(uint32_t const resource_index, vku::DescriptorSetUpdater& __restrict dsu, vk::ImageView const& __restrict imgBluenoise, vk::Sampler const& __restrict samplerLinearClamp, vk::Sampler const& __restrict samplerNearestRepeat) const
 		{
 			dsu.beginImages(0U, 0, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, LightProbeMap.imageGPUIn[resource_index]->imageView(), vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			dsu.beginImages(1U, 0, vk::DescriptorType::eCombinedImageSampler);
+			dsu.image(samplerNearestRepeat, imgBluenoise, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+			dsu.beginImages(2U, 0, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(1U, 1, vk::DescriptorType::eCombinedImageSampler);
+			dsu.beginImages(2U, 1, vk::DescriptorType::eCombinedImageSampler);
 			dsu.image(samplerLinearClamp, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(2U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[0]->imageView(), vk::ImageLayout::eGeneral);
-			dsu.beginImages(2U, 1, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(3U, 1, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, PingPongMap[1]->imageView(), vk::ImageLayout::eGeneral);
 
 			/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-			dsu.beginImages(3U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.DistanceDirection->imageView(), vk::ImageLayout::eGeneral);
 
-			dsu.beginImages(4U, 0, vk::DescriptorType::eStorageImage);
+			dsu.beginImages(5U, 0, vk::DescriptorType::eStorageImage);
 			dsu.image(nullptr, LightMap.Color->imageView(), vk::ImageLayout::eGeneral);
 		}
 

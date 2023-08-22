@@ -28,10 +28,9 @@ layout(early_fragment_tests) in;  // required for proper checkerboard stencil bu
 #include "random.glsl"
 
 // --- defines -----------------------------------------------------------------------------------------------------------------------------------//
-#define LIGHT_INTENSITY (20.0f)  // *bugfix: important that applied to light color only
 #define BOUNCE_EPSILON (0.25f)
 #define REFLECTION_BOUNCE_DISTANCE_SCALAR (1.33f)
-#define BACK_FORWARD_SCATTER_SCALAR (0.375f) // <-- adjust scattering scale & direction, backward (-1.0f) to forward (1.0f)
+#define BACK_FORWARD_SCATTER_SCALAR (-0.375f) // <-- adjust scattering scale & direction, backward (-1.0f) to forward (1.0f)
 #define REFLECTION_STRENGTH (1.0f) // <--- adjust reflection brightness / intensity *tweakable*
 #define REFLECTION_FADE (20.0f) // <-- adjust reflections fading away at distance more with larger values. *tweakable*
 #define MIN_STEP (0.00005f)	// absolute minimum before performance degradation or infinite loop, no artifacts or banding
@@ -119,7 +118,7 @@ precise vec2 intersect_box(in const vec3 orig, in const vec3 dir) {
 
 float fetch_opacity_emission( in const vec3 uvw) { // interpolates opacity & emission
 	
-	return( textureLod(volumeMap[OPACITY], (uvw * VolumeDimensions) * InvVolumeDimensions, 0).r );  // @todo - offset determined, but why??
+	return( textureLod(volumeMap[OPACITY], uvw, 0).r );  // @todo - offset determined, but why??
 }
 float extract_opacity( in const float sampling ) // this includes transparent voxels, however result is negative if transparent
 {
@@ -173,9 +172,10 @@ vec3 computeNormal(in const vec3 uvw)
 
 vec3 getNormal()
 {	
-	const vec3 n = textureLod(normalMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f).xyz;
+	vec3 n = textureLod(normalMap, gl_FragCoord.xy * InvScreenResDimensions, 0.0f).xyz;
+	n.z = -n.z; // vulkan up is down, down is up crap 
 
-	return( normalize(-n) ); // these are world space normals in xzy frag shader form, negated to match raymarch direction (correction) *do not change*
+	return( normalize(n) ); // these are world space normals in xzy frag shader form, negated to match raymarch direction (correction) *do not change*
 }
 
 // returns normalized light distance, light position and light color - uses trilinear sampling on both color and position + distance, intended for *volumetric accumulation*
@@ -184,14 +184,26 @@ float fetch_light_fast( out vec3 light_color, out vec3 light_direction, in const
 	vec4 Ld;
 	getLightFast(light_color, Ld, uvw);
 
-	Ld.pos = Ld.pos - uvw;
-	float d = length(Ld.pos);
-	light_direction = Ld.pos / d; // normalized light direction
-	d = getAttenuation(d);
-	Ld.dist = d - abs(d - Ld.dist);
-	//Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
+	const float VolumeLength = length(VolumeDimensions.xxx);
 
-	return(Ld.dist);  
+	// isolate color
+	light_color = light_color / getAttenuation(Ld.dist * VolumeLength * VOX_SIZE * MAGIC_SCALAR); // scale must match here and across specialization constants for voxelmodels, volumetric fetchlight
+
+	Ld.pos = (Ld.pos - uvw);
+	const float d = length(Ld.pos); // distance from light to current position
+	light_direction = Ld.pos / d; // normalized light direction
+	 // The whole trick to get continuous function
+    // across whole domain and smooth at non-zero distance
+    // is to use smooth minimum (as usual)
+    // and multiple smoothness factor by distance,
+    // so it becomes minimum at zero distance.
+    // Simple as that! smin(md, d, s*d)
+    // If you keep smoothness factor constant (i.e. multiple by "s" only),
+    // the distance function becomes discontinuous
+    // (see https://www.shadertoy.com/view/MdSfzD).
+	Ld.dist = smin(Ld.dist, d, 0.5f*Ld.dist);
+
+	return(getAttenuation(Ld.dist * VolumeLength * VOX_SIZE * ATTENUATION_SCALAR));
 }
 
 float fetch_bluenoise(in const vec2 pixel, in const float slice)
@@ -260,13 +272,14 @@ void vol_lit(out vec4 light_color, out vec3 light_direction, out float opacity, 
 	light_color.a = fetch_light_fast(light_color.rgb, light_direction, p);
 }
 
-float evaluateVolumetric(inout vec4 voxel, in const vec3 p, in const float dt)
+float evaluateVolumetric(inout vec4 voxel, in const vec3 p, in const vec3 rd, in const float dt)
 {
 	//#########################
 	vec4 light_color; vec3 light_direction;  // "attenuation = light_color.a"
 	float opacity, emission;
 
 	vol_lit(light_color, light_direction, opacity, emission, p);  // shadow march tried, kills framerate 
+	//light_color = light_color * attenuation;
 
 	const float bn = fetch_bluenoise(p.xy, p.z * BLUE_NOISE_SLICE_SCALAR) * 2.0f - 1.0f; // best for random vector here, no visible noise after accumulation of the ray march light color for this pixel. slice cannot be dynamicly changed every frame, light intensity visibly pulses.
 	
@@ -276,13 +289,13 @@ float evaluateVolumetric(inout vec4 voxel, in const vec3 p, in const float dt)
 		light_color = mix( light_color, subgroupQuadSwapVertical(light_color), weight.yyyy );
 		light_color = mix( light_color, subgroupQuadSwapDiagonal(light_color), weight.zzzz );
 	}*/
-
+	     
 	// scatter less as light gets closer, scatter more as light gets farther *do not change*
 	float scatter = abs(dot(normalize(light_direction + bn * (1.0f - light_color.a)), light_direction)); // random direction in the sphere and the cosine (angle) between light direction (accumulated over raymarch)
 	scatter = pow(scatter, 5.0f);
 
-	light_color.a = PHASE_FUNCTION(In.eyeDir.xyz, light_direction, scatter * BACK_FORWARD_SCATTER_SCALAR); // skew the phasefunction to back-scatter (-1.0f) thru forward-scattering based on normalize(random vector + light_direction) - half angle
-
+	light_color.a *= scatter;//PHASE_FUNCTION(rd, light_direction, BACK_FORWARD_SCATTER_SCALAR); // skew the phasefunction to back-scatter (-1.0f) thru forward-scattering based on normalize(random vector + light_direction) - half angle
+	 
 	// ### evaluate volumetric integration step of light
     // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
 
@@ -293,7 +306,7 @@ float evaluateVolumetric(inout vec4 voxel, in const vec3 p, in const float dt)
 
 	// Area Light----------------------------------------------------------------------------------------------------------------                                 
     // |-------------------- light amount ----------------------- free space * dt + constant fog amount --- color and intensity-|
-	const vec3 Li = fma( fma(light_color.a, emission, light_color.a), sigmaS, sigmaS) * light_color.rgb * LIGHT_INTENSITY; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
+	const vec3 Li = fma( fma(light_color.a, emission, light_color.a), sigmaS, sigmaS) * light_color.rgb * light_color.a * VOLUMETRIC_INTENSITY; // incoming light  *** note this is fine tuned for awesome brightness of volumetric light effects
 	const float sigma_dt = exp2(-sigmaS * light_color.a);
     const vec3 Sint = (Li - Li * sigma_dt) / sigmaE; // integrate along the current step segment
 	voxel.light += (voxel.tran + emission * sigma_dt) * Sint; // accumulate and also`` take into account the transmittance from previous steps
@@ -330,6 +343,8 @@ vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec
 
 	reflect_lit(light_color, light_direction, attenuation, p + n * dt);
 	
+	light_color = light_color * attenuation * VOLUMETRIC_INTENSITY;
+
 	// account for light direction *important* - removes reflections that should not be present
 	light_color *= 0.5f * max(0.0f, dot(n, light_direction)); // *bugfix - should be half of the light color here, as below it could again double depending on current emission*attenuation (see below). This also darkens reflections more when emission is not present giving a more realistic, not overbrite reflection.
 
@@ -508,7 +523,7 @@ void main() {
 			const float dt = sampling_rate(dt_normal, mix(2.0f, 1.0f, interval_remaining / interval_length)); // ramped down to improve performance
 
 			// ## evaluate light
-			const float opacity = evaluateVolumetric(voxel, p, dt);
+			const float opacity = evaluateVolumetric(voxel, p, rd, dt);
 
 			// ## test hit voxel
 			[[branch]] if( bounced(opacity, BOUNCE_EPSILON) ) {	
@@ -528,10 +543,10 @@ void main() {
 
 		// last step - sample right at depth removing unclean edges
 		if (interval_remaining < 0.0f) { 
-			interval_remaining += sampling_rate(dt_normal, 2.0f);
+			interval_remaining += sampling_rate(dt_normal, 1.0f);
 			p += interval_remaining * rd;  // this is the last "partial" step!
 
-			evaluateVolumetric(voxel, p, interval_remaining);
+			evaluateVolumetric(voxel, p, rd, interval_remaining);
 		}
 
 		// trace shadow ray //

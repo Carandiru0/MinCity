@@ -331,6 +331,7 @@ private:
 	
 public:
 	static bool const renderCompute(vku::compute_pass&& __restrict c);
+	static void renderPreStaticCommandBuffer(vku::pre_static_renderpass&& __restrict s);
 	static void renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	static void renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	static void renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
@@ -339,6 +340,7 @@ public:
 	static void gpuReadback(vk::CommandBuffer& cb, uint32_t const resource_index);
 private:
     inline bool const _renderCompute(vku::compute_pass&& __restrict c);
+	inline void _renderPreStaticCommandBuffer(vku::pre_static_renderpass&& __restrict s);
 	inline void _renderStaticCommandBuffer(vku::static_renderpass&& __restrict s);
 	inline void _renderDynamicCommandBuffer(vku::dynamic_renderpass&& __restrict d);
 	inline void _renderOverlayCommandBuffer(vku::overlay_renderpass&& __restrict o);
@@ -348,7 +350,7 @@ private:
 
 	void renderComplete(uint32_t const resource_index); // triggered internally on Render Completion (after final queue submission / present by vku framework
 
-	void renderClearMasks(vku::static_renderpass&& __restrict s);
+	void renderClearMasks(uint32_t const resource_index, vk::CommandBuffer const& cb);
 	void clearAllVoxels(vku::clear_renderpass&& __restrict c);  // <-- this one clears the opacitymap
 
 	void copyMouseBuffer(vk::CommandBuffer& cb, uint32_t resource_index) const;
@@ -694,20 +696,20 @@ private:
 	STATIC_INLINE void bindVoxelDescriptorSet(uint32_t const resource_index, vk::CommandBuffer& __restrict cb);
 
 	template<int32_t const voxel_pipeline_index>
-	STATIC_INLINE void renderDynamicVoxels(vku::static_renderpass const& s);
+	STATIC_INLINE void renderDynamicVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb);
 
 	template<int32_t const voxel_pipeline_index>
-	STATIC_INLINE void renderStaticVoxels(vku::static_renderpass const& s);
+	STATIC_INLINE void renderStaticVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb);
 
 	template<int32_t const voxel_pipeline_index>
-	STATIC_INLINE void renderTerrainVoxels(vku::static_renderpass const& s);
+	STATIC_INLINE void renderTerrainVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb);
 
 	template<int32_t const voxel_pipeline_index>
-	STATIC_INLINE void renderAllVoxels(vku::static_renderpass const& s);
+	STATIC_INLINE void renderAllVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb);
 
-	STATIC_INLINE void renderTransparentVoxels(vku::static_renderpass const& s);
+	STATIC_INLINE void renderTransparentVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb);
 	
-	static void renderOffscreenVoxels(vku::static_renderpass const& s);
+	static void renderOffscreenVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb);
 };
 
 template<bool const isDynamic, bool const isBasic, bool const isClear, bool const isTransparent, bool const isSampleShading>
@@ -925,23 +927,21 @@ STATIC_INLINE void cVulkan::bindVoxelDescriptorSet(uint32_t const resource_index
 }
 
 template<int32_t const voxel_pipeline_index>
-STATIC_INLINE void cVulkan::renderDynamicVoxels(vku::static_renderpass const& s)
+STATIC_INLINE void cVulkan::renderDynamicVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb)
 {
-	uint32_t const resource_index(s.resource_index);
-
 	// dynamic voxels
 
 	constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_DYNAMIC_BASIC + voxel_pipeline_index;
 
 	if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.voxel_dynamic)) {
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 		// main partition (always starts at vertex position 0)
 		{
 			if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.partition.voxel_dynamic_main)) {
-				s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-				s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_main), 1, 0);
+				cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+				cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_main), 1, 0);
 			}
 		}
 
@@ -952,8 +952,8 @@ STATIC_INLINE void cVulkan::renderDynamicVoxels(vku::static_renderpass const& s)
 
 			if (_rtDataChild[child].pipeline) {
 				if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.partition.voxel_dynamic_custom_pipelines[index])) {
-					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
-					s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_custom_pipelines[index]), 1, 0);
+					cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
+					cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_custom_pipelines[index]), 1, 0);
 				}
 				++index;
 			}
@@ -962,50 +962,46 @@ STATIC_INLINE void cVulkan::renderDynamicVoxels(vku::static_renderpass const& s)
 }
 
 template<int32_t const voxel_pipeline_index>
-STATIC_INLINE void cVulkan::renderStaticVoxels(vku::static_renderpass const& s)
+STATIC_INLINE void cVulkan::renderStaticVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb)
 {
-	uint32_t const resource_index(s.resource_index);
-
 	// static voxels
 	if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.voxel_static)) {
 		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_STATIC_BASIC + voxel_pipeline_index;
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_static), 1, 0);
+		cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+		cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_static), 1, 0);
 	}
 }
 
 template<int32_t const voxel_pipeline_index>
-STATIC_INLINE void cVulkan::renderTerrainVoxels(vku::static_renderpass const& s)
+STATIC_INLINE void cVulkan::renderTerrainVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb)
 {
-	uint32_t const resource_index(s.resource_index);
-
 	// terrain
 	if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.voxel_terrain)) {
 		constexpr int32_t const voxelPipeline = eVoxelPipeline::VOXEL_TERRAIN_BASIC + voxel_pipeline_index;
 
-		s.cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
-		s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
-		s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_terrain), 1, 0);
+		cb.bindVertexBuffers(0, (*_rtData[voxelPipeline]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtData[voxelPipeline].pipeline);
+		cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.voxel_terrain), 1, 0);
 	}
 }
 
 template<int32_t const voxel_pipeline_index>
-STATIC_INLINE void cVulkan::renderAllVoxels(vku::static_renderpass const& s)
+STATIC_INLINE void cVulkan::renderAllVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb)
 {
 	// ***** descriptor set must be set outside of this function ***** //
 
 	// always front to back (optimal order for z culling) //
 	
 	// dynamic voxels //
-	renderDynamicVoxels<voxel_pipeline_index>(s);
+	renderDynamicVoxels<voxel_pipeline_index>(resource_index, cb);
 
 	// static voxels //
-	renderStaticVoxels<voxel_pipeline_index>(s);
+	renderStaticVoxels<voxel_pipeline_index>(resource_index, cb);
 
 	// terrain voxels //
-	renderTerrainVoxels<voxel_pipeline_index>(s);
+	renderTerrainVoxels<voxel_pipeline_index>(resource_index, cb);
 }
 
 // old but left as reference for the "mouse behind building models feature", major overdraw though.
@@ -1056,10 +1052,8 @@ STATIC_INLINE uint32_t const cVulkan::renderAllVoxels_ZPass(vku::static_renderpa
 }
 */
 
-__inline void cVulkan::renderTransparentVoxels(vku::static_renderpass const& s)
+__inline void cVulkan::renderTransparentVoxels(uint32_t const resource_index, vk::CommandBuffer const& cb)
 {
-	uint32_t const resource_index(s.resource_index);
-	
 	// SUBPASS - voxels w/Transparency //
 
 	{ // dynamic voxels
@@ -1068,15 +1062,15 @@ __inline void cVulkan::renderTransparentVoxels(vku::static_renderpass const& s)
 
 		// leveraging dynamic vb 
 		// all child shaders share this descriptor set, but have unique pipelines
-		s.cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
+		cb.bindVertexBuffers(0, (*_rtData[eVoxelPipeline::VOXEL_DYNAMIC]._vbo[resource_index])->buffer(), vk::DeviceSize(0));
 
 		for (uint32_t child = 0, index = 0; child < eVoxelPipelineCustomized::_size(); ++child) {
 
 			if (_rtDataChild[child].pipeline) {
 				if (_drawCommandIndices.enabled & (1ui64 << _drawCommandIndices.partition.voxel_dynamic_transparency[index])) {
 
-					s.cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
-					s.cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_transparency[index]), 1, 0);
+					cb.bindPipeline(vk::PipelineBindPoint::eGraphics, _rtDataChild[child].pipeline);
+					cb.drawIndirect(_indirectActiveCount[resource_index]->buffer(), getIndirectCountOffset(_drawCommandIndices.partition.voxel_dynamic_transparency[index]), 1, 0);
 				}
 				++index;
 			}
