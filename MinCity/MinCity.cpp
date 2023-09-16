@@ -1265,9 +1265,7 @@ __declspec(noinline) void cMinCity::CriticalInit()
 {
 #ifdef SECURE_DYNAMIC_CODE_NOT_ALLOWED
 	// secure process:
-	// *bugfix - dynamic code execution required by *nvidia* driver usage in specifically - vkCmdBindDescriptorSets() uses dynamic code? Disabling the code below fixes the issue.
-	// bug should be fixed in a newer driver....
-	// setup zero dynamic code execution
+	// *bugfix - nvidia driver now has bugfix
 	PROCESS_MITIGATION_DYNAMIC_CODE_POLICY policy{};
 	policy.ProhibitDynamicCode = 1;
 

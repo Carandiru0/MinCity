@@ -746,7 +746,7 @@ void cVulkan::CreateUpsampleResources()
 void cVulkan::CreateDepthResolveResources()
 {
 	// Create two shaders, vertex and fragment. 
-	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad.vert.bin" };
+	vku::ShaderModule const vert_{ _device, SHADER_BINARY_DIR "postquad_depth.vert.bin" };
 	vku::ShaderModule const frag_{ _device, SHADER_BINARY_DIR "depthresolve.frag.bin" };
 
 	// Build a template for descriptor sets that use these shaders.
@@ -1594,8 +1594,8 @@ void cVulkan::UpdateIndirectActiveCountBuffer(vk::CommandBuffer& cb, uint32_t co
 
 	// MAIN_PARTITION, CLEAR_MASK PARTITION & CUSTOM_PIPELINES
 	vk::DrawIndirectCommand main_partition{},
-		clear_partition{},
-		custom_partitions[eVoxelPipelineCustomized::_size()]{};
+		                    clear_partition{},
+		                    custom_partitions[eVoxelPipelineCustomized::_size()]{};
 
 	{
 		// MAIN_PARTITION & CUSTOM_PIPELINES
@@ -1964,8 +1964,8 @@ void cVulkan::UpdateDescriptorSetsAndStaticCommandBuffer()
 	WaitDeviceIdle(); // be safe and wait
 	
 	// set static pre-recorded command buffers here //
-	_window->setStaticCommands(cVulkan::renderPreStaticCommandBuffer, true);
-	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer, true);
+	_window->setStaticCommands(cVulkan::renderPreStaticCommandBuffer);
+	_window->setStaticCommands(cVulkan::renderStaticCommandBuffer);
 	_window->setGpuReadbackCommands(cVulkan::gpuReadback);
 	_window->setStaticPresentCommands(cVulkan::renderPresentCommandBuffer);
 	_window->setStaticClearCommands(cVulkan::renderClearCommandBuffer);
@@ -2337,44 +2337,43 @@ inline void cVulkan::_renderStaticCommandBuffer(vku::static_renderpass&& __restr
 	// MinCity::VoxelWorld->makeTextureShaderOutputsReadOnly(s.cb);
 
 	// prepare for usage in fragment shaders (raymarching & voxel frag) remains read-only until end of frame where it is cleared and setup for next frame (finalPass / Present)
-	auto& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
+	auto const& volume_set(MinCity::VoxelWorld->getVolumetricOpacity().getVolumeSet());
 
 	volume_set.OpacityMap->setLayout(s.cb, vk::ImageLayout::eShaderReadOnlyOptimal, vk::PipelineStageFlagBits::eVertexShader, vku::ACCESS_WRITEONLY,
 		                             vk::PipelineStageFlagBits::eFragmentShader, vku::ACCESS_READONLY);
 
-	if (s.async_compute_enabled) { // required at this point, light:
+	// *** required at this point, light:
 
-		{ // [acquire image barrier]
-			using afb = vk::AccessFlagBits;
+	{ // [acquire image barrier]
+		using afb = vk::AccessFlagBits;
 
-			static constexpr size_t const image_count(2ULL); // batched
-			std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color };
-			std::array<vk::ImageMemoryBarrier, image_count> imbs{};
+		static constexpr size_t const image_count(2ULL); // batched
+		std::array<vku::GenericImage* const, image_count> const images{ volume_set.LightMap->DistanceDirection, volume_set.LightMap->Color };
+		std::array<vk::ImageMemoryBarrier, image_count> imbs{};
 
-			for (uint32_t i = 0; i < image_count; ++i) {
+		for (uint32_t i = 0; i < image_count; ++i) {
 
-				imbs[i].srcQueueFamilyIndex = _window->computeQueueFamilyIndex();  // (default) VK_QUEUE_FAMILY_IGNORED;
-				imbs[i].dstQueueFamilyIndex = _window->graphicsQueueFamilyIndex();  // (default) VK_QUEUE_FAMILY_IGNORED;
-				imbs[i].oldLayout = vk::ImageLayout::eGeneral;
-				imbs[i].newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-				imbs[i].image = images[i]->image();
-				imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+			imbs[i].srcQueueFamilyIndex = _window->computeQueueFamilyIndex();  // (default) VK_QUEUE_FAMILY_IGNORED;
+			imbs[i].dstQueueFamilyIndex = _window->graphicsQueueFamilyIndex();  // (default) VK_QUEUE_FAMILY_IGNORED;
+			imbs[i].oldLayout = vk::ImageLayout::eGeneral;
+			imbs[i].newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+			imbs[i].image = images[i]->image();
+			imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
-				imbs[i].srcAccessMask = (afb)0;
-				imbs[i].dstAccessMask = afb::eShaderRead;
-			}
-
-			using psfb = vk::PipelineStageFlagBits;
-
-			vk::PipelineStageFlags const srcStageMask(psfb::eTopOfPipe),
-				dstStageMask(psfb::eFragmentShader);
-
-			s.cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+			imbs[i].srcAccessMask = (afb)0;
+			imbs[i].dstAccessMask = afb::eShaderRead;
 		}
 
-		volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // *bugfix for tricky validation error
-		volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+		using psfb = vk::PipelineStageFlagBits;
+
+		vk::PipelineStageFlags const srcStageMask(psfb::eTopOfPipe),
+				                     dstStageMask(psfb::eFragmentShader);
+
+		s.cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
 	}
+
+	volume_set.LightMap->DistanceDirection->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal); // *bugfix for tricky validation error
+	volume_set.LightMap->Color->setCurrentLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 
 	// #### HALF RESOLUTION RENDER PASS BEGIN #### //
 	s.cb.beginRenderPass(s.rpbiHalf, vk::SubpassContents::eInline);	// SUBPASS - regular rendering //
@@ -2665,7 +2664,7 @@ void cVulkan::Render()
 
 	// ####### //
 	_current_free_resource_index = _window->draw(
-		_device, cVulkan::renderCompute, cVulkan::renderDynamicCommandBuffer, cVulkan::renderOverlayCommandBuffer
+		_device, cVulkan::renderCompute, cVulkan::renderDynamicCommandBuffer, cVulkan::renderOverlayCommandBuffer, cMinCity::getFrameCount()
 	);
 	// ####### //
 

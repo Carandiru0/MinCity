@@ -79,7 +79,7 @@ extern void debug_out_nuklear_off();
 #define FMT_NUKLEAR_DEBUG_OFF() { debug_out_nuklear_off(); }
 
 #else // **** must add to global detection macro below aswell **** //
-//#define SECURE_DYNAMIC_CODE_NOT_ALLOWED
+//#define SECURE_DYNAMIC_CODE_NOT_ALLOWED // may interfere with Vtune, Tracy or any profiling. Required for final release only.
 #define FULLSCREEN_EXCLUSIVE
 #define DEBUG_DISABLE_MUSIC
 #define DEBUG_CONSOLE

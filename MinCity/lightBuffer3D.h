@@ -89,7 +89,7 @@ public:
 		___memset_threaded_stream<CACHE_LINE_BYTES>(_cache, 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		// clear staging buffer (right before usage)
 		if (_staging[resource_index]) {
-			___memset_threaded_stream<32>(_staging[resource_index], 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
+			___memset_threaded_stream<CACHE_LINE_BYTES>(_staging[resource_index], 0, LightSize * LightSize * LightSize * sizeof(PackedLight), _block_size_cache); // 2.7MB / thread (12 cores)
 		}
 	}
 
@@ -422,28 +422,7 @@ public:
 		// whole voxel light
 		SFM::floor_to_u32(xmIndex).xyzw(uiIndex);
 	
-		seed_single(xmPosition, (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor); 
-
-		// ------------------------------------------------------ RESEARCH -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// *project above and below*
-		// *trick - to only sample the current slice (8 neighbours) in the compute shader and still propogate the light emitter above and below must be seeded with the same light emitter using the same emitter position
-		// and color (projection). This avoids sampling the above and below slices with the current slice (27 neighbours). The reduction in memory bandwidth (sampling) is substantial. Jumpflooding performance is memory bound, so this results
-		// in a major reduction in the total time the compute shaders run. Around 10 ms or more. with 1+JFA the jumpflooding errors are so low that doing the jumpflood in a slice by slice manner results in near equivalency with a full 3D jumpflood
-		// that samples all 27 neighbours, all the time. This was discovered in the main jfa paper, "Variants of Jump Flooding Algorithm for Computing Discrete Voronoi Diagrams" https://www.comp.nus.edu.sg/~tants/jfa/JFA-Variants.pdf
-		// where they project to all "other" slices on seeding. Additionally the last compute shader step converts the Voronoi diagram to the position of the closest light, and the accumulated light color. This last step, for every voxel, samples 
-		// the neighbours in a trilinear way, which includes the adjacent voxels and takes less samples (14 neighbours), still less than fully sampling the surrounding voxels (27 neighbours). During the sampling if a closer light emitter is found
-		// while sampling trilinearly, there is a correction to the voronoi diagram made at the very end. The exported volumes [position+distance field] & [color] are generated with the corrections inplace.
-		// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		int32_t const up(((int32_t)uiIndex.y) - 1);
-		if (up >= 0) {
-			seed_single(xmPosition, (up * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor);
-		}
-		
-		int32_t const down((int32_t)uiIndex.y + 1);
-		if (down < LightSize) {
-			seed_single(xmPosition, (down * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor);
-		}
-		
+		seed_single(xmPosition, (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor); 		
 	}
 
 	void create(size_t const hardware_concurrency)

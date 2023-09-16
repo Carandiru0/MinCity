@@ -541,7 +541,7 @@ void main() {
 	light_color = light_color / getAttenuation(Ld.dist * VolumeLength * MAGIC_SCALAR);
 
 	Ld.pos = (Ld.pos - In.uv.xyz);
-	const float d = length(Ld.pos); // distance from light to current position
+	float d = length(Ld.pos); // distance from light to current position
 	Ld.xyz = Ld.pos / d; // normalized light direction
 	 // The whole trick to get continuous function
     // across whole domain and smooth at non-zero distance
@@ -552,7 +552,7 @@ void main() {
     // If you keep smoothness factor constant (i.e. multiple by "s" only),
     // the distance function becomes discontinuous
     // (see https://www.shadertoy.com/view/MdSfzD).
-	Ld.dist = smin(Ld.dist, d, 0.5f*Ld.dist);
+	//Ld.dist = smin(d, Ld.dist, 0.5f * Ld.dist);
 	Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 						// only emissive can have color
@@ -578,7 +578,7 @@ void main() {
 	light_color = light_color / getAttenuation(Ld.dist * VolumeLength * MAGIC_SCALAR);
 
 	Ld.pos = (Ld.pos - In.uv.xyz);
-	const float d = length(Ld.pos); // distance from light to current position
+	float d = length(Ld.pos); // distance from light to current position
 	Ld.xyz = Ld.pos / d; // normalized light direction
 	 // The whole trick to get continuous function
     // across whole domain and smooth at non-zero distance
@@ -589,7 +589,7 @@ void main() {
     // If you keep smoothness factor constant (i.e. multiple by "s" only),
     // the distance function becomes discontinuous
     // (see https://www.shadertoy.com/view/MdSfzD).
-	Ld.dist = smin(Ld.dist, d, 0.5f*Ld.dist);
+//	Ld.dist = smin(d, Ld.dist, 0.5f * Ld.dist);
 	Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
 
 	const vec3 N = normalize(In.N.xyz);

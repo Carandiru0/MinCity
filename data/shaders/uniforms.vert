@@ -40,9 +40,8 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #endif // ZONLY
 
 layout(location = 0) in vec4 inWorldPos;
-#if !defined(ZONLY) || defined(DYNAMIC)  // all non-zonly (dynamic, static, terrain) w/exception dynamic uses this vector for a quaternion
 layout(location = 1) in vec4 inUV;
-#endif // ZONLY
+
 
 layout (constant_id = 0) const float VOX_SIZE = 0.0f;
 layout (constant_id = 1) const float VolumeDimensions = 0.0f;

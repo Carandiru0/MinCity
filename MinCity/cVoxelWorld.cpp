@@ -2102,8 +2102,8 @@ namespace // private to this file (anonymous)
 			while (isVoxelVisible(XMVectorSetY(xmVoxelOrigin, -current_height), voxel_radius)) {
 				current_height += voxel_radius * 2.0f;
 			}
-			//                                                                       at a distance of 2.0 above the light, ~20% illumination
-			XMVECTOR const xmIndex(XMVectorMultiplyAdd(XMVectorSetY(xmVoxelOrigin, -(current_height + 2.0f)), Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
+			//                                                                       at a distance of 4.0 above the light, < ~6% illumination cutoff
+			XMVECTOR const xmIndex(XMVectorMultiplyAdd(XMVectorSetY(xmVoxelOrigin, -(current_height + 4.0f)), Volumetric::_xmTransformToIndexScale, Volumetric::_xmTransformToIndexBias));
 
 			[[likely]] if (XMVector3GreaterOrEqual(xmIndex, XMVectorZero())
 				           && XMVector3Less(xmIndex, Volumetric::VOXEL_MINIGRID_VISIBLE_XYZ)) // prevent crashes if index is negative or outside of bounds of visible mini-grid : voxel vertex shader depends on this clipping!
@@ -3453,6 +3453,11 @@ namespace world
 	{
 		ZoneScopedN("Stage Resources");
 
+		{ // this is a better place, so there is no wait below 
+			// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
+			getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
+		}
+
 		// mapping direct buffers //
 		VertexDecl::VoxelNormal const* const MappedVoxels_Terrain_Start(voxels.visibleTerrain.buffer.direct);
 		std::atomic<VertexDecl::VoxelNormal*> MappedVoxels_Terrain(voxels.visibleTerrain.buffer.direct);
@@ -4389,11 +4394,6 @@ namespace world
 					voxels.visibleDynamic.trans.bits->clear();
 				}  
 		});
-
-		{
-			// *bugfix - having these clears inside of the async thread causes massive flickering of light, not coherent! Moving it outside and simultaneous still works fine.
-			getVolumetricOpacity().clear(resource_index); // better distribution of cpu at a later point in time of the frame.
-		}
 	}
 		
 	void cVoxelWorld::SetSpecializationConstants_ComputeLight(std::vector<vku::SpecializationConstant>& __restrict constants)

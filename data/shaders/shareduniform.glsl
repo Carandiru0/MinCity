@@ -24,15 +24,16 @@ uint          frame() { return(u._uframe); }
 // aligned data 1
 
 // for consistent bluenoise slice selection across frames - this is done so that there are NOT two distinct bluenoise between 2 frames, as the pixels are reconstructed in the checkerboard resolve every frame. This keeps the bluenoiuse consistent over time, not degenerating into white noise.
-float frame_to_slice() // achieves pairing of frames and covers distribution of frames *uniformly* (tested)
-{
+float frame_to_slice(in const float odd) // achieves pairing of frames and covers distribution of frames *uniformly* (tested)
+{                                   // pass 1.0f for odd to have a unique slice index every frame, only for final post AA pass
 	const uint frame_ = u._uframe;
 	const uint frame_n = (frame_ & 63u);
 
 	float slice = float(bool(frame_n & 1u) ? frame_n - 1 : frame_n);
 	slice += float(frame_) / 64.0f;
-	slice = round(slice);
-
+	//slice = round(slice); // *bugfix - this was causing errors, taken out produces perfect distribution
+	slice += odd;
+	
 	return( float((uint(slice) & 63u)) );
 }
 

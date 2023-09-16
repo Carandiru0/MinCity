@@ -191,9 +191,9 @@ float fetch_light_fast( out vec3 light_color, out vec3 light_direction, in const
 
 	Ld.pos = (Ld.pos - uvw);
 	const float d = length(Ld.pos); // distance from light to current position
-	light_direction = Ld.pos / d; // normalized light direction
+	Ld.xyz = Ld.pos / d; // normalized light direction
 	 // The whole trick to get continuous function
-    // across whole domain and smooth at non-zero distance
+    // across whole domain and smooth at non-zero distance 
     // is to use smooth minimum (as usual)
     // and multiple smoothness factor by distance,
     // so it becomes minimum at zero distance.
@@ -201,9 +201,11 @@ float fetch_light_fast( out vec3 light_color, out vec3 light_direction, in const
     // If you keep smoothness factor constant (i.e. multiple by "s" only),
     // the distance function becomes discontinuous
     // (see https://www.shadertoy.com/view/MdSfzD).
-	Ld.dist = smin(Ld.dist, d, 0.5f*Ld.dist);
+	//Ld.dist = smin(Ld.dist, d, 0.5f*Ld.dist);
+	//Ld.z = -Ld.z; // vulkan: relative positions are both positive, but to match N & V, the z axis (up) must be flipped for L
+	light_direction = Ld.xyz;
 
-	return(getAttenuation(Ld.dist * VolumeLength * VOX_SIZE * ATTENUATION_SCALAR));
+	return(getAttenuation(Ld.dist * VolumeLength * VOX_SIZE * ATTENUATION_SCALAR ));
 }
 
 float fetch_bluenoise(in const vec2 pixel, in const float slice)
@@ -343,7 +345,7 @@ vec4 reflection(in const float distance_to_bounce, in const vec3 p, in const vec
 
 	reflect_lit(light_color, light_direction, attenuation, p + n * dt);
 	
-	light_color = light_color * attenuation * VOLUMETRIC_INTENSITY;
+	light_color = light_color * attenuation;
 
 	// account for light direction *important* - removes reflections that should not be present
 	light_color *= 0.5f * max(0.0f, dot(n, light_direction)); // *bugfix - should be half of the light color here, as below it could again double depending on current emission*attenuation (see below). This also darkens reflections more when emission is not present giving a more realistic, not overbrite reflection.

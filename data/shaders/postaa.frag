@@ -303,8 +303,8 @@ void main() {
 	vec3 color = textureLod(colorMap, In.uv, 0).rgb;
 
 	const vec4 temporal_color = textureLod(temporalColorMap, In.uv, 0);
-	
-	color = mix(color, temporal_color.rgb, 0.5f);  // 1st: average TAA result with MSAA result (provides best looking result - SMAA removed as it wasn't as sharp)
+
+	color = mix(color, temporal_color.rgb, 0.5f); // best result when msaa is evenly mixed with temporal AA (sharper)
 
 	// 3rd: blur the color so far using the temporal map, based on how dark it is
 	// using that result, subtract it from the color using absolute differences
@@ -321,12 +321,12 @@ void main() {
 	}
 	// AA at this point is nearly perfect, the image has an extremely wide range in contrast and just pops out
 	// very happy, backup!
-	// save last color for temporal usuage - do not want dithering to add random aliasing
+
+	// save color for temporal usuage - do not want dithering to add random aliasing
 	outLastFrame = vec4(color, temporal_color.a); // must preserve temporal alpha channel in output
 	// motion vectors ? color = vec3(normalize(vec2(dFdxFine(temporal_color.a), dFdyFine(temporal_color.a))) * 0.5f + 0.5f, 0.0f);
 
-	const float blue_noise = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r;
-	// previous improved anti-aliasing has dimming while motion is taking place, resulting in a significant brightness change between say the camera rotating and being still. (temporal artifact)
+	const float blue_noise = textureLod(noiseMap, vec3(In.uv * ScreenResDimensions * BLUE_NOISE_UV_SCALAR, In.slice), 0).r; // unique bluenoise for every frame for final output only
 	
 	// *final color is now set* //
 

@@ -20,8 +20,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #include "common.glsl"
 #include "light.glsl"
 
-
-#define GROUP_SIZE_XYZ 8   // must be pow 2 and the same for all axis
+#define GROUP_SIZE_XYZ 8   // must be pow 2 and the same for all axis - *ComputeLightConstants.h value must match*
 
 layout (local_size_x = GROUP_SIZE_XYZ, local_size_y = GROUP_SIZE_XYZ, local_size_z = GROUP_SIZE_XYZ) in;	
 
@@ -60,13 +59,6 @@ layout (constant_id = 4) const float VOX_SIZE = 0.0f;
 #define next_neighbour_offset(_type, i) _type((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)
 
 // single slice indices: 1, 4, 7, 10, (self=13), 16, 19, 22, 25
-
-/*
-ivec3 next_neighbour_offset(const in int i) // constant values only (compile time only)   [generated local compile time constant vector values for an offset to a neighbour]
-{										    //                                             -operation is evaluated during compile, no integer divides or modulus actually take place at run time.
-	return(ivec3((i / 9) - 1, (i / 3 % 3) - 1, (i % 3) - 1)); //                             -constants are generated as this function gets iterated
-}															  //                             -saves using an enormous # of scalar constants or a runtime nested for loop that handles self aswell.
-*/															  //							 -self may be skipped
 
 /*
 // GENERATED VECTOR FOR EACH INDEX:
@@ -187,9 +179,20 @@ vec4 encode_warp( in const vec3 location, in const vec3 color ) // [public] retu
 #undef packed_position
 #undef packed_color
 
-bool isEmitter(in const vec4 warp)
+bool isEmitter(in const vec4 warp) // *bugfix - to only be used on raw read from 3D texture, before any decoding
 {
-	return(any(notEqual(vec2(0), warp.zw))); // check for non-zero color in the last 2 components which are dedicated to 10bpc color
+	return(any(notEqual(vec2(0), warp.xy))); // check for non-zero color in the 2 components which are dedicated to 10bpc color - *bugfix - wzyx swizzled order, location encoded in zw, hdr color encoded in xy
+}
+
+// linear
+float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location) // input: world coordinates  output: normalized distance [0.0f...1.0f]
+{
+	// toroidal (wrap-around) distance - https://blog.demofox.org/2017/10/01/calculating-the-distance-between-points-in-wrap-around-toroidal-space/
+	vec3 dv = abs(emitter_location - current_location) / WorldDimensions;
+
+	dv = mix(dv, 1.0f - dv, greaterThan(dv, vec3(0.5f)));
+	
+	return(length(dv));
 }
 
 // seed uses the source uploaded light, selecting the correct input based on the current frames resource index
@@ -243,7 +246,7 @@ vec4 sampleInputVolume( in const vec3 read_location )
 //
 shared vec4 warp_lds[GROUP_SIZE_XYZ + 1][GROUP_SIZE_XYZ][GROUP_SIZE_XYZ]; // *do not remove +1 padding on X*
 
-void populateLDS(in const vec4 warp, in ivec3 local_location) {
+void populateLDS(in const vec4 warp, in const ivec3 local_location) {
 
 	warp_lds[local_location.x][local_location.y][local_location.z] = warp;
 	barrier(); // required so that lds is coherent between the last write and now reads (memorybarriershared is included in barrier too)
@@ -271,27 +274,16 @@ vec4 group_load( in const ivec3 local_location ) {
 	*/
 }
 
-// smooth version for propogstion only
-float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location) // input: world coordinates  output: normalized distance [0.0f...1.0f]
-{
-	// toroidal (wrap-around) distance - https://blog.demofox.org/2017/10/01/calculating-the-distance-between-points-in-wrap-around-toroidal-space/
-	vec3 dv = abs(emitter_location - current_location) / WorldDimensions;
-
-	dv = mix(dv, 1.0f - dv, greaterThan(dv, vec3(0.5f)));
-	
-	return( smootherstep(0.0f, 1.0f, length(dv)) ); // smoothing of voronoi regions, see: https://www.desmos.com/calculator/qx40ofzx0b  
-}
-
-void propogateBlock(inout warp_local warp, inout float current_distance, in const vec3 current_location, in const ivec3 read_location) {
+void propogateBlock(inout warp_local warp, inout float current_invsqdistance, in const vec3 current_location, in const ivec3 read_location) {
 
 	const warp_local read_warp = group_load(read_location);
 
-	[[branch]] if ( isEmitter(read_warp) ) {	// new ? 
-			
-		const float read_distance = emitter_to_distance(decode_warp_location(read_warp), current_location);
+	if ( isEmitter(read_warp) ) {	// new ? 
+		
+		const float read_invsqdistance = getAttenuation(emitter_to_distance(decode_warp_location(read_warp), current_location) * WorldLength * VOX_SIZE * COMPUTE_SCALE);
 
-		warp = mix(warp, read_warp, (read_distance < current_distance).xxxx);
-		current_distance = min(current_distance, read_distance);
+		warp = mix(warp, read_warp, (read_invsqdistance > current_invsqdistance).xxxx);
+		current_invsqdistance = max(current_invsqdistance, read_invsqdistance);
 		
 	}
 }
@@ -338,21 +330,47 @@ void propogateBlock(inout warp_local warp, inout float current_distance, in cons
 	}
 }*/
 
-void propogateBlocks(inout warp_local warp, in const vec3 current_location, in const bool emitter)
+void propogateBlocks(inout warp_local warp, in const vec3 current_location)
 {
-	float current_distance = 999999.999999f;
-	
-	[[branch]] if (emitter) {
-		current_distance = emitter_to_distance(decode_warp_location(warp), current_location);
-	}
+	float current_invsqdistance = getAttenuation(emitter_to_distance(decode_warp_location(warp), current_location) * WorldLength * VOX_SIZE * COMPUTE_SCALE);  // will still return 0.0 if no emitter
 	
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self (skip)
 	#define T(i) \
-		propogateBlock(warp, current_distance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(ivec3, i) * pc.current_step); \
+		propogateBlock(warp, current_invsqdistance, current_location, ivec3(gl_LocalInvocationID.xyz) + next_neighbour_offset(ivec3, i) * pc.current_step); \
 	
 	// unrolled and compile time constant for offset generated. skip 13, self.
 	
-	// current slice neighbours: +-X, +-Y, 0
+	/* Moore Neighbourhood = *
+	Vector for index 0:  (-1.00, -1.00, -1.00)
+	Vector for index 1:  (-1.00, -1.00, 0.00)
+	Vector for index 2:  (-1.00, -1.00, 1.00)
+	Vector for index 3:  (-1.00, 0.00, -1.00)
+	Vector for index 4:  (-1.00, 0.00, 0.00) *
+	Vector for index 5:  (-1.00, 0.00, 1.00)
+	Vector for index 6:  (-1.00, 1.00, -1.00)
+	Vector for index 7:  (-1.00, 1.00, 0.00) 
+	Vector for index 8:  (-1.00, 1.00, 1.00)
+	Vector for index 9:  (0.00, -1.00, -1.00)
+	Vector for index 10:  (0.00, -1.00, 0.00) *
+	Vector for index 11:  (0.00, -1.00, 1.00)
+	Vector for index 12:  (0.00, 0.00, -1.00) *
+	Vector for index 13:  (0.00, 0.00, 0.00) [self]
+	Vector for index 14:  (0.00, 0.00, 1.00) *
+	Vector for index 15:  (0.00, 1.00, -1.00)
+	Vector for index 16:  (0.00, 1.00, 0.00) *
+	Vector for index 17:  (0.00, 1.00, 1.00)
+	Vector for index 18:  (1.00, -1.00, -1.00)
+	Vector for index 19:  (1.00, -1.00, 0.00)
+	Vector for index 20:  (1.00, -1.00, 1.00)
+	Vector for index 21:  (1.00, 0.00, -1.00)
+	Vector for index 22:  (1.00, 0.00, 0.00) *
+	Vector for index 23:  (1.00, 0.00, 1.00)
+	Vector for index 24:  (1.00, 1.00, -1.00)
+	Vector for index 25:  (1.00, 1.00, 0.00)
+	Vector for index 26:  (1.00, 1.00, 1.00)
+	*/
+
+	// current slice neighbours: +-X, +-Y, 0 (incl. corners)
 	// single slice indices: 1, 4, 7, 10, 16, 19, 22, 25
 	//T(1);  T(4);  T(7);  T(10);  T(16);  T(19);  T(22);  T(25); // 8 samples
 
@@ -360,11 +378,10 @@ void propogateBlocks(inout warp_local warp, in const vec3 current_location, in c
 	// moore neighbourhood indices: 4, 10, 12, 14, 16, 22
 	//T(4);  T(10);  T(12);  T(14);  T(16);  T(22);  // 6 samples
 
-
 	// current slice neighbours: +-X, +-Y, +-Z
 	// full neighbourhood
 	T(0);  T(1);  T(2);  T(3);  T(4);  T(5);  T(6);  T(7);  T(8);
-	T(9);  T(10); T(11); T(12); T(14); T(15); T(16); T(17); T(18);
+	T(9);  T(10); T(11); T(12); /*T(13)*/ T(14); T(15); T(16); T(17); T(18); // skipping self
 	T(19); T(20); T(21); T(22); T(23); T(24); T(25); T(26); // 26 samples
 
 	#undef T
@@ -387,7 +404,7 @@ void main()
 
 	populateLDS(warp, ivec3(gl_LocalInvocationID.xyz)); 
 
-	propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions), isEmitter(warp)); 
+	propogateBlocks(warp, (global_invocation_id * InvVolumeDimensions * WorldDimensions)); 
 
 	imageStore(pingpongImage[pc.index_output], ivec3(localToGlobal(gl_LocalInvocationID.xyz)), warp);
 }
@@ -397,13 +414,6 @@ void main()
 
 // ###################################################################################################################################
 #if defined(MIP) // FILTER STEP
-
-/*		
-float normalize_distance(in const float d) // normalized distance, [0.0f ... 1.0f]
-{
-	return(clamp(d * InvWorldLength, 0.0f, 1.0f));
-}
-*/
 
 /* deprecated for non temporal replacement sample_warp()
 // smin removes discontuities (voronoi edges) by blending distance field data correctly
@@ -496,55 +506,35 @@ vec2 fetch_bluenoise(in const vec2 pixel, in const float slice)
 #define emitter_location xyz
 #define packed_color w
 
-// linear version for filter only
-float emitter_to_distance(in const vec3 emitter_location, in const vec3 current_location) // input: world coordinates  output: normalized distance [0.0f...1.0f]
+vec3 sample_neighbour_warp(in const warp_local neighbour_warp, in const vec3 current_location, in const float bn)
 {
-	// toroidal (wrap-around) distance - https://blog.demofox.org/2017/10/01/calculating-the-distance-between-points-in-wrap-around-toroidal-space/
-	vec3 dv = abs(emitter_location - current_location) / WorldDimensions;
+	const float neighbour_distance = emitter_to_distance(neighbour_warp.emitter_location, current_location); // green channel (bluenoise)
 
-	dv = mix(dv, 1.0f - dv, greaterThan(dv, vec3(0.5f)));
-	
-	return(length(dv));
-}
-
-void sample_neighbour_warp(in const warp_local neighbour_warp, in const vec3 uvw, in const float bn, inout vec3 current_color)
-{
-	const float neighbour_distance = emitter_to_distance(neighbour_warp.emitter_location, uvw * WorldDimensions) * bn; // green channel (bluenoise)
-
-	current_color = current_color + unpackColorHDR(neighbour_warp.packed_color) * getAttenuation(neighbour_distance * WorldLength * VOX_SIZE * MAGIC_SCALAR); // scale must match here and across specialization constants for voxelmodels, volumetric fetchlight
+	return( unpackColorHDR(neighbour_warp.packed_color) * getAttenuation(neighbour_distance * WorldLength * VOX_SIZE * MAGIC_SCALAR) ); // scale must match here and across specialization constants for voxelmodels, volumetric fetchlight
 }
 
 // this function removes the edges in the voronoi structure by making neighbours accurate (minimum distance to light/per voxel)
 // it also calculates the lighting color contributed by all neighbours
-void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, in const vec2 bn, in const float current_distance, inout vec3 current_color) 
-{	
-	/*
-	// 26 neighbours + 1 self
+vec3 sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, in const vec3 current_location, in const float current_distance) 
+{	//                                                       ** **  - no z = less visible noise
+	const vec2 bn = fetch_bluenoise(gl_GlobalInvocationID.xy, current_distance * BLUE_NOISE_SLICE_SCALAR) * 0.5f + 0.5f; // minimum 0.5 to maximum of 1.0 required for voronoi cell edges to effectively disappear
 	
-	vec3 dir = vec3(0);
-	for ( dir.z = -1.0f; dir.z <= 1.0f; ++dir.z) {
-		for ( dir.y = -1.0f; dir.y <= 1.0f; ++dir.y) {
-			for ( dir.x = -1.0f; dir.x <= 1.0f; ++dir.x) {
-				
-				sample_neighbour_warp(decode_warp(textureLod(pingpong, (uvw * WorldDimensions + dir * (1.0f + (current_distance * bn.g) * WorldLength)) / WorldDimensions, 0)), uvw, bn.g, current_color);  // red channel (bluenoise), green channel passes thru to next
-
-			}
-		}
-	}
-	*/
-
 	// 13th iteration is an offset of 0,0,0 which is no offset or sampling self
+	const float sample_offset = fma(bn.r, current_distance * WorldLength, 1.0f);
 
 #define iiT(i, offset) \
-	sample_neighbour_warp(decode_warp(textureLod(pingpong, (uvw * WorldDimensions + next_neighbour_offset(vec3, i) * offset) / WorldDimensions, 0)), uvw, bn.g, current_color);
+	current_color += sample_neighbour_warp(decode_warp(textureLod(pingpong, (uvw * WorldDimensions + next_neighbour_offset(vec3, i) * offset) / WorldDimensions, 0)), current_location, bn.g); \
 
+	//current_color += 0.5f * sample_neighbour_warp(decode_warp(textureLod(pingpong, rotate_voxel((uvw * WorldDimensions + next_neighbour_offset(vec3, i) * offset) / WorldDimensions, bn.r * PI * 0.25f, 256.0f), 0)), current_location, bn.g); \
+	//current_color += 0.5f * sample_neighbour_warp(decode_warp(textureLod(pingpong, rotate_voxel((uvw * WorldDimensions + next_neighbour_offset(vec3, i) * offset).xzy / WorldDimensions, bn.r * PI * 0.25f, 256.0f).xzy, 0)), current_location, bn.g); \
+	
+	//sample_neighbour_warp(decode_warp(textureLod(pingpong, (uvw * WorldDimensions + next_neighbour_offset(vec3, i) * offset) / WorldDimensions, 0)), current_location, bn.g, current_color); \
+	
 #define T(i) \
-			 iiT(i, (1.0f + (current_distance * bn.r) * WorldLength)) \
+			 iiT(i, sample_offset) \
 
 	// unrolled and compile time constant for offset generated. skip 13, self.
-
-	//T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)
-	//T(14); T(22); T(23); T(16); T(17); T(25); T(26); // 7 trilinear (positive offset)
+	vec3 current_color = vec3(0);
 
 	T(12); T(4);  T(3);  T(10); T(9);  T(1);  T(0);  // 7 trilinear (negative offset)    // *bugfix - this is balanced so the - 0.5f offset does not create a "border" on one extent of the 3D texture
 	T(13); // self
@@ -559,6 +549,8 @@ void sample_warp(in const restrict sampler3D pingpong, in const vec3 uvw, in con
 
 	//current_color /= max(1.0f, samps); // *bugfix - intensity can be captured instead, maximum value is unrestricted (enhancemment)
 	//                                   // intensity is naturally inferred by how many samples land on the same emitter(s), the color is amplified as it accumulates more samples of the same color.
+
+	return(current_color);
 }
 
 void main() 
@@ -571,32 +563,21 @@ void main()
 	const vec3 uvw = (gl_GlobalInvocationID.xyz - 0.5f) * InvVolumeDimensions;
 
 	const vec3 seed_emitter_location = decode_warp_location(textureLod(pingpongTexture[pc.index_input], uvw, 0));
-	vec3 current_color = vec3(0);
-
+	
 	// #################################################################################################################
 	{	// distance & direction ###
-		const vec2 bn = fetch_bluenoise(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z) * 0.5f + 0.5f;
-		const float current_distance = emitter_to_distance(seed_emitter_location, uvw * WorldDimensions);
+		const float current_distance = emitter_to_distance(seed_emitter_location, gl_GlobalInvocationID.xyz * InvVolumeDimensions * WorldDimensions);
 		
-		// -0.5 for trilinear sampling
-		sample_warp(pingpongTexture[pc.index_input], uvw, bn, current_distance, current_color); // red channel (bluenoise) & green channel passed in...
-
 		// normalize position for 16bpc unorm packing. emitter positions are always small, unsigned, fitting accurately into 16 bits per component (x,y,z) 
 		// distance should already be normalized [0.0f ... 1.0f]
 		imageStore(outTemporalDDFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(seed_emitter_location / WorldDimensions, current_distance));
+
+		// -0.5 for trilinear sampling
+		const vec3 current_color = sample_warp(pingpongTexture[pc.index_input], uvw, gl_GlobalInvocationID.xyz * InvVolumeDimensions * WorldDimensions, current_distance);
+
+		// light color ###
+		imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color, 1.0f));
 	}
-
-	{   // color ###
-		
-		{ // light
-			// Input sample of blended area, see : 
-			// https://www.shadertoy.com/view/fdjXDD
-
-			imageStore(outTemporalCFinal, ivec3(gl_GlobalInvocationID.xyz), vec4(current_color, 1.0f));
-		}
-	}
-
-
 
 /*
 	

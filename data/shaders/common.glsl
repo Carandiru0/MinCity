@@ -2,6 +2,7 @@
 #define _COMMON_GLSL
 
 #define PI (3.14159265358979323846)
+#define PI2 (2.0 * PI)
 #define GOLDEN_RATIO (1.61803398874989484820) // 1618033988
 #define GOLDEN_RATIO_ZERO (0.61803398874989484820)
 #define GOLDEN_ANGLE (2.399963229728653)
@@ -361,6 +362,8 @@ vec4 qinv(in const vec4 q0)
 	return(vec4(-q0.xyz,q0.w));
 }
 
+// *angles are expected to be in radians 
+
 vec3 v3_rotate( in const vec3 p, in const vec4 q) // preferred - rotate a 3d vector by quaternion
 { 
   return(qmul(qinv(q), qmul(vec4(p, 0.0f), q)).xyz);
@@ -407,7 +410,22 @@ vec2 rotate( in const vec2 p, in const float angle )
 	#undef s_
 }
 
-
+vec3 rotate_voxel(in const vec3 uvw, in const float angle, in const float resolution) 
+{
+    vec3 rotateUVW = rotate(uvw, angle);
+    rotateUVW = floor(rotateUVW * resolution) / resolution;
+    rotateUVW = rotate(rotateUVW, -angle);
+    
+    return( rotateUVW );
+}
+vec2 rotate_pixel(in const vec2 uv, in const float angle, in const float resolution) 
+{
+    vec2 rotateUV = rotate(uv, angle);
+    rotateUV = floor(rotateUV * resolution) / resolution;
+    rotateUV = rotate(rotateUV, -angle);
+    
+    return( rotateUV );
+}
 /* non aliased sampling 
 https://www.shadertoy.com/view/ldsSRX
 

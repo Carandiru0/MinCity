@@ -174,8 +174,8 @@ namespace Volumetric
 			const_cast<volumetricOpacity<Size>* const __restrict>(this)->MappedVoxelLights.commit();
 		}
 
-		void clear(uint32_t const resource_index) { // clears cache & staging buffer
-			MappedVoxelLights.clear(resource_index);
+		void clear(uint32_t const resource_index) const { // clears cache & staging buffer
+			const_cast<volumetricOpacity<Size>* const __restrict>(this)->MappedVoxelLights.clear(resource_index);
 		}
 		
 		void clear(vk::CommandBuffer& cb, uint32_t const resource_index) { // for clearing the light probe map (gpu local)
@@ -589,7 +589,7 @@ namespace Volumetric
 		if (c.cb_render_light) { 
 
 			// Record Compute Command buffer if not flagged as already recorded. 
-			if (!bRecorded[resource_index]) {
+			if (!bRecorded[resource_index] || c.bypass) {
 			
 				uint32_t const current_height(dispatch_volume_height); // *bugfix: light was not being cleared on shrink eg.) when the ship is descending.
 
@@ -614,36 +614,36 @@ namespace Volumetric
 					vku::GenericImage::setLayoutFromUndefined<image_count>(images, c.cb_render_light, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits::eComputeShader, vku::ACCESS_WRITEONLY);
 				}
 
-				{
-					static constexpr size_t const image_count(1ULL); // batched
-					std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[resource_index] };
+									/*{
+						static constexpr size_t const image_count(1ULL); // batched
+						std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[resource_index] };
 
-					// [acquire image barrier]
-					using afb = vk::AccessFlagBits;
+						// [acquire image barrier]
+						using afb = vk::AccessFlagBits;
 
-					std::array<vk::ImageMemoryBarrier, image_count> imbs{};
+						std::array<vk::ImageMemoryBarrier, image_count> imbs{};
 
-					for (uint32_t i = 0; i < image_count; ++i) {
+						for (uint32_t i = 0; i < image_count; ++i) {
 
-						imbs[i].srcQueueFamilyIndex = c.transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-						imbs[i].dstQueueFamilyIndex = c.computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
-						imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
-						imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
-						imbs[i].image = images[i]->image();
-						imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+							imbs[i].srcQueueFamilyIndex = c.transferQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+							imbs[i].dstQueueFamilyIndex = c.computeQueueFamilyIndex;  // (default) VK_QUEUE_FAMILY_IGNORED;
+							imbs[i].oldLayout = vk::ImageLayout::eTransferDstOptimal;
+							imbs[i].newLayout = vk::ImageLayout::eTransferDstOptimal; // layout change cannot be done here, this is queue ownership transfer only
+							imbs[i].image = images[i]->image();
+							imbs[i].subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
 
-						imbs[i].srcAccessMask = afb::eTransferWrite;
-						imbs[i].dstAccessMask = afb::eNone;
-					}
+							imbs[i].srcAccessMask = afb::eTransferWrite;
+							imbs[i].dstAccessMask = afb::eNone;
+						}
 
-					using psfb = vk::PipelineStageFlagBits;
+						using psfb = vk::PipelineStageFlagBits;
 
-					vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
-						                         dstStageMask(psfb::eTopOfPipe);
+						vk::PipelineStageFlags const srcStageMask(psfb::eTransfer),
+							dstStageMask(psfb::eTopOfPipe);
 
-					c.cb_render_light.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
-					LightProbeMap.imageGPUIn[resource_index]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
-				}
+						c.cb_render_light.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
+						LightProbeMap.imageGPUIn[resource_index]->setCurrentLayout(vk::ImageLayout::eTransferDstOptimal);
+					}*/
 
 				{
 					using psfb = vk::PipelineStageFlagBits;
@@ -651,45 +651,49 @@ namespace Volumetric
 					// Image layout transition barrier must be separate from the queue ownership transfer barrier above
 					LightProbeMap.imageGPUIn[resource_index]->setLayout<false>(c.cb_render_light, vk::ImageLayout::eShaderReadOnlyOptimal, psfb::eTransfer, vku::ACCESS_WRITEONLY, psfb::eComputeShader, vku::ACCESS_READONLY);
 				}
-				
-				// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
-				c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[resource_index], nullptr);
 
-				// Seed and 1+JFA (error correction) note: 1+JFA is more accurate than JFA+1 by effectively resulting in a jump flood with far less errors.
-				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
-				renderSeed(c, render_data, resource_index); // output alternates every frame
-
-				//*bugfix - sync validation, solved by automation
-				vku::memory_barrier(c.cb_render_light,
-					vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
-					vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
-				
-				// Jump flooding runs in a specfic series from seed (includes 1+JFA) to jumpflooding (JFA) to finally a Filter being the last step.
-				uint32_t step(MAX_STEP_PINGPONG >> 1);
-				
-				// ( JFA ) //
-				uint32_t uPing(resource_index), uPong(!resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
-
-				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
-
-				do
+				[[likely]] if (!c.bypass)
 				{
-					renderJFA(c, render_data, uPing, uPong, step);
+					// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
+					c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[resource_index], nullptr);
 
-					//*bugfix - sync validation
+					// Seed and 1+JFA (error correction) note: 1+JFA is more accurate than JFA+1 by effectively resulting in a jump flood with far less errors.
+					c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
+					renderSeed(c, render_data, resource_index); // output alternates every frame
+
+					//*bugfix - sync validation, solved by automation
 					vku::memory_barrier(c.cb_render_light,
 						vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
 						vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
-					
-					std::swap(uPing, uPong);
 
-					step >>= 1; // correct, halving rather than doubling is required - otherwise major JFA error count results
-				} while (0 != step);
-				
-				// Last step, filtering - temporal super-sampling, blending & antialiasing
-				c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
+					// Jump flooding runs in a specfic series from seed (includes 1+JFA) to jumpflooding (JFA) to finally a Filter being the last step.
+					uint32_t step(MAX_STEP_PINGPONG >> 1);
 
-				renderFilter(c, render_data, uPing); // pong has last ping (input), ping has last pong (output)
+					// ( JFA ) //
+					uint32_t uPing(resource_index), uPong(!resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
+
+					c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
+
+					do
+					{
+						renderJFA(c, render_data, uPing, uPong, step);
+
+						//*bugfix - sync validation
+						vku::memory_barrier(c.cb_render_light,
+							vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eComputeShader,
+							vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead);
+
+						std::swap(uPing, uPong);
+
+						step >>= 1; // correct, halving rather than doubling is required - otherwise major JFA error count results
+					} while (0 != step);
+
+					// Last step, filtering - temporal super-sampling, blending & antialiasing
+					c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
+
+					renderFilter(c, render_data, uPing); // pong has last ping (input), ping has last pong (output)
+
+				} // !bypass
 
 				{ 
 					static constexpr size_t const image_count(1ULL); // batched
@@ -728,7 +732,7 @@ namespace Volumetric
 
 				c.cb_render_light.end();
 
-				bRecorded[resource_index] = true; // these compute buffers need only be recorded once, then re-used for every frame
+				bRecorded[resource_index] = !c.bypass; // these compute buffers need only be recorded once, then re-used for every frame
 			}
 			
 			// Just update layouts that will be current after this compute cb is done.
@@ -771,8 +775,6 @@ namespace Volumetric
 		// ################################## //
 		// Light Probe Map 3D Texture Upload  //
 		// ################################## //
-
-		// brute-force always entire volume extents uploaded (allows record once and reuse every frame)
 
 		if (!bRecorded[resource_index]) {
 
@@ -823,7 +825,7 @@ namespace Volumetric
 
 			// image should already be transitioned to eTransferDstOptimal 
 			cb.copyBufferToImage(LightProbeMap.stagingBuffer[resource_index].buffer(), LightProbeMap.imageGPUIn[resource_index]->image(), vk::ImageLayout::eTransferDstOptimal, buffer_region); // copy the light probe map (cpu->gpu)
-
+			/*
 			{
 				static constexpr size_t const image_count(1ULL); // batched
 				std::array<vku::GenericImage* const, image_count> const images{ LightProbeMap.imageGPUIn[resource_index] };
@@ -853,7 +855,7 @@ namespace Volumetric
 
 				cb.pipelineBarrier(srcStageMask, dstStageMask, vk::DependencyFlagBits::eByRegion, 0, nullptr, 0, nullptr, image_count, imbs.data());
 			}
-
+			*/
 			cb.end();
 			bRecorded[resource_index] = true; // always set to true so that command buffer recording is not necessary next frame, it can be re-used
 

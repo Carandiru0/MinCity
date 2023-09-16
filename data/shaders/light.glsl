@@ -14,12 +14,13 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 
  // *remember* to [rebuild] whole solution if any of these values are changed.
 
- #define MAGIC_SCALAR            (1.0f/16.0f)     // for decoding light color from compute only
+ #define COMPUTE_SCALE           (1.0f)//(GOLDEN_RATIO_ZERO)
+ #define MAGIC_SCALAR            (COMPUTE_SCALE/8.0f)     // for decoding light color from compute only
 
- #define VOLUMETRIC_INTENSITY    (4.0f)         // *bugfix: important that intensities are applied to light color only
+ #define VOLUMETRIC_INTENSITY    (7.0f)         // *bugfix: important that intensities are applied to light color only
  #define DIRECT_INTENSITY        (1.0f)       
+ #define ATTENUATION_SCALAR      (0.5f)         // *to only be used in fragment shaders*
 
- #define ATTENUATION_SCALAR      (0.5f)           // *bugfix: should be as close to 1.0 as possible, so that attenuation is not "extending" the range of light by a using a tweaked value. [Tweaking can cause the voronoi edges to show up]
 
 // main public functions:
 
@@ -29,7 +30,7 @@ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 // a = 1.0 / (d*d + 1.0)  
 float getAttenuation(in const float light_distance) 
 {
-	return( 1.0f / fma(light_distance,light_distance,1.0f) );
+	return( 1.0f / fma(light_distance, light_distance, 1.0f) );  // MAGIC_SCALAR - for 8x the light intensity!
 }
 
 #endif // _LIGHT_GLSL
