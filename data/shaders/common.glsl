@@ -1,16 +1,20 @@
 #ifndef _COMMON_GLSL
 #define _COMMON_GLSL
 
+
 #define PI (3.14159265358979323846)
 #define PI2 (2.0 * PI)
 #define GOLDEN_RATIO (1.61803398874989484820) // 1618033988
 #define GOLDEN_RATIO_ZERO (0.61803398874989484820)
 #define GOLDEN_ANGLE (2.399963229728653)
 #define LUMA vec3(0.2126f, 0.7152f, 0.0722f)
+#define SINCOS_45_DEGREES (707.106781186547524401e-3f)
+
 
 #define BLUE_NOISE_UV_SCALAR (1.0f/128.0f)        // STBN 128x128x64
 #define BLUE_NOISE_SLICE_SCALAR (64.0f)
 #define BLUE_NOISE_DITHER_SCALAR (17.0f/255.0f)
+
 
 #define TEXTURE_4K_SIZE 4096.0f
 
@@ -37,8 +41,7 @@ vec3 inferno(in const float t) {
     const vec3 c5 = vec3(-71.31942824499214, 32.62606426397723, 73.20951985803202);
     const vec3 c6 = vec3(25.13112622477341, -12.24266895238567, -23.07032500287172);
 
-    return c0+t*(c1+t*(c2+t*(c3+t*(c4+t*(c5+t*c6)))));
-
+    return( c0+t*(c1+t*(c2+t*(c3+t*(c4+t*(c5+t*c6))))) );
 }
 
 float saturation(in const vec3 rgb) {
@@ -426,6 +429,21 @@ vec2 rotate_pixel(in const vec2 uv, in const float angle, in const float resolut
     
     return( rotateUV );
 }
+
+// https://fgiesen.wordpress.com/2009/12/13/decoding-morton-codes/
+uvec3 compact1By2(in uvec3 x) { // for 3 dimensions
+	x &= 0x09249249u;                    // x = ---- 9--8 --7- -6-- 5--4 --3- -2-- 1--0
+    x = (x ^ (x >> 2u)) & 0x030c30c3u;   // x = ---- --98 ---- 76-- --54 ---- 32-- --10
+    x = (x ^ (x >> 4u)) & 0x0300f00fu;   // x = ---- --98 ---- ---- 7654 ---- ---- 3210
+    x = (x ^ (x >> 8u)) & 0xff0000ffu;   // x = ---- --98 ---- ---- ---- ---- 7654 3210
+    x = (x ^ (x >> 16u)) & 0x000003ffu;  // x = ---- ---- ---- ---- ---- --98 7654 3210
+	return(x);
+}
+uvec3 mortonOrder(in uint id) {
+	return(compact1By2(uvec3(id, id >> 1u, id >> 2u)));
+}
+
+
 /* non aliased sampling 
 https://www.shadertoy.com/view/ldsSRX
 

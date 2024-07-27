@@ -281,7 +281,7 @@ private:
 		XMVECTOR const rgb(uvec4_v(unpacked_rgb).v4f());
 
 		// pre-transform / scale "in" (location) to increase precision - must rescale final decoded / unpacked value back to WorldLimits in shader
-		XMVECTOR const xyz(XMVectorScale(XMVectorMultiply(in, _xmInvWorldLimitMax), FDATA_MAX));
+		XMVECTOR const xyz(XMVectorScale(in, FDATA_MAX));
 
 		uint64_t original_seed = pack_seed(SFM::floor_to_u32(xyz), uvec4_v(rgb));
 
@@ -403,14 +403,10 @@ public:
 			const_cast<lightBuffer3D<PackedLight, LightSize, Size>* const __restrict>(this)->_lights.reference(&local::lights);
 		}
 
-		// must convert from srgb to linear
-		uint32_t const linearColor(ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conversion
+		xmPosition = XMVectorMultiply(_xmInvWorldLimitMax, xmPosition); // normalize world space position
 
-		// transform world space position [0.0f...512.0f] to light space position [0.0f...128.0f]
-		XMVECTOR const xmIndex(XMVectorMultiply(_xmLightLimitMax, XMVectorMultiply(_xmInvWorldLimitMax, xmPosition)));
-
-		// swizzle position to remap position to texture matched xzy rather than xyz
-		xmPosition = XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition);
+		// transform normalized world space position [0.0f...1.0f] to light space position [0.0f...128.0f]
+		XMVECTOR const xmIndex(XMVectorMultiply(_xmLightLimitMax, xmPosition));
 
 		// slices ordered by Z
 		// (z * xMax * yMax) + (y * xMax) + x;
@@ -421,8 +417,9 @@ public:
 
 		// whole voxel light
 		SFM::floor_to_u32(xmIndex).xyzw(uiIndex);
-	
-		seed_single(xmPosition, (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, linearColor); 		
+
+		// swizzle position to remap position to texture matched xzy rather than xyz
+		seed_single(XMVectorSwizzle<XM_SWIZZLE_X, XM_SWIZZLE_Z, XM_SWIZZLE_Y, XM_SWIZZLE_W>(xmPosition), (uiIndex.y * LightSize * LightSize) + (uiIndex.z * LightSize) + uiIndex.x, ImagingSRGBtoLinear(srgbColor)); // faster, accurate lut srgb-->linear conversion required
 	}
 
 	void create(size_t const hardware_concurrency)

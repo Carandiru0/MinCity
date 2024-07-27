@@ -221,20 +221,22 @@ namespace Volumetric
 	private:
 		void createIndirectDispatch(vk::Device const& __restrict device, vk::CommandPool const& __restrict commandPool, vk::Queue const& __restrict queue)
 		{
-			uint32_t dispatch_height(LightSize);
+			int32_t dispatch_height(LightSize);
 
 			for ( uint32_t i = 0 ; i < DispatchHeights ; ++i )
-			{ // light compute dispatch
-				uint32_t const local_size((LightSize >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS) + (0U == (LightSize % ComputeLightConstants::SHADER_LOCAL_SIZE) ? 0U : 1U));
-				uint32_t const local_size_z((dispatch_height >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS) + (0U == (dispatch_height % ComputeLightConstants::SHADER_LOCAL_SIZE) ? 0U : 1U));
-
-				if (0 == local_size_z) {
+			{   
+				if (dispatch_height <= 0) {
 					return; // don't create the last DispatchHeight if its dispatch size is zero.
 				}
+				
+				// light compute dispatch
+				uint32_t const group_size_x((LightSize >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS_X) + (0U == (LightSize % ComputeLightConstants::SHADER_LOCAL_SIZE_X) ? 0U : 1U));
+				uint32_t const group_size_y((LightSize >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS_Y) + (0U == (LightSize % ComputeLightConstants::SHADER_LOCAL_SIZE_Y) ? 0U : 1U));
+				uint32_t const group_size_z((dispatch_height >> ComputeLightConstants::SHADER_LOCAL_SIZE_BITS_Z) + (0U == (dispatch_height % ComputeLightConstants::SHADER_LOCAL_SIZE_Z) ? 0U : 1U));				
 
 				vk::DispatchIndirectCommand const dispatchCommand{
 
-					local_size, local_size, local_size_z
+					group_size_x, group_size_y, group_size_z
 				};
 
 				ComputeLightDispatchBuffer[i] = new vku::IndirectBuffer(sizeof(dispatchCommand), true);
@@ -654,12 +656,14 @@ namespace Volumetric
 
 				[[likely]] if (!c.bypass)
 				{
+					constinit static uint32_t last_output_index{1};
+
 					// common descriptor set and pipline layout to SEED and JFA, seperate pipelines
 					c.cb_render_light.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *render_data.light.pipelineLayout, 0, render_data.light.sets[resource_index], nullptr);
 
 					// Seed and 1+JFA (error correction) note: 1+JFA is more accurate than JFA+1 by effectively resulting in a jump flood with far less errors.
 					c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::SEED]);
-					renderSeed(c, render_data, resource_index); // output alternates every frame
+					renderSeed(c, render_data, !last_output_index);
 
 					//*bugfix - sync validation, solved by automation
 					vku::memory_barrier(c.cb_render_light,
@@ -670,7 +674,7 @@ namespace Volumetric
 					uint32_t step(MAX_STEP_PINGPONG >> 1);
 
 					// ( JFA ) //
-					uint32_t uPing(resource_index), uPong(!resource_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
+					uint32_t uPing(!last_output_index), uPong(last_output_index); // this is always true constants for output of seed to JFA's first ping-pong input. 
 
 					c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::JFA]);
 
@@ -692,6 +696,8 @@ namespace Volumetric
 					c.cb_render_light.bindPipeline(vk::PipelineBindPoint::eCompute, *render_data.light.pipeline[eComputeLightPipeline::FILTER]);
 
 					renderFilter(c, render_data, uPing); // pong has last ping (input), ping has last pong (output)
+
+					last_output_index = uPong;
 
 				} // !bypass
 
